@@ -5,7 +5,9 @@
   import Playbar from "./lib/Playbar.svelte";
   import Timeline from "./lib/Timeline.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
-  import { state, history, bump, playbackController, selectionRef } from "./state/appState.svelte";
+  import { onMount } from "svelte";
+  import { state, history, bump, playbackController, selectionRef, DPR, replaceProject } from "./state/appState.svelte";
+  import { loadAutosave, saveAutosave } from "./persist/autosave";
 
   function onKey(e: KeyboardEvent) {
     const meta = e.ctrlKey || e.metaKey;
@@ -36,6 +38,18 @@
     else if (e.key === "[") state.brush.size = Math.max(1, state.brush.size - 1);
     else if (e.key === "]") state.brush.size = Math.min(60, state.brush.size + 1);
   }
+
+  onMount(async () => {
+    const restored = await loadAutosave(DPR);
+    if (restored) replaceProject(restored);
+  });
+
+  let autosaveTimer: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    state.version; // re-run whenever the document changes
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => { void saveAutosave(state.project); }, 3000);
+  });
 </script>
 
 <svelte:window onkeydown={onKey} />

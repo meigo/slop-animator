@@ -1,13 +1,17 @@
 <script lang="ts">
-  import { state, history, bump, addLayerToProject } from "../state/appState.svelte";
+  import { state, history, bump, addLayerToProject, replaceProject, DPR } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
+  import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
+  import { clearAutosave } from "../persist/autosave";
+  import { downloadBlob } from "../export/download";
+  import { createProject } from "../anim/document";
 
   let fileInput: HTMLInputElement;
-  let pendingKind: "image" | "video" = "image";
+  let pendingKind: "image" | "video" | "project" = "image";
 
-  function pick(kind: "image" | "video") {
+  function pick(kind: "image" | "video" | "project") {
     pendingKind = kind;
-    fileInput.accept = kind === "image" ? "image/*" : "video/*";
+    fileInput.accept = kind === "image" ? "image/*" : kind === "video" ? "video/*" : ".zip,application/zip";
     fileInput.value = "";
     fileInput.click();
   }
@@ -15,10 +19,23 @@
   async function onFile() {
     const file = fileInput.files?.[0];
     if (!file) return;
+    if (pendingKind === "project") {
+      replaceProject(await loadProjectBlob(file, DPR));
+      return;
+    }
     const layer = pendingKind === "image"
       ? await loadImageLayer(file)
       : await loadVideoLayer(file, () => bump());
     addLayerToProject(layer);
+  }
+
+  async function saveProject() {
+    downloadBlob(await saveProjectBlob(state.project), "project.zip");
+  }
+
+  async function newProject() {
+    replaceProject(createProject());
+    await clearAutosave();
   }
 </script>
 
@@ -38,5 +55,9 @@
   <button onclick={() => pick("image")}>Add Image</button>
   <button onclick={() => pick("video")}>Add Video</button>
   <button onclick={() => (state.exportOpen = true)}>Export</button>
+  <span class="w-px h-5 bg-neutral-300 mx-1"></span>
+  <button onclick={saveProject}>Save</button>
+  <button onclick={() => pick("project")}>Open</button>
+  <button onclick={newProject}>New</button>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
 </div>
