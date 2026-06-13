@@ -3,6 +3,7 @@
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { drawStroke } from "../core/brush";
+  import { floodFill, hexToRgba } from "../core/fill";
   import { renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
@@ -19,6 +20,9 @@
   let strokeCanvas: HTMLCanvasElement | null = null;
   let strokeCtx: CanvasRenderingContext2D | null = null;
   let beforeSnapshot: ImageData | null = null;
+
+  // True once the current fill gesture has already filled (one fill per pointer press).
+  let fillUsed = false;
 
   function sizeDisplay() {
     display.width = state.project.width * DPR;
@@ -39,7 +43,38 @@
     }
   }
 
+  function doFill(pt: { x: number; y: number }) {
+    const layer = activeLayer();
+    if (layer.locked) return;
+    const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const color = hexToRgba(state.brush.color, state.brush.opacity);
+    // points are canvas-logical coords; floodFill indexes device pixels.
+    floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
+      tolerance: state.fill.tolerance,
+      expand: state.fill.expand,
+    });
+
+    const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    history.push({
+      undo: () => { ctx.putImageData(before, 0, 0); recomposite(); },
+      redo: () => { ctx.putImageData(after, 0, 0); recomposite(); },
+    });
+    bump();
+    recomposite();
+  }
+
   function onStroke(points: InputPoint[], done: boolean) {
+    if (state.tool === "fill") {
+      if (!fillUsed && points.length > 0) {
+        doFill(points[0]);
+        fillUsed = true;
+      }
+      if (done) fillUsed = false;
+      return;
+    }
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
       // locked. Binding the layer here (rather than re-reading activeLayer() every

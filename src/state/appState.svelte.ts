@@ -5,7 +5,7 @@ import type { CanvasOps } from "../anim/timeline";
 import type { OnionConfig } from "../anim/onion";
 import { Playback } from "../anim/playback";
 
-export type Tool = "brush" | "eraser";
+export type Tool = "brush" | "eraser" | "fill";
 
 interface AnimState {
   project: Project;
@@ -15,6 +15,7 @@ interface AnimState {
   brush: BrushSettings;
   sizeRange: number;
   streamline: number;
+  fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
   onion: OnionConfig;
@@ -39,6 +40,7 @@ export const state: AnimState = $state({
   },
   sizeRange: 1.0,
   streamline: 50,
+  fill: { tolerance: 32, expand: 2 },
   version: 0,
   onion: {
     enabled: false,
