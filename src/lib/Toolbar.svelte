@@ -6,6 +6,8 @@
   <button class:font-bold={state.tool === "brush"} onclick={() => (state.tool = "brush")}>Brush</button>
   <button class:font-bold={state.tool === "eraser"} onclick={() => (state.tool = "eraser")}>Eraser</button>
   <button class:font-bold={state.tool === "fill"} onclick={() => (state.tool = "fill")}>Fill</button>
+  <button class:font-bold={state.tool === "select"} onclick={() => (state.tool = "select")}>Select</button>
+  <button class:font-bold={state.tool === "lasso"} onclick={() => (state.tool = "lasso")}>Lasso</button>
   <label class="flex items-center gap-1 text-sm">Size
     <input type="range" min="1" max="60" bind:value={state.brush.size} />
   </label>
