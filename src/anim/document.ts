@@ -122,6 +122,11 @@ export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
 // colliding with persisted layer ids.
 let nextLayerId = 1;
 
+/** Raise the layer-id counter so future ids don't collide with a loaded project's ids. */
+export function setMinLayerId(n: number): void {
+  if (n > nextLayerId) nextLayerId = n;
+}
+
 /**
  * Create a drawing layer whose cells all start as `hold`. This is intentional:
  * a new layer is empty until the first stroke, at which point the editor promotes
