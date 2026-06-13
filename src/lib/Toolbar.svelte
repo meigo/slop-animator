@@ -37,5 +37,6 @@
   <span class="w-px h-5 bg-neutral-300 mx-1"></span>
   <button onclick={() => pick("image")}>Add Image</button>
   <button onclick={() => pick("video")}>Add Video</button>
+  <button onclick={() => (state.exportOpen = true)}>Export</button>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
 </div>
