@@ -8,6 +8,8 @@
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
+  import { selectionRef } from "../state/appState.svelte";
+  import { Selection } from "../core/selection";
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -15,6 +17,15 @@
   // Offscreen scratch surface used to tint onion-skin ghosts before compositing.
   let scratch: HTMLCanvasElement;
   let scratchCtx: CanvasRenderingContext2D;
+
+  // Selection overlay (CSS-pixel sized, shares the viewport transform via the wrapper).
+  let wrapper: HTMLDivElement;
+  let overlay: HTMLCanvasElement;
+  let selection: Selection;
+  let selectionMode: "create" | "drag" | null = null;
+  // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
+  let selCtx: CanvasRenderingContext2D | null = null;
+  let selBefore: ImageData | null = null;
 
   // The cell canvas being drawn on for the current stroke, and its undo snapshot.
   let strokeCanvas: HTMLCanvasElement | null = null;
@@ -67,6 +78,44 @@
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
+    if (state.tool === "select" || state.tool === "lasso") {
+      const p = points[points.length - 1];
+      if (points.length === 1 && !done) {
+        const handle = selection.hitTest(p.x, p.y);
+        if (selection.state === "selected" && handle === "move") {
+          // First grab inside a fresh marquee: lift the pixels and enter transform mode.
+          const layer = activeLayer();
+          if (layer.locked) return;
+          const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+          selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+          selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+          const lifted = selection.liftPixels(selCtx, DPR);
+          if (lifted) {
+            selection.beginTransform(lifted);
+            recomposite();
+            selectionMode = "drag";
+            selection.startDrag("move", p.x, p.y);
+          }
+        } else if ((selection.state === "transforming" || selection.state === "warping") && handle) {
+          selectionMode = "drag";
+          selection.startDrag(handle, p.x, p.y);
+        } else {
+          // Outside any selection (or idle) → commit/cancel the old one, start a new marquee.
+          if (selection.hasFloating) selection.commit();
+          else if (selection.active) selection.cancel();
+          selectionMode = "create";
+          selection.startCreate(p.x, p.y);
+        }
+      } else if (!done) {
+        if (selectionMode === "create") selection.updateCreate(p.x, p.y);
+        else if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
+      } else {
+        if (selectionMode === "create") selection.endCreate();
+        selection.endDrag();
+        selectionMode = null;
+      }
+      return;
+    }
     if (state.tool === "fill") {
       if (!fillUsed && points.length > 0) {
         doFill(points[0]);
@@ -108,6 +157,45 @@
     }
   }
 
+  function setupSelection() {
+    overlay.width = state.project.width;
+    overlay.height = state.project.height;
+    overlay.style.width = `${state.project.width}px`;
+    overlay.style.height = `${state.project.height}px`;
+
+    selection = new Selection(overlay);
+    selection.mode = "rect";
+    selection.screenScale = viewport.zoom;
+    viewport.onChange = () => { selection.screenScale = viewport.zoom; };
+
+    selection.onChange = () => recomposite();
+    selection.onStateChange = () => recomposite();
+
+    selection.onCommit = () => {
+      if (!selCtx || !selBefore) return;
+      selection.renderFloatingTo(selCtx);
+      const ctx = selCtx;
+      const before = selBefore;
+      const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+      history.push({
+        undo: () => { ctx.putImageData(before, 0, 0); recomposite(); },
+        redo: () => { ctx.putImageData(after, 0, 0); recomposite(); },
+      });
+      selCtx = null;
+      selBefore = null;
+      bump();
+      recomposite();
+    };
+
+    selection.onCancel = () => {
+      if (selCtx && selBefore) { selCtx.putImageData(selBefore, 0, 0); recomposite(); }
+      selCtx = null;
+      selBefore = null;
+    };
+
+    selectionRef.current = selection;
+  }
+
   onMount(() => {
     displayCtx = display.getContext("2d")!;
     scratch = document.createElement("canvas");
@@ -115,8 +203,9 @@
     scratch.height = state.project.height * DPR;
     scratchCtx = scratch.getContext("2d")!;
     sizeDisplay();
-    viewport = new Viewport(display);
+    viewport = new Viewport(wrapper);
     recomposite();
+    setupSelection();
 
     const cleanup = setupInput(
       display,
@@ -138,7 +227,20 @@
     };
     let raf = requestAnimationFrame(tick);
 
-    return () => { cleanup(); cancelAnimationFrame(raf); };
+    return () => { cleanup(); cancelAnimationFrame(raf); selectionRef.current = null; };
+  });
+
+  $effect(() => {
+    const t = state.tool;
+    if (!selection) return;
+    if (t === "select") selection.mode = "rect";
+    else if (t === "lasso") selection.mode = "lasso";
+    else {
+      // Switching to a drawing tool: bank or drop any active selection.
+      if (selection.hasFloating) selection.commit();
+      else if (selection.active) selection.cancel();
+      selectionMode = null;
+    }
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
@@ -146,5 +248,8 @@
 </script>
 
 <div class="relative flex-1 overflow-hidden bg-neutral-300" onwheel={onWheel}>
-  <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
+  <div bind:this={wrapper} class="absolute left-0 top-0">
+    <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
+    <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
+  </div>
 </div>

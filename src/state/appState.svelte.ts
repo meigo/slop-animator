@@ -2,10 +2,11 @@ import { createProject, createCellCanvas, cloneCanvas, type Project } from "../a
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { CanvasOps } from "../anim/timeline";
+import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback } from "../anim/playback";
 
-export type Tool = "brush" | "eraser" | "fill";
+export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso";
 
 interface AnimState {
   project: Project;
@@ -85,3 +86,9 @@ export const playbackController = new Playback({
   setFrame: (f) => { state.playhead = f; },
   onPlayingChange: (p) => { state.playback.isPlaying = p; state.version++; },
 });
+
+/**
+ * Holder for the single Selection instance (created by Canvas.svelte on mount).
+ * App.svelte reads it to handle Enter (commit) / Escape (cancel) globally.
+ */
+export const selectionRef: { current: Selection | null } = { current: null };
