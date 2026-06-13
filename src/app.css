@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+html, body, #app { height: 100%; margin: 0; }
+body { overscroll-behavior: none; font-family: system-ui, sans-serif; }
