@@ -91,7 +91,11 @@ function drawGhost(
   display.globalAlpha = 1;
 }
 
-/** Full composite for `frame` with onion ghosts underneath the current frame. */
+/**
+ * Full composite for `frame` with onion ghosts underneath the current frame.
+ * NOTE: this always draws ghosts — the CALLER decides whether onion is active
+ * (gate on `onion.enabled` before calling; Canvas.svelte does this).
+ */
 export function renderFrameWithOnion(
   display: CanvasRenderingContext2D,
   scratch: CanvasRenderingContext2D,
