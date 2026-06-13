@@ -117,3 +117,23 @@ describe("compositeFrameLayers with reference layers", () => {
     ]);
   });
 });
+
+describe("renderFrame includeReference", () => {
+  function imageMediaR(id: number, w = 50, h = 50) {
+    return { type: "image" as const, el: { __id: id, naturalWidth: w, naturalHeight: h } as unknown as HTMLImageElement };
+  }
+  it("excludes reference layers when opts.includeReference is false", () => {
+    const ref = createReferenceLayer(imageMediaR(7), "bg");
+    ref.id = 1;
+    const drawC = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1,
+      layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+    };
+    const ctx = recordingCtx();
+    renderFrame(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, { drawBg: false, includeReference: false });
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
+      `drawImage:${(drawC as unknown as { __id: number }).__id}@1`,
+    ]);
+  });
+});

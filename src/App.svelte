@@ -4,6 +4,7 @@
   import LayerList from "./lib/LayerList.svelte";
   import Playbar from "./lib/Playbar.svelte";
   import Timeline from "./lib/Timeline.svelte";
+  import ExportDialog from "./lib/ExportDialog.svelte";
   import { state, history, bump, playbackController, selectionRef } from "./state/appState.svelte";
 
   function onKey(e: KeyboardEvent) {
@@ -48,3 +49,4 @@
   <Playbar />
   <Timeline />
 </div>
+<ExportDialog />

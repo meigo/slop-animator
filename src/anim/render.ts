@@ -3,6 +3,8 @@ import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project } fro
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
   drawBg?: boolean;
+  /** Include reference layers. Default true (display); export passes false. */
+  includeReference?: boolean;
 }
 
 /**
@@ -47,7 +49,7 @@ export function renderFrame(
   dpr: number,
   opts: RenderOpts = {}
 ): void {
-  const { drawBg = true } = opts;
+  const { drawBg = true, includeReference = true } = opts;
 
   // Reset to identity first so clearRect/fillRect/drawImage operate in raw device
   // pixels regardless of any transform the context carried in.
@@ -60,5 +62,5 @@ export function renderFrame(
     ctx.fillRect(0, 0, project.width * dpr, project.height * dpr);
   }
 
-  compositeFrameLayers(ctx, project, frame, dpr);
+  compositeFrameLayers(ctx, project, frame, dpr, includeReference);
 }

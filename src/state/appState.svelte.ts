@@ -19,6 +19,7 @@ interface AnimState {
   fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
+  exportOpen: boolean;
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean };
 }
@@ -43,6 +44,7 @@ export const state: AnimState = $state({
   streamline: 50,
   fill: { tolerance: 32, expand: 2 },
   version: 0,
+  exportOpen: false,
   onion: {
     enabled: false,
     prev: 1,
