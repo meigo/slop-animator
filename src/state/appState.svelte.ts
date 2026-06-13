@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, type Project } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, type Project, type Layer } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { CanvasOps } from "../anim/timeline";
@@ -67,6 +67,28 @@ export const canvasOps: CanvasOps = {
 
 export function activeLayer() {
   return state.project.layers.find((l) => l.id === state.activeLayerId) ?? state.project.layers[0];
+}
+
+/** Append a layer (drawing or reference) on top and make it active. */
+export function addLayerToProject(layer: Layer) {
+  state.project.layers.push(layer);
+  state.activeLayerId = layer.id;
+  bump();
+}
+
+/** Remove a layer by id, keeping at least one drawing layer. */
+export function removeLayer(id: number) {
+  const layers = state.project.layers;
+  const idx = layers.findIndex((l) => l.id === id);
+  if (idx === -1) return;
+  const drawingCount = layers.filter(isDrawingLayer).length;
+  if (isDrawingLayer(layers[idx]) && drawingCount <= 1) return; // keep one drawing layer
+  layers.splice(idx, 1);
+  if (state.activeLayerId === id) {
+    const firstDrawing = layers.find(isDrawingLayer);
+    if (firstDrawing) state.activeLayerId = firstDrawing.id;
+  }
+  bump();
 }
 
 export function bump() {
