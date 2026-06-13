@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, type Cell } from "../anim/document";
-import { buildFrameDrawList, type Project, type DrawingLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, type Cell, type Project, type DrawingLayer } from "../anim/document";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const hold = (): Cell => ({ kind: "hold" });

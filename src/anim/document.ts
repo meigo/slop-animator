@@ -72,13 +72,23 @@ export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
   return dst;
 }
 
+// Monotonic id source for the in-memory session. NOTE: when project save/load
+// arrives (a later plan), this will need seeding from the loaded max id to avoid
+// colliding with persisted layer ids.
 let nextLayerId = 1;
 
+/**
+ * Create a drawing layer whose cells all start as `hold`. This is intentional:
+ * a new layer is empty until the first stroke, at which point the editor promotes
+ * the touched cell to a `key` (see timeline.ensureDrawableKeyframe). So a freshly
+ * created project contributes nothing to `buildFrameDrawList` until something is drawn.
+ */
 export function createDrawingLayer(frameCount: number, name?: string): DrawingLayer {
+  const id = nextLayerId++;
   return {
     kind: "draw",
-    id: nextLayerId++,
-    name: name ?? `Layer ${nextLayerId - 1}`,
+    id,
+    name: name ?? `Layer ${id}`,
     visible: true,
     locked: false,
     opacity: 100,
