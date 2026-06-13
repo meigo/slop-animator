@@ -53,3 +53,48 @@ export function buildFrameDrawList(project: Project, frame: number): DrawOp[] {
   }
   return ops;
 }
+
+/** Devicepixel-ratio-aware blank canvas sized to the document, with a dpr-scaled 2D context. */
+export function createCellCanvas(width: number, height: number, dpr: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return canvas;
+}
+
+export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const dst = document.createElement("canvas");
+  dst.width = src.width;
+  dst.height = src.height;
+  dst.getContext("2d")!.drawImage(src, 0, 0);
+  return dst;
+}
+
+let nextLayerId = 1;
+
+export function createDrawingLayer(frameCount: number, name?: string): DrawingLayer {
+  return {
+    kind: "draw",
+    id: nextLayerId++,
+    name: name ?? `Layer ${nextLayerId - 1}`,
+    visible: true,
+    locked: false,
+    opacity: 100,
+    cells: Array.from({ length: frameCount }, () => ({ kind: "hold" }) as Cell),
+  };
+}
+
+export function createProject(opts?: Partial<Pick<Project, "width" | "height" | "fps" | "bgColor">>): Project {
+  const frameCount = 1;
+  const layer = createDrawingLayer(frameCount, "Layer 1");
+  return {
+    width: opts?.width ?? 1280,
+    height: opts?.height ?? 720,
+    fps: opts?.fps ?? 12,
+    bgColor: opts?.bgColor ?? "#f4efe2",
+    frameCount,
+    layers: [layer],
+  };
+}
