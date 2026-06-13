@@ -19,6 +19,7 @@
 
     if (e.key === "b") state.tool = "brush";
     else if (e.key === "e") state.tool = "eraser";
+    else if (e.key === "g") state.tool = "fill";
     else if (e.key === "k" || e.key === "Enter") { e.preventDefault(); playbackController.toggle(); }
     else if (e.key === "o") { state.onion.enabled = !state.onion.enabled; bump(); }
     else if (e.key === ",") state.playhead = Math.max(0, state.playhead - 1);
