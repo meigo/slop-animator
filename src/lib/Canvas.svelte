@@ -239,6 +239,7 @@
       // Switching to a drawing tool: bank or drop any active selection.
       if (selection.hasFloating) selection.commit();
       else if (selection.active) selection.cancel();
+      selectionMode = null;
     }
   });
 
