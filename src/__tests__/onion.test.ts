@@ -34,3 +34,62 @@ describe("computeOnionFrames", () => {
     ]);
   });
 });
+
+import { renderFrameWithOnion, type OnionConfig } from "../anim/onion";
+import type { Project, Cell, DrawingLayer } from "../anim/document";
+
+function recCtx(w = 100, h = 100) {
+  const calls: string[] = [];
+  const ctx = {
+    calls,
+    canvas: { width: w, height: h },
+    globalAlpha: 1,
+    globalCompositeOperation: "source-over",
+    fillStyle: "",
+    setTransform: () => {},
+    clearRect: () => calls.push("clear"),
+    fillRect: () => calls.push(`fill:${ctx.fillStyle}:${ctx.globalCompositeOperation}`),
+    drawImage: (img: { __id: number }) => calls.push(`draw:${img.__id}@${ctx.globalAlpha}`),
+  };
+  return ctx;
+}
+
+let oid = 0;
+const kc = () => ({ __id: ++oid }) as unknown as HTMLCanvasElement;
+function dlayer(id: number, cells: Cell[]): DrawingLayer {
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, cells };
+}
+
+describe("renderFrameWithOnion", () => {
+  const onion: OnionConfig = {
+    enabled: true, prev: 1, next: 1, allLayers: false,
+    tintPrev: "#ff0000", tintNext: "#0000ff",
+  };
+
+  it("draws bg, then the prev ghost (tinted+faded) and next ghost, then the current frame on top", () => {
+    const prevC = kc(); const curC = kc(); const nextC = kc();
+    const layerId = 1;
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#eee", frameCount: 3,
+      layers: [dlayer(layerId, [
+        { kind: "key", canvas: prevC }, { kind: "key", canvas: curC }, { kind: "key", canvas: nextC },
+      ])],
+    };
+    const display = recCtx();
+    const scratch = recCtx();
+    renderFrameWithOnion(
+      display as unknown as CanvasRenderingContext2D,
+      scratch as unknown as CanvasRenderingContext2D,
+      p, 1, 1, onion, layerId
+    );
+
+    expect(display.calls[0]).toBe("clear");
+    expect(display.calls[1]).toBe("fill:#eee:source-over");
+    expect(scratch.calls).toContain("fill:#ff0000:source-in");
+    expect(scratch.calls).toContain("fill:#0000ff:source-in");
+
+    const draws = display.calls.filter((c) => c.startsWith("draw:"));
+    expect(draws.length).toBe(3);
+    expect(draws[2]).toBe(`draw:${(curC as unknown as { __id: number }).__id}@1`);
+  });
+});
