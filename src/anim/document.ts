@@ -35,3 +35,21 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
   }
   return null;
 }
+
+export interface DrawOp {
+  layerId: number;
+  keyframeIndex: number;
+  opacity: number;
+}
+
+/** Ordered list (bottom→top) of which keyframe each visible layer contributes at `frame`. */
+export function buildFrameDrawList(project: Project, frame: number): DrawOp[] {
+  const ops: DrawOp[] = [];
+  for (const layer of project.layers) {
+    if (!layer.visible) continue;
+    const ki = resolveKeyframeIndex(layer.cells, frame);
+    if (ki === null) continue;
+    ops.push({ layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
+  }
+  return ops;
+}
