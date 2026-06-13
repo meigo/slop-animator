@@ -56,7 +56,7 @@
 
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
-    if (layer.locked) return;
+    if (layer.kind !== "draw" || layer.locked) return;
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -85,7 +85,7 @@
         if (selection.state === "selected" && handle === "move") {
           // First grab inside a fresh marquee: lift the pixels and enter transform mode.
           const layer = activeLayer();
-          if (layer.locked) return;
+          if (layer.kind !== "draw" || layer.locked) return;
           const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -129,7 +129,7 @@
       // locked. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
-      if (layer.locked) return;
+      if (layer.kind !== "draw" || layer.locked) return;
       strokeCanvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);

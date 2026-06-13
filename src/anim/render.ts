@@ -1,4 +1,4 @@
-import { buildFrameDrawList, type Project } from "./document";
+import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project } from "./document";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -6,23 +6,32 @@ interface RenderOpts {
 }
 
 /**
- * Draw the visible layers' resolved keyframes for `frame` onto `ctx`, bottom→top,
- * each at its layer opacity. Does NOT clear or fill — the caller is responsible for
- * resetting the transform to identity and clearing/filling beforehand.
+ * Draw the visible layers for `frame` onto `ctx`, bottom→top, each at its layer opacity.
+ * Drawing layers blit their resolved keyframe; reference layers draw their media with a
+ * "contain" fit. Reference layers are omitted when `includeReference` is false.
+ * Does NOT clear or fill — the caller resets the transform and clears/fills beforehand.
  */
 export function compositeFrameLayers(
   ctx: CanvasRenderingContext2D,
   project: Project,
   frame: number,
-  _dpr: number
+  dpr: number,
+  includeReference = true
 ): void {
   const layersById = new Map(project.layers.map((l) => [l.id, l]));
-  for (const op of buildFrameDrawList(project, frame)) {
+  for (const op of buildFrameDrawList(project, frame, includeReference)) {
     const layer = layersById.get(op.layerId)!;
-    const cell = layer.cells[op.keyframeIndex];
-    if (cell.kind !== "key") continue;
     ctx.globalAlpha = op.opacity / 100;
-    ctx.drawImage(cell.canvas, 0, 0);
+    if (op.kind === "draw" && layer.kind === "draw") {
+      const cell = layer.cells[op.keyframeIndex];
+      if (cell.kind !== "key") continue;
+      ctx.drawImage(cell.canvas, 0, 0);
+    } else if (op.kind === "ref" && layer.kind === "ref") {
+      const size = mediaIntrinsicSize(layer.media);
+      if (size.w === 0 || size.h === 0) continue; // media not loaded yet
+      const r = containRect(size.w, size.h, project.width * dpr, project.height * dpr);
+      ctx.drawImage(layer.media.el, r.x, r.y, r.w, r.h);
+    }
   }
   ctx.globalAlpha = 1;
 }

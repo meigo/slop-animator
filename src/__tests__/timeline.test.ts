@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Cell, DrawingLayer, Project } from "../anim/document";
+import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
   addFrame, insertKeyframe, setHold, duplicateKeyframe, deleteFrame,
   ensureDrawableKeyframe, type CanvasOps,
@@ -108,5 +108,34 @@ describe("timeline operations", () => {
     const l = layer([{ kind: "key", canvas: existing }]);
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
+  });
+});
+
+function refLayerFixture(id: number): ReferenceLayer {
+  return {
+    kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
+    media: { type: "image", el: {} as HTMLImageElement },
+  };
+}
+
+describe("timeline operations with reference layers", () => {
+  it("addFrame does not add cells to reference layers (and does not crash)", () => {
+    const d = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const r = refLayerFixture(2);
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, layers: [d, r] };
+    addFrame(p);
+    expect(p.frameCount).toBe(2);
+    expect(d.cells.length).toBe(2);
+    expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
+  });
+
+  it("deleteFrame only splices drawing-layer cells", () => {
+    const d = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const r = refLayerFixture(2);
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [d, r] };
+    deleteFrame(p, 0);
+    expect(p.frameCount).toBe(1);
+    expect(d.cells.length).toBe(1);
+    expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
   });
 });

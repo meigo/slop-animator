@@ -10,6 +10,7 @@ export interface CanvasOps {
 export function addFrame(project: Project): void {
   project.frameCount += 1;
   for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
     layer.cells.push({ kind: "hold" });
   }
 }
@@ -42,6 +43,7 @@ export function deleteFrame(project: Project, frame: number): void {
   if (frame < 0 || frame >= project.frameCount) return;
   project.frameCount -= 1;
   for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
     layer.cells.splice(frame, 1);
   }
 }

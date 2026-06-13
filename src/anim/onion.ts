@@ -71,10 +71,10 @@ function drawGhost(
   scratch.clearRect(0, 0, w, h);
 
   if (allLayers) {
-    compositeFrameLayers(scratch, project, ghostFrame, dpr);
+    compositeFrameLayers(scratch, project, ghostFrame, dpr, false);
   } else {
     const layer = project.layers.find((l) => l.id === activeLayerId);
-    if (layer) {
+    if (layer && layer.kind === "draw") {
       const ki = resolveKeyframeIndex(layer.cells, ghostFrame);
       const cell = ki === null ? null : layer.cells[ki];
       if (cell && cell.kind === "key") scratch.drawImage(cell.canvas, 0, 0);

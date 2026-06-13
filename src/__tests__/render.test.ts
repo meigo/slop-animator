@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project } from "../anim/document";
+import { createReferenceLayer } from "../anim/document";
 import { renderFrame, compositeFrameLayers } from "../anim/render";
 
 function recordingCtx() {
@@ -9,12 +10,11 @@ function recordingCtx() {
     canvas: { width: 100, height: 100 },
     globalAlpha: 1,
     fillStyle: "",
-    // setTransform is transform plumbing, not a paint op — intentionally not recorded
-    // so the call-order assertions reflect the visible drawing sequence.
     setTransform: () => {},
     clearRect: () => calls.push("clearRect"),
     fillRect: () => calls.push(`fillRect:${ctx.fillStyle}`),
-    drawImage: (img: { __id: number }) => calls.push(`drawImage:${img.__id}@${ctx.globalAlpha}`),
+    drawImage: (img: { __id: number }, ...rest: number[]) =>
+      calls.push(`drawImage:${img.__id}@${ctx.globalAlpha}${rest.length >= 4 ? ":sized" : ""}`),
   };
   return ctx;
 }
@@ -75,6 +75,45 @@ describe("compositeFrameLayers", () => {
     expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
       `drawImage:${(c1 as unknown as { __id: number }).__id}@1`,
       `drawImage:${(c2 as unknown as { __id: number }).__id}@0.5`,
+    ]);
+  });
+});
+
+describe("compositeFrameLayers with reference layers", () => {
+  function imageMedia(id: number, w = 50, h = 50) {
+    return { type: "image" as const, el: { __id: id, naturalWidth: w, naturalHeight: h } as unknown as HTMLImageElement };
+  }
+
+  it("draws a reference layer's media (sized via containRect) at its opacity, in z-order", () => {
+    const refEl = imageMedia(7);
+    const ref = createReferenceLayer(refEl, "bg");
+    ref.id = 1; // deterministic for the assertion
+    const drawC = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1,
+      layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    const draws = ctx.calls.filter((c) => c.startsWith("drawImage"));
+    expect(draws).toEqual([
+      `drawImage:7@0.6:sized`,                                    // ref media, sized, 60% opacity
+      `drawImage:${(drawC as unknown as { __id: number }).__id}@1`, // drawing layer keyframe on top
+    ]);
+  });
+
+  it("omits reference layers when includeReference is false", () => {
+    const ref = createReferenceLayer(imageMedia(7), "bg");
+    ref.id = 1;
+    const drawC = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1,
+      layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, false);
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
+      `drawImage:${(drawC as unknown as { __id: number }).__id}@1`,
     ]);
   });
 });
