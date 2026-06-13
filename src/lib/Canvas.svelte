@@ -22,6 +22,7 @@
   let wrapper: HTMLDivElement;
   let overlay: HTMLCanvasElement;
   let selection: Selection;
+  let selectionMode: "create" | "drag" | null = null;
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
@@ -77,6 +78,44 @@
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
+    if (state.tool === "select" || state.tool === "lasso") {
+      const p = points[points.length - 1];
+      if (points.length === 1 && !done) {
+        const handle = selection.hitTest(p.x, p.y);
+        if (selection.state === "selected" && handle === "move") {
+          // First grab inside a fresh marquee: lift the pixels and enter transform mode.
+          const layer = activeLayer();
+          if (layer.locked) return;
+          const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+          selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+          selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+          const lifted = selection.liftPixels(selCtx, DPR);
+          if (lifted) {
+            selection.beginTransform(lifted);
+            recomposite();
+            selectionMode = "drag";
+            selection.startDrag("move", p.x, p.y);
+          }
+        } else if ((selection.state === "transforming" || selection.state === "warping") && handle) {
+          selectionMode = "drag";
+          selection.startDrag(handle, p.x, p.y);
+        } else {
+          // Outside any selection (or idle) → commit/cancel the old one, start a new marquee.
+          if (selection.hasFloating) selection.commit();
+          else if (selection.active) selection.cancel();
+          selectionMode = "create";
+          selection.startCreate(p.x, p.y);
+        }
+      } else if (!done) {
+        if (selectionMode === "create") selection.updateCreate(p.x, p.y);
+        else if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
+      } else {
+        if (selectionMode === "create") selection.endCreate();
+        selection.endDrag();
+        selectionMode = null;
+      }
+      return;
+    }
     if (state.tool === "fill") {
       if (!fillUsed && points.length > 0) {
         doFill(points[0]);
@@ -189,6 +228,18 @@
     let raf = requestAnimationFrame(tick);
 
     return () => { cleanup(); cancelAnimationFrame(raf); selectionRef.current = null; };
+  });
+
+  $effect(() => {
+    const t = state.tool;
+    if (!selection) return;
+    if (t === "select") selection.mode = "rect";
+    else if (t === "lasso") selection.mode = "lasso";
+    else {
+      // Switching to a drawing tool: bank or drop any active selection.
+      if (selection.hasFloating) selection.commit();
+      else if (selection.active) selection.cancel();
+    }
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
