@@ -93,6 +93,15 @@ export function removeLayer(id: number) {
   bump();
 }
 
+/** Replace the whole document (e.g. after Open or autosave restore). */
+export function replaceProject(project: Project) {
+  state.project = project;
+  state.playhead = 0;
+  const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
+  state.activeLayerId = firstDrawing.id;
+  bump();
+}
+
 export function bump() {
   state.version++;
 }
