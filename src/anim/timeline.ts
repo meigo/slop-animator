@@ -14,7 +14,11 @@ export function addFrame(project: Project): void {
   }
 }
 
-/** Make the cell at `frame` a blank keyframe. */
+/**
+ * Make the cell at `frame` a blank keyframe (Flash "Insert Keyframe" / F6 semantics:
+ * in-place promotion of this cell, not a structural shift of later cells).
+ * Replaces whatever was there — if the cell was already a keyframe, its drawing is discarded.
+ */
 export function insertKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): void {
   layer.cells[frame] = { kind: "key", canvas: ops.create() };
 }
@@ -32,9 +36,10 @@ export function duplicateKeyframe(layer: DrawingLayer, frame: number, ops: Canva
   layer.cells[frame] = { kind: "key", canvas };
 }
 
-/** Remove the frame column from every layer. No-op if only one frame remains. */
+/** Remove the frame column from every layer. No-op if only one frame remains or `frame` is out of range. */
 export function deleteFrame(project: Project, frame: number): void {
   if (project.frameCount <= 1) return;
+  if (frame < 0 || frame >= project.frameCount) return;
   project.frameCount -= 1;
   for (const layer of project.layers) {
     layer.cells.splice(frame, 1);

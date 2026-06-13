@@ -29,6 +29,26 @@ describe("timeline operations", () => {
     expect(l.cells[1]).toEqual({ kind: "hold" });
   });
 
+  it("addFrame appends a hold to EVERY layer, not just the first", () => {
+    const a = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const b = layer([{ kind: "hold" }]);
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, layers: [a, b] };
+    addFrame(p);
+    expect(p.frameCount).toBe(2);
+    expect(a.cells.length).toBe(2);
+    expect(b.cells.length).toBe(2);
+    expect(a.cells[1]).toEqual({ kind: "hold" });
+    expect(b.cells[1]).toEqual({ kind: "hold" });
+  });
+
+  it("deleteFrame is a no-op for an out-of-range frame and keeps cells.length === frameCount", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const p = proj(l, 2);
+    deleteFrame(p, 5);
+    expect(p.frameCount).toBe(2);
+    expect(l.cells.length).toBe(2);
+  });
+
   it("insertKeyframe puts a blank keyframe at the frame", () => {
     const l = layer([{ kind: "hold" }, { kind: "hold" }]);
     insertKeyframe(l, 1, fakeOps);
