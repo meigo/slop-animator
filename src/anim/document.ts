@@ -64,6 +64,12 @@ export function createCellCanvas(width: number, height: number, dpr: number): HT
   return canvas;
 }
 
+/**
+ * Pixel-for-pixel copy of a cell canvas. NOTE: the returned canvas's 2D context is
+ * left at the identity transform (not dpr-scaled like createCellCanvas). Callers that
+ * draw onto it in logical coordinates must `setTransform(dpr,0,0,dpr,0,0)` first — the
+ * editor's stroke path (Canvas.svelte) already does this before every drawStroke.
+ */
 export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
   const dst = document.createElement("canvas");
   dst.width = src.width;
