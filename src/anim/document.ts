@@ -12,7 +12,25 @@ export interface DrawingLayer {
   cells: Cell[];    // length === project.frameCount
 }
 
-export type Layer = DrawingLayer; // reference layers arrive in a later plan
+export type ReferenceMedia =
+  | { type: "image"; el: HTMLImageElement }
+  | { type: "video"; el: HTMLVideoElement };
+
+export interface ReferenceLayer {
+  kind: "ref";
+  id: number;
+  name: string;
+  visible: boolean;
+  opacity: number;       // 0..100
+  offsetFrames: number;  // video time offset in frames; ignored for images
+  media: ReferenceMedia;
+}
+
+export type Layer = DrawingLayer | ReferenceLayer;
+
+export function isDrawingLayer(l: Layer): l is DrawingLayer {
+  return l.kind === "draw";
+}
 
 export interface Project {
   width: number;
@@ -36,22 +54,43 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
   return null;
 }
 
-export interface DrawOp {
-  layerId: number;
-  keyframeIndex: number;
-  opacity: number;
-}
+export type FrameOp =
+  | { kind: "draw"; layerId: number; keyframeIndex: number; opacity: number }
+  | { kind: "ref"; layerId: number; opacity: number };
 
-/** Ordered list (bottom→top) of which keyframe each visible layer contributes at `frame`. */
-export function buildFrameDrawList(project: Project, frame: number): DrawOp[] {
-  const ops: DrawOp[] = [];
+/**
+ * Ordered (bottom→top) list of what each visible layer contributes at `frame`.
+ * Reference layers are omitted when `includeReference` is false (used by export and onion).
+ */
+export function buildFrameDrawList(project: Project, frame: number, includeReference = true): FrameOp[] {
+  const ops: FrameOp[] = [];
   for (const layer of project.layers) {
     if (!layer.visible) continue;
-    const ki = resolveKeyframeIndex(layer.cells, frame);
-    if (ki === null) continue;
-    ops.push({ layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
+    if (layer.kind === "draw") {
+      const ki = resolveKeyframeIndex(layer.cells, frame);
+      if (ki === null) continue;
+      ops.push({ kind: "draw", layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
+    } else {
+      if (!includeReference) continue;
+      ops.push({ kind: "ref", layerId: layer.id, opacity: layer.opacity });
+    }
   }
   return ops;
+}
+
+/** Aspect-preserving "contain" fit of a `srcW×srcH` source centred in a `boxW×boxH` box. */
+export function containRect(srcW: number, srcH: number, boxW: number, boxH: number): { x: number; y: number; w: number; h: number } {
+  if (srcW <= 0 || srcH <= 0) return { x: 0, y: 0, w: boxW, h: boxH };
+  const scale = Math.min(boxW / srcW, boxH / srcH);
+  const w = srcW * scale;
+  const h = srcH * scale;
+  return { x: (boxW - w) / 2, y: (boxH - h) / 2, w, h };
+}
+
+/** Intrinsic pixel size of reference media (0 until loaded). */
+export function mediaIntrinsicSize(media: ReferenceMedia): { w: number; h: number } {
+  if (media.type === "image") return { w: media.el.naturalWidth, h: media.el.naturalHeight };
+  return { w: media.el.videoWidth, h: media.el.videoHeight };
 }
 
 /** Devicepixel-ratio-aware blank canvas sized to the document, with a dpr-scaled 2D context. */
@@ -99,6 +138,20 @@ export function createDrawingLayer(frameCount: number, name?: string): DrawingLa
     locked: false,
     opacity: 100,
     cells: Array.from({ length: frameCount }, () => ({ kind: "hold" }) as Cell),
+  };
+}
+
+/** A reference layer defaults to faint (60%) so the artist's ink reads over it. */
+export function createReferenceLayer(media: ReferenceMedia, name?: string): ReferenceLayer {
+  const id = nextLayerId++;
+  return {
+    kind: "ref",
+    id,
+    name: name ?? `Reference ${id}`,
+    visible: true,
+    opacity: 60,
+    offsetFrames: 0,
+    media,
   };
 }
 

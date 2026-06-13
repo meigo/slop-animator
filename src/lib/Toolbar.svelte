@@ -1,5 +1,25 @@
 <script lang="ts">
-  import { state, history } from "../state/appState.svelte";
+  import { state, history, bump, addLayerToProject } from "../state/appState.svelte";
+  import { loadImageLayer, loadVideoLayer } from "../anim/reference";
+
+  let fileInput: HTMLInputElement;
+  let pendingKind: "image" | "video" = "image";
+
+  function pick(kind: "image" | "video") {
+    pendingKind = kind;
+    fileInput.accept = kind === "image" ? "image/*" : "video/*";
+    fileInput.value = "";
+    fileInput.click();
+  }
+
+  async function onFile() {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const layer = pendingKind === "image"
+      ? await loadImageLayer(file)
+      : await loadVideoLayer(file, () => bump());
+    addLayerToProject(layer);
+  }
 </script>
 
 <div class="flex items-center gap-2 p-2 border-b border-neutral-300 bg-neutral-100">
@@ -14,4 +34,8 @@
   <input type="color" bind:value={state.brush.color} />
   <button onclick={() => history.undo()}>Undo</button>
   <button onclick={() => history.redo()}>Redo</button>
+  <span class="w-px h-5 bg-neutral-300 mx-1"></span>
+  <button onclick={() => pick("image")}>Add Image</button>
+  <button onclick={() => pick("video")}>Add Video</button>
+  <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
 </div>
