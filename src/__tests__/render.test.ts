@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project } from "../anim/document";
-import { renderFrame } from "../anim/render";
+import { renderFrame, compositeFrameLayers } from "../anim/render";
 
 function recordingCtx() {
   const calls: string[] = [];
@@ -55,5 +55,26 @@ describe("renderFrame", () => {
     const ctx = recordingCtx();
     renderFrame(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, { drawBg: false });
     expect(ctx.calls.some((c) => c.startsWith("fillRect"))).toBe(false);
+  });
+});
+
+describe("compositeFrameLayers", () => {
+  it("draws each visible layer's keyframe bottom→top with layer alpha, no clear/fill", () => {
+    const c1 = keyCanvas();
+    const c2 = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1,
+      layers: [
+        layer([{ kind: "key", canvas: c1 }], { id: 1 }),
+        layer([{ kind: "key", canvas: c2 }], { id: 2, opacity: 50 }),
+      ],
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls.some((c) => c === "clearRect" || c.startsWith("fillRect"))).toBe(false);
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
+      `drawImage:${(c1 as unknown as { __id: number }).__id}@1`,
+      `drawImage:${(c2 as unknown as { __id: number }).__id}@0.5`,
+    ]);
   });
 });
