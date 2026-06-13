@@ -4,12 +4,16 @@
   import { Viewport } from "../core/viewport";
   import { drawStroke } from "../core/brush";
   import { renderFrame } from "../anim/render";
+  import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
   let viewport: Viewport;
+  // Offscreen scratch surface used to tint onion-skin ghosts before compositing.
+  let scratch: HTMLCanvasElement;
+  let scratchCtx: CanvasRenderingContext2D;
 
   // The cell canvas being drawn on for the current stroke, and its undo snapshot.
   let strokeCanvas: HTMLCanvasElement | null = null;
@@ -24,7 +28,15 @@
   }
 
   function recomposite() {
-    renderFrame(displayCtx, state.project, state.playhead, DPR);
+    // Onion ghosts are hidden during playback (you want a clean preview while it runs).
+    if (state.onion.enabled && !state.playback.isPlaying) {
+      renderFrameWithOnion(
+        displayCtx, scratchCtx, state.project, state.playhead, DPR,
+        state.onion, state.activeLayerId
+      );
+    } else {
+      renderFrame(displayCtx, state.project, state.playhead, DPR);
+    }
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
@@ -63,6 +75,10 @@
 
   onMount(() => {
     displayCtx = display.getContext("2d")!;
+    scratch = document.createElement("canvas");
+    scratch.width = state.project.width * DPR;
+    scratch.height = state.project.height * DPR;
+    scratchCtx = scratch.getContext("2d")!;
     sizeDisplay();
     viewport = new Viewport(display);
     recomposite();

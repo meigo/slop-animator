@@ -2,6 +2,8 @@ import { createProject, createCellCanvas, cloneCanvas, type Project } from "../a
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { CanvasOps } from "../anim/timeline";
+import type { OnionConfig } from "../anim/onion";
+import { Playback } from "../anim/playback";
 
 export type Tool = "brush" | "eraser";
 
@@ -15,6 +17,8 @@ interface AnimState {
   streamline: number;
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
+  onion: OnionConfig;
+  playback: { isPlaying: boolean; loop: boolean };
 }
 
 const project = createProject();
@@ -36,6 +40,15 @@ export const state: AnimState = $state({
   sizeRange: 1.0,
   streamline: 50,
   version: 0,
+  onion: {
+    enabled: false,
+    prev: 1,
+    next: 1,
+    allLayers: false,
+    tintPrev: "#e0526a", // warm red
+    tintNext: "#3f7fd0", // cool blue
+  },
+  playback: { isPlaying: false, loop: true },
 });
 
 export const history = new History();
@@ -56,3 +69,17 @@ export function activeLayer() {
 export function bump() {
   state.version++;
 }
+
+/**
+ * The single playback driver. It mutates `state.playhead` each tick (the Canvas rAF poll
+ * then recomposites) and reflects its running state into `state.playback.isPlaying`,
+ * bumping the version so the onion overlay (hidden while playing) repaints on stop.
+ */
+export const playbackController = new Playback({
+  getFps: () => state.project.fps,
+  getFrameCount: () => state.project.frameCount,
+  getLoop: () => state.playback.loop,
+  getCurrent: () => state.playhead,
+  setFrame: (f) => { state.playhead = f; },
+  onPlayingChange: (p) => { state.playback.isPlaying = p; state.version++; },
+});
