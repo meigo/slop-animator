@@ -9,6 +9,7 @@
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
   import { selectionRef } from "../state/appState.svelte";
+  import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
 
   let display: HTMLCanvasElement;
@@ -221,6 +222,7 @@
       if (state.version !== lastVersion || state.playhead !== lastPlayhead) {
         lastVersion = state.version;
         lastPlayhead = state.playhead;
+        syncReferenceVideos(state.project, state.playhead, state.project.fps);
         recomposite();
       }
       raf = requestAnimationFrame(tick);
