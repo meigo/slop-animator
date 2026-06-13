@@ -1,0 +1,92 @@
+import { describe, it, expect } from "vitest";
+import type { Cell, DrawingLayer, Project } from "../anim/document";
+import {
+  addFrame, insertKeyframe, setHold, duplicateKeyframe, deleteFrame,
+  ensureDrawableKeyframe, type CanvasOps,
+} from "../anim/timeline";
+
+// Fake canvases are tagged objects so we can assert identity/cloning without the DOM.
+let tag = 0;
+const fakeOps: CanvasOps = {
+  create: () => ({ __id: ++tag } as unknown as HTMLCanvasElement),
+  clone: (src) => ({ __cloneOf: (src as unknown as { __id: number }).__id, __id: ++tag } as unknown as HTMLCanvasElement),
+};
+
+function layer(cells: Cell[]): DrawingLayer {
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, cells };
+}
+function proj(l: DrawingLayer, frameCount: number): Project {
+  return { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount, layers: [l] };
+}
+
+describe("timeline operations", () => {
+  it("addFrame grows frameCount and appends a hold to every layer", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const p = proj(l, 1);
+    addFrame(p);
+    expect(p.frameCount).toBe(2);
+    expect(l.cells.length).toBe(2);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+  });
+
+  it("insertKeyframe puts a blank keyframe at the frame", () => {
+    const l = layer([{ kind: "hold" }, { kind: "hold" }]);
+    insertKeyframe(l, 1, fakeOps);
+    expect(l.cells[1].kind).toBe("key");
+  });
+
+  it("setHold converts a cell back to a hold", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    setHold(l, 0);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+  });
+
+  it("duplicateKeyframe clones the resolved keyframe canvas into the target frame", () => {
+    const src = fakeOps.create() as unknown as { __id: number };
+    const l = layer([{ kind: "key", canvas: src as unknown as HTMLCanvasElement }, { kind: "hold" }]);
+    duplicateKeyframe(l, 1, fakeOps);
+    const cell = l.cells[1];
+    expect(cell.kind).toBe("key");
+    if (cell.kind === "key") {
+      expect((cell.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
+    }
+  });
+
+  it("deleteFrame removes the column from every layer and shrinks frameCount", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const p = proj(l, 2);
+    deleteFrame(p, 0);
+    expect(p.frameCount).toBe(1);
+    expect(l.cells.length).toBe(1);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+  });
+
+  it("deleteFrame is a no-op when only one frame remains", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const p = proj(l, 1);
+    deleteFrame(p, 0);
+    expect(p.frameCount).toBe(1);
+  });
+
+  it("ensureDrawableKeyframe converts a hold into a keyframe that clones the held drawing", () => {
+    const src = fakeOps.create() as unknown as { __id: number };
+    const l = layer([{ kind: "key", canvas: src as unknown as HTMLCanvasElement }, { kind: "hold" }]);
+    const canvas = ensureDrawableKeyframe(l, 1, fakeOps);
+    expect(l.cells[1].kind).toBe("key");
+    expect((canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
+  });
+
+  it("ensureDrawableKeyframe creates a blank keyframe when nothing is held", () => {
+    const l = layer([{ kind: "hold" }]);
+    const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
+    expect(l.cells[0].kind).toBe("key");
+    expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+  });
+
+  it("ensureDrawableKeyframe returns the existing canvas when the frame is already a keyframe", () => {
+    const existing = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: existing }]);
+    const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
+    expect(canvas).toBe(existing);
+  });
+});
