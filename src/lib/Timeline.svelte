@@ -233,7 +233,7 @@
 
     <!-- ruler -->
     <div class="flex items-stretch mb-1">
-      <span class="shrink-0" style="width: {LABEL_W}px"></span>
+      <span class="shrink-0 sticky left-0 z-20 bg-surface" style="width: {LABEL_W}px"></span>
       <div class="flex cursor-ew-resize select-none" style="touch-action: none"
            role="slider" tabindex="0" aria-label="Scrub frames"
            aria-valuemin={1} aria-valuemax={state.project.frameCount} aria-valuenow={state.playhead + 1}
@@ -249,10 +249,9 @@
 
     <!-- layer rows (top layer first) -->
     {#each [...state.project.layers].reverse() as layer (layer.id)}
-      <div class="flex items-center"
-           class:opacity-100={layer.id === state.activeLayerId}
-           class:opacity-70={layer.id !== state.activeLayerId}>
-        <button class="shrink-0 truncate text-left pr-1 rounded hover:bg-surface-hover"
+      <div class="flex items-center">
+        <button class="shrink-0 sticky left-0 z-20 truncate text-left pr-1 rounded hover:bg-surface-hover"
+                class:bg-surface={layer.id !== state.activeLayerId}
                 class:bg-surface-active={layer.id === state.activeLayerId}
                 class:text-text={layer.id === state.activeLayerId}
                 class:text-text-secondary={layer.id !== state.activeLayerId}
@@ -260,6 +259,8 @@
                 onclick={() => (state.activeLayerId = layer.id)}>{layer.name}</button>
         {#if layer.kind === "draw"}
           <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
+               class:opacity-100={layer.id === state.activeLayerId}
+               class:opacity-70={layer.id !== state.activeLayerId}
                role="application" aria-label="{layer.name} frames"
                onpointerdown={(e) => rowDown(e, layer)} onpointermove={(e) => rowMove(e, layer)}
                onpointerup={(e) => rowUp(e, layer)} onpointercancel={(e) => rowUp(e, layer)}
@@ -275,7 +276,7 @@
             {/each}
           </div>
         {:else}
-          <span class="text-xs text-text-muted ml-1">ref</span>
+          <span class="text-xs text-text-muted ml-1" class:opacity-70={layer.id !== state.activeLayerId}>ref</span>
         {/if}
       </div>
     {/each}
