@@ -65,11 +65,22 @@
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     const color = hexToRgba(state.brush.color, state.brush.opacity);
-    // points are canvas-logical coords; floodFill indexes device pixels.
-    floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
-      tolerance: state.fill.tolerance,
-      expand: state.fill.expand,
-    });
+    if (selection && selection.state === "selected") {
+      // Flood on a temp copy, then composite back through the selection clip.
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
+      tctx.drawImage(canvas, 0, 0);
+      floodFill(tctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection.applyClip(ctx);
+      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+      ctx.restore();
+    } else {
+      floodFill(ctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+    }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push({
@@ -139,11 +150,15 @@
       bump();
     }
 
-    // Re-render the in-progress stroke from the pre-stroke snapshot each move.
+    // Re-render the in-progress stroke from the pre-stroke snapshot each move,
+    // clipped to the active selection (if any) so painting/erasing stays inside it.
     strokeCtx!.putImageData(beforeSnapshot!, 0, 0);
+    strokeCtx!.save();
     strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
+    selection?.applyClip(strokeCtx!);
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
     drawStroke(strokeCtx!, points, settings, done, state.sizeRange);
+    strokeCtx!.restore();
     recomposite();
 
     if (done) {
@@ -248,9 +263,9 @@
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
     else {
-      // Switching to a drawing tool: bank or drop any active selection.
+      // Switching to a drawing tool: bank a floating transform, but KEEP a plain
+      // marquee so brush/eraser/fill clip to it. (Esc clears it.)
       if (selection.hasFloating) selection.commit();
-      else if (selection.active) selection.cancel();
       selectionMode = null;
     }
   });
