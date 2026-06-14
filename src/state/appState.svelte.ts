@@ -66,7 +66,7 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   playback: { isPlaying: false, loop: true },
-  boil: { enabled: false, amount: 3, cols: 14, rate: 3, scale: 0 },
+  boil: { enabled: false, amount: 1, cols: 20, rate: 3, scale: 0.005 },
 });
 
 export const history = new History();
