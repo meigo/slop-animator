@@ -1,18 +1,25 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Trash2 } from "@lucide/svelte";
-  import { state, canvasOps, activeLayer, bump } from "../state/appState.svelte";
-  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame } from "../anim/timeline";
+  import { Plus, Diamond, Copy, Minus, Eraser, Trash2 } from "@lucide/svelte";
+  import { state, canvasOps, activeLayer, bump, history } from "../state/appState.svelte";
+  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell } from "../anim/document";
   import { columnAtX } from "./timeline-grid";
+  import { isCellEmpty } from "./cell-ink";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
 
-  // ◆ keyframe · blank (past end or before first key) — hold over a key
-  function cellLabel(cells: Cell[], f: number): string {
+  // What a cell shows: ◆ keyframe with ink, — hold over an inked key, and a blank cell for
+  // anything empty (no key / empty key / hold over an empty key / past the layer's end).
+  // `_v` (state.version) is passed from the template so the label re-evaluates when a
+  // draw/clear changes a canvas's ink.
+  function cellLabel(cells: Cell[], f: number, _v: number): string {
     if (f >= cells.length) return "";
-    if (cells[f].kind === "key") return "◆";
-    return resolveKeyframeIndex(cells, f) === null ? "·" : "—";
+    const ki = resolveKeyframeIndex(cells, f);
+    if (ki === null) return ""; // no keyframe at or before this frame → empty
+    const key = cells[ki];
+    if (key.kind === "key" && isCellEmpty(key.canvas)) return ""; // resolves to a blank keyframe → empty
+    return cells[f].kind === "key" ? "◆" : "—";
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -88,6 +95,25 @@
     deleteFrame(l, state.playhead);
     bump();
   }
+  // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
+  // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
+  function clearFrame() {
+    const l = activeLayer();
+    if (l.kind !== "draw" || l.locked) return;
+    const canvas = ensureDrawableKeyframe(l, state.playhead, canvasOps);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    history.push({
+      undo: () => { ctx.putImageData(before, 0, 0); bump(); },
+      redo: () => { ctx.putImageData(after, 0, 0); bump(); },
+    });
+    bump();
+  }
 
   const toolBtn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
@@ -98,7 +124,8 @@
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}><Plus size={16} /></button>
     <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}><Diamond size={16} /></button>
     <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}><Copy size={16} /></button>
-    <button class={toolBtn} title="Hold (clear keyframe)" onclick={holdTool}><Minus size={16} /></button>
+    <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}><Minus size={16} /></button>
+    <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}><Eraser size={16} /></button>
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
   </div>
 
@@ -138,7 +165,7 @@
                 class:bg-selection={f === state.playhead}
                 class:text-accent-text={f === state.playhead}
                 style="width: {CELL_W}px"
-                onclick={() => go(f)}>{cellLabel(layer.cells, f)}</button>
+                onclick={() => go(f)}>{cellLabel(layer.cells, f, state.version)}</button>
             {/each}
           </div>
         {:else}
