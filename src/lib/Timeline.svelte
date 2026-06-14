@@ -1,9 +1,11 @@
 <script lang="ts">
   import { Plus, Diamond, Copy, Minus, Eraser, Trash2 } from "@lucide/svelte";
-  import { state, canvasOps, activeLayer, bump, history, commitStructural } from "../state/appState.svelte";
-  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe } from "../anim/timeline";
-  import { resolveKeyframeIndex, type Cell } from "../anim/document";
-  import { columnAtX } from "./timeline-grid";
+  import { state, canvasOps, activeLayer, bump, history, commitStructural,
+           beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
+  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
+           moveKeyframe, setHoldSpan } from "../anim/timeline";
+  import { resolveKeyframeIndex, type Cell, type DrawingLayer } from "../anim/document";
+  import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
@@ -58,6 +60,74 @@
     else if (e.key === "End") go(state.project.frameCount - 1);
     else return;
     e.preventDefault();
+  }
+
+  // Cell-strip pointer interaction: drag a ◆ to move it, drag a span's right edge to resize
+  // its hold span, click/drag elsewhere to scrub the playhead. Pointer capture + touch-action
+  // keep drags alive and stop the page from panning on iPad.
+  type DragMode = "none" | "seek" | "move" | "resize";
+  let dragMode: DragMode = "none";
+  let dragLayerId = -1;
+  let dragKey = -1;      // keyIndex being moved or resized
+  let dragTarget = -1;   // current target column (move ghost)
+  let dragUndo: StructSnapshot | null = null;
+  let rowCursor = "default";
+
+  function rowOffset(e: PointerEvent): number {
+    return e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left;
+  }
+  function rowColumn(e: PointerEvent): number {
+    return columnAtX(rowOffset(e), CELL_W, state.project.frameCount);
+  }
+
+  function rowDown(e: PointerEvent, layer: DrawingLayer) {
+    state.activeLayerId = layer.id;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragLayerId = layer.id;
+    const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, state.project.frameCount);
+    if (plan.kind === "resize") {
+      dragMode = "resize";
+      dragKey = plan.keyIndex;
+      dragUndo = beginStructuralEdit();
+    } else if (plan.kind === "move") {
+      dragMode = "move";
+      dragKey = plan.keyIndex;
+      dragTarget = plan.keyIndex;
+    } else {
+      dragMode = "seek";
+      go(plan.frame);
+    }
+  }
+  function rowMove(e: PointerEvent, layer: DrawingLayer) {
+    if (dragMode === "none") {
+      const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, state.project.frameCount);
+      rowCursor = plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
+      return;
+    }
+    if (dragLayerId !== layer.id) return;
+    if (dragMode === "seek") go(rowColumn(e));
+    else if (dragMode === "move") dragTarget = rowColumn(e);
+    else if (dragMode === "resize") {
+      setHoldSpan(layer, dragKey, Math.max(1, rowColumn(e) - dragKey + 1)); // live
+      bump();
+    }
+  }
+  function rowUp(e: PointerEvent, layer: DrawingLayer) {
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    if (dragMode === "move" && dragLayerId === layer.id) {
+      if (dragTarget >= 0 && dragTarget !== dragKey) commitStructural(() => moveKeyframe(layer, dragKey, dragTarget));
+      else go(dragKey); // a click on a keyframe with no drag → seek to it
+    } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
+      commitStructuralEdit(dragUndo); // one undo entry for the whole resize drag
+    }
+    dragMode = "none";
+    dragLayerId = -1;
+    dragKey = -1;
+    dragTarget = -1;
+    dragUndo = null;
+  }
+  function rowLeave() {
+    if (dragMode === "none") rowCursor = "default";
   }
 
   // All tools act on the active drawing layer at the current frame, current-frame-aware
@@ -154,14 +224,19 @@
            class:opacity-70={layer.id !== state.activeLayerId}>
         <span class="shrink-0 truncate text-text-secondary pr-1" style="width: {LABEL_W}px">{layer.name}</span>
         {#if layer.kind === "draw"}
-          <div class="flex">
+          <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
+               role="application" aria-label="{layer.name} frames"
+               onpointerdown={(e) => rowDown(e, layer)} onpointermove={(e) => rowMove(e, layer)}
+               onpointerup={(e) => rowUp(e, layer)} onpointercancel={(e) => rowUp(e, layer)}
+               onpointerleave={rowLeave}>
             {#each Array(state.project.frameCount) as _, f}
-              <button
-                class="box-border h-6 border border-border leading-none text-xs"
-                class:bg-selection={f === state.playhead}
-                class:text-accent-text={f === state.playhead}
-                style="width: {CELL_W}px"
-                onclick={() => go(f)}>{cellLabel(layer.cells, f, state.version)}</button>
+              <div class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
+                   class:bg-selection={f === state.playhead}
+                   class:text-accent-text={f === state.playhead}
+                   class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                   class:ring-accent={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                   class:ring-inset={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                   style="width: {CELL_W}px">{cellLabel(layer.cells, f, state.version)}</div>
             {/each}
           </div>
         {:else}
