@@ -104,6 +104,9 @@
           const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+          // liftPixels' rect-clear and the later commit blit operate in CSS coords, so the
+          // cell ctx must carry the dpr transform (a cloned cell's ctx is at identity).
+          selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
           const lifted = selection.liftPixels(selCtx, DPR);
           if (lifted) {
             selection.beginTransform(lifted);
@@ -192,6 +195,8 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
+      // renderFloatingTo blits the floating pixels via a CSS-coord matrix → needs dpr.
+      selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection.renderFloatingTo(selCtx);
       const ctx = selCtx;
       const before = selBefore;
@@ -222,6 +227,8 @@
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    // See note in onStroke: the cell ctx must carry the dpr transform for lift/commit.
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     const lifted = selection.liftPixels(selCtx, DPR);
     if (!lifted) return;
     selection.beginTransform(lifted);
