@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Trash2 } from "@lucide/svelte";
-  import { state, canvasOps, activeLayer, bump } from "../state/appState.svelte";
-  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame } from "../anim/timeline";
+  import { Plus, Diamond, Copy, Minus, Eraser, Trash2 } from "@lucide/svelte";
+  import { state, canvasOps, activeLayer, bump, history } from "../state/appState.svelte";
+  import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell } from "../anim/document";
   import { columnAtX } from "./timeline-grid";
 
@@ -88,6 +88,25 @@
     deleteFrame(l, state.playhead);
     bump();
   }
+  // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
+  // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
+  function clearFrame() {
+    const l = activeLayer();
+    if (l.kind !== "draw" || l.locked) return;
+    const canvas = ensureDrawableKeyframe(l, state.playhead, canvasOps);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    history.push({
+      undo: () => { ctx.putImageData(before, 0, 0); bump(); },
+      redo: () => { ctx.putImageData(after, 0, 0); bump(); },
+    });
+    bump();
+  }
 
   const toolBtn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
@@ -98,7 +117,8 @@
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}><Plus size={16} /></button>
     <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}><Diamond size={16} /></button>
     <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}><Copy size={16} /></button>
-    <button class={toolBtn} title="Hold (clear keyframe)" onclick={holdTool}><Minus size={16} /></button>
+    <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}><Minus size={16} /></button>
+    <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}><Eraser size={16} /></button>
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
   </div>
 
