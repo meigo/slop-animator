@@ -250,7 +250,7 @@
     <!-- layer rows (top layer first) -->
     {#each [...state.project.layers].reverse() as layer (layer.id)}
       <div class="flex items-center">
-        <button class="shrink-0 sticky left-0 z-20 truncate text-left pr-1 rounded hover:bg-surface-hover"
+        <button class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
                 class:bg-surface={layer.id !== state.activeLayerId}
                 class:bg-surface-active={layer.id === state.activeLayerId}
                 class:text-text={layer.id === state.activeLayerId}
