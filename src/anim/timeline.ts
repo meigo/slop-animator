@@ -1,4 +1,4 @@
-import { resolveKeyframeIndex, type DrawingLayer, type Project } from "./document";
+import { resolveKeyframeIndex, type DrawingLayer } from "./document";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -6,13 +6,10 @@ export interface CanvasOps {
   clone(src: HTMLCanvasElement): HTMLCanvasElement;
 }
 
-/** Append one blank (hold) frame to every layer. */
-export function addFrame(project: Project): void {
-  project.frameCount += 1;
-  for (const layer of project.layers) {
-    if (layer.kind !== "draw") continue;
-    layer.cells.push({ kind: "hold" });
-  }
+/** Insert a hold AFTER `after` on this layer, extending the current held span by one frame. */
+export function addFrame(layer: DrawingLayer, after: number): void {
+  const at = clampIndex(layer, after);
+  layer.cells.splice(at + 1, 0, { kind: "hold" });
 }
 
 /** Clamp a target index to the last existing cell so "after current" always lands inside the track. */
@@ -48,15 +45,11 @@ export function duplicateKeyframe(layer: DrawingLayer, frame: number, ops: Canva
   insertKeyframe(layer, frame, ops);
 }
 
-/** Remove the frame column from every layer. No-op if only one frame remains or `frame` is out of range. */
-export function deleteFrame(project: Project, frame: number): void {
-  if (project.frameCount <= 1) return;
-  if (frame < 0 || frame >= project.frameCount) return;
-  project.frameCount -= 1;
-  for (const layer of project.layers) {
-    if (layer.kind !== "draw") continue;
-    layer.cells.splice(frame, 1);
-  }
+/** Remove the cell at `frame` on this layer, shifting later cells left. Keeps at least one cell. */
+export function deleteFrame(layer: DrawingLayer, frame: number): void {
+  if (layer.cells.length <= 1) return;
+  if (frame < 0 || frame >= layer.cells.length) return;
+  layer.cells.splice(frame, 1);
 }
 
 /**

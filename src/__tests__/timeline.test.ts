@@ -15,38 +15,16 @@ const fakeOps: CanvasOps = {
 function layer(cells: Cell[]): DrawingLayer {
   return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, cells };
 }
-function proj(l: DrawingLayer, frameCount: number): Project {
-  return { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount, layers: [l] };
-}
 
 describe("timeline operations", () => {
-  it("addFrame grows frameCount and appends a hold to every layer", () => {
-    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
-    const p = proj(l, 1);
-    addFrame(p);
-    expect(p.frameCount).toBe(2);
-    expect(l.cells.length).toBe(2);
+  it("addFrame inserts a hold after the current frame on the layer, shifting later cells", () => {
+    const k = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: k }, { kind: "hold" }]);
+    addFrame(l, 0); // after frame 0
+    expect(l.cells.length).toBe(3);
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: k });
     expect(l.cells[1]).toEqual({ kind: "hold" });
-  });
-
-  it("addFrame appends a hold to EVERY layer, not just the first", () => {
-    const a = layer([{ kind: "key", canvas: fakeOps.create() }]);
-    const b = layer([{ kind: "hold" }]);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, layers: [a, b] };
-    addFrame(p);
-    expect(p.frameCount).toBe(2);
-    expect(a.cells.length).toBe(2);
-    expect(b.cells.length).toBe(2);
-    expect(a.cells[1]).toEqual({ kind: "hold" });
-    expect(b.cells[1]).toEqual({ kind: "hold" });
-  });
-
-  it("deleteFrame is a no-op for an out-of-range frame and keeps cells.length === frameCount", () => {
-    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-    const p = proj(l, 2);
-    deleteFrame(p, 5);
-    expect(p.frameCount).toBe(2);
-    expect(l.cells.length).toBe(2);
+    expect(l.cells[2]).toEqual({ kind: "hold" });
   });
 
   it("insertKeyframe inserts a clone of the shown drawing AFTER the current frame, shifting later cells", () => {
@@ -102,20 +80,24 @@ describe("timeline operations", () => {
     }
   });
 
-  it("deleteFrame removes the column from every layer and shrinks frameCount", () => {
-    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-    const p = proj(l, 2);
-    deleteFrame(p, 0);
-    expect(p.frameCount).toBe(1);
+  it("deleteFrame removes the cell and shifts later cells left", () => {
+    const k = fakeOps.create();
+    const l = layer([{ kind: "hold" }, { kind: "key", canvas: k }]);
+    deleteFrame(l, 0);
     expect(l.cells.length).toBe(1);
-    expect(l.cells[0]).toEqual({ kind: "hold" });
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: k });
   });
 
-  it("deleteFrame is a no-op when only one frame remains", () => {
+  it("deleteFrame is a no-op when only one cell remains", () => {
     const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
-    const p = proj(l, 1);
-    deleteFrame(p, 0);
-    expect(p.frameCount).toBe(1);
+    deleteFrame(l, 0);
+    expect(l.cells.length).toBe(1);
+  });
+
+  it("deleteFrame is a no-op for an out-of-range frame", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    deleteFrame(l, 5);
+    expect(l.cells.length).toBe(2);
   });
 
   it("ensureDrawableKeyframe converts a hold into a keyframe that clones the held drawing", () => {
@@ -138,34 +120,5 @@ describe("timeline operations", () => {
     const l = layer([{ kind: "key", canvas: existing }]);
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
-  });
-});
-
-function refLayerFixture(id: number): ReferenceLayer {
-  return {
-    kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
-    media: { type: "image", el: {} as HTMLImageElement },
-  };
-}
-
-describe("timeline operations with reference layers", () => {
-  it("addFrame does not add cells to reference layers (and does not crash)", () => {
-    const d = layer([{ kind: "key", canvas: fakeOps.create() }]);
-    const r = refLayerFixture(2);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, layers: [d, r] };
-    addFrame(p);
-    expect(p.frameCount).toBe(2);
-    expect(d.cells.length).toBe(2);
-    expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
-  });
-
-  it("deleteFrame only splices drawing-layer cells", () => {
-    const d = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-    const r = refLayerFixture(2);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [d, r] };
-    deleteFrame(p, 0);
-    expect(p.frameCount).toBe(1);
-    expect(d.cells.length).toBe(1);
-    expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
   });
 });
