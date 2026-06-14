@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
   addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
-  ensureDrawableKeyframe, type CanvasOps,
+  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, type CanvasOps,
 } from "../anim/timeline";
 
 // Fake canvases are tagged objects so we can assert identity/cloning without the DOM.
@@ -120,5 +120,37 @@ describe("timeline operations", () => {
     const l = layer([{ kind: "key", canvas: existing }]);
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
+  });
+});
+
+function refLayerFixture(id: number): ReferenceLayer {
+  return {
+    kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
+    media: { type: "image", el: {} as HTMLImageElement },
+  };
+}
+
+describe("all-layers timeline operations", () => {
+  it("insertFrameAllLayers inserts a hold at `at` in every drawing layer and refreshes length", () => {
+    const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const b = layer([{ kind: "hold" }, { kind: "hold" }]);
+    const r = refLayerFixture(3);
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [a, b, r] };
+    insertFrameAllLayers(p, 1);
+    expect(a.cells.length).toBe(3);
+    expect(b.cells.length).toBe(3);
+    expect(a.cells[1]).toEqual({ kind: "hold" });
+    expect(p.frameCount).toBe(3);
+    expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
+  });
+
+  it("deleteFrameAllLayers removes `at` from every drawing layer and refreshes length", () => {
+    const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const b = layer([{ kind: "hold" }, { kind: "hold" }]);
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [a, b] };
+    deleteFrameAllLayers(p, 0);
+    expect(a.cells.length).toBe(1);
+    expect(b.cells.length).toBe(1);
+    expect(p.frameCount).toBe(1);
   });
 });

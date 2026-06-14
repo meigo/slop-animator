@@ -1,4 +1,4 @@
-import { resolveKeyframeIndex, type DrawingLayer } from "./document";
+import { resolveKeyframeIndex, refreshLength, type DrawingLayer, type Project } from "./document";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -67,4 +67,25 @@ export function ensureDrawableKeyframe(layer: DrawingLayer, frame: number, ops: 
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();
   layer.cells[frame] = { kind: "key", canvas };
   return canvas;
+}
+
+/** Insert a hold at index `at` in EVERY drawing layer (global shift), then refresh document length. */
+export function insertFrameAllLayers(project: Project, at: number): void {
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
+    const idx = Math.max(0, Math.min(at, layer.cells.length));
+    layer.cells.splice(idx, 0, { kind: "hold" });
+  }
+  refreshLength(project);
+}
+
+/** Remove index `at` from every drawing layer that has it (global shift), keeping ≥1 cell each. */
+export function deleteFrameAllLayers(project: Project, at: number): void {
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
+    if (layer.cells.length <= 1) continue;
+    if (at < 0 || at >= layer.cells.length) continue;
+    layer.cells.splice(at, 1);
+  }
+  refreshLength(project);
 }
