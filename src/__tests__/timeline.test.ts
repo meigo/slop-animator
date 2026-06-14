@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
   addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
-  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, setHoldSpan, type CanvasOps,
+  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, setHoldSpan,
+  planMergeDown, type CanvasOps,
 } from "../anim/timeline";
 
 // Fake canvases are tagged objects so we can assert identity/cloning without the DOM.
@@ -243,5 +244,44 @@ describe("all-layers timeline operations", () => {
     expect(a.cells.length).toBe(1);
     expect(b.cells.length).toBe(1);
     expect(p.frameCount).toBe(1);
+  });
+});
+
+describe("planMergeDown", () => {
+  const k = (canvas: HTMLCanvasElement): Cell => ({ kind: "key", canvas });
+  const h = (): Cell => ({ kind: "hold" });
+
+  it("keeps holds as holds where both layers hold (does NOT promote every frame)", () => {
+    const below = [k(fakeOps.create()), h(), h()];
+    const upper = [k(fakeOps.create()), h(), h()];
+    const plan = planMergeDown(below, upper);
+    expect(plan.map((p) => p.kind)).toEqual(["key", "hold", "hold"]);
+  });
+
+  it("makes a keyframe at the union of both layers' keyframes", () => {
+    const below = [k(fakeOps.create()), h(), k(fakeOps.create())];
+    const upper = [k(fakeOps.create()), h(), h()];
+    const plan = planMergeDown(below, upper);
+    expect(plan.map((p) => p.kind)).toEqual(["key", "hold", "key"]);
+  });
+
+  it("carries the resolved below+upper canvases at a union frame where the other layer holds", () => {
+    const bcanvas = fakeOps.create();
+    const ucanvas = fakeOps.create();
+    const below = [k(bcanvas), h(), h()]; // holds bcanvas across 0–2
+    const upper = [h(), h(), k(ucanvas)]; // key at 2, blank before
+    const plan = planMergeDown(below, upper);
+    expect(plan[0]).toEqual({ kind: "key", below: bcanvas, upper: null }); // below key, upper blank
+    expect(plan[1]).toEqual({ kind: "hold" });
+    expect(plan[2]).toEqual({ kind: "key", below: bcanvas, upper: ucanvas }); // upper key, below held
+  });
+
+  it("extends to the longer layer (upper longer than below)", () => {
+    const below = [k(fakeOps.create())];
+    const u2 = fakeOps.create();
+    const upper = [h(), k(u2)];
+    const plan = planMergeDown(below, upper);
+    expect(plan.length).toBe(2);
+    expect(plan[1]).toEqual({ kind: "key", below: null, upper: u2 }); // past below's end → below blank
   });
 });
