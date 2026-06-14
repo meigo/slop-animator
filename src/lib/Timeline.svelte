@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Eraser, Trash2 } from "@lucide/svelte";
+  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers } from "@lucide/svelte";
   import { state, canvasOps, activeLayer, bump, history, commitStructural,
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
@@ -199,13 +199,30 @@
 </script>
 
 <div class="border-t border-border bg-surface text-text p-2 text-sm">
-  <div class="flex gap-1 mb-2">
+  <div class="flex items-center gap-1 mb-2 flex-wrap">
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}><Plus size={16} /></button>
     <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}><Diamond size={16} /></button>
     <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}><Copy size={16} /></button>
     <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}><Minus size={16} /></button>
     <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}><Eraser size={16} /></button>
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
+
+    <span class="w-px h-5 bg-border mx-1"></span>
+
+    <!-- onion skin (a frame-drawing aid, lives with the frame tools) -->
+    <button class={toolBtn} class:bg-surface-active={state.onion.enabled} title="Onion skin"
+            onclick={() => { state.onion.enabled = !state.onion.enabled; bump(); }}><Layers size={16} /></button>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Onion: previous frames">prev
+      <input class="w-9 bg-surface border border-border text-text px-1" type="number" min="0" max="3"
+             bind:value={state.onion.prev} onchange={bump} />
+    </label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Onion: next frames">next
+      <input class="w-9 bg-surface border border-border text-text px-1" type="number" min="0" max="3"
+             bind:value={state.onion.next} onchange={bump} />
+    </label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Onion: ghost all layers">
+      <input type="checkbox" bind:checked={state.onion.allLayers} onchange={bump} /> all layers
+    </label>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
