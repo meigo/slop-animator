@@ -3,6 +3,7 @@
   import { state, canvasOps, activeLayer, bump } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell } from "../anim/document";
+  import { columnAtX } from "./timeline-grid";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
@@ -21,6 +22,27 @@
 
   function go(f: number) {
     state.playhead = Math.max(0, Math.min(state.project.frameCount - 1, f));
+  }
+
+  // Draggable playhead: pointer-drag anywhere on the ruler scrubs the current frame.
+  // Pointer capture keeps the drag alive outside the element; touch-action:none stops
+  // the browser from panning/zooming the page while scrubbing (needed on iPad).
+  let scrubbing = false;
+  function scrubTo(e: PointerEvent) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    go(columnAtX(e.clientX - rect.left, CELL_W, state.project.frameCount));
+  }
+  function rulerDown(e: PointerEvent) {
+    scrubbing = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrubTo(e);
+  }
+  function rulerMove(e: PointerEvent) {
+    if (scrubbing) scrubTo(e);
+  }
+  function rulerUp(e: PointerEvent) {
+    scrubbing = false;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
   }
 
   // All tools act on the active drawing layer at the current frame, current-frame-aware
@@ -81,7 +103,9 @@
     <!-- ruler -->
     <div class="flex items-stretch mb-1">
       <span class="shrink-0" style="width: {LABEL_W}px"></span>
-      <div class="flex">
+      <div class="flex cursor-ew-resize select-none" style="touch-action: none"
+           onpointerdown={rulerDown} onpointermove={rulerMove}
+           onpointerup={rulerUp} onpointercancel={rulerUp}>
         {#each Array(state.project.frameCount) as _, f}
           <div class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-muted"
                class:text-accent={f === state.playhead}
