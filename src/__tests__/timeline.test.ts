@@ -121,6 +121,16 @@ describe("timeline operations", () => {
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
   });
+
+  it("ensureDrawableKeyframe extends the layer with holds when drawing past its end", () => {
+    const l = layer([{ kind: "hold" }]); // length 1
+    const canvas = ensureDrawableKeyframe(l, 3, fakeOps);
+    expect(l.cells.length).toBe(4);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3].kind).toBe("key");
+    expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+  });
 });
 
 describe("moveKeyframe", () => {

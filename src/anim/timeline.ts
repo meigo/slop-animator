@@ -54,11 +54,19 @@ export function deleteFrame(layer: DrawingLayer, frame: number): void {
 
 /**
  * Guarantee the cell at `frame` is a keyframe and return its canvas, so a tool can draw on it.
+ * - Past the layer's end → extend with holds up to `frame`, then a fresh blank keyframe.
  * - Already a keyframe → returns its canvas unchanged.
  * - A hold over an earlier keyframe → clones that drawing (draw-on-hold = clone & edit on top).
  * - A hold with nothing held → a fresh blank keyframe.
  */
 export function ensureDrawableKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): HTMLCanvasElement {
+  if (frame >= layer.cells.length) {
+    while (layer.cells.length < frame) layer.cells.push({ kind: "hold" });
+    const canvas = ops.create();
+    layer.cells.push({ kind: "key", canvas });
+    return canvas;
+  }
+
   const current = layer.cells[frame];
   if (current.kind === "key") return current.canvas;
 
