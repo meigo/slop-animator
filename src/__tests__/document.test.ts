@@ -22,8 +22,9 @@ describe("resolveKeyframeIndex", () => {
     expect(resolveKeyframeIndex([key(), hold(), key(), hold()], 3)).toBe(2);
   });
 
-  it("clamps a frame index past the end to the last cell", () => {
-    expect(resolveKeyframeIndex([key(), hold()], 5)).toBe(0);
+  it("returns null past the end of the track (blank after end)", () => {
+    expect(resolveKeyframeIndex([key(), hold()], 5)).toBeNull();
+    expect(resolveKeyframeIndex([key(), hold()], 2)).toBeNull();
   });
 });
 

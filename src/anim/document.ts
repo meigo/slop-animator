@@ -9,7 +9,7 @@ export interface DrawingLayer {
   visible: boolean;
   locked: boolean;
   opacity: number; // 0..100
-  cells: Cell[];    // length === project.frameCount
+  cells: Cell[];    // independent per-layer length; document length = the longest layer
 }
 
 export type ReferenceMedia =
@@ -42,13 +42,13 @@ export interface Project {
 }
 
 /**
- * Index of the keyframe that is shown at `frame` on this cell track:
- * the nearest "key" cell at or before `frame`. Returns null if none precedes it.
- * A frame index past the end clamps to the last cell.
+ * Index of the keyframe shown at `frame` on this cell track: the nearest "key" cell at
+ * or before `frame`. Returns null when `frame` is past this track's end (blank after end)
+ * or no key precedes it.
  */
 export function resolveKeyframeIndex(cells: Cell[], frame: number): number | null {
-  const start = Math.min(frame, cells.length - 1);
-  for (let i = start; i >= 0; i--) {
+  if (frame < 0 || frame >= cells.length) return null;
+  for (let i = frame; i >= 0; i--) {
     if (cells[i].kind === "key") return i;
   }
   return null;
