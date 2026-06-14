@@ -9,15 +9,16 @@
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
 
-  // What a cell shows: ◆ keyframe with ink · empty (no key / empty key / hold over an empty
-  // key) — hold over an inked key. Blank past the layer's end. `_v` (state.version) is passed
-  // from the template purely so the label re-evaluates when a draw/clear changes a canvas's ink.
+  // What a cell shows: ◆ keyframe with ink, — hold over an inked key, and a blank cell for
+  // anything empty (no key / empty key / hold over an empty key / past the layer's end).
+  // `_v` (state.version) is passed from the template so the label re-evaluates when a
+  // draw/clear changes a canvas's ink.
   function cellLabel(cells: Cell[], f: number, _v: number): string {
     if (f >= cells.length) return "";
     const ki = resolveKeyframeIndex(cells, f);
-    if (ki === null) return "·"; // no keyframe at or before this frame → empty
+    if (ki === null) return ""; // no keyframe at or before this frame → empty
     const key = cells[ki];
-    if (key.kind === "key" && isCellEmpty(key.canvas)) return "·"; // resolves to a blank keyframe → empty
+    if (key.kind === "key" && isCellEmpty(key.canvas)) return ""; // resolves to a blank keyframe → empty
     return cells[f].kind === "key" ? "◆" : "—";
   }
 
