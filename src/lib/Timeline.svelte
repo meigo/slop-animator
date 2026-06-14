@@ -235,7 +235,12 @@
       <div class="flex items-center"
            class:opacity-100={layer.id === state.activeLayerId}
            class:opacity-70={layer.id !== state.activeLayerId}>
-        <span class="shrink-0 truncate text-text-secondary pr-1" style="width: {LABEL_W}px">{layer.name}</span>
+        <button class="shrink-0 truncate text-left pr-1 rounded hover:bg-surface-hover"
+                class:bg-surface-active={layer.id === state.activeLayerId}
+                class:text-text={layer.id === state.activeLayerId}
+                class:text-text-secondary={layer.id !== state.activeLayerId}
+                style="width: {LABEL_W}px" title="Select layer"
+                onclick={() => (state.activeLayerId = layer.id)}>{layer.name}</button>
         {#if layer.kind === "draw"}
           <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
                role="application" aria-label="{layer.name} frames"
