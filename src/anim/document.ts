@@ -2,6 +2,20 @@ export type Cell =
   | { kind: "key"; canvas: HTMLCanvasElement }
   | { kind: "hold" };
 
+/** Line-boil settings, persisted per project. `scale` is the prototype's uniform-scale weight
+ *  (Phase 3 will rename it to a dilate/erode `weight`). */
+export interface BoilConfig {
+  enabled: boolean;
+  amount: number;    // displacement px
+  cols: number;      // grid columns
+  rate: number;      // cycle length (on twos/threes)
+  scale: number;     // uniform scale jitter (fraction)
+  holdsOnly: boolean;
+}
+export function defaultBoilConfig(): BoilConfig {
+  return { enabled: false, amount: 1, cols: 20, rate: 3, scale: 0.005, holdsOnly: true };
+}
+
 export interface DrawingLayer {
   kind: "draw";
   id: number;
@@ -9,6 +23,7 @@ export interface DrawingLayer {
   visible: boolean;
   locked: boolean;
   opacity: number; // 0..100
+  boilStrength: number; // per-layer multiplier on boil amount/scale (1 = full, 0 = none)
   cells: Cell[];    // independent per-layer length; document length = the longest layer
 }
 
@@ -38,6 +53,7 @@ export interface Project {
   fps: number;
   bgColor: string;
   frameCount: number;
+  boil: BoilConfig;
   layers: Layer[]; // layers[0] = bottom of the stack
 }
 
@@ -156,6 +172,7 @@ export function createDrawingLayer(frameCount: number, name?: string): DrawingLa
     visible: true,
     locked: false,
     opacity: 100,
+    boilStrength: 1,
     cells: Array.from({ length: frameCount }, () => ({ kind: "hold" }) as Cell),
   };
 }
@@ -183,6 +200,7 @@ export function createProject(opts?: Partial<Pick<Project, "width" | "height" | 
     fps: opts?.fps ?? 12,
     bgColor: opts?.bgColor ?? "#f4efe2",
     frameCount,
+    boil: defaultBoilConfig(),
     layers: [layer],
   };
 }

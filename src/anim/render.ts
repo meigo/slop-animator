@@ -1,5 +1,5 @@
-import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project } from "./document";
-import { drawBoiled, type BoilConfig } from "../core/boil";
+import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project, type BoilConfig } from "./document";
+import { drawBoiled } from "../core/boil";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
