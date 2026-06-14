@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
   addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
-  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, type CanvasOps,
+  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, setHoldSpan, type CanvasOps,
 } from "../anim/timeline";
 
 // Fake canvases are tagged objects so we can assert identity/cloning without the DOM.
@@ -159,6 +159,48 @@ describe("moveKeyframe", () => {
     expect(l.cells[1]).toEqual({ kind: "key", canvas: k });
     moveKeyframe(l, 1, 1); // same index
     expect(l.cells[1]).toEqual({ kind: "key", canvas: k });
+  });
+});
+
+describe("setHoldSpan", () => {
+  it("grows a key's span by inserting holds, pushing following keys right", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    // key A occupies frames 0-1 (span 2), key B at 2
+    const l = layer([{ kind: "key", canvas: a }, { kind: "hold" }, { kind: "key", canvas: b }]);
+    setHoldSpan(l, 0, 4); // A should occupy 0-3
+    expect(l.cells.length).toBe(5);
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: a });
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3]).toEqual({ kind: "hold" });
+    expect(l.cells[4]).toEqual({ kind: "key", canvas: b });
+  });
+
+  it("shrinks a key's span by removing trailing holds, pulling following keys left", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: a }, { kind: "hold" }, { kind: "hold" }, { kind: "key", canvas: b }]);
+    setHoldSpan(l, 0, 1); // A occupies only frame 0
+    expect(l.cells.length).toBe(2);
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: a });
+    expect(l.cells[1]).toEqual({ kind: "key", canvas: b });
+  });
+
+  it("never deletes the following key (clamps removal to this span's holds) and floors span at 1", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: a }, { kind: "hold" }, { kind: "key", canvas: b }]);
+    setHoldSpan(l, 0, 0); // floored to 1
+    expect(l.cells.length).toBe(2);
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: a });
+    expect(l.cells[1]).toEqual({ kind: "key", canvas: b });
+  });
+
+  it("is a no-op when the frame is not a key", () => {
+    const l = layer([{ kind: "hold" }, { kind: "hold" }]);
+    setHoldSpan(l, 0, 5);
+    expect(l.cells.length).toBe(2);
   });
 });
 

@@ -1,4 +1,4 @@
-import { resolveKeyframeIndex, refreshLength, type DrawingLayer, type Project } from "./document";
+import { resolveKeyframeIndex, refreshLength, type Cell, type DrawingLayer, type Project } from "./document";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -88,6 +88,31 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
     layer.cells.splice(at, 1);
   }
   refreshLength(project);
+}
+
+/**
+ * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
+ * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
+ * Growing inserts holds at the span boundary (pushing following keys right); shrinking removes
+ * trailing holds of this span only (pulling following keys left) — it never deletes another key.
+ * No-op if `keyFrame` is not a key.
+ */
+export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number): void {
+  if (keyFrame < 0 || keyFrame >= layer.cells.length) return;
+  if (layer.cells[keyFrame].kind !== "key") return;
+
+  const desired = Math.max(1, Math.floor(span));
+  let next = keyFrame + 1;
+  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  const current = next - keyFrame; // cells owned: the key plus its trailing holds
+  if (desired === current) return;
+
+  if (desired > current) {
+    const holds: Cell[] = Array.from({ length: desired - current }, () => ({ kind: "hold" }) as Cell);
+    layer.cells.splice(keyFrame + current, 0, ...holds);
+  } else {
+    layer.cells.splice(keyFrame + desired, current - desired);
+  }
 }
 
 /**
