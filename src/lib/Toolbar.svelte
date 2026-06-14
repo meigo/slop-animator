@@ -55,7 +55,7 @@
   }
 </script>
 
-<div class="flex items-center gap-2 p-2 border-b border-border bg-surface text-text">
+<div class="flex flex-wrap items-center gap-2 p-2 border-b border-border bg-surface text-text">
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={state.tool === "brush"}
