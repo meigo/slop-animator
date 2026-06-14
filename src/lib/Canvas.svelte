@@ -36,6 +36,10 @@
   let strokeCanvas: HTMLCanvasElement | null = null;
   let strokeCtx: CanvasRenderingContext2D | null = null;
   let beforeSnapshot: ImageData | null = null;
+  // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
+  // above the display refresh, so painting every event re-runs the full stroke wastefully.
+  let drawRaf = 0;
+  let lastPoints: InputPoint[] = [];
 
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
@@ -90,6 +94,29 @@
       redo: () => { ctx.putImageData(after, 0, 0); recomposite(); },
     });
     bump();
+    recomposite();
+  }
+
+  // Render the current stroke onto the cell ctx then recomposite. Smooth = full redraw
+  // from the pre-stroke snapshot; stamp = incremental. Both clip to the active selection.
+  function paintStroke(pts: InputPoint[], done: boolean) {
+    if (!strokeCtx) return;
+    const curved = pts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
+    const settings = { ...state.brush, isEraser: state.tool === "eraser" };
+    if (state.brushType === "smooth") {
+      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+      strokeCtx.save();
+      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(strokeCtx);
+      drawStroke(strokeCtx, curved, settings, done, state.sizeRange);
+      strokeCtx.restore();
+    } else {
+      strokeCtx.save();
+      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(strokeCtx);
+      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: state.brushType }, state.sizeRange);
+      strokeCtx.restore();
+    }
     recomposite();
   }
 
@@ -156,30 +183,12 @@
       bump();
     }
 
-    // Remap pen pressure through the user's curve.
-    const curved = points.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
-    const settings = { ...state.brush, isEraser: state.tool === "eraser" };
-
-    if (state.brushType === "smooth") {
-      // Smooth (perfect-freehand): redraw the whole stroke from the pre-stroke snapshot,
-      // clipped to the active selection.
-      strokeCtx!.putImageData(beforeSnapshot!, 0, 0);
-      strokeCtx!.save();
-      strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx!);
-      drawStroke(strokeCtx!, curved, settings, done, state.sizeRange);
-      strokeCtx!.restore();
-    } else {
-      // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
-      strokeCtx!.save();
-      strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx!);
-      drawStampStrokeIncremental(strokeCtx!, curved, { ...settings, brushType: state.brushType }, state.sizeRange);
-      strokeCtx!.restore();
-    }
-    recomposite();
-
+    // Throttle drawing + compositing to one animation frame (defer non-final events);
+    // finalize synchronously on stroke end so the undo snapshot captures the exact result.
+    lastPoints = points;
     if (done) {
+      if (drawRaf) { cancelAnimationFrame(drawRaf); drawRaf = 0; }
+      paintStroke(points, true);
       const after = strokeCtx!.getImageData(0, 0, strokeCanvas!.width, strokeCanvas!.height);
       const target = strokeCtx!;
       const before = beforeSnapshot!;
@@ -190,6 +199,11 @@
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
+    } else if (!drawRaf) {
+      drawRaf = requestAnimationFrame(() => {
+        drawRaf = 0;
+        if (strokeCtx) paintStroke(lastPoints, false);
+      });
     }
   }
 
@@ -298,7 +312,7 @@
 
     selectionActions.enterWarp = enterWarp;
 
-    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; selectionActions.enterWarp = null; };
+    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); if (drawRaf) cancelAnimationFrame(drawRaf); selectionRef.current = null; selectionActions.enterWarp = null; };
   });
 
   $effect(() => {
