@@ -1,7 +1,7 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, type Project, type Layer } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveKeyframeIndex, type Project, type Layer, type Cell, type DrawingLayer } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
-import type { CanvasOps } from "../anim/timeline";
+import { ensureDrawableKeyframe, type CanvasOps } from "../anim/timeline";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback } from "../anim/playback";
@@ -20,6 +20,7 @@ interface AnimState {
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
   exportOpen: boolean;
+  theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean };
 }
@@ -45,6 +46,7 @@ export const state: AnimState = $state({
   fill: { tolerance: 32, expand: 2 },
   version: 0,
   exportOpen: false,
+  theme: "dark",
   onion: {
     enabled: false,
     prev: 1,
@@ -90,6 +92,59 @@ export function removeLayer(id: number) {
     const firstDrawing = layers.find(isDrawingLayer);
     if (firstDrawing) state.activeLayerId = firstDrawing.id;
   }
+  bump();
+}
+
+/** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
+export function reorderLayers(ordered: Layer[]) {
+  state.project.layers = ordered;
+  bump();
+}
+
+/** Duplicate a drawing layer (cloning every key cell's canvas) above it, and make it active. */
+export function duplicateLayer(id: number) {
+  const layers = state.project.layers;
+  const idx = layers.findIndex((l) => l.id === id);
+  if (idx === -1) return;
+  const src = layers[idx];
+  if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels)
+  const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
+  dup.visible = src.visible;
+  dup.locked = src.locked;
+  dup.opacity = src.opacity;
+  dup.cells = src.cells.map((c): Cell =>
+    c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
+  );
+  layers.splice(idx + 1, 0, dup);
+  state.activeLayerId = dup.id;
+  bump();
+}
+
+/** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */
+export function mergeDown(id: number) {
+  const layers = state.project.layers;
+  const idx = layers.findIndex((l) => l.id === id);
+  if (idx <= 0) return; // nothing below
+  const upper = layers[idx];
+  const below = layers[idx - 1];
+  if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return;
+
+  for (let f = 0; f < state.project.frameCount; f++) {
+    const uki = resolveKeyframeIndex(upper.cells, f);
+    if (uki === null) continue;
+    const uCell = upper.cells[uki];
+    if (uCell.kind !== "key") continue;
+    // Ensure the lower layer owns a keyframe at this frame, then blit the upper onto it.
+    const target = ensureDrawableKeyframe(below as DrawingLayer, f, canvasOps);
+    const ctx = target.getContext("2d")!;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = upper.opacity / 100;
+    ctx.drawImage(uCell.canvas, 0, 0);
+    ctx.restore();
+  }
+  layers.splice(idx, 1);
+  state.activeLayerId = below.id;
   bump();
 }
 

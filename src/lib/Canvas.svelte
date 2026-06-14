@@ -259,7 +259,7 @@
   function onWheel(e: WheelEvent) { e.preventDefault(); viewport?.zoomAt(e.clientX, e.clientY, e.deltaY); }
 </script>
 
-<div bind:this={stage} class="relative flex-1 overflow-hidden bg-neutral-300 touch-none" onwheel={onWheel}>
+<div bind:this={stage} class="relative flex-1 overflow-hidden bg-canvas-bg touch-none" onwheel={onWheel}>
   <div bind:this={wrapper} class="absolute left-0 top-0">
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
