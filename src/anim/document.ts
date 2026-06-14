@@ -78,6 +78,20 @@ export function buildFrameDrawList(project: Project, frame: number, includeRefer
   return ops;
 }
 
+/** Document length = the longest drawing layer's cell count (reference layers ignored), floor 1. */
+export function documentLength(project: Project): number {
+  let max = 1;
+  for (const layer of project.layers) {
+    if (layer.kind === "draw") max = Math.max(max, layer.cells.length);
+  }
+  return max;
+}
+
+/** Recompute and store the document length into `project.frameCount`. */
+export function refreshLength(project: Project): void {
+  project.frameCount = documentLength(project);
+}
+
 /** Aspect-preserving "contain" fit of a `srcW×srcH` source centred in a `boxW×boxH` box. */
 export function containRect(srcW: number, srcH: number, boxW: number, boxH: number): { x: number; y: number; w: number; h: number } {
   if (srcW <= 0 || srcH <= 0) return { x: 0, y: 0, w: boxW, h: boxH };
