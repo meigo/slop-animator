@@ -231,8 +231,8 @@
     <div class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
          style="left: {LABEL_W + state.playhead * CELL_W + CELL_W / 2 - 1}px"></div>
 
-    <!-- ruler -->
-    <div class="flex items-stretch mb-1">
+    <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line) -->
+    <div class="flex items-stretch">
       <span class="shrink-0 sticky left-0 z-20 bg-surface" style="width: {LABEL_W}px"></span>
       <div class="flex cursor-ew-resize select-none" style="touch-action: none"
            role="slider" tabindex="0" aria-label="Scrub frames"
@@ -250,7 +250,7 @@
     <!-- layer rows (top layer first) -->
     {#each [...state.project.layers].reverse() as layer (layer.id)}
       <div class="flex items-center">
-        <button class="shrink-0 sticky left-0 z-20 truncate text-left pr-1 rounded hover:bg-surface-hover"
+        <button class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
                 class:bg-surface={layer.id !== state.activeLayerId}
                 class:bg-surface-active={layer.id === state.activeLayerId}
                 class:text-text={layer.id === state.activeLayerId}
