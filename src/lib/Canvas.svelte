@@ -211,6 +211,7 @@
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
+      bump(); // refresh the timeline (e.g. an empty cell that just gained ink flips ·→◆)
     } else if (!drawRaf) {
       drawRaf = requestAnimationFrame(() => {
         drawRaf = 0;

@@ -4,15 +4,21 @@
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell } from "../anim/document";
   import { columnAtX } from "./timeline-grid";
+  import { isCellEmpty } from "./cell-ink";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
 
-  // ◆ keyframe · blank (past end or before first key) — hold over a key
-  function cellLabel(cells: Cell[], f: number): string {
+  // What a cell shows: ◆ keyframe with ink · empty (no key / empty key / hold over an empty
+  // key) — hold over an inked key. Blank past the layer's end. `_v` (state.version) is passed
+  // from the template purely so the label re-evaluates when a draw/clear changes a canvas's ink.
+  function cellLabel(cells: Cell[], f: number, _v: number): string {
     if (f >= cells.length) return "";
-    if (cells[f].kind === "key") return "◆";
-    return resolveKeyframeIndex(cells, f) === null ? "·" : "—";
+    const ki = resolveKeyframeIndex(cells, f);
+    if (ki === null) return "·"; // no keyframe at or before this frame → empty
+    const key = cells[ki];
+    if (key.kind === "key" && isCellEmpty(key.canvas)) return "·"; // resolves to a blank keyframe → empty
+    return cells[f].kind === "key" ? "◆" : "—";
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -158,7 +164,7 @@
                 class:bg-selection={f === state.playhead}
                 class:text-accent-text={f === state.playhead}
                 style="width: {CELL_W}px"
-                onclick={() => go(f)}>{cellLabel(layer.cells, f)}</button>
+                onclick={() => go(f)}>{cellLabel(layer.cells, f, state.version)}</button>
             {/each}
           </div>
         {:else}
