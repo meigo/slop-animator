@@ -1,4 +1,4 @@
-import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project, type BoilConfig } from "./document";
+import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, type Project, type BoilConfig } from "./document";
 import { drawBoiled } from "../core/boil";
 
 interface RenderOpts {
@@ -32,10 +32,16 @@ export function compositeFrameLayers(
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      if (boil && (boil.amount > 0 || boil.scale > 0)) {
-        // Per-layer phase (layerId) + cycle of `rate` warps (frame) → independent line boil.
-        const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
-        drawBoiled(ctx, cell.canvas, w, h, { amount: boil.amount, cols: boil.cols, scale: boil.scale, seed });
+      const strength = layer.boilStrength;
+      const boilThisFrame = boil && strength > 0
+        && !isCrispFrame(layer.cells, frame, boil.holdsOnly)
+        && (boil.amount > 0 || boil.scale > 0);
+      if (boilThisFrame) {
+        // Per-layer phase (layerId) + cycle of `rate` warps (frame), scaled by the layer's strength.
+        const seed = (frame % Math.max(1, boil!.rate)) * 100003 + op.layerId * 9176;
+        drawBoiled(ctx, cell.canvas, w, h, {
+          amount: boil!.amount * strength, cols: boil!.cols, scale: boil!.scale * strength, seed,
+        });
       } else {
         ctx.drawImage(cell.canvas, 0, 0);
       }
