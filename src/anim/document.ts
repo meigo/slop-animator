@@ -70,6 +70,11 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
   return null;
 }
 
+/** With holds-only boil, a frame that IS its own keyframe renders crisp (un-boiled). */
+export function isCrispFrame(cells: Cell[], frame: number, holdsOnly: boolean): boolean {
+  return holdsOnly && cells[frame]?.kind === "key";
+}
+
 export type FrameOp =
   | { kind: "draw"; layerId: number; keyframeIndex: number; opacity: number }
   | { kind: "ref"; layerId: number; opacity: number };

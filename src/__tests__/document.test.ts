@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const hold = (): Cell => ({ kind: "hold" });
@@ -142,6 +142,20 @@ describe("documentLength / refreshLength", () => {
       layers: [draw(4)] };
     refreshLength(p);
     expect(p.frameCount).toBe(4);
+  });
+});
+
+describe("isCrispFrame", () => {
+  it("holds-only: a frame that is its own keyframe stays crisp", () => {
+    expect(isCrispFrame([key(), hold()], 0, true)).toBe(true);  // own key → crisp
+    expect(isCrispFrame([key(), hold()], 1, true)).toBe(false); // hold → boil
+  });
+  it("holds-only off: nothing is crisp", () => {
+    expect(isCrispFrame([key(), hold()], 0, false)).toBe(false);
+    expect(isCrispFrame([key(), hold()], 1, false)).toBe(false);
+  });
+  it("past the track end is not crisp (no own keyframe there)", () => {
+    expect(isCrispFrame([key()], 5, true)).toBe(false);
   });
 });
 
