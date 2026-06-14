@@ -72,6 +72,7 @@
   let dragTarget = -1;   // current target column (move ghost)
   let dragUndo: StructSnapshot | null = null;
   let dragStartBoundary = -1; // span edge boundary at the start of a resize (to detect a real change)
+  let dragLastBoundary = -1;  // last boundary applied during a resize (used on up/cancel, not the event)
   let rowCursor = "default";
 
   function rowOffset(e: PointerEvent): number {
@@ -96,6 +97,7 @@
       dragMode = "resize";
       dragKey = plan.keyIndex;
       dragStartBoundary = rowBoundary(e);
+      dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
     } else if (plan.kind === "move") {
       dragMode = "move";
@@ -116,7 +118,8 @@
     if (dragMode === "seek") go(rowColumn(e));
     else if (dragMode === "move") dragTarget = rowColumn(e);
     else if (dragMode === "resize") {
-      setHoldSpan(layer, dragKey, Math.max(1, rowBoundary(e) - dragKey)); // live; boundary − key index
+      dragLastBoundary = rowBoundary(e);
+      setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey)); // live; boundary − key index
       bump();
     }
   }
@@ -126,7 +129,7 @@
       if (dragTarget >= 0 && dragTarget !== dragKey) commitStructural(() => moveKeyframe(layer, dragKey, dragTarget));
       else go(dragKey); // a click on a keyframe with no drag → seek to it
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
-      if (rowBoundary(e) !== dragStartBoundary) commitStructuralEdit(dragUndo); // skip a no-op resize
+      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo); // skip a no-op resize
     }
     dragMode = "none";
     dragLayerId = -1;
@@ -134,6 +137,7 @@
     dragTarget = -1;
     dragUndo = null;
     dragStartBoundary = -1;
+    dragLastBoundary = -1;
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";
