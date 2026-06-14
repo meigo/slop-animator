@@ -11,6 +11,7 @@
   import { state, history, DPR, canvasOps, activeLayer, bump, pressureCurve } from "../state/appState.svelte";
   import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
+  import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
@@ -103,18 +104,28 @@
     if (!strokeCtx) return;
     const curved = pts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
-    if (state.brushType === "smooth") {
+    const kind = state.brushType; // local so TS narrows it across the branches
+    if (kind === "smooth") {
+      // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
       strokeCtx.putImageData(beforeSnapshot!, 0, 0);
       strokeCtx.save();
       strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection?.applyClip(strokeCtx);
       drawStroke(strokeCtx, curved, settings, done, state.sizeRange);
       strokeCtx.restore();
-    } else {
+    } else if (kind === "ink") {
+      // Ink/marker: incremental quadratic line — no snapshot restore.
       strokeCtx.save();
       strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection?.applyClip(strokeCtx);
-      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: state.brushType }, state.sizeRange);
+      drawInkStrokeIncremental(strokeCtx, curved, settings, state.sizeRange);
+      strokeCtx.restore();
+    } else {
+      // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
+      strokeCtx.save();
+      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(strokeCtx);
+      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, state.sizeRange);
       strokeCtx.restore();
     }
     recomposite();
@@ -179,7 +190,8 @@
       strokeCanvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
-      if (state.brushType !== "smooth") resetStampState();
+      if (state.brushType === "ink") resetInkState();
+      else if (state.brushType !== "smooth") resetStampState();
       bump();
     }
 
