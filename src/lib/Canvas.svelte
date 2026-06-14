@@ -60,7 +60,9 @@
         state.onion, state.activeLayerId
       );
     } else {
-      renderFrame(displayCtx, state.project, state.playhead, DPR);
+      // Line boil is a playback-only effect (so you never see your drawing warped while editing).
+      const boil = state.boil.enabled && state.playback.isPlaying ? state.boil : undefined;
+      renderFrame(displayCtx, state.project, state.playhead, DPR, { boil });
     }
   }
 

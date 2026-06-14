@@ -1,10 +1,13 @@
 import { buildFrameDrawList, containRect, mediaIntrinsicSize, type Project } from "./document";
+import { drawBoiled, type BoilConfig } from "../core/boil";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
   drawBg?: boolean;
   /** Include reference layers. Default true (display); export passes false. */
   includeReference?: boolean;
+  /** Line-boil warp for drawing layers (prototype). Omitted = no boil. */
+  boil?: BoilConfig;
 }
 
 /**
@@ -18,8 +21,10 @@ export function compositeFrameLayers(
   project: Project,
   frame: number,
   dpr: number,
-  includeReference = true
+  includeReference = true,
+  boil?: BoilConfig
 ): void {
+  const w = project.width * dpr, h = project.height * dpr;
   const layersById = new Map(project.layers.map((l) => [l.id, l]));
   for (const op of buildFrameDrawList(project, frame, includeReference)) {
     const layer = layersById.get(op.layerId)!;
@@ -27,7 +32,13 @@ export function compositeFrameLayers(
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      ctx.drawImage(cell.canvas, 0, 0);
+      if (boil && boil.amount > 0) {
+        // Per-layer phase (layerId) + cycle of `rate` warps (frame) → independent line boil.
+        const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
+        drawBoiled(ctx, cell.canvas, w, h, { amount: boil.amount, cols: boil.cols, seed });
+      } else {
+        ctx.drawImage(cell.canvas, 0, 0);
+      }
     } else if (op.kind === "ref" && layer.kind === "ref") {
       const size = mediaIntrinsicSize(layer.media);
       if (size.w === 0 || size.h === 0) continue; // media not loaded yet
@@ -49,7 +60,7 @@ export function renderFrame(
   dpr: number,
   opts: RenderOpts = {}
 ): void {
-  const { drawBg = true, includeReference = true } = opts;
+  const { drawBg = true, includeReference = true, boil } = opts;
 
   // Reset to identity first so clearRect/fillRect/drawImage operate in raw device
   // pixels regardless of any transform the context carried in.
@@ -62,5 +73,5 @@ export function renderFrame(
     ctx.fillRect(0, 0, project.width * dpr, project.height * dpr);
   }
 
-  compositeFrameLayers(ctx, project, frame, dpr, includeReference);
+  compositeFrameLayers(ctx, project, frame, dpr, includeReference, boil);
 }

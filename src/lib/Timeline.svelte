@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers } from "@lucide/svelte";
+  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers, Waves } from "@lucide/svelte";
   import { state, canvasOps, activeLayer, bump, history, commitStructural,
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
@@ -223,6 +223,18 @@
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Onion: ghost all layers">
       <input type="checkbox" bind:checked={state.onion.allLayers} onchange={bump} /> all layers
     </label>
+
+    <span class="w-px h-5 bg-border mx-1"></span>
+
+    <!-- line boil (prototype) — applied during playback; each layer boils on its own phase -->
+    <button class={toolBtn} class:bg-surface-active={state.boil.enabled} title="Line boil (playback)"
+            onclick={() => { state.boil.enabled = !state.boil.enabled; bump(); }}><Waves size={16} /></button>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil amount (px)">amt
+      <input type="range" class="w-16" min="0" max="8" step="0.5" bind:value={state.boil.amount} /></label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil detail (grid columns)">grid
+      <input type="range" class="w-16" min="4" max="40" step="1" bind:value={state.boil.cols} /></label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil rate (cycle N warps — on twos/threes)">rate
+      <input type="range" class="w-12" min="1" max="8" step="1" bind:value={state.boil.rate} /></label>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
