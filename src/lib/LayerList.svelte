@@ -2,16 +2,13 @@
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
   import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical } from "@lucide/svelte";
-  import { state, bump, removeLayer, duplicateLayer, mergeDown, reorderLayers } from "../state/appState.svelte";
+  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, reorderLayers } from "../state/appState.svelte";
   import { createDrawingLayer } from "../anim/document";
 
   let listEl: HTMLDivElement;
 
   function addLayer() {
-    const layer = createDrawingLayer(state.project.frameCount);
-    state.project.layers.push(layer);
-    state.activeLayerId = layer.id;
-    bump();
+    addLayerToProject(createDrawingLayer(state.project.frameCount)); // undoable
   }
 
   // Display order is top-first (reverse of the bottom→top data order).
