@@ -6,7 +6,7 @@
   import Timeline from "./lib/Timeline.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
   import { onMount } from "svelte";
-  import { state, history, bump, playbackController, selectionRef, DPR, replaceProject } from "./state/appState.svelte";
+  import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
 
   function onKey(e: KeyboardEvent) {
@@ -25,6 +25,8 @@
     else if (e.key === "g") state.tool = "fill";
     else if (e.key === "s") state.tool = "select";
     else if (e.key === "l") state.tool = "lasso";
+    else if (e.key === "w") { if (selectionRef.current?.active) { e.preventDefault(); selectionActions.enterWarp?.(2, 2); } }
+    else if (e.key === "m") { if (selectionRef.current?.active) { e.preventDefault(); selectionActions.enterWarp?.(3, 3); } }
     else if (e.key === "Escape") { if (selectionRef.current?.active) selectionRef.current.cancel(); }
     else if (e.key === "Enter") {
       e.preventDefault();
