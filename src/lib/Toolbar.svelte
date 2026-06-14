@@ -1,11 +1,21 @@
 <script lang="ts">
-  import { state, history, bump, addLayerToProject, replaceProject, DPR } from "../state/appState.svelte";
+  import { onMount } from "svelte";
+  import { writable } from "svelte/store";
+  import { state, history, bump, addLayerToProject, replaceProject, DPR, pressureCurve } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
   import { clearAutosave } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
   import { createProject } from "../anim/document";
-  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Sun, Moon } from "@lucide/svelte";
+  import { createCurveEditor } from "../core/pressure-curve";
+  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Sun, Moon, Spline } from "@lucide/svelte";
+
+  const curveOpen = writable(false);
+  let curvePopupEl: HTMLDivElement;
+
+  onMount(() => {
+    curvePopupEl.appendChild(createCurveEditor(pressureCurve, () => {}));
+  });
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" = "image";
@@ -83,6 +93,31 @@
     <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />
     <span class="text-xs text-text-secondary w-6">{state.sizeRange}×</span>
   </label>
+  <select class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1" bind:value={state.brushType} title="Brush type">
+    <option value="smooth">Smooth</option>
+    <option value="pencil">Pencil</option>
+    <option value="charcoal">Charcoal</option>
+    <option value="airbrush">Airbrush</option>
+  </select>
+  <label class="flex items-center gap-1 text-xs text-text-secondary">Opacity
+    <input type="range" min="1" max="100" class="w-16" bind:value={state.brush.opacity} />
+  </label>
+  <label class="flex items-center gap-1 text-xs text-text-secondary">Smooth
+    <input type="range" min="0" max="100" class="w-16" bind:value={state.brush.smoothing} />
+  </label>
+  <label class="flex items-center gap-1 text-xs text-text-secondary">Stream
+    <input type="range" min="0" max="100" class="w-16" bind:value={state.streamline} />
+  </label>
+  <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
+    <input type="checkbox" bind:checked={state.brush.taper} /> Taper
+  </label>
+  <div class="relative">
+    <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+            class:bg-surface-active={$curveOpen} title="Pressure curve" onclick={() => curveOpen.update(v => !v)}>
+      <Spline size={18} />
+    </button>
+    <div class="curve-popup" class:open={$curveOpen} bind:this={curvePopupEl}></div>
+  </div>
   <input type="color" bind:value={state.brush.color} />
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
