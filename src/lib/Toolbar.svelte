@@ -95,6 +95,7 @@
   </label>
   <select class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1" bind:value={state.brushType} title="Brush type">
     <option value="smooth">Smooth</option>
+    <option value="ink">Ink</option>
     <option value="pencil">Pencil</option>
     <option value="charcoal">Charcoal</option>
     <option value="airbrush">Airbrush</option>

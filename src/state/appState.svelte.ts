@@ -3,6 +3,9 @@ import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
 import { PressureCurve } from "../core/pressure-curve";
+
+/** Brush selection: smooth (perfect-freehand), ink (incremental marker), or a textured stamp type. */
+export type BrushKind = "smooth" | "ink" | BrushType;
 import { ensureDrawableKeyframe, type CanvasOps } from "../anim/timeline";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
@@ -18,7 +21,7 @@ interface AnimState {
   brush: BrushSettings;
   sizeRange: number;
   streamline: number;
-  brushType: BrushType;
+  brushType: BrushKind;
   fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
