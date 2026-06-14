@@ -154,3 +154,39 @@ export function moveKeyframe(layer: DrawingLayer, from: number, to: number): voi
     layer.cells[from] = { kind: "hold" };
   }
 }
+
+/** One merged cell: a hold, or a keyframe carrying the resolved below+upper canvases to composite. */
+export type MergePlan =
+  | { kind: "hold" }
+  | { kind: "key"; below: HTMLCanvasElement | null; upper: HTMLCanvasElement | null };
+
+/**
+ * Plan merging `upperCells` down onto `belowCells` without touching pixels.
+ * A keyframe is produced only at the UNION of the two layers' keyframe positions (so holds
+ * stay holds); each carries the canvas each layer *shows* at that frame (its resolved keyframe,
+ * or null if that layer is blank there) for the caller to composite. Length = the longer layer.
+ */
+export function planMergeDown(belowCells: Cell[], upperCells: Cell[]): MergePlan[] {
+  const len = Math.max(belowCells.length, upperCells.length);
+  const plan: MergePlan[] = [];
+  for (let f = 0; f < len; f++) {
+    const bc = belowCells[f];
+    const uc = upperCells[f];
+    const bKey = bc !== undefined && bc.kind === "key";
+    const uKey = uc !== undefined && uc.kind === "key";
+    if (!bKey && !uKey) {
+      plan.push({ kind: "hold" });
+      continue;
+    }
+    const bki = resolveKeyframeIndex(belowCells, f);
+    const uki = resolveKeyframeIndex(upperCells, f);
+    const bResolved = bki === null ? null : belowCells[bki];
+    const uResolved = uki === null ? null : upperCells[uki];
+    plan.push({
+      kind: "key",
+      below: bResolved && bResolved.kind === "key" ? bResolved.canvas : null,
+      upper: uResolved && uResolved.kind === "key" ? uResolved.canvas : null,
+    });
+  }
+  return plan;
+}

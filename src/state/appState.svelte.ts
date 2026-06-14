@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveKeyframeIndex, refreshLength, type Project, type Layer, type Cell, type DrawingLayer } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, refreshLength, type Project, type Layer, type Cell } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
@@ -6,7 +6,7 @@ import { PressureCurve } from "../core/pressure-curve";
 
 /** Brush selection: smooth (perfect-freehand), ink (incremental marker), or a textured stamp type. */
 export type BrushKind = "smooth" | "ink" | BrushType;
-import { ensureDrawableKeyframe, type CanvasOps } from "../anim/timeline";
+import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback } from "../anim/playback";
@@ -137,20 +137,21 @@ export function mergeDown(id: number) {
   const below = layers[idx - 1];
   if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return;
 
-  for (let f = 0; f < state.project.frameCount; f++) {
-    const uki = resolveKeyframeIndex(upper.cells, f);
-    if (uki === null) continue;
-    const uCell = upper.cells[uki];
-    if (uCell.kind !== "key") continue;
-    // Ensure the lower layer owns a keyframe at this frame, then blit the upper onto it.
-    const target = ensureDrawableKeyframe(below as DrawingLayer, f, canvasOps);
-    const ctx = target.getContext("2d")!;
-    ctx.save();
+  // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
+  // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
+  // so the result is independent of mutation order.
+  below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
+    if (p.kind === "hold") return { kind: "hold" };
+    const canvas = canvasOps.create();
+    const ctx = canvas.getContext("2d")!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = upper.opacity / 100;
-    ctx.drawImage(uCell.canvas, 0, 0);
-    ctx.restore();
-  }
+    if (p.below) ctx.drawImage(p.below, 0, 0);
+    if (p.upper) {
+      ctx.globalAlpha = upper.opacity / 100;
+      ctx.drawImage(p.upper, 0, 0);
+    }
+    return { kind: "key", canvas };
+  });
   layers.splice(idx, 1);
   state.activeLayerId = below.id;
   bump();
