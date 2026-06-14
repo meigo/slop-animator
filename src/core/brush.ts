@@ -9,6 +9,7 @@ export interface BrushSettings {
   isEraser: boolean;
   drawBehind: boolean;
   alphaLock: boolean;
+  taper?: boolean;
 }
 
 /**
@@ -41,8 +42,8 @@ export function drawStroke(
     thinning: 1,
     smoothing: settings.smoothing / 100,
     streamline: 0.3,
-    start: { taper: false, cap: true },
-    end: { taper: false, cap: true },
+    start: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
+    end: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
     last: done,
     // Always use our supplied (mapped) pressure. perfect-freehand's simulatePressure
     // is velocity-based and would override our size mapping, leaving the cursor

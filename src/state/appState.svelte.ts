@@ -1,6 +1,8 @@
 import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveKeyframeIndex, type Project, type Layer, type Cell, type DrawingLayer } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
+import type { BrushType } from "../core/brush-textures";
+import { PressureCurve } from "../core/pressure-curve";
 import { ensureDrawableKeyframe, type CanvasOps } from "../anim/timeline";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
@@ -16,6 +18,7 @@ interface AnimState {
   brush: BrushSettings;
   sizeRange: number;
   streamline: number;
+  brushType: BrushType;
   fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
@@ -40,9 +43,11 @@ export const state: AnimState = $state({
     isEraser: false,
     drawBehind: false,
     alphaLock: false,
+    taper: false,
   },
   sizeRange: 3.0, // full pen pressure → 3× the base brush width (light pressure → base)
   streamline: 50,
+  brushType: "smooth",
   fill: { tolerance: 32, expand: 2 },
   version: 0,
   exportOpen: false,
@@ -183,3 +188,6 @@ export const selectionRef: { current: Selection | null } = { current: null };
 
 /** Canvas-owned selection actions reachable from App keyboard shortcuts (W/M warp). */
 export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = { enterWarp: null };
+
+/** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
+export const pressureCurve = new PressureCurve();

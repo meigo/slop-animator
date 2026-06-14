@@ -8,8 +8,9 @@
   import { renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
-  import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
+  import { state, history, DPR, canvasOps, activeLayer, bump, pressureCurve } from "../state/appState.svelte";
   import { selectionRef, selectionActions } from "../state/appState.svelte";
+  import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
@@ -151,18 +152,31 @@
       strokeCanvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
+      if (state.brushType !== "smooth") resetStampState();
       bump();
     }
 
-    // Re-render the in-progress stroke from the pre-stroke snapshot each move,
-    // clipped to the active selection (if any) so painting/erasing stays inside it.
-    strokeCtx!.putImageData(beforeSnapshot!, 0, 0);
-    strokeCtx!.save();
-    strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
-    selection?.applyClip(strokeCtx!);
+    // Remap pen pressure through the user's curve.
+    const curved = points.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
-    drawStroke(strokeCtx!, points, settings, done, state.sizeRange);
-    strokeCtx!.restore();
+
+    if (state.brushType === "smooth") {
+      // Smooth (perfect-freehand): redraw the whole stroke from the pre-stroke snapshot,
+      // clipped to the active selection.
+      strokeCtx!.putImageData(beforeSnapshot!, 0, 0);
+      strokeCtx!.save();
+      strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(strokeCtx!);
+      drawStroke(strokeCtx!, curved, settings, done, state.sizeRange);
+      strokeCtx!.restore();
+    } else {
+      // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
+      strokeCtx!.save();
+      strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(strokeCtx!);
+      drawStampStrokeIncremental(strokeCtx!, curved, { ...settings, brushType: state.brushType }, state.sizeRange);
+      strokeCtx!.restore();
+    }
     recomposite();
 
     if (done) {
