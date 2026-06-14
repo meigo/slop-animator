@@ -5,6 +5,7 @@
   import { clearAutosave } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
   import { createProject } from "../anim/document";
+  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Sun, Moon } from "@lucide/svelte";
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" = "image";
@@ -37,31 +38,96 @@
     replaceProject(createProject());
     await clearAutosave();
   }
+
+  function toggleTheme() {
+    state.theme = state.theme === "dark" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", state.theme === "dark");
+  }
 </script>
 
-<div class="flex items-center gap-2 p-2 border-b border-neutral-300 bg-neutral-100">
-  <button class:font-bold={state.tool === "brush"} onclick={() => (state.tool = "brush")}>Brush</button>
-  <button class:font-bold={state.tool === "eraser"} onclick={() => (state.tool = "eraser")}>Eraser</button>
-  <button class:font-bold={state.tool === "fill"} onclick={() => (state.tool = "fill")}>Fill</button>
-  <button class:font-bold={state.tool === "select"} onclick={() => (state.tool = "select")}>Select</button>
-  <button class:font-bold={state.tool === "lasso"} onclick={() => (state.tool = "lasso")}>Lasso</button>
-  <label class="flex items-center gap-1 text-sm">Size
+<div class="flex items-center gap-2 p-2 border-b border-border bg-surface text-text">
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={state.tool === "brush"}
+    title="Brush"
+    onclick={() => (state.tool = "brush")}
+  ><Paintbrush size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={state.tool === "eraser"}
+    title="Eraser"
+    onclick={() => (state.tool = "eraser")}
+  ><Eraser size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={state.tool === "fill"}
+    title="Fill"
+    onclick={() => (state.tool = "fill")}
+  ><PaintBucket size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={state.tool === "select"}
+    title="Select"
+    onclick={() => (state.tool = "select")}
+  ><BoxSelect size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={state.tool === "lasso"}
+    title="Lasso"
+    onclick={() => (state.tool = "lasso")}
+  ><Lasso size={18} /></button>
+  <label class="flex items-center gap-1 text-sm text-text-secondary">Size
     <input type="range" min="0.5" max="60" step="0.5" bind:value={state.brush.size} />
   </label>
-  <label class="flex items-center gap-1 text-sm" title="How much pen pressure widens the stroke">Press
+  <label class="flex items-center gap-1 text-sm text-text-secondary" title="How much pen pressure widens the stroke">Press
     <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />
-    <span class="text-xs text-neutral-500 w-6">{state.sizeRange}×</span>
+    <span class="text-xs text-text-secondary w-6">{state.sizeRange}×</span>
   </label>
   <input type="color" bind:value={state.brush.color} />
-  <button onclick={() => history.undo()}>Undo</button>
-  <button onclick={() => history.redo()}>Redo</button>
-  <span class="w-px h-5 bg-neutral-300 mx-1"></span>
-  <button onclick={() => pick("image")}>Add Image</button>
-  <button onclick={() => pick("video")}>Add Video</button>
-  <button onclick={() => (state.exportOpen = true)}>Export</button>
-  <span class="w-px h-5 bg-neutral-300 mx-1"></span>
-  <button onclick={saveProject}>Save</button>
-  <button onclick={() => pick("project")}>Open</button>
-  <button onclick={newProject}>New</button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Undo"
+    onclick={() => history.undo()}
+  ><Undo2 size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Redo"
+    onclick={() => history.redo()}
+  ><Redo2 size={18} /></button>
+  <span class="w-px h-5 bg-border mx-1"></span>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Add Image"
+    onclick={() => pick("image")}
+  ><Image size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Add Video"
+    onclick={() => pick("video")}
+  ><Film size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Export"
+    onclick={() => (state.exportOpen = true)}
+  ><Download size={18} /></button>
+  <span class="w-px h-5 bg-border mx-1"></span>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Save"
+    onclick={saveProject}
+  ><Save size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Open"
+    onclick={() => pick("project")}
+  ><FolderOpen size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="New"
+    onclick={newProject}
+  ><FilePlus2 size={18} /></button>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
+  <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover ml-auto" title="Toggle theme" onclick={toggleTheme}>
+    {#if state.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}
+  </button>
 </div>
