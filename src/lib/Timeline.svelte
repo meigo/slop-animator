@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Plus, Diamond, Copy, Minus, Eraser, Trash2 } from "@lucide/svelte";
-  import { state, canvasOps, activeLayer, bump, history } from "../state/appState.svelte";
+  import { state, canvasOps, activeLayer, bump, history, commitStructural } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell } from "../anim/document";
   import { columnAtX } from "./timeline-grid";
@@ -62,38 +62,32 @@
 
   // All tools act on the active drawing layer at the current frame, current-frame-aware
   // (inserts land AFTER the playhead, then the playhead follows to the new frame).
+  // Frame tools are undoable structural edits. Advancing the playhead happens inside the
+  // mutation so commitStructural's trailing bump() refreshes the length and clamps it.
   function frameTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    addFrame(l, state.playhead);
-    bump();
-    go(state.playhead + 1);
+    commitStructural(() => { addFrame(l, state.playhead); state.playhead += 1; });
   }
   function keyTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    insertKeyframe(l, state.playhead, canvasOps);
-    bump();
-    go(state.playhead + 1);
+    commitStructural(() => { insertKeyframe(l, state.playhead, canvasOps); state.playhead += 1; });
   }
   function dupTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    duplicateKeyframe(l, state.playhead, canvasOps);
-    bump();
-    go(state.playhead + 1);
+    commitStructural(() => { duplicateKeyframe(l, state.playhead, canvasOps); state.playhead += 1; });
   }
   function holdTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    setHold(l, state.playhead);
-    bump();
+    commitStructural(() => setHold(l, state.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    deleteFrame(l, state.playhead);
-    bump();
+    commitStructural(() => deleteFrame(l, state.playhead));
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.

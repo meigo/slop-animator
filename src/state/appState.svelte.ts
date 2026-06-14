@@ -81,11 +81,73 @@ export function activeLayer() {
   return state.project.layers.find((l) => l.id === state.activeLayerId) ?? state.project.layers[0];
 }
 
+/**
+ * Snapshot of the document STRUCTURE (not pixels): the layer stack, each drawing layer's
+ * cell track, plus frame count and cursor. Canvas references are SHARED — structural edits
+ * never touch pixels, so undo only needs to restore which cells/layers exist where.
+ */
+interface StructSnapshot {
+  layers: Layer[];
+  frameCount: number;
+  activeLayerId: number;
+  playhead: number;
+}
+function cloneLayers(layers: Layer[]): Layer[] {
+  // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
+  // in-place mutations (splice/replace) can't corrupt a stored snapshot.
+  return layers.map((l) => (l.kind === "draw" ? { ...l, cells: l.cells.slice() } : { ...l }));
+}
+function snapshotStructure(): StructSnapshot {
+  return {
+    layers: cloneLayers(state.project.layers),
+    frameCount: state.project.frameCount,
+    activeLayerId: state.activeLayerId,
+    playhead: state.playhead,
+  };
+}
+function restoreStructure(s: StructSnapshot) {
+  // Restore the layer set/order and each drawing layer's cells, but keep view-props
+  // (visible/opacity/locked/name) from the LIVE layer when it still exists — those are
+  // deliberately not part of undo, so an unrelated structural undo must not revert them.
+  const liveById = new Map(state.project.layers.map((l) => [l.id, l]));
+  state.project.layers = s.layers.map((snap) => {
+    const live = liveById.get(snap.id);
+    if (live) {
+      if (live.kind === "draw" && snap.kind === "draw") live.cells = snap.cells.slice();
+      return live;
+    }
+    // Layer was removed since the snapshot → bring back the snapshot's clone wholesale.
+    return snap.kind === "draw" ? { ...snap, cells: snap.cells.slice() } : { ...snap };
+  });
+  state.project.frameCount = s.frameCount;
+  state.activeLayerId = s.activeLayerId;
+  state.playhead = s.playhead;
+  state.version++;
+}
+
+/**
+ * Run a structural mutation and make it undoable by snapshotting the document structure
+ * before and after. Use for layer- and frame-level edits; pixel edits keep their own
+ * getImageData/putImageData commands. Structural and pixel commands share the same undo
+ * stack and interleave correctly because snapshots keep the same canvas references.
+ */
+export function commitStructural(mutate: () => void) {
+  const before = snapshotStructure();
+  mutate();
+  bump(); // refresh document length + clamp playhead, then bump version
+  const after = snapshotStructure();
+  history.push({
+    undo: () => restoreStructure(before),
+    redo: () => restoreStructure(after),
+  });
+}
+
 /** Append a layer (drawing or reference) on top and make it active. */
 export function addLayerToProject(layer: Layer) {
-  state.project.layers.push(layer);
-  state.activeLayerId = layer.id;
-  bump();
+  commitStructural(() => {
+    state.project.layers.push(layer);
+    state.activeLayerId = layer.id;
+  });
 }
 
 /** Remove a layer by id, keeping at least one drawing layer. */
@@ -95,18 +157,20 @@ export function removeLayer(id: number) {
   if (idx === -1) return;
   const drawingCount = layers.filter(isDrawingLayer).length;
   if (isDrawingLayer(layers[idx]) && drawingCount <= 1) return; // keep one drawing layer
-  layers.splice(idx, 1);
-  if (state.activeLayerId === id) {
-    const firstDrawing = layers.find(isDrawingLayer);
-    if (firstDrawing) state.activeLayerId = firstDrawing.id;
-  }
-  bump();
+  commitStructural(() => {
+    layers.splice(idx, 1);
+    if (state.activeLayerId === id) {
+      const firstDrawing = layers.find(isDrawingLayer);
+      if (firstDrawing) state.activeLayerId = firstDrawing.id;
+    }
+  });
 }
 
 /** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
 export function reorderLayers(ordered: Layer[]) {
-  state.project.layers = ordered;
-  bump();
+  commitStructural(() => {
+    state.project.layers = ordered;
+  });
 }
 
 /** Duplicate a drawing layer (cloning every key cell's canvas) above it, and make it active. */
@@ -116,16 +180,17 @@ export function duplicateLayer(id: number) {
   if (idx === -1) return;
   const src = layers[idx];
   if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels)
-  const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
-  dup.visible = src.visible;
-  dup.locked = src.locked;
-  dup.opacity = src.opacity;
-  dup.cells = src.cells.map((c): Cell =>
-    c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
-  );
-  layers.splice(idx + 1, 0, dup);
-  state.activeLayerId = dup.id;
-  bump();
+  commitStructural(() => {
+    const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
+    dup.visible = src.visible;
+    dup.locked = src.locked;
+    dup.opacity = src.opacity;
+    dup.cells = src.cells.map((c): Cell =>
+      c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
+    );
+    layers.splice(idx + 1, 0, dup);
+    state.activeLayerId = dup.id;
+  });
 }
 
 /** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */
@@ -137,28 +202,30 @@ export function mergeDown(id: number) {
   const below = layers[idx - 1];
   if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return;
 
-  // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
-  // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
-  // so the result is independent of mutation order.
-  below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
-    if (p.kind === "hold") return { kind: "hold" };
-    const canvas = canvasOps.create();
-    const ctx = canvas.getContext("2d")!;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (p.below) ctx.drawImage(p.below, 0, 0);
-    if (p.upper) {
-      ctx.globalAlpha = upper.opacity / 100;
-      ctx.drawImage(p.upper, 0, 0);
-    }
-    return { kind: "key", canvas };
+  commitStructural(() => {
+    // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
+    // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
+    // so the result is independent of mutation order.
+    below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
+      if (p.kind === "hold") return { kind: "hold" };
+      const canvas = canvasOps.create();
+      const ctx = canvas.getContext("2d")!;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (p.below) ctx.drawImage(p.below, 0, 0);
+      if (p.upper) {
+        ctx.globalAlpha = upper.opacity / 100;
+        ctx.drawImage(p.upper, 0, 0);
+      }
+      return { kind: "key", canvas };
+    });
+    layers.splice(idx, 1);
+    state.activeLayerId = below.id;
   });
-  layers.splice(idx, 1);
-  state.activeLayerId = below.id;
-  bump();
 }
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  history.clear(); // undo history from the old document can't apply to the new one
   state.project = project;
   state.playhead = 0;
   const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
