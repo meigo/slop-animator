@@ -1,4 +1,4 @@
-import { isDrawingLayer, createCellCanvas, setMinLayerId, type Project, type Cell, type DrawingLayer } from "../anim/document";
+import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, type Project, type Cell, type DrawingLayer } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 
 export interface DrawingLayerJson {
@@ -108,8 +108,10 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     });
   }
   setMinLayerId(maxId + 1);
-  return {
+  const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
     bgColor: json.bgColor, frameCount: json.frameCount, layers,
   };
+  refreshLength(project); // independent per-layer lengths → derive document length from the layers
+  return project;
 }

@@ -1,4 +1,4 @@
-import { resolveKeyframeIndex, type DrawingLayer, type Project } from "./document";
+import { resolveKeyframeIndex, refreshLength, type Cell, type DrawingLayer, type Project } from "./document";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -6,22 +6,33 @@ export interface CanvasOps {
   clone(src: HTMLCanvasElement): HTMLCanvasElement;
 }
 
-/** Append one blank (hold) frame to every layer. */
-export function addFrame(project: Project): void {
-  project.frameCount += 1;
-  for (const layer of project.layers) {
-    if (layer.kind !== "draw") continue;
-    layer.cells.push({ kind: "hold" });
-  }
+/** Insert a hold AFTER `after` on this layer, extending the current held span by one frame. */
+export function addFrame(layer: DrawingLayer, after: number): void {
+  const at = clampIndex(layer, after);
+  layer.cells.splice(at + 1, 0, { kind: "hold" });
+}
+
+/** Clamp a target index to the last existing cell so "after current" always lands inside the track. */
+function clampIndex(layer: DrawingLayer, frame: number): number {
+  return Math.max(0, Math.min(frame, layer.cells.length - 1));
 }
 
 /**
- * Make the cell at `frame` a blank keyframe (Flash "Insert Keyframe" / F6 semantics:
- * in-place promotion of this cell, not a structural shift of later cells).
- * Replaces whatever was there — if the cell was already a keyframe, its drawing is discarded.
+ * Insert a new keyframe AFTER `after`, cloning the drawing currently shown at `after`
+ * (the resolved keyframe, or blank if none). Shifts later cells right. ("Insert keyframe" / F6.)
  */
-export function insertKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): void {
-  layer.cells[frame] = { kind: "key", canvas: ops.create() };
+export function insertKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
+  const at = clampIndex(layer, after);
+  const ki = resolveKeyframeIndex(layer.cells, at);
+  const src = ki === null ? null : layer.cells[ki];
+  const canvas = src && src.kind === "key" ? ops.clone(src.canvas) : ops.create();
+  layer.cells.splice(at + 1, 0, { kind: "key", canvas });
+}
+
+/** Insert an empty keyframe AFTER `after`, shifting later cells right. ("Insert blank keyframe" / F7.) */
+export function insertBlankKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
+  const at = clampIndex(layer, after);
+  layer.cells.splice(at + 1, 0, { kind: "key", canvas: ops.create() });
 }
 
 /** Make the cell at `frame` a hold. */
@@ -29,32 +40,33 @@ export function setHold(layer: DrawingLayer, frame: number): void {
   layer.cells[frame] = { kind: "hold" };
 }
 
-/** Make `frame` a keyframe whose canvas is a clone of the keyframe currently shown there. */
+/** Duplicate the keyframe shown at `frame` into a new keyframe right after it. */
 export function duplicateKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): void {
-  const ki = resolveKeyframeIndex(layer.cells, frame);
-  const cell = ki === null ? null : layer.cells[ki];
-  const canvas = cell && cell.kind === "key" ? ops.clone(cell.canvas) : ops.create();
-  layer.cells[frame] = { kind: "key", canvas };
+  insertKeyframe(layer, frame, ops);
 }
 
-/** Remove the frame column from every layer. No-op if only one frame remains or `frame` is out of range. */
-export function deleteFrame(project: Project, frame: number): void {
-  if (project.frameCount <= 1) return;
-  if (frame < 0 || frame >= project.frameCount) return;
-  project.frameCount -= 1;
-  for (const layer of project.layers) {
-    if (layer.kind !== "draw") continue;
-    layer.cells.splice(frame, 1);
-  }
+/** Remove the cell at `frame` on this layer, shifting later cells left. Keeps at least one cell. */
+export function deleteFrame(layer: DrawingLayer, frame: number): void {
+  if (layer.cells.length <= 1) return;
+  if (frame < 0 || frame >= layer.cells.length) return;
+  layer.cells.splice(frame, 1);
 }
 
 /**
  * Guarantee the cell at `frame` is a keyframe and return its canvas, so a tool can draw on it.
+ * - Past the layer's end → extend with holds up to `frame`, then a fresh blank keyframe.
  * - Already a keyframe → returns its canvas unchanged.
  * - A hold over an earlier keyframe → clones that drawing (draw-on-hold = clone & edit on top).
  * - A hold with nothing held → a fresh blank keyframe.
  */
 export function ensureDrawableKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): HTMLCanvasElement {
+  if (frame >= layer.cells.length) {
+    while (layer.cells.length < frame) layer.cells.push({ kind: "hold" });
+    const canvas = ops.create();
+    layer.cells.push({ kind: "key", canvas });
+    return canvas;
+  }
+
   const current = layer.cells[frame];
   if (current.kind === "key") return current.canvas;
 
@@ -63,4 +75,82 @@ export function ensureDrawableKeyframe(layer: DrawingLayer, frame: number, ops: 
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();
   layer.cells[frame] = { kind: "key", canvas };
   return canvas;
+}
+
+/** Insert a hold at index `at` in EVERY drawing layer (global shift), then refresh document length. */
+export function insertFrameAllLayers(project: Project, at: number): void {
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
+    const idx = Math.max(0, Math.min(at, layer.cells.length));
+    layer.cells.splice(idx, 0, { kind: "hold" });
+  }
+  refreshLength(project);
+}
+
+/** Remove index `at` from every drawing layer that has it (global shift), keeping ≥1 cell each. */
+export function deleteFrameAllLayers(project: Project, at: number): void {
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
+    if (layer.cells.length <= 1) continue;
+    if (at < 0 || at >= layer.cells.length) continue;
+    layer.cells.splice(at, 1);
+  }
+  refreshLength(project);
+}
+
+/**
+ * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
+ * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
+ * Growing inserts holds at the span boundary (pushing following keys right); shrinking removes
+ * trailing holds of this span only (pulling following keys left) — it never deletes another key.
+ * No-op if `keyFrame` is not a key.
+ */
+export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number): void {
+  if (keyFrame < 0 || keyFrame >= layer.cells.length) return;
+  if (layer.cells[keyFrame].kind !== "key") return;
+
+  const desired = Math.max(1, Math.floor(span));
+  let next = keyFrame + 1;
+  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  const current = next - keyFrame; // cells owned: the key plus its trailing holds
+  if (desired === current) return;
+
+  if (desired > current) {
+    const holds: Cell[] = Array.from({ length: desired - current }, () => ({ kind: "hold" }) as Cell);
+    layer.cells.splice(keyFrame + current, 0, ...holds);
+  } else {
+    layer.cells.splice(keyFrame + desired, current - desired);
+  }
+}
+
+/**
+ * Move the keyframe at `from` to `to` on the same layer.
+ * - Source cell becomes a hold.
+ * - If `to` is a hold cell → the key lands there.
+ * - If `to` is itself a key → the two keyframes swap.
+ * - If `to` is past the end → the layer extends (padding holds) and the key is appended.
+ * No-op if `from` is not a key or `to === from`.
+ */
+export function moveKeyframe(layer: DrawingLayer, from: number, to: number): void {
+  if (to === from) return;
+  if (from < 0 || from >= layer.cells.length) return;
+  const moving = layer.cells[from];
+  if (moving.kind !== "key") return;
+
+  if (to >= layer.cells.length) {
+    layer.cells[from] = { kind: "hold" };
+    while (layer.cells.length < to) layer.cells.push({ kind: "hold" });
+    layer.cells.push(moving);
+    return;
+  }
+  if (to < 0) return;
+
+  const target = layer.cells[to];
+  if (target.kind === "key") {
+    layer.cells[to] = moving;
+    layer.cells[from] = target; // swap
+  } else {
+    layer.cells[to] = moving;
+    layer.cells[from] = { kind: "hold" };
+  }
 }

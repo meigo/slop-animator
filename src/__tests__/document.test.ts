@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const hold = (): Cell => ({ kind: "hold" });
@@ -22,8 +22,9 @@ describe("resolveKeyframeIndex", () => {
     expect(resolveKeyframeIndex([key(), hold(), key(), hold()], 3)).toBe(2);
   });
 
-  it("clamps a frame index past the end to the last cell", () => {
-    expect(resolveKeyframeIndex([key(), hold()], 5)).toBe(0);
+  it("returns null past the end of the track (blank after end)", () => {
+    expect(resolveKeyframeIndex([key(), hold()], 5)).toBeNull();
+    expect(resolveKeyframeIndex([key(), hold()], 2)).toBeNull();
   });
 });
 
@@ -105,5 +106,41 @@ describe("createReferenceLayer", () => {
     expect(r.offsetFrames).toBe(0);
     expect(r.name).toBe("bg.png");
     expect(r.media).toBe(media);
+  });
+});
+
+describe("documentLength / refreshLength", () => {
+  const draw = (len: number): DrawingLayer => ({
+    kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100,
+    cells: Array.from({ length: len }, () => ({ kind: "hold" }) as Cell),
+  });
+  const ref = (): ReferenceLayer => ({
+    kind: "ref", id: 9, name: "R", visible: true, opacity: 60, offsetFrames: 0,
+    media: { type: "image", el: {} as HTMLImageElement },
+  });
+
+  it("documentLength is the longest drawing layer, ignoring reference layers", () => {
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+      layers: [draw(7), draw(3), ref()] };
+    expect(documentLength(p)).toBe(7);
+  });
+
+  it("documentLength floors at 1", () => {
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+      layers: [ref()] };
+    expect(documentLength(p)).toBe(1);
+  });
+
+  it("documentLength floors at 1 even for a zero-length draw layer", () => {
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+      layers: [draw(0)] };
+    expect(documentLength(p)).toBe(1);
+  });
+
+  it("refreshLength writes documentLength into frameCount", () => {
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 99,
+      layers: [draw(4)] };
+    refreshLength(p);
+    expect(p.frameCount).toBe(4);
   });
 });
