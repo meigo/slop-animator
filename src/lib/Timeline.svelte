@@ -104,6 +104,8 @@
     <div class="flex items-stretch mb-1">
       <span class="shrink-0" style="width: {LABEL_W}px"></span>
       <div class="flex cursor-ew-resize select-none" style="touch-action: none"
+           role="slider" tabindex="0" aria-label="Scrub frames"
+           aria-valuemin={1} aria-valuemax={state.project.frameCount} aria-valuenow={state.playhead + 1}
            onpointerdown={rulerDown} onpointermove={rulerMove}
            onpointerup={rulerUp} onpointercancel={rulerUp}>
         {#each Array(state.project.frameCount) as _, f}
