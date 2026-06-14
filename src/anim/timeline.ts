@@ -89,3 +89,35 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
   }
   refreshLength(project);
 }
+
+/**
+ * Move the keyframe at `from` to `to` on the same layer.
+ * - Source cell becomes a hold.
+ * - If `to` is a hold cell → the key lands there.
+ * - If `to` is itself a key → the two keyframes swap.
+ * - If `to` is past the end → the layer extends (padding holds) and the key is appended.
+ * No-op if `from` is not a key or `to === from`.
+ */
+export function moveKeyframe(layer: DrawingLayer, from: number, to: number): void {
+  if (to === from) return;
+  if (from < 0 || from >= layer.cells.length) return;
+  const moving = layer.cells[from];
+  if (moving.kind !== "key") return;
+
+  if (to >= layer.cells.length) {
+    layer.cells[from] = { kind: "hold" };
+    while (layer.cells.length < to) layer.cells.push({ kind: "hold" });
+    layer.cells.push(moving);
+    return;
+  }
+  if (to < 0) return;
+
+  const target = layer.cells[to];
+  if (target.kind === "key") {
+    layer.cells[to] = moving;
+    layer.cells[from] = target; // swap
+  } else {
+    layer.cells[to] = moving;
+    layer.cells[from] = { kind: "hold" };
+  }
+}

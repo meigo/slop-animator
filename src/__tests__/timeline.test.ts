@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
   addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
-  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, type CanvasOps,
+  ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, type CanvasOps,
 } from "../anim/timeline";
 
 // Fake canvases are tagged objects so we can assert identity/cloning without the DOM.
@@ -120,6 +120,45 @@ describe("timeline operations", () => {
     const l = layer([{ kind: "key", canvas: existing }]);
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
+  });
+});
+
+describe("moveKeyframe", () => {
+  it("moves a key onto a hold cell, leaving a hold behind", () => {
+    const k = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: k }, { kind: "hold" }, { kind: "hold" }]);
+    moveKeyframe(l, 0, 2);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "key", canvas: k });
+  });
+
+  it("swaps when the target is also a key", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: a }, { kind: "hold" }, { kind: "key", canvas: b }]);
+    moveKeyframe(l, 0, 2);
+    expect(l.cells[0]).toEqual({ kind: "key", canvas: b });
+    expect(l.cells[2]).toEqual({ kind: "key", canvas: a });
+  });
+
+  it("appends past the end, padding holds, and leaves a hold behind", () => {
+    const k = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: k }, { kind: "hold" }]);
+    moveKeyframe(l, 0, 3);
+    expect(l.cells.length).toBe(4);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3]).toEqual({ kind: "key", canvas: k });
+  });
+
+  it("is a no-op when the source is not a key or target equals source", () => {
+    const k = fakeOps.create();
+    const l = layer([{ kind: "hold" }, { kind: "key", canvas: k }]);
+    moveKeyframe(l, 0, 1); // source is a hold
+    expect(l.cells[1]).toEqual({ kind: "key", canvas: k });
+    moveKeyframe(l, 1, 1); // same index
+    expect(l.cells[1]).toEqual({ kind: "key", canvas: k });
   });
 });
 
