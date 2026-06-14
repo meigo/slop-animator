@@ -86,7 +86,7 @@ export function activeLayer() {
  * cell track, plus frame count and cursor. Canvas references are SHARED — structural edits
  * never touch pixels, so undo only needs to restore which cells/layers exist where.
  */
-interface StructSnapshot {
+export interface StructSnapshot {
   layers: Layer[];
   frameCount: number;
   activeLayerId: number;
@@ -125,21 +125,31 @@ function restoreStructure(s: StructSnapshot) {
   state.version++;
 }
 
-/**
- * Run a structural mutation and make it undoable by snapshotting the document structure
- * before and after. Use for layer- and frame-level edits; pixel edits keep their own
- * getImageData/putImageData commands. Structural and pixel commands share the same undo
- * stack and interleave correctly because snapshots keep the same canvas references.
- */
-export function commitStructural(mutate: () => void) {
-  const before = snapshotStructure();
-  mutate();
-  bump(); // refresh document length + clamp playhead, then bump version
+/** Begin a multi-event structural edit (e.g. a drag): capture the before-state. */
+export function beginStructuralEdit(): StructSnapshot {
+  return snapshotStructure();
+}
+
+/** Finish a structural edit started with beginStructuralEdit: push one undo command. */
+export function commitStructuralEdit(before: StructSnapshot): void {
   const after = snapshotStructure();
   history.push({
     undo: () => restoreStructure(before),
     redo: () => restoreStructure(after),
   });
+}
+
+/**
+ * Run a synchronous structural mutation and make it undoable by snapshotting the document
+ * structure before and after. Use for layer- and frame-level edits; pixel edits keep their
+ * own getImageData/putImageData commands. Structural and pixel commands share the same undo
+ * stack and interleave correctly because snapshots keep the same canvas references.
+ */
+export function commitStructural(mutate: () => void): void {
+  const before = beginStructuralEdit();
+  mutate();
+  bump(); // refresh document length + clamp playhead, then bump version
+  commitStructuralEdit(before);
 }
 
 /** Append a layer (drawing or reference) on top and make it active. */
