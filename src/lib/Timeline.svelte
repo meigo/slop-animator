@@ -71,6 +71,7 @@
   let dragKey = -1;      // keyIndex being moved or resized
   let dragTarget = -1;   // current target column (move ghost)
   let dragUndo: StructSnapshot | null = null;
+  let dragStartBoundary = -1; // span edge boundary at the start of a resize (to detect a real change)
   let rowCursor = "default";
 
   function rowOffset(e: PointerEvent): number {
@@ -78,6 +79,12 @@
   }
   function rowColumn(e: PointerEvent): number {
     return columnAtX(rowOffset(e), CELL_W, state.project.frameCount);
+  }
+  // Resize tracks the column BOUNDARY under the pointer, unclamped at the top end so a span can
+  // grow past the current document length (extending it). round() keeps the span unchanged when
+  // you first grab the edge.
+  function rowBoundary(e: PointerEvent): number {
+    return Math.max(0, Math.round(rowOffset(e) / CELL_W));
   }
 
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
@@ -88,6 +95,7 @@
     if (plan.kind === "resize") {
       dragMode = "resize";
       dragKey = plan.keyIndex;
+      dragStartBoundary = rowBoundary(e);
       dragUndo = beginStructuralEdit();
     } else if (plan.kind === "move") {
       dragMode = "move";
@@ -108,7 +116,7 @@
     if (dragMode === "seek") go(rowColumn(e));
     else if (dragMode === "move") dragTarget = rowColumn(e);
     else if (dragMode === "resize") {
-      setHoldSpan(layer, dragKey, Math.max(1, rowColumn(e) - dragKey + 1)); // live
+      setHoldSpan(layer, dragKey, Math.max(1, rowBoundary(e) - dragKey)); // live; boundary − key index
       bump();
     }
   }
@@ -118,13 +126,14 @@
       if (dragTarget >= 0 && dragTarget !== dragKey) commitStructural(() => moveKeyframe(layer, dragKey, dragTarget));
       else go(dragKey); // a click on a keyframe with no drag → seek to it
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
-      commitStructuralEdit(dragUndo); // one undo entry for the whole resize drag
+      if (rowBoundary(e) !== dragStartBoundary) commitStructuralEdit(dragUndo); // skip a no-op resize
     }
     dragMode = "none";
     dragLayerId = -1;
     dragKey = -1;
     dragTarget = -1;
     dragUndo = null;
+    dragStartBoundary = -1;
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";
