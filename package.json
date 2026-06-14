@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host",
     "build": "svelte-check && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
