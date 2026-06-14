@@ -1,6 +1,6 @@
 <script lang="ts">
   import { state, bump, playbackController } from "../state/appState.svelte";
-  import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Layers, Settings } from "@lucide/svelte";
+  import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Settings } from "@lucide/svelte";
 
   const FPS_PRESETS = [6, 8, 12, 24];
   // Playbar has no runes, so a plain let is reactive (legacy mode).
@@ -32,20 +32,14 @@
   <span class="text-text-secondary">Frame {state.playhead + 1}/{state.project.frameCount}</span>
 
   <div class="ml-auto flex items-center gap-1">
-    <!-- quick onion toggle -->
-    <button class={btn} class:bg-surface-active={state.onion.enabled} title="Onion skin"
-            onclick={() => { state.onion.enabled = !state.onion.enabled; bump(); }}>
-      <Layers size={16} />
-    </button>
-
-    <!-- settings -->
+    <!-- playback settings -->
     <div class="relative">
-      <button class={btn} class:bg-surface-active={settingsOpen} title="Playback & onion settings"
+      <button class={btn} class:bg-surface-active={settingsOpen} title="Playback settings"
               onclick={() => (settingsOpen = !settingsOpen)}>
         <Settings size={16} />
       </button>
       {#if settingsOpen}
-        <div class="absolute right-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs">
+        <div class="absolute right-0 bottom-full mb-2 z-30 w-48 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs">
           <div class="flex items-center gap-2">
             <span class="text-text-secondary w-8">fps</span>
             <input class="w-12 bg-surface border border-border text-text px-1" type="number" min="1" max="60"
@@ -58,15 +52,6 @@
             </div>
           </div>
           <label class="flex items-center gap-2"><input type="checkbox" bind:checked={state.playback.loop} /> <span class="text-text-secondary">Loop playback</span></label>
-          <div class="h-px bg-border"></div>
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={state.onion.enabled} onchange={bump} /> <span class="text-text-secondary">Onion skin</span></label>
-          <div class="flex items-center gap-2">
-            <span class="text-text-secondary w-8">prev</span>
-            <input class="w-12 bg-surface border border-border text-text px-1" type="number" min="0" max="3" bind:value={state.onion.prev} onchange={bump} />
-            <span class="text-text-secondary">next</span>
-            <input class="w-12 bg-surface border border-border text-text px-1" type="number" min="0" max="3" bind:value={state.onion.next} onchange={bump} />
-          </div>
-          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={state.onion.allLayers} onchange={bump} /> <span class="text-text-secondary">Onion: all layers</span></label>
         </div>
       {/if}
     </div>
