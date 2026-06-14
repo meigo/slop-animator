@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import {
-  addFrame, insertKeyframe, setHold, duplicateKeyframe, deleteFrame,
+  addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
   ensureDrawableKeyframe, type CanvasOps,
 } from "../anim/timeline";
 
@@ -49,10 +49,39 @@ describe("timeline operations", () => {
     expect(l.cells.length).toBe(2);
   });
 
-  it("insertKeyframe puts a blank keyframe at the frame", () => {
+  it("insertKeyframe inserts a clone of the shown drawing AFTER the current frame, shifting later cells", () => {
+    const src = fakeOps.create() as unknown as { __id: number };
+    const l = layer([{ kind: "key", canvas: src as unknown as HTMLCanvasElement }, { kind: "hold" }, { kind: "hold" }]);
+    insertKeyframe(l, 0, fakeOps); // after frame 0
+    expect(l.cells.length).toBe(4);
+    const inserted = l.cells[1];
+    expect(inserted.kind).toBe("key");
+    if (inserted.kind === "key") {
+      expect((inserted.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
+    }
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+  });
+
+  it("insertKeyframe on a blank frame inserts a blank keyframe after it", () => {
     const l = layer([{ kind: "hold" }, { kind: "hold" }]);
-    insertKeyframe(l, 1, fakeOps);
-    expect(l.cells[1].kind).toBe("key");
+    insertKeyframe(l, 0, fakeOps);
+    expect(l.cells.length).toBe(3);
+    const inserted = l.cells[1];
+    expect(inserted.kind).toBe("key");
+    if (inserted.kind === "key") {
+      expect((inserted.canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+    }
+  });
+
+  it("insertBlankKeyframe inserts an empty keyframe after the current frame", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    insertBlankKeyframe(l, 0, fakeOps);
+    expect(l.cells.length).toBe(3);
+    const inserted = l.cells[1];
+    expect(inserted.kind).toBe("key");
+    if (inserted.kind === "key") {
+      expect((inserted.canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+    }
   });
 
   it("setHold converts a cell back to a hold", () => {
@@ -61,14 +90,15 @@ describe("timeline operations", () => {
     expect(l.cells[0]).toEqual({ kind: "hold" });
   });
 
-  it("duplicateKeyframe clones the resolved keyframe canvas into the target frame", () => {
+  it("duplicateKeyframe inserts a clone of the resolved keyframe after the current frame", () => {
     const src = fakeOps.create() as unknown as { __id: number };
     const l = layer([{ kind: "key", canvas: src as unknown as HTMLCanvasElement }, { kind: "hold" }]);
-    duplicateKeyframe(l, 1, fakeOps);
-    const cell = l.cells[1];
-    expect(cell.kind).toBe("key");
-    if (cell.kind === "key") {
-      expect((cell.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
+    duplicateKeyframe(l, 1, fakeOps); // current frame 1 holds frame-0's drawing
+    expect(l.cells.length).toBe(3);
+    const inserted = l.cells[2];
+    expect(inserted.kind).toBe("key");
+    if (inserted.kind === "key") {
+      expect((inserted.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
     }
   });
 

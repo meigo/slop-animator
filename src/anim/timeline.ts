@@ -15,13 +15,27 @@ export function addFrame(project: Project): void {
   }
 }
 
+/** Clamp a target index to the last existing cell so "after current" always lands inside the track. */
+function clampIndex(layer: DrawingLayer, frame: number): number {
+  return Math.max(0, Math.min(frame, layer.cells.length - 1));
+}
+
 /**
- * Make the cell at `frame` a blank keyframe (Flash "Insert Keyframe" / F6 semantics:
- * in-place promotion of this cell, not a structural shift of later cells).
- * Replaces whatever was there — if the cell was already a keyframe, its drawing is discarded.
+ * Insert a new keyframe AFTER `after`, cloning the drawing currently shown at `after`
+ * (the resolved keyframe, or blank if none). Shifts later cells right. ("Insert keyframe" / F6.)
  */
-export function insertKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): void {
-  layer.cells[frame] = { kind: "key", canvas: ops.create() };
+export function insertKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
+  const at = clampIndex(layer, after);
+  const ki = resolveKeyframeIndex(layer.cells, at);
+  const src = ki === null ? null : layer.cells[ki];
+  const canvas = src && src.kind === "key" ? ops.clone(src.canvas) : ops.create();
+  layer.cells.splice(at + 1, 0, { kind: "key", canvas });
+}
+
+/** Insert an empty keyframe AFTER `after`, shifting later cells right. ("Insert blank keyframe" / F7.) */
+export function insertBlankKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
+  const at = clampIndex(layer, after);
+  layer.cells.splice(at + 1, 0, { kind: "key", canvas: ops.create() });
 }
 
 /** Make the cell at `frame` a hold. */
@@ -29,12 +43,9 @@ export function setHold(layer: DrawingLayer, frame: number): void {
   layer.cells[frame] = { kind: "hold" };
 }
 
-/** Make `frame` a keyframe whose canvas is a clone of the keyframe currently shown there. */
+/** Duplicate the keyframe shown at `frame` into a new keyframe right after it. */
 export function duplicateKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): void {
-  const ki = resolveKeyframeIndex(layer.cells, frame);
-  const cell = ki === null ? null : layer.cells[ki];
-  const canvas = cell && cell.kind === "key" ? ops.clone(cell.canvas) : ops.create();
-  layer.cells[frame] = { kind: "key", canvas };
+  insertKeyframe(layer, frame, ops);
 }
 
 /** Remove the frame column from every layer. No-op if only one frame remains or `frame` is out of range. */
