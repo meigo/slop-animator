@@ -284,4 +284,26 @@ describe("planMergeDown", () => {
     expect(plan.length).toBe(2);
     expect(plan[1]).toEqual({ kind: "key", below: null, upper: u2 }); // past below's end → below blank
   });
+
+  it("inserts a blank keyframe where a layer's content ends, so it does not hold past its end", () => {
+    const bcanvas = fakeOps.create();
+    const ucanvas = fakeOps.create();
+    const below = [k(bcanvas), h()];           // content on 0–1, then ENDS (length 2)
+    const upper = [h(), h(), h(), k(ucanvas)]; // blank 0–2, key at 3 (length 4)
+    const plan = planMergeDown(below, upper);
+    expect(plan.length).toBe(4);
+    expect(plan[0]).toEqual({ kind: "key", below: bcanvas, upper: null }); // below starts
+    expect(plan[1]).toEqual({ kind: "hold" });                             // below holds
+    expect(plan[2]).toEqual({ kind: "key", below: null, upper: null });    // below ENDED → blank key
+    expect(plan[3]).toEqual({ kind: "key", below: null, upper: ucanvas }); // upper starts
+  });
+
+  it("keeps leading blank frames as holds (no spurious keyframe before any content)", () => {
+    const ucanvas = fakeOps.create();
+    const below = [h(), h()];
+    const upper = [h(), k(ucanvas)];
+    const plan = planMergeDown(below, upper);
+    expect(plan[0]).toEqual({ kind: "hold" });                              // nothing shown yet
+    expect(plan[1]).toEqual({ kind: "key", below: null, upper: ucanvas });
+  });
 });

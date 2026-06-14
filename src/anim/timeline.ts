@@ -162,24 +162,30 @@ export type MergePlan =
 
 /**
  * Plan merging `upperCells` down onto `belowCells` without touching pixels.
- * A keyframe is produced only at the UNION of the two layers' keyframe positions (so holds
- * stay holds); each carries the canvas each layer *shows* at that frame (its resolved keyframe,
- * or null if that layer is blank there) for the caller to composite. Length = the longer layer.
+ * A keyframe is produced wherever the *composite the two layers show* changes — i.e. whenever
+ * either layer's resolved keyframe changes, which also covers a layer's content STARTING (its
+ * first key) and ENDING (past its last cell). The end transition yields a blank keyframe so the
+ * merged track goes blank there instead of holding the previous drawing past the layer's end.
+ * Each keyframe carries the canvas each layer shows there (or null if blank) to composite.
+ * Length = the longer layer; leading all-blank frames stay holds.
  */
 export function planMergeDown(belowCells: Cell[], upperCells: Cell[]): MergePlan[] {
   const len = Math.max(belowCells.length, upperCells.length);
   const plan: MergePlan[] = [];
+  // Previous frame's (below, upper) resolved keyframe indices. Start at (null, null) = "blank",
+  // so a leading blank frame is an unchanged hold and the first content frame becomes a key.
+  let prevB: number | null = null;
+  let prevU: number | null = null;
   for (let f = 0; f < len; f++) {
-    const bc = belowCells[f];
-    const uc = upperCells[f];
-    const bKey = bc !== undefined && bc.kind === "key";
-    const uKey = uc !== undefined && uc.kind === "key";
-    if (!bKey && !uKey) {
+    const bki = resolveKeyframeIndex(belowCells, f);
+    const uki = resolveKeyframeIndex(upperCells, f);
+    const changed = bki !== prevB || uki !== prevU;
+    prevB = bki;
+    prevU = uki;
+    if (!changed) {
       plan.push({ kind: "hold" });
       continue;
     }
-    const bki = resolveKeyframeIndex(belowCells, f);
-    const uki = resolveKeyframeIndex(upperCells, f);
     const bResolved = bki === null ? null : belowCells[bki];
     const uResolved = uki === null ? null : upperCells[uki];
     plan.push({
