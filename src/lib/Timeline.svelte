@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers, Waves } from "@lucide/svelte";
+  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers, Waves, Settings } from "@lucide/svelte";
   import { state, canvasOps, activeLayer, bump, history, commitStructural,
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
@@ -37,6 +37,7 @@
   // Pointer capture keeps the drag alive outside the element; touch-action:none stops
   // the browser from panning/zooming the page while scrubbing (needed on iPad).
   let scrubbing = false;
+  let boilSettingsOpen = false;
   function scrubTo(e: PointerEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     go(columnAtX(e.clientX - rect.left, CELL_W, state.project.frameCount));
@@ -226,21 +227,30 @@
 
     <span class="w-px h-5 bg-border mx-1"></span>
 
-    <!-- line boil (prototype) — applied during playback; each layer boils on its own phase -->
-    <button class={toolBtn} class:bg-surface-active={state.boil.enabled} title="Line boil (playback)"
-            onclick={() => { state.boil.enabled = !state.boil.enabled; bump(); }}><Waves size={16} /></button>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil amount (px)">amt
-      <input type="range" class="w-16" min="0" max="8" step="0.5" bind:value={state.boil.amount} />
-      <span class="w-6 text-text-muted tabular-nums">{state.boil.amount}</span></label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil detail (grid columns)">grid
-      <input type="range" class="w-16" min="4" max="40" step="1" bind:value={state.boil.cols} />
-      <span class="w-5 text-text-muted tabular-nums">{state.boil.cols}</span></label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil rate (cycle N warps — on twos/threes)">rate
-      <input type="range" class="w-12" min="1" max="8" step="1" bind:value={state.boil.rate} />
-      <span class="w-4 text-text-muted tabular-nums">{state.boil.rate}</span></label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil line-weight jitter (uniform scale ±%)">wt
-      <input type="range" class="w-16" min="0" max="0.05" step="0.005" bind:value={state.boil.scale} />
-      <span class="w-8 text-text-muted tabular-nums">{(state.boil.scale * 100).toFixed(1)}%</span></label>
+    <!-- line boil: quick toggle + a settings popover for the params -->
+    <button class={toolBtn} class:bg-surface-active={state.project.boil.enabled} title="Line boil (playback)"
+            onclick={() => { state.project.boil.enabled = !state.project.boil.enabled; bump(); }}><Waves size={16} /></button>
+    <div class="relative">
+      <button class={toolBtn} class:bg-surface-active={boilSettingsOpen} title="Boil settings"
+              onclick={() => (boilSettingsOpen = !boilSettingsOpen)}><Settings size={16} /></button>
+      {#if boilSettingsOpen}
+        <div class="absolute left-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs">
+          <label class="flex items-center gap-2" title="Boil amount (px)"><span class="w-10 text-text-secondary">amt</span>
+            <input type="range" class="flex-1" min="0" max="8" step="0.5" bind:value={state.project.boil.amount} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.amount}</span></label>
+          <label class="flex items-center gap-2" title="Boil detail (grid columns)"><span class="w-10 text-text-secondary">grid</span>
+            <input type="range" class="flex-1" min="4" max="40" step="1" bind:value={state.project.boil.cols} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.cols}</span></label>
+          <label class="flex items-center gap-2" title="Boil rate (cycle N warps — on twos/threes)"><span class="w-10 text-text-secondary">rate</span>
+            <input type="range" class="flex-1" min="1" max="8" step="1" bind:value={state.project.boil.rate} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.rate}</span></label>
+          <label class="flex items-center gap-2" title="Boil line-weight jitter (uniform scale ±%)"><span class="w-10 text-text-secondary">weight</span>
+            <input type="range" class="flex-1" min="0" max="0.05" step="0.005" bind:value={state.project.boil.scale} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{(state.project.boil.scale * 100).toFixed(1)}%</span></label>
+          <label class="flex items-center gap-2"><input type="checkbox" bind:checked={state.project.boil.holdsOnly} /> <span class="text-text-secondary">Holds only (keep keyframes crisp)</span></label>
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->

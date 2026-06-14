@@ -3,13 +3,6 @@
 // piecewise-affine over a low-resolution grid; the outer boundary vertices are pinned so the
 // canvas edges don't gap. All randomness is hashed from a seed → reproducible per frame/layer.
 
-export interface BoilConfig {
-  amount: number; // max vertex displacement, device px
-  cols: number;   // grid columns (coarse = low-frequency, organic; fine = melty)
-  rate: number;   // number of distinct warps to cycle (1 = static, 2 = "on twos", 3 = "on threes")
-  scale: number;  // max uniform scale jitter (fraction, e.g. 0.02 = ±2%) → line-weight "breathing"
-}
-
 export interface BoilOptions {
   amount: number;
   cols: number;

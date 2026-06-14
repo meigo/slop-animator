@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
+import { defaultBoilConfig } from "../anim/document";
 import {
   addFrame, insertKeyframe, insertBlankKeyframe, setHold, duplicateKeyframe, deleteFrame,
   ensureDrawableKeyframe, insertFrameAllLayers, deleteFrameAllLayers, moveKeyframe, setHoldSpan,
@@ -14,7 +15,7 @@ const fakeOps: CanvasOps = {
 };
 
 function layer(cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, cells };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, cells };
 }
 
 describe("timeline operations", () => {
@@ -227,7 +228,7 @@ describe("all-layers timeline operations", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
     const r = refLayerFixture(3);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [a, b, r] };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b, r] };
     insertFrameAllLayers(p, 1);
     expect(a.cells.length).toBe(3);
     expect(b.cells.length).toBe(3);
@@ -239,7 +240,7 @@ describe("all-layers timeline operations", () => {
   it("deleteFrameAllLayers removes `at` from every drawing layer and refreshes length", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, layers: [a, b] };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b] };
     deleteFrameAllLayers(p, 0);
     expect(a.cells.length).toBe(1);
     expect(b.cells.length).toBe(1);

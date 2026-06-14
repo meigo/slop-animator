@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const hold = (): Cell => ({ kind: "hold" });
@@ -29,10 +29,10 @@ describe("resolveKeyframeIndex", () => {
 });
 
 function layer(id: number, cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, cells, ...over };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, cells, ...over };
 }
 function proj(layers: DrawingLayer[], frameCount: number): Project {
-  return { width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount, layers };
+  return { width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount, boil: defaultBoilConfig(), layers };
 }
 
 function refLayer(id: number, over: Partial<ReferenceLayer> = {}): ReferenceLayer {
@@ -61,7 +61,7 @@ describe("buildFrameDrawList", () => {
 
   it("emits a ref op for visible reference layers, in z-order with drawing layers", () => {
     const p: Project = {
-      width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1,
+      width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [refLayer(1), layer(2, [key()], { id: 2 })],
     };
     expect(buildFrameDrawList(p, 0)).toEqual([
@@ -72,7 +72,7 @@ describe("buildFrameDrawList", () => {
 
   it("excludes reference layers when includeReference is false", () => {
     const p: Project = {
-      width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1,
+      width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [refLayer(1), layer(2, [key()], { id: 2 })],
     };
     expect(buildFrameDrawList(p, 0, false)).toEqual([
@@ -111,7 +111,7 @@ describe("createReferenceLayer", () => {
 
 describe("documentLength / refreshLength", () => {
   const draw = (len: number): DrawingLayer => ({
-    kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100,
+    kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1,
     cells: Array.from({ length: len }, () => ({ kind: "hold" }) as Cell),
   });
   const ref = (): ReferenceLayer => ({
@@ -120,27 +120,57 @@ describe("documentLength / refreshLength", () => {
   });
 
   it("documentLength is the longest drawing layer, ignoring reference layers", () => {
-    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
       layers: [draw(7), draw(3), ref()] };
     expect(documentLength(p)).toBe(7);
   });
 
   it("documentLength floors at 1", () => {
-    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
       layers: [ref()] };
     expect(documentLength(p)).toBe(1);
   });
 
   it("documentLength floors at 1 even for a zero-length draw layer", () => {
-    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0,
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
       layers: [draw(0)] };
     expect(documentLength(p)).toBe(1);
   });
 
   it("refreshLength writes documentLength into frameCount", () => {
-    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 99,
+    const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 99, boil: defaultBoilConfig(),
       layers: [draw(4)] };
     refreshLength(p);
     expect(p.frameCount).toBe(4);
+  });
+});
+
+describe("isCrispFrame", () => {
+  it("holds-only: a frame that is its own keyframe stays crisp", () => {
+    expect(isCrispFrame([key(), hold()], 0, true)).toBe(true);  // own key → crisp
+    expect(isCrispFrame([key(), hold()], 1, true)).toBe(false); // hold → boil
+  });
+  it("holds-only off: nothing is crisp", () => {
+    expect(isCrispFrame([key(), hold()], 0, false)).toBe(false);
+    expect(isCrispFrame([key(), hold()], 1, false)).toBe(false);
+  });
+  it("past the track end is not crisp (no own keyframe there)", () => {
+    expect(isCrispFrame([key()], 5, true)).toBe(false);
+  });
+});
+
+describe("boil config defaults", () => {
+  it("a new project starts with disabled boil + tuned defaults", () => {
+    expect(createProject().boil).toEqual({
+      enabled: false, amount: 1, cols: 20, rate: 3, scale: 0.005, holdsOnly: true,
+    });
+  });
+  it("defaultBoilConfig returns a fresh copy each call", () => {
+    const a = defaultBoilConfig();
+    a.amount = 99;
+    expect(defaultBoilConfig().amount).toBe(1);
+  });
+  it("a new drawing layer has boilStrength 1", () => {
+    expect(createDrawingLayer(1, "L").boilStrength).toBe(1);
   });
 });
