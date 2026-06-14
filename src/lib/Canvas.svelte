@@ -9,9 +9,10 @@
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
-  import { selectionRef } from "../state/appState.svelte";
+  import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
+  import SelectionActions from "./SelectionActions.svelte";
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -65,11 +66,22 @@
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     const color = hexToRgba(state.brush.color, state.brush.opacity);
-    // points are canvas-logical coords; floodFill indexes device pixels.
-    floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
-      tolerance: state.fill.tolerance,
-      expand: state.fill.expand,
-    });
+    if (selection && selection.state === "selected") {
+      // Flood on a temp copy, then composite back through the selection clip.
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
+      tctx.drawImage(canvas, 0, 0);
+      floodFill(tctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection.applyClip(ctx);
+      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+      ctx.restore();
+    } else {
+      floodFill(ctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+    }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push({
@@ -92,6 +104,9 @@
           const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+          // liftPixels' rect-clear and the later commit blit operate in CSS coords, so the
+          // cell ctx must carry the dpr transform (a cloned cell's ctx is at identity).
+          selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
           const lifted = selection.liftPixels(selCtx, DPR);
           if (lifted) {
             selection.beginTransform(lifted);
@@ -139,11 +154,15 @@
       bump();
     }
 
-    // Re-render the in-progress stroke from the pre-stroke snapshot each move.
+    // Re-render the in-progress stroke from the pre-stroke snapshot each move,
+    // clipped to the active selection (if any) so painting/erasing stays inside it.
     strokeCtx!.putImageData(beforeSnapshot!, 0, 0);
+    strokeCtx!.save();
     strokeCtx!.setTransform(DPR, 0, 0, DPR, 0, 0);
+    selection?.applyClip(strokeCtx!);
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
     drawStroke(strokeCtx!, points, settings, done, state.sizeRange);
+    strokeCtx!.restore();
     recomposite();
 
     if (done) {
@@ -176,6 +195,8 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
+      // renderFloatingTo blits the floating pixels via a CSS-coord matrix → needs dpr.
+      selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection.renderFloatingTo(selCtx);
       const ctx = selCtx;
       const before = selBefore;
@@ -197,6 +218,28 @@
     };
 
     selectionRef.current = selection;
+  }
+
+  function enterTransform() {
+    if (!selection || selection.state !== "selected") return;
+    const layer = activeLayer();
+    if (layer.kind !== "draw" || layer.locked) return;
+    const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    // See note in onStroke: the cell ctx must carry the dpr transform for lift/commit.
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const lifted = selection.liftPixels(selCtx, DPR);
+    if (!lifted) return;
+    selection.beginTransform(lifted);
+    recomposite();
+  }
+
+  function enterWarp(rows: number, cols: number) {
+    if (!selection) return;
+    if (selection.state === "selected") enterTransform();
+    if (selection.state === "transforming") selection.beginWarp(rows, cols);
+    else if (selection.state === "warping") selection.densifyWarp(rows, cols);
   }
 
   onMount(() => {
@@ -239,7 +282,9 @@
     };
     let raf = requestAnimationFrame(tick);
 
-    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; };
+    selectionActions.enterWarp = enterWarp;
+
+    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; selectionActions.enterWarp = null; };
   });
 
   $effect(() => {
@@ -248,9 +293,9 @@
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
     else {
-      // Switching to a drawing tool: bank or drop any active selection.
+      // Switching to a drawing tool: bank a floating transform, but KEEP a plain
+      // marquee so brush/eraser/fill clip to it. (Esc clears it.)
       if (selection.hasFloating) selection.commit();
-      else if (selection.active) selection.cancel();
       selectionMode = null;
     }
   });
@@ -264,4 +309,11 @@
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
+  <SelectionActions getSelection={() => selection} getViewport={() => viewport} getContainer={() => stage}
+    onTransform={enterTransform}
+    onDistort={() => enterWarp(2, 2)}
+    onMesh={() => enterWarp(3, 3)}
+    onCommit={() => selection?.commit()}
+    onCancel={() => selection?.cancel()} />
+
 </div>

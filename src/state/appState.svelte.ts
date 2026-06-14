@@ -180,3 +180,6 @@ export const playbackController = new Playback({
  * App.svelte reads it to handle Enter (commit) / Escape (cancel) globally.
  */
 export const selectionRef: { current: Selection | null } = { current: null };
+
+/** Canvas-owned selection actions reachable from App keyboard shortcuts (W/M warp). */
+export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = { enterWarp: null };
