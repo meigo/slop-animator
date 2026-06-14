@@ -54,7 +54,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="h-full flex flex-col">
+<div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
   <div class="flex-1 flex min-h-0">
     <Canvas />

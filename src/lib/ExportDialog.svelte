@@ -32,23 +32,23 @@
 {#if appState.exportOpen}
   <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
        onclick={() => { if (!busy) appState.exportOpen = false; }} role="presentation">
-    <div class="bg-neutral-100 rounded-lg p-4 w-80 flex flex-col gap-2 text-sm"
+    <div class="bg-surface text-text border border-border rounded-lg p-4 w-80 flex flex-col gap-2 text-sm"
          onclick={(e) => e.stopPropagation()} role="presentation">
       <div class="flex justify-between items-center">
         <span class="font-semibold">Export</span>
         <button onclick={() => { if (!busy) appState.exportOpen = false; }}>✕</button>
       </div>
-      <button class="border border-neutral-300 rounded py-1" disabled={busy} onclick={() => run("png")}>
+      <button class="border border-border rounded py-1 hover:bg-surface-hover" disabled={busy} onclick={() => run("png")}>
         PNG sequence (.zip)
       </button>
-      <button class="border border-neutral-300 rounded py-1 disabled:opacity-40" disabled={busy || !videoOk}
+      <button class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40" disabled={busy || !videoOk}
               onclick={() => run("mp4")}>MP4 video</button>
-      <button class="border border-neutral-300 rounded py-1 disabled:opacity-40" disabled={busy || !videoOk}
+      <button class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40" disabled={busy || !videoOk}
               onclick={() => run("webm")}>WebM video</button>
       {#if !videoOk}
-        <span class="text-xs text-neutral-500">Video export needs WebCodecs (Chrome/Edge or Safari 16.4+).</span>
+        <span class="text-xs text-text-secondary">Video export needs WebCodecs (Chrome/Edge or Safari 16.4+).</span>
       {/if}
-      {#if status}<span class="text-xs text-neutral-600">{status}</span>{/if}
+      {#if status}<span class="text-xs text-text-secondary">{status}</span>{/if}
     </div>
   </div>
 {/if}

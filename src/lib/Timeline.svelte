@@ -16,28 +16,29 @@
   function dup() { const l = activeLayer(); if (l.kind === "draw") { duplicateKeyframe(l, state.playhead, canvasOps); bump(); } }
 </script>
 
-<div class="border-t border-neutral-300 bg-neutral-100 p-2 text-sm">
+<div class="border-t border-border bg-surface text-text p-2 text-sm">
   <div class="flex gap-2 mb-2">
-    <button onclick={() => go(state.playhead - 1)}>◀</button>
-    <span>Frame {state.playhead + 1} / {state.project.frameCount}</span>
-    <button onclick={() => go(state.playhead + 1)}>▶</button>
-    <button onclick={newFrame}>+ Frame</button>
-    <button onclick={key}>Keyframe</button>
-    <button onclick={dup}>Dup</button>
-    <button onclick={hold}>Hold</button>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={() => go(state.playhead - 1)}>◀</button>
+    <span class="text-text-secondary">Frame {state.playhead + 1} / {state.project.frameCount}</span>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={() => go(state.playhead + 1)}>▶</button>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={newFrame}>+ Frame</button>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={key}>Keyframe</button>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={dup}>Dup</button>
+    <button class="px-2 py-0.5 rounded text-text-secondary hover:bg-surface-hover border border-border" onclick={hold}>Hold</button>
   </div>
   {#each [...state.project.layers].reverse() as layer (layer.id)}
     <div class="flex items-center gap-1">
-      <span class="w-20 truncate">{layer.name}</span>
+      <span class="w-20 truncate text-text-secondary">{layer.name}</span>
       {#if layer.kind === "draw"}
         {#each Array(state.project.frameCount) as _, f}
           <button
-            class="w-6 h-6 border border-neutral-300 leading-none"
-            class:bg-amber-200={f === state.playhead}
+            class="w-6 h-6 border border-border leading-none"
+            class:bg-selection={f === state.playhead}
+            class:text-accent-text={f === state.playhead}
             onclick={() => go(f)}>{cellLabel(layer.cells, f)}</button>
         {/each}
       {:else}
-        <span class="text-xs text-neutral-400 ml-1">ref</span>
+        <span class="text-xs text-text-muted ml-1">ref</span>
       {/if}
     </div>
   {/each}
