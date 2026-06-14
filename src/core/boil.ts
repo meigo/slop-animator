@@ -7,11 +7,13 @@ export interface BoilConfig {
   amount: number; // max vertex displacement, device px
   cols: number;   // grid columns (coarse = low-frequency, organic; fine = melty)
   rate: number;   // number of distinct warps to cycle (1 = static, 2 = "on twos", 3 = "on threes")
+  scale: number;  // max uniform scale jitter (fraction, e.g. 0.02 = ±2%) → line-weight "breathing"
 }
 
 export interface BoilOptions {
   amount: number;
   cols: number;
+  scale: number;
   seed: number; // per-frame + per-layer
 }
 
@@ -30,14 +32,22 @@ export function drawBoiled(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement
   const cw = w / cols;
   const ch = h / rows;
 
-  // Displaced position of grid vertex (gx, gy). Boundary vertices stay put.
+  // Uniform per-call scale (line-weight "breathing"): up ⇒ fatter lines, down ⇒ thinner.
+  // Applied around the canvas centre AFTER the (edge-pinned) displacement.
+  const cx = w / 2, cy = h / 2;
+  const s = 1 + hash(7, 7, o.seed + 7777) * o.scale;
+
+  // Displaced position of grid vertex (gx, gy). Boundary vertices aren't wobbled (so the
+  // wobble can't gap the edges), but the uniform scale still applies to them.
   const dispX = (gx: number, gy: number): number => {
     const pinned = gx === 0 || gx === cols || gy === 0 || gy === rows;
-    return gx * cw + (pinned ? 0 : hash(gx, gy, o.seed) * o.amount);
+    const base = gx * cw + (pinned ? 0 : hash(gx, gy, o.seed) * o.amount);
+    return cx + (base - cx) * s;
   };
   const dispY = (gx: number, gy: number): number => {
     const pinned = gx === 0 || gx === cols || gy === 0 || gy === rows;
-    return gy * ch + (pinned ? 0 : hash(gx, gy, o.seed + 5051) * o.amount);
+    const base = gy * ch + (pinned ? 0 : hash(gx, gy, o.seed + 5051) * o.amount);
+    return cy + (base - cy) * s;
   };
 
   ctx.save();

@@ -30,7 +30,7 @@ interface AnimState {
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean };
   /** Line-boil prototype (applied during playback only). */
-  boil: { enabled: boolean; amount: number; cols: number; rate: number };
+  boil: { enabled: boolean; amount: number; cols: number; rate: number; scale: number };
 }
 
 const project = createProject();
@@ -66,7 +66,7 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   playback: { isPlaying: false, loop: true },
-  boil: { enabled: false, amount: 3, cols: 14, rate: 3 },
+  boil: { enabled: false, amount: 3, cols: 14, rate: 3, scale: 0 },
 });
 
 export const history = new History();

@@ -235,6 +235,8 @@
       <input type="range" class="w-16" min="4" max="40" step="1" bind:value={state.boil.cols} /></label>
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil rate (cycle N warps — on twos/threes)">rate
       <input type="range" class="w-12" min="1" max="8" step="1" bind:value={state.boil.rate} /></label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Boil line-weight jitter (uniform scale ±%)">wt
+      <input type="range" class="w-16" min="0" max="0.05" step="0.005" bind:value={state.boil.scale} /></label>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->

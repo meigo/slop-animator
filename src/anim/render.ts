@@ -32,10 +32,10 @@ export function compositeFrameLayers(
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      if (boil && boil.amount > 0) {
+      if (boil && (boil.amount > 0 || boil.scale > 0)) {
         // Per-layer phase (layerId) + cycle of `rate` warps (frame) → independent line boil.
         const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
-        drawBoiled(ctx, cell.canvas, w, h, { amount: boil.amount, cols: boil.cols, seed });
+        drawBoiled(ctx, cell.canvas, w, h, { amount: boil.amount, cols: boil.cols, scale: boil.scale, seed });
       } else {
         ctx.drawImage(cell.canvas, 0, 0);
       }
