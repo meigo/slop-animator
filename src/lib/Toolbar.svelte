@@ -46,7 +46,7 @@
   <button class:font-bold={state.tool === "select"} onclick={() => (state.tool = "select")}>Select</button>
   <button class:font-bold={state.tool === "lasso"} onclick={() => (state.tool = "lasso")}>Lasso</button>
   <label class="flex items-center gap-1 text-sm">Size
-    <input type="range" min="1" max="60" bind:value={state.brush.size} />
+    <input type="range" min="0.5" max="60" step="0.5" bind:value={state.brush.size} />
   </label>
   <label class="flex items-center gap-1 text-sm" title="How much pen pressure widens the stroke">Press
     <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />

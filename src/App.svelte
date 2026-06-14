@@ -35,7 +35,7 @@
     else if (e.key === "o") { state.onion.enabled = !state.onion.enabled; bump(); }
     else if (e.key === ",") state.playhead = Math.max(0, state.playhead - 1);
     else if (e.key === ".") state.playhead = Math.min(state.project.frameCount - 1, state.playhead + 1);
-    else if (e.key === "[") state.brush.size = Math.max(1, state.brush.size - 1);
+    else if (e.key === "[") state.brush.size = Math.max(0.5, state.brush.size - 1);
     else if (e.key === "]") state.brush.size = Math.min(60, state.brush.size + 1);
   }
 
