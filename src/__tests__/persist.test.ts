@@ -14,18 +14,26 @@ function rlayer(id: number): ReferenceLayer {
 }
 
 describe("projectToJson", () => {
-  it("serializes settings and drawing layers (cells as key/hold), excluding reference layers", () => {
+  it("serializes settings (incl. boil) and drawing layers, excluding reference layers", () => {
     const p: Project = {
-      width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2, boil: defaultBoilConfig(),
+      width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, scale: 0.01, holdsOnly: true },
       layers: [dlayer(1, [key(), hold()]), rlayer(2)],
     };
     expect(projectToJson(p)).toEqual({
       version: 1,
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, scale: 0.01, holdsOnly: true },
       layers: [
-        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, cells: ["key", "hold"] },
+        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, cells: ["key", "hold"] },
       ],
     });
+  });
+
+  it("uses defaultBoilConfig() shape", () => {
+    expect(Object.keys(defaultBoilConfig()).sort()).toEqual(
+      ["amount", "cols", "enabled", "holdsOnly", "rate", "scale"]
+    );
   });
 });
 

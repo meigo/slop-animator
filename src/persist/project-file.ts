@@ -1,4 +1,4 @@
-import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer } from "../anim/document";
+import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 
 export interface DrawingLayerJson {
@@ -7,6 +7,7 @@ export interface DrawingLayerJson {
   visible: boolean;
   locked: boolean;
   opacity: number;
+  boilStrength: number;
   cells: ("key" | "hold")[];
 }
 
@@ -17,6 +18,7 @@ export interface ProjectJson {
   fps: number;
   bgColor: string;
   frameCount: number;
+  boil: BoilConfig;
   layers: DrawingLayerJson[];
 }
 
@@ -29,12 +31,14 @@ export function projectToJson(project: Project): ProjectJson {
     fps: project.fps,
     bgColor: project.bgColor,
     frameCount: project.frameCount,
+    boil: project.boil,
     layers: project.layers.filter(isDrawingLayer).map((l) => ({
       id: l.id,
       name: l.name,
       visible: l.visible,
       locked: l.locked,
       opacity: l.opacity,
+      boilStrength: l.boilStrength,
       cells: l.cells.map((c) => c.kind),
     })),
   };
@@ -104,13 +108,13 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     }
     layers.push({
       kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
-      locked: lj.locked, opacity: lj.opacity, boilStrength: 1, cells,
+      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, cells,
     });
   }
   setMinLayerId(maxId + 1);
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: defaultBoilConfig(), layers,
+    bgColor: json.bgColor, frameCount: json.frameCount, boil: json.boil ?? defaultBoilConfig(), layers,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
   return project;
