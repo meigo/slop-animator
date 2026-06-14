@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveKeyframeIndex, type Project, type Layer, type Cell, type DrawingLayer } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveKeyframeIndex, refreshLength, type Project, type Layer, type Cell, type DrawingLayer } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
@@ -166,6 +166,10 @@ export function replaceProject(project: Project) {
 }
 
 export function bump() {
+  refreshLength(state.project);
+  const last = state.project.frameCount - 1;
+  if (state.playhead > last) state.playhead = last;
+  if (state.playhead < 0) state.playhead = 0;
   state.version++;
 }
 
