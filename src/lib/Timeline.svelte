@@ -82,11 +82,13 @@
   function holdTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
+    if (l.cells[state.playhead]?.kind !== "key") return; // already a hold → nothing to clear
     commitStructural(() => setHold(l, state.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
+    if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
     commitStructural(() => deleteFrame(l, state.playhead));
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
