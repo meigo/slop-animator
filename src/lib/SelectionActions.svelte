@@ -5,10 +5,12 @@
   import type { Viewport } from "../core/viewport";
   import { computeAnchor } from "../core/selection-anchor";
 
-  let { selection, viewport, containerEl, onTransform, onDistort, onMesh, onCommit, onCancel }: {
-    selection: Selection;
-    viewport: Viewport;
-    containerEl: HTMLElement;
+  // Selection/viewport are read through getters and polled each frame — they are created
+  // in the parent's onMount (after this child mounts), so direct props would be undefined.
+  let { getSelection, getViewport, getContainer, onTransform, onDistort, onMesh, onCommit, onCancel }: {
+    getSelection: () => Selection | null;
+    getViewport: () => Viewport | null;
+    getContainer: () => HTMLElement | null;
     onTransform: () => void;
     onDistort: () => void;
     onMesh: () => void;
@@ -25,7 +27,10 @@
   let rafId = 0;
 
   function tick() {
-    if (panelEl && containerEl) {
+    const selection = getSelection();
+    const viewport = getViewport();
+    const containerEl = getContainer();
+    if (panelEl && containerEl && selection && viewport) {
       const bounds = selection.getScreenBounds();
       if (!bounds || selection.isDragging) {
         visible = false;
@@ -47,6 +52,8 @@
         pos = { x: a.x, y: a.y };
         visible = true;
       }
+    } else {
+      visible = false;
     }
     rafId = requestAnimationFrame(tick);
   }

@@ -9,9 +9,10 @@
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import { state, history, DPR, canvasOps, activeLayer, bump } from "../state/appState.svelte";
-  import { selectionRef } from "../state/appState.svelte";
+  import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
+  import SelectionActions from "./SelectionActions.svelte";
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -214,6 +215,26 @@
     selectionRef.current = selection;
   }
 
+  function enterTransform() {
+    if (!selection || selection.state !== "selected") return;
+    const layer = activeLayer();
+    if (layer.kind !== "draw" || layer.locked) return;
+    const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    const lifted = selection.liftPixels(selCtx, DPR);
+    if (!lifted) return;
+    selection.beginTransform(lifted);
+    recomposite();
+  }
+
+  function enterWarp(rows: number, cols: number) {
+    if (!selection) return;
+    if (selection.state === "selected") enterTransform();
+    if (selection.state === "transforming") selection.beginWarp(rows, cols);
+    else if (selection.state === "warping") selection.densifyWarp(rows, cols);
+  }
+
   onMount(() => {
     displayCtx = display.getContext("2d")!;
     scratch = document.createElement("canvas");
@@ -254,7 +275,9 @@
     };
     let raf = requestAnimationFrame(tick);
 
-    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; };
+    selectionActions.enterWarp = enterWarp;
+
+    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; selectionActions.enterWarp = null; };
   });
 
   $effect(() => {
@@ -279,4 +302,11 @@
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
+  <SelectionActions getSelection={() => selection} getViewport={() => viewport} getContainer={() => stage}
+    onTransform={enterTransform}
+    onDistort={() => enterWarp(2, 2)}
+    onMesh={() => enterWarp(3, 3)}
+    onCommit={() => selection?.commit()}
+    onCancel={() => selection?.cancel()} />
+
 </div>
