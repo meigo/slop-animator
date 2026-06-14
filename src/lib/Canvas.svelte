@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
+  import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba } from "../core/fill";
   import { renderFrame } from "../anim/render";
@@ -15,6 +16,7 @@
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
   let viewport: Viewport;
+  let stage: HTMLDivElement;
   // Offscreen scratch surface used to tint onion-skin ghosts before compositing.
   let scratch: HTMLCanvasElement;
   let scratchCtx: CanvasRenderingContext2D;
@@ -208,6 +210,14 @@
     recomposite();
     setupSelection();
 
+    // Finger gestures: 1-finger pan, 2-finger pinch zoom+rotate, 2-finger tap undo,
+    // 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
+    const cleanupTouch = setupTouchGestures(stage, viewport, {
+      onUndo: () => history.undo(),
+      onRedo: () => history.redo(),
+      onViewportChange: () => { selection.screenScale = viewport.zoom; },
+    });
+
     const cleanup = setupInput(
       display,
       onStroke,
@@ -229,7 +239,7 @@
     };
     let raf = requestAnimationFrame(tick);
 
-    return () => { cleanup(); cancelAnimationFrame(raf); selectionRef.current = null; };
+    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); selectionRef.current = null; };
   });
 
   $effect(() => {
@@ -249,7 +259,7 @@
   function onWheel(e: WheelEvent) { e.preventDefault(); viewport?.zoomAt(e.clientX, e.clientY, e.deltaY); }
 </script>
 
-<div class="relative flex-1 overflow-hidden bg-neutral-300" onwheel={onWheel}>
+<div bind:this={stage} class="relative flex-1 overflow-hidden bg-neutral-300 touch-none" onwheel={onWheel}>
   <div bind:this={wrapper} class="absolute left-0 top-0">
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>

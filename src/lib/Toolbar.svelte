@@ -48,6 +48,10 @@
   <label class="flex items-center gap-1 text-sm">Size
     <input type="range" min="1" max="60" bind:value={state.brush.size} />
   </label>
+  <label class="flex items-center gap-1 text-sm" title="How much pen pressure widens the stroke">Press
+    <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />
+    <span class="text-xs text-neutral-500 w-6">{state.sizeRange}×</span>
+  </label>
   <input type="color" bind:value={state.brush.color} />
   <button onclick={() => history.undo()}>Undo</button>
   <button onclick={() => history.redo()}>Redo</button>

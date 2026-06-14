@@ -40,7 +40,7 @@ export const state: AnimState = $state({
     drawBehind: false,
     alphaLock: false,
   },
-  sizeRange: 1.0,
+  sizeRange: 3.0, // full pen pressure → 3× the base brush width (light pressure → base)
   streamline: 50,
   fill: { tolerance: 32, expand: 2 },
   version: 0,
