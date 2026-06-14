@@ -44,6 +44,14 @@
     scrubbing = false;
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
   }
+  function rulerKey(e: KeyboardEvent) {
+    if (e.key === "ArrowLeft") go(state.playhead - 1);
+    else if (e.key === "ArrowRight") go(state.playhead + 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(state.project.frameCount - 1);
+    else return;
+    e.preventDefault();
+  }
 
   // All tools act on the active drawing layer at the current frame, current-frame-aware
   // (inserts land AFTER the playhead, then the playhead follows to the new frame).
@@ -107,7 +115,7 @@
            role="slider" tabindex="0" aria-label="Scrub frames"
            aria-valuemin={1} aria-valuemax={state.project.frameCount} aria-valuenow={state.playhead + 1}
            onpointerdown={rulerDown} onpointermove={rulerMove}
-           onpointerup={rulerUp} onpointercancel={rulerUp}>
+           onpointerup={rulerUp} onpointercancel={rulerUp} onkeydown={rulerKey}>
         {#each Array(state.project.frameCount) as _, f}
           <div class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-muted"
                class:text-accent={f === state.playhead}
