@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { state, bump, playbackController } from "../state/appState.svelte";
+  import { state, bump, playbackController, setAnimationLength } from "../state/appState.svelte";
+  import { countKeyframesPastLength } from "../anim/document";
   import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Settings } from "@lucide/svelte";
 
   const FPS_PRESETS = [6, 8, 12, 24];
@@ -12,6 +13,21 @@
   function setFps(v: number) {
     state.project.fps = Math.max(1, Math.min(60, Math.round(v)));
     bump();
+  }
+  function commitLength(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const n = Math.max(1, Math.min(9999, Math.floor(+input.value)));
+    if (n !== state.project.frameCount) {
+      if (n < state.project.frameCount) {
+        const dropped = countKeyframesPastLength(state.project, n);
+        if (dropped > 0 && !confirm(`Shorten to ${n} frames? This removes ${dropped} keyframe(s).`)) {
+          input.value = String(state.project.frameCount); // cancelled — revert the field
+          return;
+        }
+      }
+      setAnimationLength(n);
+    }
+    input.value = String(state.project.frameCount); // normalize the displayed value (clamp / no-op)
   }
 
   const btn = "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
@@ -30,6 +46,10 @@
   </div>
 
   <span class="text-text-secondary">Frame {state.playhead + 1}/{state.project.frameCount}</span>
+  <label class="flex items-center gap-1 text-text-secondary">Length
+    <input class="w-14 bg-surface border border-border text-text px-1" type="number" min="1" max="9999"
+           value={state.project.frameCount} onchange={commitLength} />
+  </label>
 
   <div class="ml-auto flex items-center gap-1">
     <!-- playback settings -->
