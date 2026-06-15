@@ -9,6 +9,34 @@ export function advancePlayhead(
   return { frame: current, stop: true };
 }
 
+/** Clamp a stored range into [0, frameCount-1]; null or invalid (in>out) → the full timeline. */
+export function effectiveRange(
+  range: { in: number; out: number } | null,
+  frameCount: number,
+): { start: number; end: number } {
+  const last = Math.max(0, frameCount - 1);
+  if (!range) return { start: 0, end: last };
+  const start = Math.max(0, Math.min(range.in, last));
+  const end = Math.max(0, Math.min(range.out, last));
+  if (start > end) return { start: 0, end: last };
+  return { start, end };
+}
+
+/** Set the range's in-point to `frame`, dragging out along if in would pass it. */
+export function withRangeIn(range: { in: number; out: number } | null, frame: number) {
+  return { in: frame, out: range ? Math.max(range.out, frame) : frame };
+}
+
+/** Set the range's out-point to `frame`, dragging in along if out would precede it. */
+export function withRangeOut(range: { in: number; out: number } | null, frame: number) {
+  return { in: range ? Math.min(range.in, frame) : frame, out: frame };
+}
+
+/** Where the playhead should sit when play starts: snap to `start` only if outside [start, end]. */
+export function snapPlayheadToRange(current: number, start: number, end: number): number {
+  return current < start || current > end ? start : current;
+}
+
 export interface PlaybackOptions {
   getFps: () => number;
   getFrameCount: () => number;
