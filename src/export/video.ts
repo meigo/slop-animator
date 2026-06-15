@@ -36,7 +36,7 @@ export async function exportVideo(project: Project, dpr: number, format: VideoFo
 
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
-    renderFrame(ctx, project, f, dpr, { drawBg: true, includeReference: false });
+    renderFrame(ctx, project, f, dpr, { drawBg: true, includeReference: false, boil: project.boil.enabled ? project.boil : undefined });
     await source.add(f * dt, dt);
   }
 
