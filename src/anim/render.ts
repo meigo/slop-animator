@@ -1,5 +1,5 @@
 import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, type Project, type BoilConfig } from "./document";
-import { drawBoiled } from "../core/boil";
+import { drawBoiledGL } from "../core/boil-gl";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -39,9 +39,8 @@ export function compositeFrameLayers(
       if (boilThisFrame) {
         // Per-layer phase (layerId) + cycle of `rate` warps (frame), scaled by the layer's strength.
         const seed = (frame % Math.max(1, boil!.rate)) * 100003 + op.layerId * 9176;
-        drawBoiled(ctx, cell.canvas, w, h, {
-          amount: boil!.amount * strength, cols: boil!.cols, scale: boil!.scale * strength, seed,
-        });
+        // SPIKE: WebGL displacement instead of the CPU mesh warp (one GPU pass, runs live on iPad).
+        drawBoiledGL(ctx, cell.canvas, w, h, { amount: boil!.amount * strength, freq: boil!.cols, seed });
       } else {
         ctx.drawImage(cell.canvas, 0, 0);
       }
