@@ -35,7 +35,7 @@ function layer(id: number, cells: Cell[], over: Partial<DrawingLayer> = {}): Dra
   return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, cells, ...over };
 }
 function proj(layers: DrawingLayer[], frameCount: number): Project {
-  return { width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount, boil: defaultBoilConfig(), layers };
+  return { width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount, boil: defaultBoilConfig(), layers, audio: null };
 }
 
 function refLayer(id: number, over: Partial<ReferenceLayer> = {}): ReferenceLayer {
@@ -66,6 +66,7 @@ describe("buildFrameDrawList", () => {
     const p: Project = {
       width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [refLayer(1), layer(2, [makeKey()], { id: 2 })],
+      audio: null,
     };
     expect(buildFrameDrawList(p, 0)).toEqual([
       { kind: "ref", layerId: 1, opacity: 60 },
@@ -77,6 +78,7 @@ describe("buildFrameDrawList", () => {
     const p: Project = {
       width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [refLayer(1), layer(2, [makeKey()], { id: 2 })],
+      audio: null,
     };
     expect(buildFrameDrawList(p, 0, false)).toEqual([
       { kind: "draw", layerId: 2, keyframeIndex: 0, opacity: 100 },
@@ -124,25 +126,25 @@ describe("documentLength / refreshLength", () => {
 
   it("documentLength is the longest drawing layer, ignoring reference layers", () => {
     const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
-      layers: [draw(7), draw(3), ref()] };
+      layers: [draw(7), draw(3), ref()], audio: null };
     expect(documentLength(p)).toBe(7);
   });
 
   it("documentLength floors at 1", () => {
     const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
-      layers: [ref()] };
+      layers: [ref()], audio: null };
     expect(documentLength(p)).toBe(1);
   });
 
   it("documentLength floors at 1 even for a zero-length draw layer", () => {
     const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 0, boil: defaultBoilConfig(),
-      layers: [draw(0)] };
+      layers: [draw(0)], audio: null };
     expect(documentLength(p)).toBe(1);
   });
 
   it("refreshLength writes documentLength into frameCount", () => {
     const p: Project = { width: 1, height: 1, fps: 12, bgColor: "#fff", frameCount: 99, boil: defaultBoilConfig(),
-      layers: [draw(4)] };
+      layers: [draw(4)], audio: null };
     refreshLength(p);
     expect(p.frameCount).toBe(4);
   });

@@ -75,6 +75,7 @@ describe("renderFrameWithOnion", () => {
       layers: [dlayer(layerId, [
         { kind: "key", canvas: prevC }, { kind: "key", canvas: curC }, { kind: "key", canvas: nextC },
       ])],
+      audio: null,
     };
     const display = recCtx();
     const scratch = recCtx();

@@ -1,4 +1,5 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell, type AudioTrack } from "../anim/document";
+import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
@@ -250,6 +251,19 @@ export function renameLayer(id: number, input: string) {
   bump();
 }
 
+/** Set/replace the project audio track (not undoable; persisted with the project). */
+export function setAudioTrack(track: AudioTrack) {
+  state.project.audio = track;
+  audioEngine.setTrack(track);
+  bump();
+}
+/** Remove the audio track. */
+export function removeAudioTrack() {
+  state.project.audio = null;
+  audioEngine.setTrack(null);
+  bump();
+}
+
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the
  *  last frame; shortens by trimming trailing cells. Undoable. */
 export function setAnimationLength(n: number) {
@@ -293,6 +307,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
 export function replaceProject(project: Project) {
   history.clear(); // undo history from the old document can't apply to the new one
   state.project = project;
+  audioEngine.setTrack(project.audio);
   state.playhead = 0;
   const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
   state.activeLayerId = firstDrawing.id;
@@ -318,8 +333,16 @@ export const playbackController = new Playback({
   getRangeEnd: () => effectiveRange(state.playback.range, state.project.frameCount).end,
   getLoop: () => state.playback.loop,
   getCurrent: () => state.playhead,
-  setFrame: (f) => { state.playhead = f; },
-  onPlayingChange: (p) => { state.playback.isPlaying = p; state.version++; },
+  setFrame: (f) => {
+    if (state.playback.isPlaying && f !== state.playhead + 1) audioEngine.syncTo(f, state.project.fps);
+    state.playhead = f;
+  },
+  onPlayingChange: (p) => {
+    state.playback.isPlaying = p;
+    if (p) audioEngine.play(state.playhead, state.project.fps);
+    else audioEngine.pause();
+    state.version++;
+  },
 });
 
 /** Set the play range's in-point to the current playhead (session-only, not undoable). */

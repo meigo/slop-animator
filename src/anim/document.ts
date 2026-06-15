@@ -42,6 +42,14 @@ export interface ReferenceLayer {
 
 export type Layer = DrawingLayer | ReferenceLayer;
 
+export interface AudioTrack {
+  name: string;          // file name (display)
+  bytes: Uint8Array;     // original encoded file -> persisted
+  buffer: AudioBuffer;   // decoded PCM -> session-only, rebuilt on load
+  offsetFrames: number;  // start frame (Phase 1: always 0)
+  muted: boolean;        // Phase 1: always false
+}
+
 export function isDrawingLayer(l: Layer): l is DrawingLayer {
   return l.kind === "draw";
 }
@@ -54,6 +62,7 @@ export interface Project {
   frameCount: number;
   boil: BoilConfig;
   layers: Layer[]; // layers[0] = bottom of the stack
+  audio: AudioTrack | null;
 }
 
 /**
@@ -230,5 +239,6 @@ export function createProject(opts?: Partial<Pick<Project, "width" | "height" | 
     frameCount,
     boil: defaultBoilConfig(),
     layers: [layer],
+    audio: null,
   };
 }

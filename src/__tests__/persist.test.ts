@@ -19,6 +19,7 @@ describe("projectToJson", () => {
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
       boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
       layers: [dlayer(1, [key(), hold()]), rlayer(2)],
+      audio: null,
     };
     expect(projectToJson(p)).toEqual({
       version: 1,
@@ -27,6 +28,7 @@ describe("projectToJson", () => {
       layers: [
         { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, cells: ["key", "hold"] },
       ],
+      audio: null,
     });
   });
 
