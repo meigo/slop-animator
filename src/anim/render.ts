@@ -1,5 +1,5 @@
 import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, type Project, type BoilConfig } from "./document";
-import { drawBoiledGL } from "../core/boil-gl";
+import { boilBegin, boilLayer, boilBlit } from "../core/boil-gl";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -26,24 +26,44 @@ export function compositeFrameLayers(
 ): void {
   const w = project.width * dpr, h = project.height * dpr;
   const layersById = new Map(project.layers.map((l) => [l.id, l]));
-  for (const op of buildFrameDrawList(project, frame, includeReference)) {
+  const ops = buildFrameDrawList(project, frame, includeReference);
+
+  // SPIKE: WebGL boil — composite every drawing layer inside ONE GL surface (displaced + blended in
+  // z-order) and read it back exactly once (iOS Safari can't drawImage a GL canvas per-layer).
+  // Reference layers are drawn in 2D below the drawing stack (the rotoscope case).
+  if (boil && boilBegin(w, h)) {
+    for (const op of ops) {
+      const layer = layersById.get(op.layerId)!;
+      if (op.kind === "ref" && layer.kind === "ref") {
+        const size = mediaIntrinsicSize(layer.media);
+        if (size.w === 0 || size.h === 0) continue;
+        const r = containRect(size.w, size.h, w, h);
+        ctx.globalAlpha = op.opacity / 100;
+        ctx.drawImage(layer.media.el, r.x, r.y, r.w, r.h);
+      }
+    }
+    for (const op of ops) {
+      const layer = layersById.get(op.layerId)!;
+      if (op.kind !== "draw" || layer.kind !== "draw") continue;
+      const cell = layer.cells[op.keyframeIndex];
+      if (cell.kind !== "key") continue;
+      const strength = layer.boilStrength;
+      const crisp = isCrispFrame(layer.cells, frame, boil.holdsOnly) || strength <= 0 || boil.amount <= 0;
+      const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
+      boilLayer(cell.canvas, op.opacity / 100, crisp ? 0 : boil.amount * strength, boil.cols, seed);
+    }
+    ctx.globalAlpha = 1;
+    boilBlit(ctx);
+    return;
+  }
+
+  for (const op of ops) {
     const layer = layersById.get(op.layerId)!;
     ctx.globalAlpha = op.opacity / 100;
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      const strength = layer.boilStrength;
-      const boilThisFrame = boil && strength > 0
-        && !isCrispFrame(layer.cells, frame, boil.holdsOnly)
-        && (boil.amount > 0 || boil.scale > 0);
-      if (boilThisFrame) {
-        // Per-layer phase (layerId) + cycle of `rate` warps (frame), scaled by the layer's strength.
-        const seed = (frame % Math.max(1, boil!.rate)) * 100003 + op.layerId * 9176;
-        // SPIKE: WebGL displacement instead of the CPU mesh warp (one GPU pass, runs live on iPad).
-        drawBoiledGL(ctx, cell.canvas, w, h, { amount: boil!.amount * strength, freq: boil!.cols, seed });
-      } else {
-        ctx.drawImage(cell.canvas, 0, 0);
-      }
+      ctx.drawImage(cell.canvas, 0, 0);
     } else if (op.kind === "ref" && layer.kind === "ref") {
       const size = mediaIntrinsicSize(layer.media);
       if (size.w === 0 || size.h === 0) continue; // media not loaded yet
