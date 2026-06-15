@@ -59,7 +59,9 @@ function init(w: number, h: number): boolean {
   glCanvas = document.createElement("canvas");
   glCanvas.width = w;
   glCanvas.height = h;
-  gl = glCanvas.getContext("webgl", { premultipliedAlpha: false, alpha: true, antialias: false });
+  // preserveDrawingBuffer: true so the GL canvas can be drawImage'd multiple times per frame
+  // (one per drawing layer) — without it, iOS Safari returns an empty buffer after the first read.
+  gl = glCanvas.getContext("webgl", { premultipliedAlpha: false, alpha: true, antialias: false, preserveDrawingBuffer: true });
   if (!gl) return false;
   const g = gl;
   prog = g.createProgram()!;
