@@ -131,6 +131,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
     bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers,
+    audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
   return project;

@@ -228,7 +228,7 @@ describe("all-layers timeline operations", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
     const r = refLayerFixture(3);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b, r] };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b, r], audio: null };
     insertFrameAllLayers(p, 1);
     expect(a.cells.length).toBe(3);
     expect(b.cells.length).toBe(3);
@@ -240,7 +240,7 @@ describe("all-layers timeline operations", () => {
   it("deleteFrameAllLayers removes `at` from every drawing layer and refreshes length", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b] };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b], audio: null };
     deleteFrameAllLayers(p, 0);
     expect(a.cells.length).toBe(1);
     expect(b.cells.length).toBe(1);

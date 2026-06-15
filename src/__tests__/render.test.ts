@@ -35,6 +35,7 @@ describe("renderFrame", () => {
         layer([{ kind: "key", canvas: c1 }], { id: 1 }),
         layer([{ kind: "key", canvas: c2 }], { id: 2, opacity: 50 }),
       ],
+      audio: null,
     };
     const ctx = recordingCtx();
     renderFrame(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
@@ -51,6 +52,7 @@ describe("renderFrame", () => {
     const p: Project = {
       width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(),
       layers: [layer([{ kind: "key", canvas: keyCanvas() }])],
+      audio: null,
     };
     const ctx = recordingCtx();
     renderFrame(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, { drawBg: false });
@@ -68,6 +70,7 @@ describe("compositeFrameLayers", () => {
         layer([{ kind: "key", canvas: c1 }], { id: 1 }),
         layer([{ kind: "key", canvas: c2 }], { id: 2, opacity: 50 }),
       ],
+      audio: null,
     };
     const ctx = recordingCtx();
     compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
@@ -92,6 +95,7 @@ describe("compositeFrameLayers with reference layers", () => {
     const p: Project = {
       width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+      audio: null,
     };
     const ctx = recordingCtx();
     compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
@@ -109,6 +113,7 @@ describe("compositeFrameLayers with reference layers", () => {
     const p: Project = {
       width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+      audio: null,
     };
     const ctx = recordingCtx();
     compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, false);
@@ -129,6 +134,7 @@ describe("renderFrame includeReference", () => {
     const p: Project = {
       width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
+      audio: null,
     };
     const ctx = recordingCtx();
     renderFrame(ctx as unknown as CanvasRenderingContext2D, p, 0, 1, { drawBg: false, includeReference: false });
