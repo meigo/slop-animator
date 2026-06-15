@@ -1,11 +1,28 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
-  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical } from "@lucide/svelte";
-  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, reorderLayers } from "../state/appState.svelte";
+  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil } from "@lucide/svelte";
+  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, reorderLayers, renameLayer } from "../state/appState.svelte";
   import { createDrawingLayer } from "../anim/document";
 
   let listEl: HTMLDivElement;
+
+  let editingId: number | null = null;
+  let draft = "";
+
+  function startEdit(layer: { id: number; name: string }) {
+    draft = layer.name;
+    editingId = layer.id;
+  }
+  function commitEdit(id: number) {
+    if (editingId !== id) return; // already cancelled/committed (e.g. Esc then blur)
+    renameLayer(id, draft);
+    editingId = null;
+  }
+  function focusSelect(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
 
   function addLayer() {
     addLayerToProject(createDrawingLayer(state.project.frameCount)); // undoable
@@ -53,7 +70,23 @@
         {#if layer.kind === "ref"}
           <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.type}</span>
         {/if}
-        <span class="flex-1 text-xs truncate">{layer.name}</span>
+        {#if editingId === layer.id}
+          <input class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"
+                 use:focusSelect bind:value={draft}
+                 onclick={(e) => e.stopPropagation()}
+                 onpointerdown={(e) => e.stopPropagation()}
+                 onkeydown={(e) => {
+                   if (e.key === "Enter") commitEdit(layer.id);
+                   else if (e.key === "Escape") editingId = null;
+                 }}
+                 onblur={() => commitEdit(layer.id)} />
+        {:else}
+          <span class="flex-1 text-xs truncate">{layer.name}</span>
+          <button class="text-text-muted hover:text-text-secondary" title="Rename layer"
+                  onclick={(e) => { e.stopPropagation(); startEdit(layer); }}>
+            <Pencil size={13} />
+          </button>
+        {/if}
         <input class="w-10" type="range" min="0" max="100" bind:value={layer.opacity} onchange={bump}
                onclick={(e) => e.stopPropagation()} title="Opacity" />
       </div>
