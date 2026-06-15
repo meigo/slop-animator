@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
-  import { state, history, bump, addLayerToProject, replaceProject, DPR, pressureCurve } from "../state/appState.svelte";
+  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
+  import { loadAudioTrack } from "../audio/decode";
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
   import { downloadBlob } from "../export/download";
   import { createCurveEditor } from "../core/pressure-curve";
-  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
+  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
 
   const curveOpen = writable(false);
   let curvePopupEl: HTMLDivElement;
@@ -16,11 +17,11 @@
   });
 
   let fileInput: HTMLInputElement;
-  let pendingKind: "image" | "video" | "project" = "image";
+  let pendingKind: "image" | "video" | "project" | "audio" = "image";
 
-  function pick(kind: "image" | "video" | "project") {
+  function pick(kind: "image" | "video" | "project" | "audio") {
     pendingKind = kind;
-    fileInput.accept = kind === "image" ? "image/*" : kind === "video" ? "video/*" : ".zip,application/zip";
+    fileInput.accept = kind === "image" ? "image/*" : kind === "video" ? "video/*" : kind === "audio" ? "audio/*" : ".zip,application/zip";
     fileInput.value = "";
     fileInput.click();
   }
@@ -32,6 +33,7 @@
       replaceProject(await loadProjectBlob(file, DPR));
       return;
     }
+    if (pendingKind === "audio") { setAudioTrack(await loadAudioTrack(file)); return; }
     const layer = pendingKind === "image"
       ? await loadImageLayer(file)
       : await loadVideoLayer(file, () => bump());
@@ -134,6 +136,11 @@
     title="Add Video"
     onclick={() => pick("video")}
   ><Film size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Import audio"
+    onclick={() => pick("audio")}
+  ><Music size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Export"
