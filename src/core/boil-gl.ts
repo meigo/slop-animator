@@ -16,6 +16,7 @@ let uAmount: WebGLUniformLocation | null = null;
 let uFreq: WebGLUniformLocation | null = null;
 let uSeed: WebGLUniformLocation | null = null;
 let uOpacity: WebGLUniformLocation | null = null;
+let uWeight: WebGLUniformLocation | null = null;
 let curW = 0, curH = 0;
 
 const VERT = `
@@ -31,6 +32,7 @@ uniform vec2 uAmount;   // displacement in uv units (0 → crisp)
 uniform float uFreq;    // noise periods across the canvas
 uniform vec2 uSeed;     // per-frame + per-layer offset
 uniform float uOpacity; // layer opacity (0..1)
+uniform float uWeight; // signed edge bias: + fatten, - thin
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -45,7 +47,12 @@ void main() {
   vec2 e = smoothstep(0.0, 0.06, vUv) * smoothstep(0.0, 0.06, 1.0 - vUv);
   vec2 p = vUv * uFreq + uSeed;
   vec2 d = (vec2(vnoise(p), vnoise(p + vec2(19.3, 7.7))) - 0.5) * 2.0 * uAmount * (e.x * e.y);
-  gl_FragColor = texture2D(uTex, vUv + d) * uOpacity; // premultiplied → scaling by opacity is valid
+  vec4 c = texture2D(uTex, vUv + d);
+  // Line-weight: push the anti-aliased edge alpha (a*(1-a) peaks at edges); rescale rgb to stay premultiplied.
+  float a0 = c.a;
+  float a = clamp(a0 + uWeight * a0 * (1.0 - a0) * 4.0, 0.0, 1.0);
+  vec3 rgb = a0 > 0.0 ? c.rgb * (a / a0) : c.rgb;
+  gl_FragColor = vec4(rgb, a) * uOpacity;
 }`;
 
 function compile(g: WebGLRenderingContext, type: number, src: string): WebGLShader {
@@ -59,6 +66,7 @@ function compile(g: WebGLRenderingContext, type: number, src: string): WebGLShad
 function init(): boolean {
   if (gl) return true;
   glCanvas = document.createElement("canvas");
+  glCanvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); resetBoilGL(); }, false);
   glCanvas.width = 1;
   glCanvas.height = 1;
   gl = glCanvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -83,6 +91,7 @@ function init(): boolean {
   uFreq = g.getUniformLocation(prog, "uFreq");
   uSeed = g.getUniformLocation(prog, "uSeed");
   uOpacity = g.getUniformLocation(prog, "uOpacity");
+  uWeight = g.getUniformLocation(prog, "uWeight");
 
   tex = g.createTexture();
   g.bindTexture(g.TEXTURE_2D, tex);
@@ -120,7 +129,7 @@ export function boilSeedOffset(seed: number): [number, number] {
 }
 
 /** Composite one drawing layer into the GL surface (displaced by `amount` px; 0 = crisp). */
-export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: number, freq: number, seed: number): void {
+export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: number, freq: number, weight: number, seed: number): void {
   const g = gl!;
   g.bindTexture(g.TEXTURE_2D, tex);
   g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, src);
@@ -129,8 +138,16 @@ export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: numbe
   g.uniform1f(uFreq, Math.max(1, freq));
   const [sx, sy] = boilSeedOffset(seed);
   g.uniform2f(uSeed, sx, sy);
+  // Signed per-frame jitter in [-1,1] (different stream from the displacement seed) so weight breathes.
+  const wjit = (boilSeedOffset(seed + 31)[0] / 17) * 2 - 1;
+  g.uniform1f(uWeight, weight * wjit * 0.12); // 0.12 = max edge-alpha push at full weight
   g.uniform1f(uOpacity, opacity);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+}
+
+/** Drop the GL state so the next boilBegin re-initialises (used on WebGL context loss). */
+export function resetBoilGL(): void {
+  gl = null; glCanvas = null; prog = null; tex = null;
 }
 
 /** Blit the accumulated GL surface onto the 2D composite (one read per frame — iOS-safe). */
