@@ -1,5 +1,6 @@
 import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { decodeAudioBytes } from "../audio/decode";
 
 export interface DrawingLayerJson {
   id: number;
@@ -20,6 +21,7 @@ export interface ProjectJson {
   frameCount: number;
   boil: BoilConfig;
   layers: DrawingLayerJson[];
+  audio: { name: string; offsetFrames: number; muted: boolean } | null;
 }
 
 /** Normalise a persisted boil blob. Old saves used `scale`; weight has a different meaning, so old
@@ -57,6 +59,9 @@ export function projectToJson(project: Project): ProjectJson {
       boilStrength: l.boilStrength,
       cells: l.cells.map((c) => c.kind),
     })),
+    audio: project.audio
+      ? { name: project.audio.name, offsetFrames: project.audio.offsetFrames, muted: project.audio.muted }
+      : null,
   };
 }
 
@@ -97,6 +102,7 @@ export async function saveProjectBlob(project: Project): Promise<Blob> {
       files[frameAssetPath(layer.id, i)] = await canvasToPngBytes(cell.canvas);
     }
   }
+  if (project.audio) files["audio/track"] = project.audio.bytes;
   return new Blob([zipSync(files)], { type: "application/zip" });
 }
 
@@ -134,5 +140,15 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
+  const aj = json.audio;
+  const audioBytes = zip["audio/track"];
+  if (aj && audioBytes) {
+    try {
+      const buffer = await decodeAudioBytes(audioBytes);
+      project.audio = { name: aj.name, bytes: audioBytes, buffer, offsetFrames: aj.offsetFrames, muted: aj.muted };
+    } catch {
+      project.audio = null; // corrupt/unsupported audio → open the project without it
+    }
+  }
   return project;
 }

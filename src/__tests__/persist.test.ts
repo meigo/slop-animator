@@ -28,6 +28,7 @@ describe("projectToJson", () => {
       layers: [
         { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, cells: ["key", "hold"] },
       ],
+      audio: null,
     });
   });
 
