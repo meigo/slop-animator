@@ -27,6 +27,7 @@ interface AnimState {
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
   exportOpen: boolean;
+  sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean };
@@ -55,6 +56,7 @@ export const state: AnimState = $state({
   fill: { tolerance: 32, expand: 2 },
   version: 0,
   exportOpen: false,
+  sizeDialog: { open: false, mode: "new" },
   theme: "dark",
   onion: {
     enabled: false,

@@ -5,6 +5,7 @@
   import Playbar from "./lib/Playbar.svelte";
   import Timeline from "./lib/Timeline.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
+  import SizeDialog from "./lib/SizeDialog.svelte";
   import { onMount } from "svelte";
   import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
@@ -66,3 +67,4 @@
   <Timeline />
 </div>
 <ExportDialog />
+<SizeDialog />
