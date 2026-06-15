@@ -238,15 +238,15 @@
           <label class="flex items-center gap-2" title="Boil amount (px)"><span class="w-10 text-text-secondary">amt</span>
             <input type="range" class="flex-1" min="0" max="8" step="0.5" bind:value={state.project.boil.amount} />
             <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.amount}</span></label>
-          <label class="flex items-center gap-2" title="Boil detail (grid columns)"><span class="w-10 text-text-secondary">grid</span>
+          <label class="flex items-center gap-2" title="Boil detail (grid columns)"><span class="w-10 text-text-secondary">detail</span>
             <input type="range" class="flex-1" min="4" max="40" step="1" bind:value={state.project.boil.cols} />
             <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.cols}</span></label>
           <label class="flex items-center gap-2" title="Boil rate (cycle N warps — on twos/threes)"><span class="w-10 text-text-secondary">rate</span>
             <input type="range" class="flex-1" min="1" max="8" step="1" bind:value={state.project.boil.rate} />
             <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.rate}</span></label>
-          <label class="flex items-center gap-2" title="Boil line-weight jitter (uniform scale ±%)"><span class="w-10 text-text-secondary">weight</span>
-            <input type="range" class="flex-1" min="0" max="0.05" step="0.005" bind:value={state.project.boil.scale} />
-            <span class="w-8 text-right text-text-muted tabular-nums">{(state.project.boil.scale * 100).toFixed(1)}%</span></label>
+          <label class="flex items-center gap-2" title="Boil line-weight breathing"><span class="w-10 text-text-secondary">weight</span>
+            <input type="range" class="flex-1" min="0" max="1" step="0.05" bind:value={state.project.boil.weight} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{state.project.boil.weight}</span></label>
           <label class="flex items-center gap-2"><input type="checkbox" bind:checked={state.project.boil.holdsOnly} /> <span class="text-text-secondary">Holds only (keep keyframes crisp)</span></label>
         </div>
       {/if}

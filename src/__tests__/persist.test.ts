@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { setMinLayerId, createDrawingLayer, defaultBoilConfig } from "../anim/document";
-import { projectToJson, frameAssetPath } from "../persist/project-file";
+import { projectToJson, frameAssetPath, migrateBoil } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
 function key(): Cell { return { kind: "key", canvas: {} as HTMLCanvasElement }; }
@@ -17,13 +17,13 @@ describe("projectToJson", () => {
   it("serializes settings (incl. boil) and drawing layers, excluding reference layers", () => {
     const p: Project = {
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
-      boil: { enabled: true, amount: 2, cols: 16, rate: 2, scale: 0.01, holdsOnly: true },
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
       layers: [dlayer(1, [key(), hold()]), rlayer(2)],
     };
     expect(projectToJson(p)).toEqual({
       version: 1,
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
-      boil: { enabled: true, amount: 2, cols: 16, rate: 2, scale: 0.01, holdsOnly: true },
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
       layers: [
         { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, cells: ["key", "hold"] },
       ],
@@ -32,8 +32,21 @@ describe("projectToJson", () => {
 
   it("uses defaultBoilConfig() shape", () => {
     expect(Object.keys(defaultBoilConfig()).sort()).toEqual(
-      ["amount", "cols", "enabled", "holdsOnly", "rate", "scale"]
+      ["amount", "cols", "enabled", "holdsOnly", "rate", "weight"]
     );
+  });
+});
+
+describe("migrateBoil", () => {
+  it("an old save with `scale` loads with a default weight (scale dropped)", () => {
+    const m = migrateBoil({ enabled: true, amount: 2, cols: 16, rate: 2, scale: 0.005, holdsOnly: true });
+    expect(m.weight).toBe(0.4);
+    expect("scale" in m).toBe(false);
+    expect(m.amount).toBe(2);
+  });
+  it("a save with weight keeps it; missing boil → full default", () => {
+    expect(migrateBoil({ enabled: true, amount: 3, cols: 8, rate: 1, weight: 0.7, holdsOnly: false }).weight).toBe(0.7);
+    expect(migrateBoil(undefined).enabled).toBe(false);
   });
 });
 

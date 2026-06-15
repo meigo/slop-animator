@@ -22,6 +22,22 @@ export interface ProjectJson {
   layers: DrawingLayerJson[];
 }
 
+/** Normalise a persisted boil blob. Old saves used `scale`; weight has a different meaning, so old
+ *  `scale` is dropped and weight falls back to the default. */
+export function migrateBoil(raw: unknown): BoilConfig {
+  const d = defaultBoilConfig();
+  if (!raw || typeof raw !== "object") return d;
+  const b = raw as Partial<BoilConfig>;
+  return {
+    enabled: b.enabled ?? d.enabled,
+    amount: typeof b.amount === "number" ? b.amount : d.amount,
+    cols: typeof b.cols === "number" ? b.cols : d.cols,
+    rate: typeof b.rate === "number" ? b.rate : d.rate,
+    weight: typeof b.weight === "number" ? b.weight : d.weight,
+    holdsOnly: b.holdsOnly ?? d.holdsOnly,
+  };
+}
+
 /** Serialize the project structure (drawing layers only) — no pixel data, no reference layers. */
 export function projectToJson(project: Project): ProjectJson {
   return {
@@ -114,7 +130,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   setMinLayerId(maxId + 1);
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: json.boil ?? defaultBoilConfig(), layers,
+    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
   return project;
