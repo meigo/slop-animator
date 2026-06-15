@@ -12,9 +12,9 @@ already has `Layer.name` (drawing and reference layers both), defaulted to `Laye
 ## Scope
 
 In scope:
+- A pure `resolveLayerName(current, input)` helper in `src/anim/document.ts`, with unit tests.
+- A `renameLayer(id, input)` store mutation in `src/state/appState.svelte.ts` (uses the helper).
 - An inline-edit affordance in `src/lib/LayerList.svelte` rows (pencil icon → text input).
-- A `renameLayer(id, name)` store mutation in `src/state/appState.svelte.ts`.
-- A unit test for `renameLayer`.
 
 Out of scope (YAGNI):
 - Renaming from the timeline rows (`Timeline.svelte`) — names there stay read-only.
@@ -67,25 +67,37 @@ Out of scope (YAGNI):
 
 ## Components & data flow
 
+### `src/anim/document.ts` — `resolveLayerName` (pure)
+
+The rename rule (trim; empty/whitespace → keep the old name) is the one piece of real logic worth
+pinning, and the test suite runs in **Node** (no `jsdom` — see Testing), so it lives as a pure helper
+in `document.ts` next to the layer factories where it is unit-testable without the store or a DOM:
+
+```ts
+/** The name to apply when renaming to `input`; falls back to `current` for empty/whitespace input. */
+export function resolveLayerName(current: string, input: string): string {
+  return input.trim() || current;
+}
+```
+
 ### `src/state/appState.svelte.ts` — `renameLayer`
 
 ```ts
 /** Rename a layer in place. Not undoable (name is a view-prop, like visible/opacity). */
-export function renameLayer(id: number, name: string) {
+export function renameLayer(id: number, input: string) {
   const layer = state.project.layers.find((l) => l.id === id);
   if (!layer) return;
-  const trimmed = name.trim();
-  if (!trimmed) return; // ignore empty / whitespace-only — keep the old name
-  layer.name = trimmed;
+  layer.name = resolveLayerName(layer.name, input);
   bump();
 }
 ```
 
 - Finds the layer by id; no-op on unknown id.
-- Trims surrounding whitespace; ignores empty.
-- Mutates `layer.name` directly and calls `bump()` to refresh the view (same as visibility/opacity).
-- Sets the trimmed name even when it equals the current name (a harmless no-op write); the
-  empty-string guard is the only early return besides the id miss.
+- Delegates the trim/empty rule to `resolveLayerName`; mutates `layer.name` directly and calls
+  `bump()` to refresh the view (same pattern as the visibility toggle and opacity slider).
+- Not undoable, by design (Decision 2). This thin store wrapper is not unit-tested (the store can't
+  be imported under Node — Testing); it is manual/integration-verified like its siblings
+  `removeLayer`/`duplicateLayer`/`reorderLayers`.
 
 ### `src/lib/LayerList.svelte` — inline edit row
 
@@ -106,11 +118,16 @@ and existing saves already contain names. No migration needed.
 
 ## Testing
 
-**Unit (`renameLayer`):**
-- Renames the matching layer to the given (trimmed) value.
+The Vitest suite runs in the **Node** environment (`jsdom` is not a dependency), so no test imports
+the store (`appState.svelte.ts` touches `window` and constructs `Playback`/`PressureCurve` at module
+load). Unit coverage therefore targets the pure helper; the store wrapper and UI are manual-verified,
+matching the existing convention (`removeLayer`/`duplicateLayer`/`reorderLayers` have no unit tests).
+
+**Unit (`resolveLayerName`, in `document.test.ts`):**
+- Returns the new name when non-empty.
 - Trims surrounding whitespace.
-- Ignores an empty / whitespace-only value (layer keeps its old name).
-- No-op on an unknown id (no throw, no change).
+- Returns the current name for empty input.
+- Returns the current name for whitespace-only input.
 
 **Manual (browser):**
 - Pencil on a layer row enters edit mode with text selected; Enter commits; blur commits; Esc
