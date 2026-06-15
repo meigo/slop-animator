@@ -1,4 +1,4 @@
-// WebGL line-boil (SPIKE, iter 2). Composites ALL drawing layers inside one GL canvas — each
+// WebGL line-boil. Composites ALL drawing layers inside one GL canvas — each
 // displaced by a fragment-shader noise offset and blended in z-order — then the caller blits the
 // GL canvas onto the 2D composite EXACTLY ONCE per frame. Reading a WebGL canvas via drawImage
 // multiple times per frame is unreliable on iOS Safari (stale/empty after the first read), which

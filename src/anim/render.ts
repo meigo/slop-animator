@@ -6,7 +6,7 @@ interface RenderOpts {
   drawBg?: boolean;
   /** Include reference layers. Default true (display); export passes false. */
   includeReference?: boolean;
-  /** Line-boil warp for drawing layers (prototype). Omitted = no boil. */
+  /** Line-boil warp for drawing layers. Omitted = no boil. */
   boil?: BoilConfig;
 }
 
@@ -28,7 +28,7 @@ export function compositeFrameLayers(
   const layersById = new Map(project.layers.map((l) => [l.id, l]));
   const ops = buildFrameDrawList(project, frame, includeReference);
 
-  // SPIKE: WebGL boil — composite every drawing layer inside ONE GL surface (displaced + blended in
+  // WebGL boil — composite every drawing layer inside ONE GL surface (displaced + blended in
   // z-order) and read it back exactly once (iOS Safari can't drawImage a GL canvas per-layer).
   // Reference layers are drawn in 2D below the drawing stack (the rotoscope case).
   if (boil && boilBegin(w, h)) {
