@@ -2,23 +2,27 @@ import { describe, it, expect } from "vitest";
 import { advancePlayhead, Playback, effectiveRange, withRangeIn, withRangeOut, snapPlayheadToRange } from "../anim/playback";
 
 describe("advancePlayhead", () => {
-  it("advances to the next frame mid-timeline", () => {
-    expect(advancePlayhead(1, 5, true)).toEqual({ frame: 2, stop: false });
+  it("advances to the next frame mid-range", () => {
+    expect(advancePlayhead(1, 0, 4, true)).toEqual({ frame: 2, stop: false });
   });
-  it("wraps to 0 at the end when looping", () => {
-    expect(advancePlayhead(4, 5, true)).toEqual({ frame: 0, stop: false });
+  it("wraps to start at the end when looping", () => {
+    expect(advancePlayhead(4, 0, 4, true)).toEqual({ frame: 0, stop: false });
   });
   it("stops at the end when not looping", () => {
-    expect(advancePlayhead(4, 5, false)).toEqual({ frame: 4, stop: true });
+    expect(advancePlayhead(4, 0, 4, false)).toEqual({ frame: 4, stop: true });
+  });
+  it("respects a non-zero start when wrapping", () => {
+    expect(advancePlayhead(7, 2, 7, true)).toEqual({ frame: 2, stop: false });
   });
 });
 
-function harness(opts: { fps: number; frameCount: number; loop: boolean; start?: number }) {
+function harness(opts: { fps: number; frameCount: number; loop: boolean; start?: number; rangeStart?: number; rangeEnd?: number }) {
   let current = opts.start ?? 0;
   let playing = true;
   const pb = new Playback({
     getFps: () => opts.fps,
-    getFrameCount: () => opts.frameCount,
+    getRangeStart: () => opts.rangeStart ?? 0,
+    getRangeEnd: () => opts.rangeEnd ?? opts.frameCount - 1,
     getLoop: () => opts.loop,
     getCurrent: () => current,
     setFrame: (f) => { current = f; },

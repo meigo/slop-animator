@@ -10,7 +10,7 @@ import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
-import { Playback } from "../anim/playback";
+import { Playback, effectiveRange } from "../anim/playback";
 
 export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso";
 
@@ -30,7 +30,7 @@ interface AnimState {
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
-  playback: { isPlaying: boolean; loop: boolean };
+  playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
 }
 
 const project = createProject();
@@ -66,7 +66,7 @@ export const state: AnimState = $state({
     tintPrev: "#e0526a", // warm red
     tintNext: "#3f7fd0", // cool blue
   },
-  playback: { isPlaying: false, loop: true },
+  playback: { isPlaying: false, loop: true, range: null },
 });
 
 export const history = new History();
@@ -314,7 +314,8 @@ export function bump() {
  */
 export const playbackController = new Playback({
   getFps: () => state.project.fps,
-  getFrameCount: () => state.project.frameCount,
+  getRangeStart: () => effectiveRange(state.playback.range, state.project.frameCount).start,
+  getRangeEnd: () => effectiveRange(state.playback.range, state.project.frameCount).end,
   getLoop: () => state.playback.loop,
   getCurrent: () => state.playhead,
   setFrame: (f) => { state.playhead = f; },

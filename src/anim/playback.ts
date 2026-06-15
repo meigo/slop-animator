@@ -1,11 +1,13 @@
-/** Next playhead position for a tick. `stop` is true when the end is reached and not looping. */
+/** Next playhead position for a tick over the inclusive range [start, end]. `stop` is true when the
+ *  end is reached and not looping. */
 export function advancePlayhead(
   current: number,
-  frameCount: number,
+  start: number,
+  end: number,
   loop: boolean
 ): { frame: number; stop: boolean } {
-  if (current + 1 < frameCount) return { frame: current + 1, stop: false };
-  if (loop) return { frame: 0, stop: false };
+  if (current < end) return { frame: current + 1, stop: false };
+  if (loop) return { frame: start, stop: false };
   return { frame: current, stop: true };
 }
 
@@ -39,7 +41,8 @@ export function snapPlayheadToRange(current: number, start: number, end: number)
 
 export interface PlaybackOptions {
   getFps: () => number;
-  getFrameCount: () => number;
+  getRangeStart: () => number;
+  getRangeEnd: () => number;
   getLoop: () => boolean;
   getCurrent: () => number;
   setFrame: (frame: number) => void;
@@ -77,7 +80,7 @@ export class Playback {
     const frameDurMs = 1000 / this.opts.getFps();
     while (this.accumulatorMs >= frameDurMs) {
       this.accumulatorMs -= frameDurMs;
-      const next = advancePlayhead(this.opts.getCurrent(), this.opts.getFrameCount(), this.opts.getLoop());
+      const next = advancePlayhead(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd(), this.opts.getLoop());
       if (next.stop) {
         this.playing = false;
         this.opts.onPlayingChange(false);
@@ -93,6 +96,8 @@ export class Playback {
     this.lastMs = null;
     this.accumulatorMs = 0;
     this.opts.onPlayingChange(true);
+    const snapped = snapPlayheadToRange(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd());
+    if (snapped !== this.opts.getCurrent()) this.opts.setFrame(snapped);
     this.scheduleNext();
   }
 
