@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, refreshLength, type Project, type Layer, type Cell } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, type Project, type Layer, type Cell } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
@@ -240,6 +240,14 @@ export function mergeDown(id: number) {
     layers.splice(idx, 1);
     state.activeLayerId = below.id;
   });
+}
+
+/** Rename a layer in place. Not undoable (name is a view-prop, like visible/opacity). */
+export function renameLayer(id: number, input: string) {
+  const layer = state.project.layers.find((l) => l.id === id);
+  if (!layer) return;
+  layer.name = resolveLayerName(layer.name, input);
+  bump();
 }
 
 /**
