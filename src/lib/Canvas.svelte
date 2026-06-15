@@ -15,6 +15,7 @@
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
+  import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import { containRect, mediaIntrinsicSize, type ReferenceLayer } from "../anim/document";
   import { hitTestHandle, transformCenter, applyMove, applyScale, applyRotate, type Handle, type Pt, type Rect } from "../core/ref-transform";
 
@@ -401,5 +402,7 @@
     onMesh={() => enterWarp(3, 3)}
     onCommit={() => selection?.commit()}
     onCancel={() => selection?.cancel()} />
+
+  <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
 
 </div>
