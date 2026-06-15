@@ -1,30 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, resizeCells, countKeyframesPastLength, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
-const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
-const hold = (): Cell => ({ kind: "hold" });
+const makeKey = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
+const makeHold = (): Cell => ({ kind: "hold" });
+
+const hold = { kind: "hold" } as Cell;
+const key = { kind: "key" } as unknown as Cell;
 
 describe("resolveKeyframeIndex", () => {
   it("returns null when there is no keyframe at or before the frame", () => {
-    expect(resolveKeyframeIndex([hold(), hold()], 1)).toBeNull();
+    expect(resolveKeyframeIndex([makeHold(), makeHold()], 1)).toBeNull();
     expect(resolveKeyframeIndex([], 0)).toBeNull();
   });
 
   it("returns the frame's own index when it is a keyframe", () => {
-    expect(resolveKeyframeIndex([key(), hold()], 0)).toBe(0);
+    expect(resolveKeyframeIndex([makeKey(), makeHold()], 0)).toBe(0);
   });
 
   it("walks back to the nearest prior keyframe across holds", () => {
-    expect(resolveKeyframeIndex([key(), hold(), hold()], 2)).toBe(0);
+    expect(resolveKeyframeIndex([makeKey(), makeHold(), makeHold()], 2)).toBe(0);
   });
 
   it("picks the most recent keyframe when several precede the frame", () => {
-    expect(resolveKeyframeIndex([key(), hold(), key(), hold()], 3)).toBe(2);
+    expect(resolveKeyframeIndex([makeKey(), makeHold(), makeKey(), makeHold()], 3)).toBe(2);
   });
 
   it("returns null past the end of the track (blank after end)", () => {
-    expect(resolveKeyframeIndex([key(), hold()], 5)).toBeNull();
-    expect(resolveKeyframeIndex([key(), hold()], 2)).toBeNull();
+    expect(resolveKeyframeIndex([makeKey(), makeHold()], 5)).toBeNull();
+    expect(resolveKeyframeIndex([makeKey(), makeHold()], 2)).toBeNull();
   });
 });
 
@@ -42,7 +45,7 @@ function refLayer(id: number, over: Partial<ReferenceLayer> = {}): ReferenceLaye
 
 describe("buildFrameDrawList", () => {
   it("emits a draw op per visible drawing layer with a resolved keyframe, bottom→top", () => {
-    const p = proj([layer(1, [key(), hold()]), layer(2, [hold(), key()])], 2);
+    const p = proj([layer(1, [makeKey(), makeHold()]), layer(2, [makeHold(), makeKey()])], 2);
     expect(buildFrameDrawList(p, 1)).toEqual([
       { kind: "draw", layerId: 1, keyframeIndex: 0, opacity: 100 },
       { kind: "draw", layerId: 2, keyframeIndex: 1, opacity: 100 },
@@ -50,19 +53,19 @@ describe("buildFrameDrawList", () => {
   });
 
   it("skips invisible layers", () => {
-    const p = proj([layer(1, [key()], { visible: false }), layer(2, [key()])], 1);
+    const p = proj([layer(1, [makeKey()], { visible: false }), layer(2, [makeKey()])], 1);
     expect(buildFrameDrawList(p, 0)).toEqual([{ kind: "draw", layerId: 2, keyframeIndex: 0, opacity: 100 }]);
   });
 
   it("skips drawing layers with no keyframe yet at this frame", () => {
-    const p = proj([layer(1, [hold(), key()])], 2);
+    const p = proj([layer(1, [makeHold(), makeKey()])], 2);
     expect(buildFrameDrawList(p, 0)).toEqual([]);
   });
 
   it("emits a ref op for visible reference layers, in z-order with drawing layers", () => {
     const p: Project = {
       width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
-      layers: [refLayer(1), layer(2, [key()], { id: 2 })],
+      layers: [refLayer(1), layer(2, [makeKey()], { id: 2 })],
     };
     expect(buildFrameDrawList(p, 0)).toEqual([
       { kind: "ref", layerId: 1, opacity: 60 },
@@ -73,7 +76,7 @@ describe("buildFrameDrawList", () => {
   it("excludes reference layers when includeReference is false", () => {
     const p: Project = {
       width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
-      layers: [refLayer(1), layer(2, [key()], { id: 2 })],
+      layers: [refLayer(1), layer(2, [makeKey()], { id: 2 })],
     };
     expect(buildFrameDrawList(p, 0, false)).toEqual([
       { kind: "draw", layerId: 2, keyframeIndex: 0, opacity: 100 },
@@ -147,15 +150,15 @@ describe("documentLength / refreshLength", () => {
 
 describe("isCrispFrame", () => {
   it("holds-only: a frame that is its own keyframe stays crisp", () => {
-    expect(isCrispFrame([key(), hold()], 0, true)).toBe(true);  // own key → crisp
-    expect(isCrispFrame([key(), hold()], 1, true)).toBe(false); // hold → boil
+    expect(isCrispFrame([makeKey(), makeHold()], 0, true)).toBe(true);  // own key → crisp
+    expect(isCrispFrame([makeKey(), makeHold()], 1, true)).toBe(false); // hold → boil
   });
   it("holds-only off: nothing is crisp", () => {
-    expect(isCrispFrame([key(), hold()], 0, false)).toBe(false);
-    expect(isCrispFrame([key(), hold()], 1, false)).toBe(false);
+    expect(isCrispFrame([makeKey(), makeHold()], 0, false)).toBe(false);
+    expect(isCrispFrame([makeKey(), makeHold()], 1, false)).toBe(false);
   });
   it("past the track end is not crisp (no own keyframe there)", () => {
-    expect(isCrispFrame([key()], 5, true)).toBe(false);
+    expect(isCrispFrame([makeKey()], 5, true)).toBe(false);
   });
 });
 
@@ -187,5 +190,26 @@ describe("resolveLayerName", () => {
   });
   it("keeps the current name for whitespace-only input", () => {
     expect(resolveLayerName("Old", "   ")).toBe("Old");
+  });
+});
+
+describe("resizeCells", () => {
+  it("grows by appending holds to the target length", () => {
+    expect(resizeCells([key, hold], 5)).toHaveLength(5);
+  });
+  it("appended cells are holds", () => {
+    const out = resizeCells([key], 3);
+    expect(out.slice(1).every((c) => c.kind === "hold")).toBe(true);
+  });
+  it("shrinks by slicing to the target length", () => {
+    expect(resizeCells([key, hold, key, hold], 2).map((c) => c.kind)).toEqual(["key", "hold"]);
+  });
+  it("returns the same contents when n equals the current length", () => {
+    expect(resizeCells([key, hold], 2).map((c) => c.kind)).toEqual(["key", "hold"]);
+  });
+  it("does not mutate the input array", () => {
+    const cells = [key];
+    resizeCells(cells, 4);
+    expect(cells).toHaveLength(1);
   });
 });
