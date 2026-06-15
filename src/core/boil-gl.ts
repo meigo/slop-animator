@@ -110,6 +110,15 @@ export function boilBegin(w: number, h: number): boolean {
   return true;
 }
 
+/** Map a (possibly huge) seed to a SMALL bounded 2D offset on the CPU (float64, exact). Feeding a
+ *  large coordinate into the GLSL noise collapses it (few/constant states) on most GPUs. */
+export function boilSeedOffset(seed: number): [number, number] {
+  return [
+    Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 17,
+    Math.abs(Math.sin(seed * 78.233) * 12543.1234) % 17,
+  ];
+}
+
 /** Composite one drawing layer into the GL surface (displaced by `amount` px; 0 = crisp). */
 export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: number, freq: number, seed: number): void {
   const g = gl!;
@@ -118,10 +127,7 @@ export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: numbe
   g.uniform1i(uTex, 0);
   g.uniform2f(uAmount, amount / curW, amount / curH);
   g.uniform1f(uFreq, Math.max(1, freq));
-  // Map the (possibly huge) seed to a SMALL bounded offset on the CPU (float64, exact). Feeding
-  // a large coordinate into the GLSL noise collapses it (few/constant states) on most GPUs.
-  const sx = (Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 17);
-  const sy = (Math.abs(Math.sin(seed * 78.2330) * 12543.1234) % 17);
+  const [sx, sy] = boilSeedOffset(seed);
   g.uniform2f(uSeed, sx, sy);
   g.uniform1f(uOpacity, opacity);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
