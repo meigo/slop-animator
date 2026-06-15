@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, type Project, type Layer, type Cell } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell } from "../anim/document";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
@@ -248,6 +248,18 @@ export function renameLayer(id: number, input: string) {
   if (!layer) return;
   layer.name = resolveLayerName(layer.name, input);
   bump();
+}
+
+/** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the
+ *  last frame; shortens by trimming trailing cells. Undoable. */
+export function setAnimationLength(n: number) {
+  const target = Math.max(1, Math.min(9999, Math.floor(n)));
+  if (target === state.project.frameCount) return;
+  commitStructural(() => {
+    for (const layer of state.project.layers) {
+      if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
+    }
+  });
 }
 
 /**
