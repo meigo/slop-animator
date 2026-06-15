@@ -15,6 +15,11 @@ function recordingCtx() {
     fillRect: () => calls.push(`fillRect:${ctx.fillStyle}`),
     drawImage: (img: { __id: number }, ...rest: number[]) =>
       calls.push(`drawImage:${img.__id}@${ctx.globalAlpha}${rest.length >= 4 ? ":sized" : ""}`),
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    scale: () => {},
   };
   return ctx;
 }

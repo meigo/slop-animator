@@ -39,7 +39,15 @@ export function compositeFrameLayers(
         if (size.w === 0 || size.h === 0) continue;
         const r = containRect(size.w, size.h, w, h);
         ctx.globalAlpha = op.opacity / 100;
-        ctx.drawImage(layer.media.el, r.x, r.y, r.w, r.h);
+        const t = layer.transform;
+        const cx = r.x + r.w / 2 + t.dx * dpr;
+        const cy = r.y + r.h / 2 + t.dy * dpr;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(t.rotation);
+        ctx.scale(t.scale, t.scale);
+        ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
+        ctx.restore();
       }
     }
     for (const op of ops) {
@@ -68,7 +76,15 @@ export function compositeFrameLayers(
       const size = mediaIntrinsicSize(layer.media);
       if (size.w === 0 || size.h === 0) continue; // media not loaded yet
       const r = containRect(size.w, size.h, project.width * dpr, project.height * dpr);
-      ctx.drawImage(layer.media.el, r.x, r.y, r.w, r.h);
+      const t = layer.transform;
+      const cx = r.x + r.w / 2 + t.dx * dpr;
+      const cy = r.y + r.h / 2 + t.dy * dpr;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t.rotation);
+      ctx.scale(t.scale, t.scale);
+      ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
+      ctx.restore();
     }
   }
   ctx.globalAlpha = 1;
