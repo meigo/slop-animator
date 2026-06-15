@@ -10,7 +10,7 @@ import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
-import { Playback, effectiveRange } from "../anim/playback";
+import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 
 export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso";
 
@@ -321,6 +321,19 @@ export const playbackController = new Playback({
   setFrame: (f) => { state.playhead = f; },
   onPlayingChange: (p) => { state.playback.isPlaying = p; state.version++; },
 });
+
+/** Set the play range's in-point to the current playhead (session-only, not undoable). */
+export function setPlayRangeIn() {
+  state.playback.range = withRangeIn(state.playback.range, state.playhead);
+}
+/** Set the play range's out-point to the current playhead (session-only, not undoable). */
+export function setPlayRangeOut() {
+  state.playback.range = withRangeOut(state.playback.range, state.playhead);
+}
+/** Clear the play range (back to full-timeline playback). */
+export function clearPlayRange() {
+  state.playback.range = null;
+}
 
 /**
  * Holder for the single Selection instance (created by Canvas.svelte on mount).
