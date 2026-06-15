@@ -119,6 +119,18 @@ export function resizeCells(cells: Cell[], n: number): Cell[] {
   return cells.concat(pad);
 }
 
+/** Count keyframes at index >= n across all drawing layers (those a shorten-to-n would drop). */
+export function countKeyframesPastLength(project: Project, n: number): number {
+  let count = 0;
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw") continue;
+    for (let i = n; i < layer.cells.length; i++) {
+      if (layer.cells[i].kind === "key") count++;
+    }
+  }
+  return count;
+}
+
 /** Aspect-preserving "contain" fit of a `srcW×srcH` source centred in a `boxW×boxH` box. */
 export function containRect(srcW: number, srcH: number, boxW: number, boxH: number): { x: number; y: number; w: number; h: number } {
   if (srcW <= 0 || srcH <= 0) return { x: 0, y: 0, w: boxW, h: boxH };

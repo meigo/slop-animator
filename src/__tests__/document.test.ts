@@ -213,3 +213,28 @@ describe("resizeCells", () => {
     expect(cells).toHaveLength(1);
   });
 });
+
+function drawLayers(...layerCells: Cell[][]): Project {
+  return {
+    layers: layerCells.map((cells, i) => ({
+      kind: "draw", id: i + 1, name: "", visible: true, locked: false, opacity: 100, boilStrength: 1, cells,
+    })),
+  } as unknown as Project;
+}
+
+describe("countKeyframesPastLength", () => {
+  it("counts keyframes at index >= n across layers", () => {
+    const p = drawLayers([key, hold, key, key], [hold, key, hold, key]);
+    expect(countKeyframesPastLength(p, 2)).toBe(3);
+  });
+  it("returns 0 when all keyframes are within [0, n)", () => {
+    expect(countKeyframesPastLength(drawLayers([key, key, hold, hold]), 2)).toBe(0);
+  });
+  it("ignores trailing holds", () => {
+    expect(countKeyframesPastLength(drawLayers([key, hold, hold, hold]), 1)).toBe(0);
+  });
+  it("ignores reference layers", () => {
+    const p = { layers: [{ kind: "ref" }, { kind: "draw", cells: [key, key] }] } as unknown as Project;
+    expect(countKeyframesPastLength(p, 1)).toBe(1);
+  });
+});
