@@ -7,6 +7,7 @@ import { PressureCurve } from "../core/pressure-curve";
 /** Brush selection: smooth (perfect-freehand), ink (incremental marker), or a textured stamp type. */
 export type BrushKind = "smooth" | "ink" | BrushType;
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
+import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback } from "../anim/playback";
@@ -26,6 +27,7 @@ interface AnimState {
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
   exportOpen: boolean;
+  sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean };
@@ -54,6 +56,7 @@ export const state: AnimState = $state({
   fill: { tolerance: 32, expand: 2 },
   version: 0,
   exportOpen: false,
+  sizeDialog: { open: false, mode: "new" },
   theme: "dark",
   onion: {
     enabled: false,
@@ -89,6 +92,8 @@ export function activeLayer() {
 export interface StructSnapshot {
   layers: Layer[];
   frameCount: number;
+  width: number;
+  height: number;
   activeLayerId: number;
   playhead: number;
 }
@@ -101,6 +106,8 @@ function snapshotStructure(): StructSnapshot {
   return {
     layers: cloneLayers(state.project.layers),
     frameCount: state.project.frameCount,
+    width: state.project.width,
+    height: state.project.height,
     activeLayerId: state.activeLayerId,
     playhead: state.playhead,
   };
@@ -120,6 +127,8 @@ function restoreStructure(s: StructSnapshot) {
     return snap.kind === "draw" ? { ...snap, cells: snap.cells.slice() } : { ...snap };
   });
   state.project.frameCount = s.frameCount;
+  state.project.width = s.width;
+  state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
   state.version++;
@@ -230,6 +239,33 @@ export function mergeDown(id: number) {
     });
     layers.splice(idx, 1);
     state.activeLayerId = below.id;
+  });
+}
+
+/**
+ * Resize the document to `newW×newH`. Re-creates every keyframe canvas: `scale` fits the old art
+ * (aspect-preserving), `crop` keeps its pixel size; the anchor positions it. One undo step.
+ */
+export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
+  const w = Math.max(16, Math.min(8192, Math.round(newW)));
+  const h = Math.max(16, Math.min(8192, Math.round(newH)));
+  if (w === state.project.width && h === state.project.height) return;
+  const rect = placeContent(state.project.width * DPR, state.project.height * DPR, w * DPR, h * DPR, mode, anchor);
+  commitStructural(() => {
+    for (const layer of state.project.layers) {
+      if (layer.kind !== "draw") continue;
+      // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
+      layer.cells = layer.cells.map((c): Cell => {
+        if (c.kind !== "key") return c;
+        const nc = createCellCanvas(w, h, DPR);
+        const ctx = nc.getContext("2d")!;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(c.canvas, rect.x, rect.y, rect.w, rect.h);
+        return { kind: "key", canvas: nc };
+      });
+    }
+    state.project.width = w;
+    state.project.height = h;
   });
 }
 

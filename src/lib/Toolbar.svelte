@@ -4,11 +4,9 @@
   import { state, history, bump, addLayerToProject, replaceProject, DPR, pressureCurve } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
-  import { clearAutosave } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
-  import { createProject } from "../anim/document";
   import { createCurveEditor } from "../core/pressure-curve";
-  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Sun, Moon, Spline } from "@lucide/svelte";
+  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
 
   const curveOpen = writable(false);
   let curvePopupEl: HTMLDivElement;
@@ -42,11 +40,6 @@
 
   async function saveProject() {
     downloadBlob(await saveProjectBlob(state.project), "project.zip");
-  }
-
-  async function newProject() {
-    replaceProject(createProject());
-    await clearAutosave();
   }
 
   function toggleTheme() {
@@ -160,8 +153,13 @@
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="New"
-    onclick={newProject}
+    onclick={() => { state.sizeDialog.mode = "new"; state.sizeDialog.open = true; }}
   ><FilePlus2 size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Resize canvas"
+    onclick={() => { state.sizeDialog.mode = "resize"; state.sizeDialog.open = true; }}
+  ><Scaling size={18} /></button>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
   <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover ml-auto" title="Toggle theme" onclick={toggleTheme}>
     {#if state.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}

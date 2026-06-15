@@ -314,8 +314,22 @@
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
     let lastVersion = state.version;
     let lastPlayhead = state.playhead;
+    let lastW = state.project.width;
+    let lastH = state.project.height;
     const tick = () => {
-      if (state.version !== lastVersion || state.playhead !== lastPlayhead) {
+      const dimsChanged = state.project.width !== lastW || state.project.height !== lastH;
+      if (dimsChanged) {
+        lastW = state.project.width;
+        lastH = state.project.height;
+        sizeDisplay();
+        scratch.width = state.project.width * DPR;
+        scratch.height = state.project.height * DPR;
+        overlay.width = state.project.width;
+        overlay.height = state.project.height;
+        overlay.style.width = `${state.project.width}px`;
+        overlay.style.height = `${state.project.height}px`;
+      }
+      if (dimsChanged || state.version !== lastVersion || state.playhead !== lastPlayhead) {
         lastVersion = state.version;
         lastPlayhead = state.playhead;
         syncReferenceVideos(state.project, state.playhead, state.project.fps);
