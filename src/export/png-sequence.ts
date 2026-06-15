@@ -15,7 +15,7 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
 
   const files: Record<string, Uint8Array> = {};
   for (let f = 0; f < project.frameCount; f++) {
-    renderFrame(ctx, project, f, dpr, { drawBg: true, includeReference: false });
+    renderFrame(ctx, project, f, dpr, { drawBg: true, includeReference: false, boil: project.boil.enabled ? project.boil : undefined });
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png")
     );

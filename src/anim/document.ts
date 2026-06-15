@@ -2,18 +2,17 @@ export type Cell =
   | { kind: "key"; canvas: HTMLCanvasElement }
   | { kind: "hold" };
 
-/** Line-boil settings, persisted per project. `scale` is the prototype's uniform-scale weight
- *  (Phase 3 will rename it to a dilate/erode `weight`). */
+/** Line-boil settings, persisted per project. */
 export interface BoilConfig {
   enabled: boolean;
   amount: number;    // displacement px
-  cols: number;      // grid columns
+  cols: number;      // noise detail (frequency across the canvas)
   rate: number;      // cycle length (on twos/threes)
-  scale: number;     // uniform scale jitter (fraction)
+  weight: number;    // line-weight breathing (0..1, in-shader alpha dilate/erode)
   holdsOnly: boolean;
 }
 export function defaultBoilConfig(): BoilConfig {
-  return { enabled: false, amount: 1, cols: 20, rate: 3, scale: 0.005, holdsOnly: true };
+  return { enabled: false, amount: 1, cols: 20, rate: 3, weight: 0.4, holdsOnly: true };
 }
 
 export interface DrawingLayer {
@@ -23,7 +22,7 @@ export interface DrawingLayer {
   visible: boolean;
   locked: boolean;
   opacity: number; // 0..100
-  boilStrength: number; // per-layer multiplier on boil amount/scale (1 = full, 0 = none)
+  boilStrength: number; // per-layer multiplier on boil amount/weight (1 = full, 0 = none)
   cells: Cell[];    // independent per-layer length; document length = the longest layer
 }
 

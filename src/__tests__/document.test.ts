@@ -162,7 +162,7 @@ describe("isCrispFrame", () => {
 describe("boil config defaults", () => {
   it("a new project starts with disabled boil + tuned defaults", () => {
     expect(createProject().boil).toEqual({
-      enabled: false, amount: 1, cols: 20, rate: 3, scale: 0.005, holdsOnly: true,
+      enabled: false, amount: 1, cols: 20, rate: 3, weight: 0.4, holdsOnly: true,
     });
   });
   it("defaultBoilConfig returns a fresh copy each call", () => {
