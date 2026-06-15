@@ -5,6 +5,7 @@
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
            moveKeyframe, setHoldSpan } from "../anim/timeline";
   import { resolveKeyframeIndex, type Cell, type DrawingLayer } from "../anim/document";
+  import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
 
@@ -268,8 +269,10 @@
            onpointerdown={rulerDown} onpointermove={rulerMove}
            onpointerup={rulerUp} onpointercancel={rulerUp} onkeydown={rulerKey}>
         {#each Array(state.project.frameCount) as _, f}
+          {@const r = state.playback.range ? effectiveRange(state.playback.range, state.project.frameCount) : null}
           <div class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-muted"
                class:text-accent={f === state.playhead}
+               class:bg-selection={r && f >= r.start && f <= r.end}
                style="width: {CELL_W}px">{rulerLabel(f)}</div>
         {/each}
       </div>
