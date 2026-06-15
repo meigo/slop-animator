@@ -8,6 +8,7 @@
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
+  import AudioLane from "./AudioLane.svelte";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
@@ -277,6 +278,9 @@
         {/each}
       </div>
     </div>
+
+    <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
+    <AudioLane cellW={CELL_W} labelW={LABEL_W} />
 
     <!-- layer rows (top layer first) -->
     {#each [...state.project.layers].reverse() as layer (layer.id)}
