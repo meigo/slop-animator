@@ -195,6 +195,11 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
   };
 }
 
+/** The name to apply when renaming to `input`; falls back to `current` for empty/whitespace input. */
+export function resolveLayerName(current: string, input: string): string {
+  return input.trim() || current;
+}
+
 export function createProject(opts?: Partial<Pick<Project, "width" | "height" | "fps" | "bgColor">>): Project {
   const frameCount = 1;
   const layer = createDrawingLayer(frameCount, "Layer 1");

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const hold = (): Cell => ({ kind: "hold" });
@@ -172,5 +172,20 @@ describe("boil config defaults", () => {
   });
   it("a new drawing layer has boilStrength 1", () => {
     expect(createDrawingLayer(1, "L").boilStrength).toBe(1);
+  });
+});
+
+describe("resolveLayerName", () => {
+  it("returns the new name when non-empty", () => {
+    expect(resolveLayerName("Old", "Hero")).toBe("Hero");
+  });
+  it("trims surrounding whitespace", () => {
+    expect(resolveLayerName("Old", "  Hero  ")).toBe("Hero");
+  });
+  it("keeps the current name for empty input", () => {
+    expect(resolveLayerName("Old", "")).toBe("Old");
+  });
+  it("keeps the current name for whitespace-only input", () => {
+    expect(resolveLayerName("Old", "   ")).toBe("Old");
   });
 });
