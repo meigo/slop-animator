@@ -89,6 +89,8 @@ export function activeLayer() {
 export interface StructSnapshot {
   layers: Layer[];
   frameCount: number;
+  width: number;
+  height: number;
   activeLayerId: number;
   playhead: number;
 }
@@ -101,6 +103,8 @@ function snapshotStructure(): StructSnapshot {
   return {
     layers: cloneLayers(state.project.layers),
     frameCount: state.project.frameCount,
+    width: state.project.width,
+    height: state.project.height,
     activeLayerId: state.activeLayerId,
     playhead: state.playhead,
   };
@@ -120,6 +124,8 @@ function restoreStructure(s: StructSnapshot) {
     return snap.kind === "draw" ? { ...snap, cells: snap.cells.slice() } : { ...snap };
   });
   state.project.frameCount = s.frameCount;
+  state.project.width = s.width;
+  state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
   state.version++;
