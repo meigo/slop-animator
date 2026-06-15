@@ -1,17 +1,48 @@
-/** Next playhead position for a tick. `stop` is true when the end is reached and not looping. */
+/** Next playhead position for a tick over the inclusive range [start, end]. `stop` is true when the
+ *  end is reached and not looping. */
 export function advancePlayhead(
   current: number,
-  frameCount: number,
+  start: number,
+  end: number,
   loop: boolean
 ): { frame: number; stop: boolean } {
-  if (current + 1 < frameCount) return { frame: current + 1, stop: false };
-  if (loop) return { frame: 0, stop: false };
+  if (current < end) return { frame: current + 1, stop: false };
+  if (loop) return { frame: start, stop: false };
   return { frame: current, stop: true };
+}
+
+/** Clamp a stored range into [0, frameCount-1]; null or invalid (in>out) → the full timeline. */
+export function effectiveRange(
+  range: { in: number; out: number } | null,
+  frameCount: number,
+): { start: number; end: number } {
+  const last = Math.max(0, frameCount - 1);
+  if (!range) return { start: 0, end: last };
+  const start = Math.max(0, Math.min(range.in, last));
+  const end = Math.max(0, Math.min(range.out, last));
+  if (start > end) return { start: 0, end: last };
+  return { start, end };
+}
+
+/** Set the range's in-point to `frame`, dragging out along if in would pass it. */
+export function withRangeIn(range: { in: number; out: number } | null, frame: number) {
+  return { in: frame, out: range ? Math.max(range.out, frame) : frame };
+}
+
+/** Set the range's out-point to `frame`, dragging in along if out would precede it. */
+export function withRangeOut(range: { in: number; out: number } | null, frame: number) {
+  return { in: range ? Math.min(range.in, frame) : frame, out: frame };
+}
+
+/** Where the playhead should sit when play starts: snap to `start` only if outside [start, end]. */
+export function snapPlayheadToRange(current: number, start: number, end: number): number {
+  return current < start || current > end ? start : current;
 }
 
 export interface PlaybackOptions {
   getFps: () => number;
-  getFrameCount: () => number;
+  getRangeStart: () => number;
+  getRangeEnd: () => number;
   getLoop: () => boolean;
   getCurrent: () => number;
   setFrame: (frame: number) => void;
@@ -49,7 +80,7 @@ export class Playback {
     const frameDurMs = 1000 / this.opts.getFps();
     while (this.accumulatorMs >= frameDurMs) {
       this.accumulatorMs -= frameDurMs;
-      const next = advancePlayhead(this.opts.getCurrent(), this.opts.getFrameCount(), this.opts.getLoop());
+      const next = advancePlayhead(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd(), this.opts.getLoop());
       if (next.stop) {
         this.playing = false;
         this.opts.onPlayingChange(false);
@@ -65,6 +96,8 @@ export class Playback {
     this.lastMs = null;
     this.accumulatorMs = 0;
     this.opts.onPlayingChange(true);
+    const snapped = snapPlayheadToRange(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd());
+    if (snapped !== this.opts.getCurrent()) this.opts.setFrame(snapped);
     this.scheduleNext();
   }
 
