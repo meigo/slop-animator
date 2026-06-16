@@ -1,6 +1,7 @@
 <script lang="ts">
   import { state, bump, playbackController, setAnimationLength, setPlayRangeIn, setPlayRangeOut, clearPlayRange } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
+  import { effectiveRange } from "../anim/playback";
   import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Settings, X } from "@lucide/svelte";
 
   const FPS_PRESETS = [6, 8, 12, 24];
@@ -55,7 +56,8 @@
     <button class={btn} title="Set range in-point to current frame" onclick={setPlayRangeIn}>In</button>
     <button class={btn} title="Set range out-point to current frame" onclick={setPlayRangeOut}>Out</button>
     {#if state.playback.range}
-      <span class="text-xs">{state.playback.range.in + 1}–{state.playback.range.out + 1}</span>
+      {@const er = effectiveRange(state.playback.range, state.project.frameCount)}
+      <span class="text-xs">{er.start + 1}–{er.end + 1}</span>
       <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
   </div>

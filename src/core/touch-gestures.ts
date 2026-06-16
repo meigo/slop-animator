@@ -68,6 +68,8 @@ export function setupTouchGestures(
     // Don't intercept taps on the floating selection action panel — those are buttons.
     const target = e.target as Element | null;
     if (target?.closest?.(".selection-actions-panel")) return;
+    // Don't pan/pinch when a finger lands on a reference-transform handle — let it drag the handle.
+    if (target?.closest?.("[data-ref-handle]")) return;
     e.preventDefault();
 
     workspace.setPointerCapture(e.pointerId);

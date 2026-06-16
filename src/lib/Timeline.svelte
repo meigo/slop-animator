@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Diamond, Copy, Minus, Eraser, Trash2, Layers, Waves, Settings } from "@lucide/svelte";
+  import { Plus, Diamond, DiamondPlus, Copy, Minus, Trash2, Layers, Waves, Settings } from "@lucide/svelte";
   import { state, canvasOps, activeLayer, bump, history, commitStructural,
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
@@ -13,16 +13,22 @@
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
 
-  // What a cell shows: ◆ keyframe with ink, — hold over an inked key, and a blank cell for
-  // anything empty (no key / empty key / hold over an empty key / past the layer's end).
-  // `_v` (state.version) is passed from the template so the label re-evaluates when a
-  // draw/clear changes a canvas's ink.
-  function cellLabel(cells: Cell[], f: number, _v: number): string {
+  // What a cell shows: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real
+  // keyframe boundary, just with no content), — hold over an inked key, and a blank cell for
+  // anything else (no key / hold over a blank key / past the layer's end). Showing ◇ makes a blank
+  // keyframe visible so it reads as "the next keyframe" a hold stops at, rather than an invisible gap.
+  // `v` (state.version) is passed from the template so the label re-evaluates when a
+  // draw/clear changes a canvas's ink, and is used as the isCellEmpty memo cache key.
+  function cellLabel(cells: Cell[], f: number, v: number): string {
     if (f >= cells.length) return "";
     const ki = resolveKeyframeIndex(cells, f);
     if (ki === null) return ""; // no keyframe at or before this frame → empty
     const key = cells[ki];
-    if (key.kind === "key" && isCellEmpty(key.canvas)) return ""; // resolves to a blank keyframe → empty
+    if (key.kind === "key" && isCellEmpty(key.canvas, v)) {
+      // The resolved keyframe is blank: mark the keyframe itself with ◇; holds over it stay empty
+      // (no — markers trailing a blank key).
+      return cells[f].kind === "key" ? "◇" : "";
+    }
     return cells[f].kind === "key" ? "◆" : "—";
   }
 
@@ -168,7 +174,7 @@
   function holdTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
-    if (l.cells[state.playhead]?.kind !== "key") return; // already a hold → nothing to clear
+    if (l.cells[state.playhead]?.kind !== "key") return; // already a hold → nothing to do
     commitStructural(() => setHold(l, state.playhead));
   }
   function deleteTool() {
@@ -204,10 +210,10 @@
 <div class="border-t border-border bg-surface text-text p-2 text-sm">
   <div class="flex items-center gap-1 mb-2 flex-wrap">
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}><Plus size={16} /></button>
-    <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}><Diamond size={16} /></button>
-    <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}><Copy size={16} /></button>
+    <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}><DiamondPlus size={16} /></button>
+    <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}><Copy size={16} class="rotate-45" /></button>
     <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}><Minus size={16} /></button>
-    <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}><Eraser size={16} /></button>
+    <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}><Diamond size={16} /></button>
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
 
     <span class="w-px h-5 bg-border mx-1"></span>

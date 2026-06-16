@@ -56,7 +56,7 @@ export function compositeFrameLayers(
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
       const strength = layer.boilStrength;
-      const crisp = isCrispFrame(layer.cells, frame, boil.holdsOnly) || strength <= 0 || boil.amount <= 0;
+      const crisp = isCrispFrame(layer.cells, frame, boil.holdsOnly) || strength <= 0 || (boil.amount <= 0 && boil.weight <= 0);
       const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
       boilLayer(cell.canvas, op.opacity / 100, crisp ? 0 : boil.amount * strength, boil.cols, crisp ? 0 : boil.weight * strength, seed);
     }

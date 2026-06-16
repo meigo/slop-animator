@@ -305,6 +305,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
   state.project = project;
   audioEngine.setTrack(project.audio);
@@ -334,7 +335,7 @@ export const playbackController = new Playback({
   getLoop: () => state.playback.loop,
   getCurrent: () => state.playhead,
   setFrame: (f) => {
-    if (state.playback.isPlaying && f !== state.playhead + 1) audioEngine.syncTo(f, state.project.fps);
+    if (state.playback.isPlaying && f !== state.playhead && f !== state.playhead + 1) audioEngine.syncTo(f, state.project.fps);
     state.playhead = f;
   },
   onPlayingChange: (p) => {

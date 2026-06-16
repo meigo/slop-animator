@@ -1,5 +1,5 @@
 import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig } from "../anim/document";
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
+import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
 
 export interface DrawingLayerJson {
@@ -91,7 +91,7 @@ function decodePng(bytes: Uint8Array): Promise<HTMLImageElement> {
 
 /** Zip the project: `project.json` + one PNG per key cell. Reference layers are not saved. */
 export async function saveProjectBlob(project: Project): Promise<Blob> {
-  const files: Record<string, Uint8Array> = {
+  const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {
     "project.json": strToU8(JSON.stringify(projectToJson(project))),
   };
   for (const layer of project.layers) {
@@ -102,7 +102,8 @@ export async function saveProjectBlob(project: Project): Promise<Blob> {
       files[frameAssetPath(layer.id, i)] = await canvasToPngBytes(cell.canvas);
     }
   }
-  if (project.audio) files["audio/track"] = project.audio.bytes;
+  // Audio is already-compressed media (mp3/aac); store it (level 0) so autosave doesn't re-DEFLATE it.
+  if (project.audio) files["audio/track"] = [project.audio.bytes, { level: 0 }];
   return new Blob([zipSync(files)], { type: "application/zip" });
 }
 
