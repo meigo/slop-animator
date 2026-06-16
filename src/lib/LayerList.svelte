@@ -87,7 +87,7 @@
             <Pencil size={13} />
           </button>
         {/if}
-        <input class="w-10" type="range" min="0" max="100" bind:value={layer.opacity} onchange={bump}
+        <input class="w-10" type="range" min="0" max="100" bind:value={layer.opacity} oninput={bump}
                onclick={(e) => e.stopPropagation()} title="Opacity" />
       </div>
     {/each}
