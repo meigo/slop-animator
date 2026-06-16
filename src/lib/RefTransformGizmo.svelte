@@ -3,7 +3,7 @@
   import type { Viewport } from "../core/viewport";
   import { state as appState, bump } from "../state/appState.svelte";
   import { containRect, mediaIntrinsicSize, type ReferenceLayer } from "../anim/document";
-  import { transformedCorners, rotateHandlePos } from "../core/ref-transform";
+  import { transformedCorners, rotateHandlePos, transformCenter, applyScale, applyRotate, type Pt } from "../core/ref-transform";
 
   let { getViewport, getContainer }: { getViewport: () => Viewport | null; getContainer: () => HTMLElement | null } = $props();
 
@@ -13,9 +13,64 @@
   let rotatePt = $state<{ x: number; y: number }>({ x: 0, y: 0 });
   let raf = 0;
 
+  type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
+  // Active handle drag. center/start are in document logical coords; startT is a snapshot
+  // of the layer transform at grab time so each move recomputes from the original.
+  let drag: { handle: DragHandle; layer: ReferenceLayer; startT: ReferenceLayer["transform"]; start: Pt; center: Pt } | null = null;
+
   function activeRef(): ReferenceLayer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     return l && l.kind === "ref" ? l : null;
+  }
+
+  /** Logical fit-rect for the active ref layer's media (matches Canvas.onRefTransform). */
+  function baseRect(layer: ReferenceLayer) {
+    const size = mediaIntrinsicSize(layer.media);
+    if (size.w === 0 || size.h === 0) return null;
+    return containRect(size.w, size.h, appState.project.width, appState.project.height);
+  }
+
+  function startHandleDrag(handle: DragHandle, e: PointerEvent) {
+    const vp = getViewport();
+    const layer = activeRef();
+    if (!vp || !layer) return;
+    const base = baseRect(layer);
+    if (!base) return;
+    // Keep this gesture out of the touch-pan/pinch path and the display canvas's drawing path.
+    e.stopPropagation();
+    e.preventDefault();
+    try { (e.target as Element).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
+    drag = {
+      handle,
+      layer,
+      startT: { ...layer.transform },
+      start: vp.screenToCanvas(e.clientX, e.clientY),
+      center: transformCenter(base, layer.transform),
+    };
+    window.addEventListener("pointermove", onDragMove);
+    window.addEventListener("pointerup", endHandleDrag);
+    window.addEventListener("pointercancel", endHandleDrag);
+  }
+
+  function onDragMove(e: PointerEvent) {
+    const d = drag;
+    const vp = getViewport();
+    if (!d || !vp) return;
+    e.preventDefault();
+    const p = vp.screenToCanvas(e.clientX, e.clientY);
+    if (d.handle === "rotate") d.layer.transform = applyRotate(d.startT, d.center, d.start, p);
+    else d.layer.transform = applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+    bump();
+  }
+
+  function endHandleDrag(e: PointerEvent) {
+    if (drag) {
+      try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch { /* may already be released */ }
+    }
+    drag = null;
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", endHandleDrag);
+    window.removeEventListener("pointercancel", endHandleDrag);
   }
 
   function tick() {
@@ -45,7 +100,16 @@
     if (layer) { layer.transform = { dx: 0, dy: 0, scale: 1, rotation: 0 }; bump(); }
   }
 
-  onMount(() => { raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf); });
+  onMount(() => {
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      // Drop any in-flight drag listeners if the component unmounts mid-drag.
+      window.removeEventListener("pointermove", onDragMove);
+      window.removeEventListener("pointerup", endHandleDrag);
+      window.removeEventListener("pointercancel", endHandleDrag);
+    };
+  });
 </script>
 
 {#if visible && corners.length === 4}
@@ -55,9 +119,13 @@
     <line x1={(corners[0].x + corners[1].x) / 2} y1={(corners[0].y + corners[1].y) / 2}
           x2={rotatePt.x} y2={rotatePt.y} stroke="#3b82f6" stroke-width="1.5" />
     {#each corners as c, i (i)}
-      <rect x={c.x - 5} y={c.y - 5} width="10" height="10" fill="#fff" stroke="#3b82f6" stroke-width="1.5" />
+      <rect role="button" tabindex="-1" aria-label="Scale reference" class="pointer-events-auto cursor-pointer" data-ref-handle="" x={c.x - 6} y={c.y - 6} width="12" height="12"
+            fill="#fff" stroke="#3b82f6" stroke-width="1.5"
+            onpointerdown={(e) => startHandleDrag((["nw", "ne", "se", "sw"] as const)[i], e)} />
     {/each}
-    <circle cx={rotatePt.x} cy={rotatePt.y} r="6" fill="#fff" stroke="#3b82f6" stroke-width="1.5" />
+    <circle role="button" tabindex="-1" aria-label="Rotate reference" class="pointer-events-auto cursor-grab" data-ref-handle="" cx={rotatePt.x} cy={rotatePt.y} r="7"
+            fill="#fff" stroke="#3b82f6" stroke-width="1.5"
+            onpointerdown={(e) => startHandleDrag("rotate", e)} />
   </svg>
   <div class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto">
     <span>Reference: drag to move · corners scale · top handle rotates</span>
