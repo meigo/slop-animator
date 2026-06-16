@@ -7,6 +7,9 @@
   export let cellW: number;
   export let labelW: number;
 
+  // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
+  const MAX_CANVAS_W = 16384;
+
   // Draw the waveform onto the canvas; redraws when params change (legacy-mode action).
   function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
     const draw = () => {
@@ -15,10 +18,15 @@
       if (!ctx) return;
       if (!audio) { ctx.clearRect(0, 0, node.width, node.height); return; }
       const cols = audioFrameSpan(audio.buffer.duration, state.project.fps);
-      node.width = Math.max(1, cols * cellW);
+      const naturalW = Math.max(1, cols * cellW);
+      const w = Math.min(MAX_CANVAS_W, naturalW);
+      node.width = w;
       node.height = 28;
+      // Keep the on-screen width at the full frame span so the lane stays aligned
+      // with the timeline columns; the clamped backing store is stretched to fit.
+      node.style.width = naturalW + "px";
       ctx.clearRect(0, 0, node.width, node.height);
-      const peaks = computePeaks(audio.buffer.getChannelData(0), node.width);
+      const peaks = computePeaks(audio.buffer.getChannelData(0), w);
       ctx.fillStyle = "#888";
       const mid = node.height / 2;
       for (let x = 0; x < peaks.length; x++) {
