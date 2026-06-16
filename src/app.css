@@ -38,6 +38,11 @@ body {
   background: var(--color-surface);
 }
 
+/* UI chrome isn't selectable (avoids accidental text selection while dragging, esp. on touch);
+   editable fields opt back in so you can still select/edit their text. */
+#app { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+
 /* SortableJS drag states */
 .sortable-ghost { opacity: 0.4; background: var(--color-surface-active) !important; }
 .sortable-chosen { background: var(--color-surface-hover); }
