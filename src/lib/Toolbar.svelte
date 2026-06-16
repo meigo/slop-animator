@@ -7,6 +7,7 @@
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
   import { downloadBlob } from "../export/download";
   import { createCurveEditor } from "../core/pressure-curve";
+  import { clickOutside } from "./click-outside";
   import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
 
   const curveOpen = writable(false);
@@ -107,7 +108,7 @@
   <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
     <input type="checkbox" bind:checked={state.brush.taper} /> Taper
   </label>
-  <div class="relative">
+  <div class="relative" use:clickOutside={() => curveOpen.set(false)}>
     <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
             class:bg-surface-active={$curveOpen} title="Pressure curve" onclick={() => curveOpen.update(v => !v)}>
       <Spline size={18} />

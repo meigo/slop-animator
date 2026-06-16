@@ -2,6 +2,7 @@
   import { state, bump, playbackController, setAnimationLength, setPlayRangeIn, setPlayRangeOut, clearPlayRange } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
+  import { clickOutside } from "./click-outside";
   import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Settings, X } from "@lucide/svelte";
 
   const FPS_PRESETS = [6, 8, 12, 24];
@@ -64,7 +65,7 @@
 
   <div class="ml-auto flex items-center gap-1">
     <!-- playback settings -->
-    <div class="relative">
+    <div class="relative" use:clickOutside={() => (settingsOpen = false)}>
       <button class={btn} class:bg-surface-active={settingsOpen} title="Playback settings"
               onclick={() => (settingsOpen = !settingsOpen)}>
         <Settings size={16} />
