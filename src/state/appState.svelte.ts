@@ -12,6 +12,7 @@ import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
+import type { Preferences } from "../persist/preferences";
 
 export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso";
 
@@ -312,6 +313,32 @@ export function toggleEraser() {
     toolBeforeEraser = state.tool;
     state.tool = "eraser";
   }
+}
+
+/** Snapshot the persisted-preference fields from live state. */
+export function gatherPreferences(): Preferences {
+  return {
+    tool: state.tool,
+    brush: { ...state.brush },
+    brushType: state.brushType,
+    sizeRange: state.sizeRange,
+    streamline: state.streamline,
+    fill: { ...state.fill },
+    theme: state.theme,
+    loop: state.playback.loop,
+  };
+}
+
+/** Apply stored preferences over the current state, field-by-field with type guards. */
+export function applyPreferences(p: Partial<Preferences>): void {
+  if (p.tool) state.tool = p.tool;
+  if (p.brush && typeof p.brush === "object") state.brush = { ...state.brush, ...p.brush };
+  if (p.brushType) state.brushType = p.brushType;
+  if (typeof p.sizeRange === "number") state.sizeRange = p.sizeRange;
+  if (typeof p.streamline === "number") state.streamline = p.streamline;
+  if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
+  if (p.theme === "dark" || p.theme === "light") state.theme = p.theme;
+  if (typeof p.loop === "boolean") state.playback.loop = p.loop;
 }
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
