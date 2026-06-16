@@ -87,6 +87,11 @@
             <Pencil size={13} />
           </button>
         {/if}
+        {#if layer.kind === "ref" && layer.media.type === "video"}
+          <input class="w-9 text-xs bg-surface border border-border px-0.5 text-text" type="number" step="1"
+                 bind:value={layer.offsetFrames} oninput={bump}
+                 onclick={(e) => e.stopPropagation()} title="Video time offset (frames)" />
+        {/if}
         <input class="w-10" type="range" min="0" max="100" bind:value={layer.opacity} oninput={bump}
                onclick={(e) => e.stopPropagation()} title="Opacity" />
       </div>
