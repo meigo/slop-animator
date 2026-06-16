@@ -12,7 +12,7 @@ const MAX_PROBE = 64; // longest probe side in px (aspect preserved)
 let probe: HTMLCanvasElement | null = null;
 
 /** True if `canvas` has no visible ink (every pixel fully transparent in the downscaled probe). */
-export function isCellEmpty(canvas: HTMLCanvasElement): boolean {
+function probeEmpty(canvas: HTMLCanvasElement): boolean {
   if (canvas.width === 0 || canvas.height === 0) return true;
   const scale = Math.min(1, MAX_PROBE / Math.max(canvas.width, canvas.height));
   const pw = Math.max(1, Math.round(canvas.width * scale));
@@ -30,4 +30,15 @@ export function isCellEmpty(canvas: HTMLCanvasElement): boolean {
     if (data[i] !== 0) return false;
   }
   return true;
+}
+
+const cache = new WeakMap<HTMLCanvasElement, { version: number; empty: boolean }>();
+
+/** Memoized emptiness check; pass the current document version so the cache invalidates on any edit. */
+export function isCellEmpty(canvas: HTMLCanvasElement, version: number): boolean {
+  const hit = cache.get(canvas);
+  if (hit && hit.version === version) return hit.empty;
+  const empty = probeEmpty(canvas);
+  cache.set(canvas, { version, empty });
+  return empty;
 }

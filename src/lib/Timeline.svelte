@@ -17,14 +17,14 @@
   // keyframe boundary, just with no content), — hold over an inked key, and a blank cell for
   // anything else (no key / hold over a blank key / past the layer's end). Showing ◇ makes a blank
   // keyframe visible so it reads as "the next keyframe" a hold stops at, rather than an invisible gap.
-  // `_v` (state.version) is passed from the template so the label re-evaluates when a
-  // draw/clear changes a canvas's ink.
-  function cellLabel(cells: Cell[], f: number, _v: number): string {
+  // `v` (state.version) is passed from the template so the label re-evaluates when a
+  // draw/clear changes a canvas's ink, and is used as the isCellEmpty memo cache key.
+  function cellLabel(cells: Cell[], f: number, v: number): string {
     if (f >= cells.length) return "";
     const ki = resolveKeyframeIndex(cells, f);
     if (ki === null) return ""; // no keyframe at or before this frame → empty
     const key = cells[ki];
-    if (key.kind === "key" && isCellEmpty(key.canvas)) {
+    if (key.kind === "key" && isCellEmpty(key.canvas, v)) {
       // The resolved keyframe is blank: mark the keyframe itself with ◇; holds over it stay empty
       // (no — markers trailing a blank key).
       return cells[f].kind === "key" ? "◇" : "";
