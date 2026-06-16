@@ -32,7 +32,8 @@ export function syncReferenceVideos(project: Project, frame: number, fps: number
   for (const layer of project.layers) {
     if (layer.kind !== "ref" || layer.media.type !== "video") continue;
     const vid = layer.media.el;
-    const wanted = (frame + layer.offsetFrames) / fps;
+    const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0; // guard a transiently-empty input
+    const wanted = (frame + off) / fps;
     const dur = isFinite(vid.duration) ? vid.duration : wanted;
     const clamped = Math.max(0, Math.min(dur, wanted));
     if (Math.abs(vid.currentTime - clamped) > 1e-3) vid.currentTime = clamped;
