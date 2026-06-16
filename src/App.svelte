@@ -7,8 +7,9 @@
   import ExportDialog from "./lib/ExportDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
   import { onMount } from "svelte";
-  import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject } from "./state/appState.svelte";
+  import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject, gatherPreferences, applyPreferences } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
+  import { loadPreferences, savePreferences } from "./persist/preferences";
 
   function onKey(e: KeyboardEvent) {
     const meta = e.ctrlKey || e.metaKey;
@@ -43,6 +44,8 @@
   }
 
   onMount(async () => {
+    applyPreferences(loadPreferences());
+    document.documentElement.classList.toggle("dark", state.theme === "dark");
     const restored = await loadAutosave(DPR);
     if (restored) replaceProject(restored);
   });
@@ -52,6 +55,13 @@
     state.version; // re-run whenever the document changes
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => { void saveAutosave(state.project); }, 3000);
+  });
+
+  let prefsTimer: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    const prefs = gatherPreferences(); // reads every tracked field → re-runs on any pref change
+    clearTimeout(prefsTimer);
+    prefsTimer = setTimeout(() => savePreferences(prefs), 400);
   });
 </script>
 
