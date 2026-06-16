@@ -95,9 +95,9 @@ export class Playback {
     this.playing = true;
     this.lastMs = null;
     this.accumulatorMs = 0;
-    this.opts.onPlayingChange(true);
     const snapped = snapPlayheadToRange(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd());
     if (snapped !== this.opts.getCurrent()) this.opts.setFrame(snapped);
+    this.opts.onPlayingChange(true);
     this.scheduleNext();
   }
 
