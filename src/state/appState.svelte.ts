@@ -305,6 +305,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
   state.project = project;
   audioEngine.setTrack(project.audio);
