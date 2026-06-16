@@ -220,6 +220,7 @@ function refLayerFixture(id: number): ReferenceLayer {
   return {
     kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
     media: { type: "image", el: {} as HTMLImageElement },
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
 }
 

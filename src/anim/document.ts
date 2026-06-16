@@ -30,6 +30,13 @@ export type ReferenceMedia =
   | { type: "image"; el: HTMLImageElement }
   | { type: "video"; el: HTMLVideoElement };
 
+export interface RefTransform {
+  dx: number;        // translate from fit-center, document logical px
+  dy: number;
+  scale: number;     // uniform multiplier on the fit size (1 = fit)
+  rotation: number;  // radians, clockwise, about the center
+}
+
 export interface ReferenceLayer {
   kind: "ref";
   id: number;
@@ -38,6 +45,7 @@ export interface ReferenceLayer {
   opacity: number;       // 0..100
   offsetFrames: number;  // video time offset in frames; ignored for images
   media: ReferenceMedia;
+  transform: RefTransform;
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
@@ -220,6 +228,7 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
     opacity: 60,
     offsetFrames: 0,
     media,
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
 }
 

@@ -15,6 +15,11 @@
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
+  import RefTransformGizmo from "./RefTransformGizmo.svelte";
+  import { containRect, mediaIntrinsicSize, type ReferenceLayer } from "../anim/document";
+  import { hitTestHandle, transformCenter, applyMove, applyScale, applyRotate, type Handle, type Pt, type Rect } from "../core/ref-transform";
+
+  const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -133,7 +138,32 @@
     recomposite();
   }
 
+  let refDrag: { handle: Handle; start: Pt; startT: ReferenceLayer["transform"]; center: Pt } | null = null;
+
+  function onRefTransform(layer: ReferenceLayer, points: { x: number; y: number }[], done: boolean) {
+    const p = points[points.length - 1];
+    const size = mediaIntrinsicSize(layer.media);
+    if (size.w === 0 || size.h === 0) { if (done) refDrag = null; return; }
+    const base: Rect = containRect(size.w, size.h, state.project.width, state.project.height);
+    if (!refDrag) {
+      const tol = 10 / viewport.zoom;            // 10 screen px of grab tolerance
+      const gap = REF_ROTATE_GAP_PX / viewport.zoom;
+      const handle = hitTestHandle(base, layer.transform, p, tol, gap);
+      refDrag = { handle, start: p, startT: { ...layer.transform }, center: transformCenter(base, layer.transform) };
+    }
+    const d = refDrag;
+    if (d.handle) {
+      if (d.handle === "body") layer.transform = applyMove(d.startT, p.x - d.start.x, p.y - d.start.y);
+      else if (d.handle === "rotate") layer.transform = applyRotate(d.startT, d.center, d.start, p);
+      else layer.transform = applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+      bump();
+    }
+    if (done) refDrag = null;
+  }
+
   function onStroke(points: InputPoint[], done: boolean) {
+    const al = activeLayer();
+    if (al.kind === "ref") { onRefTransform(al, points, done); return; }
     if (state.tool === "select" || state.tool === "lasso") {
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {
@@ -372,5 +402,7 @@
     onMesh={() => enterWarp(3, 3)}
     onCommit={() => selection?.commit()}
     onCancel={() => selection?.cancel()} />
+
+  <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
 
 </div>

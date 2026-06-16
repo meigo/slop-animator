@@ -40,7 +40,7 @@ function proj(layers: DrawingLayer[], frameCount: number): Project {
 
 function refLayer(id: number, over: Partial<ReferenceLayer> = {}): ReferenceLayer {
   const media: ReferenceMedia = { type: "image", el: {} as HTMLImageElement };
-  return { kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0, media, ...over };
+  return { kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0, media, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 }, ...over };
 }
 
 describe("buildFrameDrawList", () => {
@@ -122,6 +122,7 @@ describe("documentLength / refreshLength", () => {
   const ref = (): ReferenceLayer => ({
     kind: "ref", id: 9, name: "R", visible: true, opacity: 60, offsetFrames: 0,
     media: { type: "image", el: {} as HTMLImageElement },
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   });
 
   it("documentLength is the longest drawing layer, ignoring reference layers", () => {
