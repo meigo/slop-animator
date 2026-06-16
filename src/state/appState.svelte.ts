@@ -303,6 +303,17 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   });
 }
 
+/** Toggle the eraser on/off, restoring the tool that was active before (for a quick gesture toggle). */
+let toolBeforeEraser: Tool = "brush";
+export function toggleEraser() {
+  if (state.tool === "eraser") {
+    state.tool = toolBeforeEraser === "eraser" ? "brush" : toolBeforeEraser;
+  } else {
+    toolBeforeEraser = state.tool;
+    state.tool = "eraser";
+  }
+}
+
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
   playbackController.pause();

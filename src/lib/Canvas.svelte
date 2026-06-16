@@ -8,7 +8,7 @@
   import { renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
-  import { state, history, DPR, canvasOps, activeLayer, bump, pressureCurve } from "../state/appState.svelte";
+  import { state, history, DPR, canvasOps, activeLayer, bump, pressureCurve, toggleEraser } from "../state/appState.svelte";
   import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
@@ -326,11 +326,12 @@
     recomposite();
     setupSelection();
 
-    // Finger gestures: 1-finger pan, 2-finger pinch zoom+rotate, 2-finger tap undo,
-    // 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
+    // Finger gestures: 1-finger pan, 1-finger double-tap toggle eraser, 2-finger pinch zoom+rotate,
+    // 2-finger tap undo, 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
     const cleanupTouch = setupTouchGestures(stage, viewport, {
       onUndo: () => history.undo(),
       onRedo: () => history.redo(),
+      onToggleEraser: () => toggleEraser(),
       onViewportChange: () => { selection.screenScale = viewport.zoom; },
     });
 

@@ -39,8 +39,11 @@ body {
 }
 
 /* UI chrome isn't selectable (avoids accidental text selection while dragging, esp. on touch);
-   editable fields opt back in so you can still select/edit their text. */
-#app { -webkit-user-select: none; user-select: none; }
+   editable fields opt back in so you can still select/edit their text.
+   touch-action: manipulation disables iOS double-tap-to-zoom + the legacy 300ms tap delay on the
+   whole app (the viewport's user-scalable=no is ignored by modern iOS). The canvas stage uses
+   touch-action: none (more restrictive) so its custom gestures are unaffected. */
+#app { -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
 
 /* SortableJS drag states */
