@@ -2,6 +2,7 @@
  * Touch gesture handling for iPad / touch devices.
  *
  * - One finger touch: pan canvas
+ * - One-finger double-tap: toggle eraser
  * - Two-finger pinch: zoom + pan + rotate
  * - Two-finger tap: undo
  * - Three-finger tap: redo
@@ -23,11 +24,13 @@ interface ActiveTouch {
 export interface TouchGestureCallbacks {
   onUndo: () => void;
   onRedo: () => void;
+  onToggleEraser: () => void;
   onViewportChange: () => void;
 }
 
 const TAP_MAX_DURATION = 300; // ms
 const TAP_MAX_DISTANCE = 15; // px
+const DOUBLE_TAP_WINDOW = 300; // ms between two 1-finger taps to count as a double-tap
 /** Snap to nearest 90° when within this threshold (radians, ~5°) */
 const SNAP_ANGLE = 5 * (Math.PI / 180);
 
@@ -62,6 +65,7 @@ export function setupTouchGestures(
   // Tap detection
   let maxSimultaneousTouches = 0;
   let lastTouchEndTime = 0;
+  let lastSingleTapTime = 0;
 
   function onPointerDown(e: PointerEvent) {
     if (e.pointerType !== "touch") return;
@@ -262,9 +266,20 @@ export function setupTouchGestures(
   function checkTapGesture() {
     const count = maxSimultaneousTouches;
     maxSimultaneousTouches = 0;
-
-    // Debounce: avoid double-firing
     const now = performance.now();
+
+    if (count === 1) {
+      // Two quick 1-finger taps → toggle eraser (own window, independent of the multi-finger debounce).
+      if (now - lastSingleTapTime < DOUBLE_TAP_WINDOW) {
+        lastSingleTapTime = 0; // consume the pair so a third tap starts fresh
+        callbacks.onToggleEraser();
+      } else {
+        lastSingleTapTime = now;
+      }
+      return;
+    }
+
+    // Debounce multi-finger taps: avoid double-firing
     if (now - lastTouchEndTime < 100) return;
     lastTouchEndTime = now;
 
