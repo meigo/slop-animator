@@ -8,6 +8,7 @@
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
+  import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
@@ -238,7 +239,7 @@
     <!-- line boil: quick toggle + a settings popover for the params -->
     <button class={toolBtn} class:bg-surface-active={state.project.boil.enabled} title="Line boil (playback)"
             onclick={() => { state.project.boil.enabled = !state.project.boil.enabled; bump(); }}><Waves size={16} /></button>
-    <div class="relative">
+    <div class="relative" use:clickOutside={() => (boilSettingsOpen = false)}>
       <button class={toolBtn} class:bg-surface-active={boilSettingsOpen} title="Boil settings"
               onclick={() => (boilSettingsOpen = !boilSettingsOpen)}><Settings size={16} /></button>
       {#if boilSettingsOpen}
