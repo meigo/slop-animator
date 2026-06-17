@@ -1,14 +1,30 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
-  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil } from "@lucide/svelte";
-  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, reorderLayers, renameLayer } from "../state/appState.svelte";
+  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link } from "@lucide/svelte";
+  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, reorderLayers, renameLayer, relinkReference } from "../state/appState.svelte";
   import { createDrawingLayer } from "../anim/document";
+  import { loadReferenceMedia } from "../anim/reference";
 
   let listEl: HTMLDivElement;
 
   let editingId: number | null = null;
   let draft = "";
+
+  let relinkInput: HTMLInputElement;
+  let relinkTargetId: number | null = null;
+
+  function startRelink(id: number) {
+    relinkTargetId = id;
+    relinkInput.value = "";
+    relinkInput.click();
+  }
+  async function onRelinkFile() {
+    const file = relinkInput.files?.[0];
+    const id = relinkTargetId;
+    if (!file || id == null) return;
+    relinkReference(id, await loadReferenceMedia(file, () => bump()));
+  }
 
   function startEdit(layer: { id: number; name: string }) {
     draft = layer.name;
@@ -48,6 +64,7 @@
 </script>
 
 <div class="w-56 border-l border-border bg-surface flex flex-col text-text">
+  <input bind:this={relinkInput} type="file" accept="image/*,video/*" class="hidden" onchange={onRelinkFile} />
   <div class="flex items-center gap-1 p-1 border-b border-border">
     <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
     <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Add layer" onclick={addLayer}><Plus size={16} /></button>
@@ -68,7 +85,13 @@
           {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
         </button>
         {#if layer.kind === "ref"}
-          <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.type}</span>
+          {#if layer.media.type === "missing"}
+            <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.was}?</span>
+            <button class="text-text-muted hover:text-text-secondary" title="Re-link media"
+                    onclick={(e) => { e.stopPropagation(); startRelink(layer.id); }}><Link size={13} /></button>
+          {:else}
+            <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.type}</span>
+          {/if}
         {/if}
         {#if editingId === layer.id}
           <input class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"

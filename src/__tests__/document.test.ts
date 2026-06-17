@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, resizeCells, countKeyframesPastLength, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, resizeCells, countKeyframesPastLength, mediaIntrinsicSize, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const makeKey = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const makeHold = (): Cell => ({ kind: "hold" });
@@ -239,5 +239,11 @@ describe("countKeyframesPastLength", () => {
   it("ignores reference layers", () => {
     const p = { layers: [{ kind: "ref" }, { kind: "draw", cells: [key, key] }] } as unknown as Project;
     expect(countKeyframesPastLength(p, 1)).toBe(1);
+  });
+});
+
+describe("mediaIntrinsicSize (missing media)", () => {
+  it("returns {0,0} for a missing placeholder", () => {
+    expect(mediaIntrinsicSize({ type: "missing", was: "image", name: "x.png" })).toEqual({ w: 0, h: 0 });
   });
 });
