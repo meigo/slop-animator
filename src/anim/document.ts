@@ -28,7 +28,8 @@ export interface DrawingLayer {
 
 export type ReferenceMedia =
   | { type: "image"; el: HTMLImageElement }
-  | { type: "video"; el: HTMLVideoElement };
+  | { type: "video"; el: HTMLVideoElement }
+  | { type: "missing"; was: "image" | "video"; name: string };
 
 export interface RefTransform {
   dx: number;        // translate from fit-center, document logical px
@@ -160,7 +161,8 @@ export function containRect(srcW: number, srcH: number, boxW: number, boxH: numb
 /** Intrinsic pixel size of reference media (0 until loaded). */
 export function mediaIntrinsicSize(media: ReferenceMedia): { w: number; h: number } {
   if (media.type === "image") return { w: media.el.naturalWidth, h: media.el.naturalHeight };
-  return { w: media.el.videoWidth, h: media.el.videoHeight };
+  if (media.type === "video") return { w: media.el.videoWidth, h: media.el.videoHeight };
+  return { w: 0, h: 0 }; // missing placeholder — skipped by every zero-size guard
 }
 
 /** Devicepixel-ratio-aware blank canvas sized to the document, with a dpr-scaled 2D context. */

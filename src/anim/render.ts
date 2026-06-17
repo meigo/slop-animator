@@ -46,7 +46,7 @@ export function compositeFrameLayers(
         ctx.translate(cx, cy);
         ctx.rotate(t.rotation);
         ctx.scale(t.scale, t.scale);
-        ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
+        if (layer.media.type !== "missing") ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
         ctx.restore();
       }
     }
@@ -83,7 +83,7 @@ export function compositeFrameLayers(
       ctx.translate(cx, cy);
       ctx.rotate(t.rotation);
       ctx.scale(t.scale, t.scale);
-      ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
+      if (layer.media.type !== "missing") ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
       ctx.restore();
     }
   }
