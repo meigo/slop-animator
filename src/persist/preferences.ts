@@ -1,5 +1,6 @@
 import type { Tool, BrushKind } from "../state/appState.svelte";
 import type { BrushSettings } from "../core/brush";
+import type { CurvePoint } from "../core/pressure-curve";
 
 export interface Preferences {
   tool: Tool;
@@ -10,6 +11,7 @@ export interface Preferences {
   fill: { tolerance: number; expand: number };
   theme: "dark" | "light";
   loop: boolean;
+  pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
 }
 
 const KEY = "slop-animator:prefs";
