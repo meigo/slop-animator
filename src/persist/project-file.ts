@@ -9,6 +9,7 @@ export interface DrawingLayerJson {
   locked: boolean;
   opacity: number;
   boilStrength: number;
+  groupId: number | null;
   cells: ("key" | "hold")[];
 }
 
@@ -19,6 +20,7 @@ export interface ReferenceJson {
   visible: boolean;
   opacity: number;
   offsetFrames: number;
+  groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
 }
@@ -40,6 +42,7 @@ export interface ProjectJson {
   bgColor: string;
   frameCount: number;
   boil: BoilConfig;
+  groups: { id: number; name: string; collapsed: boolean; visible: boolean }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
   audio: { name: string; offsetFrames: number; muted: boolean } | null;
@@ -71,6 +74,7 @@ export function projectToJson(project: Project): ProjectJson {
     bgColor: project.bgColor,
     frameCount: project.frameCount,
     boil: project.boil,
+    groups: project.groups,
     layers: project.layers.filter(isDrawingLayer).map((l) => ({
       id: l.id,
       name: l.name,
@@ -78,6 +82,7 @@ export function projectToJson(project: Project): ProjectJson {
       locked: l.locked,
       opacity: l.opacity,
       boilStrength: l.boilStrength,
+      groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
     })),
     references: project.layers
@@ -86,6 +91,7 @@ export function projectToJson(project: Project): ProjectJson {
       .map(({ l, index }) => ({
         index, id: l.id, name: l.name, visible: l.visible, opacity: l.opacity,
         offsetFrames: l.offsetFrames,
+        groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
       })),
@@ -161,7 +167,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     }
     layers.push({
       kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
-      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, cells,
+      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, groupId: lj.groupId ?? null, cells,
     });
   }
   const refsJson = json.references ?? [];
@@ -170,15 +176,17 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     index: rj.index,
     value: {
       kind: "ref", id: rj.id, name: rj.name, visible: rj.visible, opacity: rj.opacity,
-      offsetFrames: rj.offsetFrames, transform: rj.transform,
+      offsetFrames: rj.offsetFrames, groupId: rj.groupId ?? null, transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer,
   }));
   const orderedLayers = insertReferencesByIndex<Layer>(layers, refLayers);
+  const groups = (json.groups ?? []).map((g) => ({ ...g }));
+  for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers: orderedLayers,
+    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), groups, layers: orderedLayers,
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers

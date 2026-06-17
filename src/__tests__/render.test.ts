@@ -27,7 +27,7 @@ function recordingCtx() {
 let id = 0;
 const keyCanvas = () => ({ __id: ++id }) as unknown as HTMLCanvasElement;
 function layer(cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, cells, ...over };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, ...over };
 }
 
 describe("renderFrame", () => {
@@ -35,7 +35,7 @@ describe("renderFrame", () => {
     const c1 = keyCanvas();
     const c2 = keyCanvas();
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [
         layer([{ kind: "key", canvas: c1 }], { id: 1 }),
         layer([{ kind: "key", canvas: c2 }], { id: 2, opacity: 50 }),
@@ -55,7 +55,7 @@ describe("renderFrame", () => {
 
   it("omits the background fill when drawBg is false", () => {
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [layer([{ kind: "key", canvas: keyCanvas() }])],
       audio: null,
     };
@@ -70,7 +70,7 @@ describe("compositeFrameLayers", () => {
     const c1 = keyCanvas();
     const c2 = keyCanvas();
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#abc", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [
         layer([{ kind: "key", canvas: c1 }], { id: 1 }),
         layer([{ kind: "key", canvas: c2 }], { id: 2, opacity: 50 }),
@@ -98,7 +98,7 @@ describe("compositeFrameLayers with reference layers", () => {
     ref.id = 1; // deterministic for the assertion
     const drawC = keyCanvas();
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
       audio: null,
     };
@@ -116,7 +116,7 @@ describe("compositeFrameLayers with reference layers", () => {
     ref.id = 1;
     const drawC = keyCanvas();
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
       audio: null,
     };
@@ -137,7 +137,7 @@ describe("renderFrame includeReference", () => {
     ref.id = 1;
     const drawC = keyCanvas();
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount: 1, boil: defaultBoilConfig(), groups: [],
       layers: [ref, layer([{ kind: "key", canvas: drawC }], { id: 2 })],
       audio: null,
     };

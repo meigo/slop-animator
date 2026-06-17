@@ -6,10 +6,10 @@ import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/docume
 function key(): Cell { return { kind: "key", canvas: {} as HTMLCanvasElement }; }
 function hold(): Cell { return { kind: "hold" }; }
 function dlayer(id: number, cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, cells };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
 }
 function rlayer(id: number): ReferenceLayer {
-  return { kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
+  return { kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0, groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } };
 }
@@ -19,6 +19,7 @@ describe("projectToJson", () => {
     const p: Project = {
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
       boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+      groups: [],
       layers: [dlayer(1, [key(), hold()]), rlayer(2)],
       audio: null,
     };
@@ -26,11 +27,12 @@ describe("projectToJson", () => {
       version: 1,
       width: 800, height: 600, fps: 8, bgColor: "#eee", frameCount: 2,
       boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+      groups: [],
       layers: [
-        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, cells: ["key", "hold"] },
+        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells: ["key", "hold"] },
       ],
       references: [
-        { index: 1, id: 2, name: "R2", visible: true, opacity: 60, offsetFrames: 0, was: "image",
+        { index: 1, id: 2, name: "R2", visible: true, opacity: 60, offsetFrames: 0, groupId: null, was: "image",
           transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } },
       ],
       audio: null,

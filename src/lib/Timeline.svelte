@@ -4,7 +4,7 @@
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
            moveKeyframe, setHoldSpan } from "../anim/timeline";
-  import { resolveKeyframeIndex, type Cell, type DrawingLayer } from "../anim/document";
+  import { resolveKeyframeIndex, groupOf, type Cell, type DrawingLayer } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -291,36 +291,38 @@
 
     <!-- layer rows (top layer first) -->
     {#each [...state.project.layers].reverse() as layer (layer.id)}
-      <div class="flex items-center">
-        <button class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
-                class:bg-surface={layer.id !== state.activeLayerId}
-                class:bg-surface-active={layer.id === state.activeLayerId}
-                class:text-text={layer.id === state.activeLayerId}
-                class:text-text-secondary={layer.id !== state.activeLayerId}
-                style="width: {LABEL_W}px" title="Select layer"
-                onclick={() => (state.activeLayerId = layer.id)}>{layer.name}</button>
-        {#if layer.kind === "draw"}
-          <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
-               class:opacity-100={layer.id === state.activeLayerId}
-               class:opacity-70={layer.id !== state.activeLayerId}
-               role="application" aria-label="{layer.name} frames"
-               onpointerdown={(e) => rowDown(e, layer)} onpointermove={(e) => rowMove(e, layer)}
-               onpointerup={(e) => rowUp(e, layer)} onpointercancel={(e) => rowUp(e, layer)}
-               onpointerleave={rowLeave}>
-            {#each Array(state.project.frameCount) as _, f}
-              <div class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
-                   class:bg-selection={f === state.playhead}
-                   class:text-accent-text={f === state.playhead}
-                   class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
-                   class:ring-accent={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
-                   class:ring-inset={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
-                   style="width: {CELL_W}px">{cellLabel(layer.cells, f, state.version)}</div>
-            {/each}
-          </div>
-        {:else}
-          <span class="text-xs text-text-muted ml-1" class:opacity-70={layer.id !== state.activeLayerId}>ref</span>
-        {/if}
-      </div>
+      {#if !groupOf(layer, state.project.groups)?.collapsed}
+        <div class="flex items-center">
+          <button class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
+                  class:bg-surface={layer.id !== state.activeLayerId}
+                  class:bg-surface-active={layer.id === state.activeLayerId}
+                  class:text-text={layer.id === state.activeLayerId}
+                  class:text-text-secondary={layer.id !== state.activeLayerId}
+                  style="width: {LABEL_W}px" title="Select layer"
+                  onclick={() => (state.activeLayerId = layer.id)}>{layer.name}</button>
+          {#if layer.kind === "draw"}
+            <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
+                 class:opacity-100={layer.id === state.activeLayerId}
+                 class:opacity-70={layer.id !== state.activeLayerId}
+                 role="application" aria-label="{layer.name} frames"
+                 onpointerdown={(e) => rowDown(e, layer)} onpointermove={(e) => rowMove(e, layer)}
+                 onpointerup={(e) => rowUp(e, layer)} onpointercancel={(e) => rowUp(e, layer)}
+                 onpointerleave={rowLeave}>
+              {#each Array(state.project.frameCount) as _, f}
+                <div class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
+                     class:bg-selection={f === state.playhead}
+                     class:text-accent-text={f === state.playhead}
+                     class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                     class:ring-accent={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                     class:ring-inset={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
+                     style="width: {CELL_W}px">{cellLabel(layer.cells, f, state.version)}</div>
+              {/each}
+            </div>
+          {:else}
+            <span class="text-xs text-text-muted ml-1" class:opacity-70={layer.id !== state.activeLayerId}>ref</span>
+          {/if}
+        </div>
+      {/if}
     {/each}
   </div>
 </div>
