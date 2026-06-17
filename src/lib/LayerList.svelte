@@ -61,20 +61,21 @@
 
   // Build display segments (top-first, reverse of the bottom→top data order).
   // Each segment is either a bare layer ({ layer }) or a contiguous group block
-  // ({ group, layers }). Recomputes on every change via state.version.
+  // ({ group, layers }). Called from the template with `state.project.layers`/`.groups` so the
+  // template tracks those reactive reads — a `$:` block would NOT (this is a legacy-mode component
+  // that imports the `state` proxy, and legacy `$:` doesn't track external rune-proxy reads).
   type Segment = { layer: Layer } | { group: LayerGroup; layers: Layer[] };
-  $: segments = (() => {
-    void state.version;
+  function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] {
     const segs: Segment[] = [];
-    for (const layer of [...state.project.layers].reverse()) {
-      const g = groupOf(layer, state.project.groups);
+    for (const layer of [...layers].reverse()) {
+      const g = groupOf(layer, groups);
       const last = segs[segs.length - 1];
       if (g && last && "group" in last && last.group.id === g.id) last.layers.push(layer);
       else if (g) segs.push({ group: g, layers: [layer] });
       else segs.push({ layer });
     }
     return segs;
-  })();
+  }
 
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),
@@ -170,7 +171,7 @@
   </div>
 
   <div bind:this={listEl} class="flex-1 overflow-y-auto">
-    {#each segments as seg}
+    {#each buildSegments(state.project.layers, state.project.groups) as seg}
       {#if "layer" in seg}
         {@render layerRow(seg.layer)}
       {:else}
