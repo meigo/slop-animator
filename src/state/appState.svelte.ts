@@ -286,6 +286,11 @@ export function renameGroup(groupId: number, name: string) {
 }
 /** Apply a dragged display→data order with per-layer groupId, as one undoable step; prune empty groups. */
 export function reorderLayersWithGroups(order: { id: number; groupId: number | null }[]) {
+  // No-op guard: a cross-list drag fires SortableJS onEnd on both source and destination, so the
+  // rebuild can run twice with the same final order — skip when nothing actually changed (also
+  // avoids a redundant undo step).
+  const cur = state.project.layers;
+  if (order.length === cur.length && order.every((e, i) => cur[i].id === e.id && cur[i].groupId === e.groupId)) return;
   const before = beginStructuralEdit();
   const byId = new Map(state.project.layers.map((l) => [l.id, l]));
   const next: Layer[] = [];
