@@ -161,7 +161,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     }
     layers.push({
       kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
-      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, cells,
+      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, groupId: null, cells,
     });
   }
   const refsJson = json.references ?? [];
@@ -170,7 +170,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     index: rj.index,
     value: {
       kind: "ref", id: rj.id, name: rj.name, visible: rj.visible, opacity: rj.opacity,
-      offsetFrames: rj.offsetFrames, transform: rj.transform,
+      offsetFrames: rj.offsetFrames, groupId: null, transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer,
   }));
@@ -178,7 +178,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   setMinLayerId(maxId + 1);
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers: orderedLayers,
+    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), groups: [], layers: orderedLayers,
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers

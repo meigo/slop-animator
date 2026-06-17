@@ -58,7 +58,7 @@ function recCtx(w = 100, h = 100) {
 let oid = 0;
 const kc = () => ({ __id: ++oid }) as unknown as HTMLCanvasElement;
 function dlayer(id: number, cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, cells };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
 }
 
 describe("renderFrameWithOnion", () => {
@@ -71,7 +71,7 @@ describe("renderFrameWithOnion", () => {
     const prevC = kc(); const curC = kc(); const nextC = kc();
     const layerId = 1;
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#eee", frameCount: 3, boil: defaultBoilConfig(),
+      width: 100, height: 100, fps: 12, bgColor: "#eee", frameCount: 3, boil: defaultBoilConfig(), groups: [],
       layers: [dlayer(layerId, [
         { kind: "key", canvas: prevC }, { kind: "key", canvas: curC }, { kind: "key", canvas: nextC },
       ])],

@@ -15,7 +15,7 @@ const fakeOps: CanvasOps = {
 };
 
 function layer(cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, cells };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
 }
 
 describe("timeline operations", () => {
@@ -218,7 +218,7 @@ describe("setHoldSpan", () => {
 
 function refLayerFixture(id: number): ReferenceLayer {
   return {
-    kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0,
+    kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0, groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
@@ -229,7 +229,7 @@ describe("all-layers timeline operations", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
     const r = refLayerFixture(3);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b, r], audio: null };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), groups: [], layers: [a, b, r], audio: null };
     insertFrameAllLayers(p, 1);
     expect(a.cells.length).toBe(3);
     expect(b.cells.length).toBe(3);
@@ -241,7 +241,7 @@ describe("all-layers timeline operations", () => {
   it("deleteFrameAllLayers removes `at` from every drawing layer and refreshes length", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
-    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), layers: [a, b], audio: null };
+    const p: Project = { width: 10, height: 10, fps: 12, bgColor: "#fff", frameCount: 2, boil: defaultBoilConfig(), groups: [], layers: [a, b], audio: null };
     deleteFrameAllLayers(p, 0);
     expect(a.cells.length).toBe(1);
     expect(b.cells.length).toBe(1);

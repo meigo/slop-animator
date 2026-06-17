@@ -15,6 +15,13 @@ export function defaultBoilConfig(): BoilConfig {
   return { enabled: false, amount: 1, cols: 20, rate: 3, weight: 0.4, holdsOnly: true };
 }
 
+export interface LayerGroup {
+  id: number;
+  name: string;
+  collapsed: boolean;
+  visible: boolean;
+}
+
 export interface DrawingLayer {
   kind: "draw";
   id: number;
@@ -23,6 +30,7 @@ export interface DrawingLayer {
   locked: boolean;
   opacity: number; // 0..100
   boilStrength: number; // per-layer multiplier on boil amount/weight (1 = full, 0 = none)
+  groupId: number | null;
   cells: Cell[];    // independent per-layer length; document length = the longest layer
 }
 
@@ -45,6 +53,7 @@ export interface ReferenceLayer {
   visible: boolean;
   opacity: number;       // 0..100
   offsetFrames: number;  // video time offset in frames; ignored for images
+  groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
 }
@@ -70,6 +79,7 @@ export interface Project {
   bgColor: string;
   frameCount: number;
   boil: BoilConfig;
+  groups: LayerGroup[];
   layers: Layer[]; // layers[0] = bottom of the stack
   audio: AudioTrack | null;
 }
@@ -103,7 +113,7 @@ export type FrameOp =
 export function buildFrameDrawList(project: Project, frame: number, includeReference = true): FrameOp[] {
   const ops: FrameOp[] = [];
   for (const layer of project.layers) {
-    if (!layer.visible) continue;
+    if (!isLayerVisible(layer, project.groups)) continue;
     if (layer.kind === "draw") {
       const ki = resolveKeyframeIndex(layer.cells, frame);
       if (ki === null) continue;
@@ -114,6 +124,25 @@ export function buildFrameDrawList(project: Project, frame: number, includeRefer
     }
   }
   return ops;
+}
+
+/** The group a layer belongs to, or null when ungrouped or its groupId is dangling. */
+export function groupOf(layer: Layer, groups: LayerGroup[]): LayerGroup | null {
+  if (layer.groupId == null) return null;
+  return groups.find((g) => g.id === layer.groupId) ?? null;
+}
+
+/** A layer renders only when itself visible and its group (if any) is visible. */
+export function isLayerVisible(layer: Layer, groups: LayerGroup[]): boolean {
+  if (!layer.visible) return false;
+  const g = groupOf(layer, groups);
+  return !g || g.visible;
+}
+
+/** Groups that have at least one member layer (drops empties for the panel). */
+export function nonEmptyGroups(groups: LayerGroup[], layers: Layer[]): LayerGroup[] {
+  const used = new Set(layers.map((l) => l.groupId).filter((id): id is number => id != null));
+  return groups.filter((g) => used.has(g.id));
 }
 
 /** Document length = the longest drawing layer's cell count (reference layers ignored), floor 1. */
@@ -215,6 +244,7 @@ export function createDrawingLayer(frameCount: number, name?: string): DrawingLa
     locked: false,
     opacity: 100,
     boilStrength: 1,
+    groupId: null,
     cells: Array.from({ length: frameCount }, () => ({ kind: "hold" }) as Cell),
   };
 }
@@ -229,6 +259,7 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
     visible: true,
     opacity: 60,
     offsetFrames: 0,
+    groupId: null,
     media,
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
@@ -249,6 +280,7 @@ export function createProject(opts?: Partial<Pick<Project, "width" | "height" | 
     bgColor: opts?.bgColor ?? "#f4efe2",
     frameCount,
     boil: defaultBoilConfig(),
+    groups: [],
     layers: [layer],
     audio: null,
   };
