@@ -228,6 +228,8 @@ export function setMinLayerId(n: number): void {
   if (n > nextLayerId) nextLayerId = n;
 }
 
+export function nextId(): number { return nextLayerId++; }
+
 /**
  * Create a drawing layer whose cells all start as `hold`. This is intentional:
  * a new layer is empty until the first stroke, at which point the editor promotes

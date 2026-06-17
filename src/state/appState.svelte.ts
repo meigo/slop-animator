@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -253,6 +253,50 @@ export function renameLayer(id: number, input: string) {
   if (!layer) return;
   layer.name = resolveLayerName(layer.name, input);
   bump();
+}
+
+/** Create a group from the active layer (a run of one); removes it from any prior group. */
+export function groupActiveLayer() {
+  const layer = state.project.layers.find((l) => l.id === state.activeLayerId);
+  if (!layer) return;
+  const g: LayerGroup = { id: nextId(), name: `Group ${state.project.groups.length + 1}`, collapsed: false, visible: true };
+  state.project.groups.push(g);
+  layer.groupId = g.id;
+  state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers); // drop the layer's prior group if now empty
+  bump();
+}
+/** Ungroup: clear members' groupId, remove the group. */
+export function ungroup(groupId: number) {
+  for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
+  state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
+  bump();
+}
+export function toggleGroupCollapsed(groupId: number) {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (g) { g.collapsed = !g.collapsed; bump(); }
+}
+export function toggleGroupVisible(groupId: number) {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (g) { g.visible = !g.visible; bump(); }
+}
+export function renameGroup(groupId: number, name: string) {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  const n = name.trim();
+  if (g && n) { g.name = n; bump(); }
+}
+/** Apply a dragged display→data order with per-layer groupId, as one undoable step; prune empty groups. */
+export function reorderLayersWithGroups(order: { id: number; groupId: number | null }[]) {
+  const before = beginStructuralEdit();
+  const byId = new Map(state.project.layers.map((l) => [l.id, l]));
+  const next: Layer[] = [];
+  for (const e of order) {
+    const l = byId.get(e.id);
+    if (l) { l.groupId = e.groupId; next.push(l); }
+  }
+  state.project.layers = next;
+  state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
+  bump();
+  commitStructuralEdit(before);
 }
 
 /** Replace a reference layer's media (e.g. re-linking a persisted placeholder), keeping its
