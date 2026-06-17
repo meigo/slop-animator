@@ -8,6 +8,7 @@
   import { loadReferenceMedia } from "../anim/reference";
 
   let listEl: HTMLDivElement;
+  let dragNonce = 0; // bumped after a drag to force a full {#key} re-render of the list
 
   let editingId: number | null = null;
   let draft = "";
@@ -80,7 +81,7 @@
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),
   // then reverses to the bottom→top data order.
-  function rebuild(evt: Sortable.SortableEvent) {
+  function rebuild() {
     const order: { id: number; groupId: number | null }[] = [];
     for (const child of listEl.children) {
       const el = child as HTMLElement;
@@ -92,15 +93,12 @@
         order.push({ id: Number(el.dataset.layerId), groupId: null });
       }
     }
-    // Revert SortableJS's DOM move so Svelte stays the single source of truth — otherwise the moved
-    // node plus Svelte's re-rendered node show as a duplicate until the next full render. The store
-    // update below then drives the real re-render.
-    const { item, from, oldIndex } = evt;
-    if (item && from && oldIndex != null) {
-      item.remove();
-      from.insertBefore(item, from.children[oldIndex] ?? null);
-    }
     reorderLayersWithGroups(order.reverse());
+    // SortableJS mutated the DOM directly; Svelte's diff against that leaves the dragged node
+    // duplicated. Bumping `dragNonce` forces the `{#key}` list to fully tear down and rebuild from
+    // state, discarding any node SortableJS moved — robust regardless of drag direction. Runs after
+    // this handler returns (Svelte updates are async), so it never destroys a node mid-drag.
+    dragNonce++;
   }
 
   // Each .group-members container is its own Sortable sharing the "layers" group,
@@ -179,6 +177,7 @@
   </div>
 
   <div bind:this={listEl} class="flex-1 overflow-y-auto">
+    {#key dragNonce}
     {#each buildSegments(state.project.layers, state.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
       {#if "layer" in seg}
         {@render layerRow(seg.layer)}
@@ -221,5 +220,6 @@
         </div>
       {/if}
     {/each}
+    {/key}
   </div>
 </div>
