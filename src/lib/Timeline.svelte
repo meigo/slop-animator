@@ -264,6 +264,10 @@
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
   <div class="relative overflow-x-auto">
+    <!-- current-frame column highlight: an absolute overlay so scrubbing is O(1) — NOT a per-cell
+         `f === state.playhead` class (that re-evaluated frameCount×layers bindings on every scrub). -->
+    <div class="absolute top-0 bottom-0 pointer-events-none z-0"
+         style="left: {LABEL_W + state.playhead * CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"></div>
     <!-- playhead line (visual, non-interactive); centered on the current column -->
     <div class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
          style="left: {LABEL_W + state.playhead * CELL_W + CELL_W / 2 - 1}px"></div>
@@ -279,7 +283,6 @@
         {#each Array(state.project.frameCount) as _, f}
           {@const r = state.playback.range ? effectiveRange(state.playback.range, state.project.frameCount) : null}
           <div class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-muted"
-               class:text-accent={f === state.playhead}
                class:bg-selection={r && f >= r.start && f <= r.end}
                style="width: {CELL_W}px">{rulerLabel(f)}</div>
         {/each}
@@ -310,8 +313,6 @@
                  onpointerleave={rowLeave}>
               {#each Array(state.project.frameCount) as _, f}
                 <div class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
-                     class:bg-selection={f === state.playhead}
-                     class:text-accent-text={f === state.playhead}
                      class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
                      class:ring-accent={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
                      class:ring-inset={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
