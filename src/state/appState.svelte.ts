@@ -169,7 +169,15 @@ export function commitStructural(mutate: () => void): void {
 /** Append a layer (drawing or reference) on top and make it active. */
 export function addLayerToProject(layer: Layer) {
   commitStructural(() => {
-    state.project.layers.push(layer);
+    const active = state.project.layers.find((l) => l.id === state.activeLayerId);
+    if (active && active.groupId != null) {
+      // Active layer is in a group → the new layer joins that group, inserted just above the active
+      // one (keeps the group's contiguous run intact).
+      layer.groupId = active.groupId;
+      state.project.layers.splice(state.project.layers.indexOf(active) + 1, 0, layer);
+    } else {
+      state.project.layers.push(layer); // ungrouped → top of the stack (existing behavior)
+    }
     state.activeLayerId = layer.id;
   });
 }
@@ -209,6 +217,7 @@ export function duplicateLayer(id: number) {
     dup.visible = src.visible;
     dup.locked = src.locked;
     dup.opacity = src.opacity;
+    dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
     dup.cells = src.cells.map((c): Cell =>
       c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
     );
