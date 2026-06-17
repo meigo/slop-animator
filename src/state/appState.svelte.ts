@@ -1,4 +1,4 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell, type AudioTrack } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia } from "../anim/document";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -253,6 +253,13 @@ export function renameLayer(id: number, input: string) {
   if (!layer) return;
   layer.name = resolveLayerName(layer.name, input);
   bump();
+}
+
+/** Replace a reference layer's media (e.g. re-linking a persisted placeholder), keeping its
+ *  name/opacity/visibility/offset/transform. Not undoable. */
+export function relinkReference(id: number, media: ReferenceMedia) {
+  const layer = state.project.layers.find((l) => l.id === id);
+  if (layer && layer.kind === "ref") { layer.media = media; bump(); }
 }
 
 /** Set/replace the project audio track (not undoable; persisted with the project). */
