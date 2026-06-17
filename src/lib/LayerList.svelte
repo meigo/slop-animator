@@ -80,7 +80,7 @@
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),
   // then reverses to the bottom→top data order.
-  function rebuild() {
+  function rebuild(evt: Sortable.SortableEvent) {
     const order: { id: number; groupId: number | null }[] = [];
     for (const child of listEl.children) {
       const el = child as HTMLElement;
@@ -91,6 +91,14 @@
       } else if (el.dataset && el.dataset.layerId != null) {
         order.push({ id: Number(el.dataset.layerId), groupId: null });
       }
+    }
+    // Revert SortableJS's DOM move so Svelte stays the single source of truth — otherwise the moved
+    // node plus Svelte's re-rendered node show as a duplicate until the next full render. The store
+    // update below then drives the real re-render.
+    const { item, from, oldIndex } = evt;
+    if (item && from && oldIndex != null) {
+      item.remove();
+      from.insertBefore(item, from.children[oldIndex] ?? null);
     }
     reorderLayersWithGroups(order.reverse());
   }
@@ -171,7 +179,7 @@
   </div>
 
   <div bind:this={listEl} class="flex-1 overflow-y-auto">
-    {#each buildSegments(state.project.layers, state.project.groups) as seg}
+    {#each buildSegments(state.project.layers, state.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
       {#if "layer" in seg}
         {@render layerRow(seg.layer)}
       {:else}
