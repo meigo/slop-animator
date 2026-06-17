@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
-  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve } from "../state/appState.svelte";
+  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
@@ -12,10 +12,15 @@
 
   const curveOpen = writable(false);
   let curvePopupEl: HTMLDivElement;
+  let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
 
   onMount(() => {
-    curvePopupEl.appendChild(createCurveEditor(pressureCurve, () => {}));
+    curveEditor = createCurveEditor(pressureCurve, bumpCurve);
+    curvePopupEl.appendChild(curveEditor);
   });
+
+  // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve.
+  $: if ($curveOpen) curveEditor?.redraw();
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";

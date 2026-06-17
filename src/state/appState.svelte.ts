@@ -28,6 +28,8 @@ interface AnimState {
   fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
+  /** Bumped when the pressure curve is edited (it's an imperative widget, not reactive state). */
+  curveVersion: number;
   exportOpen: boolean;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
@@ -57,6 +59,7 @@ export const state: AnimState = $state({
   brushType: "smooth",
   fill: { tolerance: 32, expand: 2 },
   version: 0,
+  curveVersion: 0,
   exportOpen: false,
   sizeDialog: { open: false, mode: "new" },
   theme: "dark",
@@ -315,8 +318,14 @@ export function toggleEraser() {
   }
 }
 
+/** Signal that the (imperative) pressure curve changed, so the preferences save effect re-runs. */
+export function bumpCurve() {
+  state.curveVersion++;
+}
+
 /** Snapshot the persisted-preference fields from live state. */
 export function gatherPreferences(): Preferences {
+  void state.curveVersion; // track: the curve is imperative, so re-run the save effect on edits
   return {
     tool: state.tool,
     brush: { ...state.brush },
@@ -326,6 +335,7 @@ export function gatherPreferences(): Preferences {
     fill: { ...state.fill },
     theme: state.theme,
     loop: state.playback.loop,
+    pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
   };
 }
 
@@ -339,6 +349,12 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
   if (p.theme === "dark" || p.theme === "light") state.theme = p.theme;
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
+  if (p.pressureCurve && typeof p.pressureCurve === "object") {
+    const { cp1, cp2 } = p.pressureCurve;
+    if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number") pressureCurve.cp1 = { x: cp1.x, y: cp1.y };
+    if (cp2 && typeof cp2.x === "number" && typeof cp2.y === "number") pressureCurve.cp2 = { x: cp2.x, y: cp2.y };
+    pressureCurve.buildLUT();
+  }
 }
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
