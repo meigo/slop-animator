@@ -1,4 +1,4 @@
-import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig } from "../anim/document";
+import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig, type ReferenceLayer, type RefTransform, type Layer } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
 
@@ -12,6 +12,26 @@ export interface DrawingLayerJson {
   cells: ("key" | "hold")[];
 }
 
+export interface ReferenceJson {
+  index: number;            // position in the full project.layers stack (z-order)
+  id: number;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  offsetFrames: number;
+  was: "image" | "video";
+  transform: RefTransform;
+}
+
+/** Splice `refs` (by stack index, ascending) into `base`. Pure; rebuilds the original interleaving. */
+export function insertReferencesByIndex<T>(base: T[], refs: { index: number; value: T }[]): T[] {
+  const out = base.slice();
+  for (const r of refs.slice().sort((a, b) => a.index - b.index)) {
+    out.splice(Math.min(r.index, out.length), 0, r.value);
+  }
+  return out;
+}
+
 export interface ProjectJson {
   version: 1;
   width: number;
@@ -21,6 +41,7 @@ export interface ProjectJson {
   frameCount: number;
   boil: BoilConfig;
   layers: DrawingLayerJson[];
+  references: ReferenceJson[];
   audio: { name: string; offsetFrames: number; muted: boolean } | null;
 }
 
@@ -59,6 +80,15 @@ export function projectToJson(project: Project): ProjectJson {
       boilStrength: l.boilStrength,
       cells: l.cells.map((c) => c.kind),
     })),
+    references: project.layers
+      .map((l, index) => ({ l, index }))
+      .filter((e): e is { l: ReferenceLayer; index: number } => e.l.kind === "ref")
+      .map(({ l, index }) => ({
+        index, id: l.id, name: l.name, visible: l.visible, opacity: l.opacity,
+        offsetFrames: l.offsetFrames,
+        was: l.media.type === "missing" ? l.media.was : l.media.type,
+        transform: l.transform,
+      })),
     audio: project.audio
       ? { name: project.audio.name, offsetFrames: project.audio.offsetFrames, muted: project.audio.muted }
       : null,
@@ -134,10 +164,21 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
       locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, cells,
     });
   }
+  const refsJson = json.references ?? [];
+  for (const rj of refsJson) maxId = Math.max(maxId, rj.id);
+  const refLayers = refsJson.map((rj) => ({
+    index: rj.index,
+    value: {
+      kind: "ref", id: rj.id, name: rj.name, visible: rj.visible, opacity: rj.opacity,
+      offsetFrames: rj.offsetFrames, transform: rj.transform,
+      media: { type: "missing", was: rj.was, name: rj.name },
+    } as ReferenceLayer,
+  }));
+  const orderedLayers = insertReferencesByIndex<Layer>(layers, refLayers);
   setMinLayerId(maxId + 1);
   const project: Project = {
     width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers,
+    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), layers: orderedLayers,
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
