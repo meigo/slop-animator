@@ -8,6 +8,7 @@
   import { loadReferenceMedia } from "../anim/reference";
 
   let listEl: HTMLDivElement;
+  let dragNonce = 0; // bumped after a drag to force a full {#key} re-render of the list
 
   let editingId: number | null = null;
   let draft = "";
@@ -61,20 +62,21 @@
 
   // Build display segments (top-first, reverse of the bottom→top data order).
   // Each segment is either a bare layer ({ layer }) or a contiguous group block
-  // ({ group, layers }). Recomputes on every change via state.version.
+  // ({ group, layers }). Called from the template with `state.project.layers`/`.groups` so the
+  // template tracks those reactive reads — a `$:` block would NOT (this is a legacy-mode component
+  // that imports the `state` proxy, and legacy `$:` doesn't track external rune-proxy reads).
   type Segment = { layer: Layer } | { group: LayerGroup; layers: Layer[] };
-  $: segments = (() => {
-    void state.version;
+  function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] {
     const segs: Segment[] = [];
-    for (const layer of [...state.project.layers].reverse()) {
-      const g = groupOf(layer, state.project.groups);
+    for (const layer of [...layers].reverse()) {
+      const g = groupOf(layer, groups);
       const last = segs[segs.length - 1];
       if (g && last && "group" in last && last.group.id === g.id) last.layers.push(layer);
       else if (g) segs.push({ group: g, layers: [layer] });
       else segs.push({ layer });
     }
     return segs;
-  })();
+  }
 
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),
@@ -92,6 +94,11 @@
       }
     }
     reorderLayersWithGroups(order.reverse());
+    // SortableJS mutated the DOM directly; Svelte's diff against that leaves the dragged node
+    // duplicated. Bumping `dragNonce` forces the `{#key}` list to fully tear down and rebuild from
+    // state, discarding any node SortableJS moved — robust regardless of drag direction. Runs after
+    // this handler returns (Svelte updates are async), so it never destroys a node mid-drag.
+    dragNonce++;
   }
 
   // Each .group-members container is its own Sortable sharing the "layers" group,
@@ -170,7 +177,8 @@
   </div>
 
   <div bind:this={listEl} class="flex-1 overflow-y-auto">
-    {#each segments as seg}
+    {#key dragNonce}
+    {#each buildSegments(state.project.layers, state.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
       {#if "layer" in seg}
         {@render layerRow(seg.layer)}
       {:else}
@@ -212,5 +220,6 @@
         </div>
       {/if}
     {/each}
+    {/key}
   </div>
 </div>
