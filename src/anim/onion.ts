@@ -37,7 +37,7 @@ export function computeOnionFrames(
   return result;
 }
 
-import { resolveKeyframeIndex, type Project } from "./document";
+import { resolveKeyframeIndex, isLayerVisible, type Project } from "./document";
 import { compositeFrameLayers } from "./render";
 
 export interface OnionConfig {
@@ -74,7 +74,7 @@ function drawGhost(
     compositeFrameLayers(scratch, project, ghostFrame, dpr, false);
   } else {
     const layer = project.layers.find((l) => l.id === activeLayerId);
-    if (layer && layer.kind === "draw") {
+    if (layer && layer.kind === "draw" && isLayerVisible(layer, project.groups)) {
       const ki = resolveKeyframeIndex(layer.cells, ghostFrame);
       const cell = ki === null ? null : layer.cells[ki];
       if (cell && cell.kind === "key") scratch.drawImage(cell.canvas, 0, 0);
