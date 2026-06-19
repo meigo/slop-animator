@@ -53,6 +53,15 @@ export function hitTestHandle(base: Rect, t: RefTransform, p: Pt, tolDoc: number
   return null;
 }
 
+/** Map a document-space point into a layer's local (untransformed) cell space — the inverse of the
+ *  affine used to render the layer. Identity transform ⇒ the point unchanged. */
+export function inverseTransformPoint(base: Rect, t: RefTransform, p: Pt): Pt {
+  const cx = base.x + base.w / 2, cy = base.y + base.h / 2;
+  const ox = p.x - (cx + t.dx), oy = p.y - (cy + t.dy);
+  const cos = Math.cos(-t.rotation), sin = Math.sin(-t.rotation);
+  return { x: cx + (ox * cos - oy * sin) / t.scale, y: cy + (ox * sin + oy * cos) / t.scale };
+}
+
 /** Translate by (ddx, ddy). */
 export function applyMove(t: RefTransform, ddx: number, ddy: number): RefTransform {
   return { ...t, dx: t.dx + ddx, dy: t.dy + ddy };

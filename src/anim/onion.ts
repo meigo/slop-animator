@@ -37,8 +37,8 @@ export function computeOnionFrames(
   return result;
 }
 
-import { resolveKeyframeIndex, isLayerVisible, type Project } from "./document";
-import { compositeFrameLayers } from "./render";
+import { resolveKeyframeIndex, isLayerVisible, isIdentityTransform, type Project } from "./document";
+import { compositeFrameLayers, drawTransformed } from "./render";
 
 export interface OnionConfig {
   enabled: boolean;
@@ -77,7 +77,10 @@ function drawGhost(
     if (layer && layer.kind === "draw" && isLayerVisible(layer, project.groups)) {
       const ki = resolveKeyframeIndex(layer.cells, ghostFrame);
       const cell = ki === null ? null : layer.cells[ki];
-      if (cell && cell.kind === "key") scratch.drawImage(cell.canvas, 0, 0);
+      if (cell && cell.kind === "key") {
+        if (isIdentityTransform(layer.transform)) scratch.drawImage(cell.canvas, 0, 0);
+        else drawTransformed(scratch, cell.canvas, { x: 0, y: 0, w, h }, layer.transform, dpr);
+      }
     }
   }
 

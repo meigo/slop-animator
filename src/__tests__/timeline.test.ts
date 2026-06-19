@@ -15,7 +15,7 @@ const fakeOps: CanvasOps = {
 };
 
 function layer(cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } };
 }
 
 describe("timeline operations", () => {

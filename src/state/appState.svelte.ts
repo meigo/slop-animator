@@ -1,6 +1,6 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, createReferenceLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, mediaIntrinsicSize, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, createReferenceLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, mediaIntrinsicSize, isIdentityTransform, IDENTITY_TRANSFORM, type Project, type Layer, type DrawingLayer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
 import { loadImageMedia } from "../anim/reference";
-import { drawReferenceMedia } from "../anim/render";
+import { drawReferenceMedia, drawTransformed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -16,7 +16,7 @@ import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
 
-export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso";
+export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso" | "transform";
 
 interface AnimState {
   project: Project;
@@ -127,7 +127,10 @@ function restoreStructure(s: StructSnapshot) {
   state.project.layers = s.layers.map((snap) => {
     const live = liveById.get(snap.id);
     if (live) {
-      if (live.kind === "draw" && snap.kind === "draw") live.cells = snap.cells.slice();
+      if (live.kind === "draw" && snap.kind === "draw") {
+        live.cells = snap.cells.slice();
+        live.transform = { ...snap.transform }; // transform is undoable (Apply/Reset change it with cells)
+      }
       return live;
     }
     // Layer was removed since the snapshot → bring back the snapshot's clone wholesale.
@@ -257,12 +260,40 @@ export function duplicateLayer(id: number) {
     dup.locked = src.locked;
     dup.opacity = src.opacity;
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
+    dup.transform = { ...src.transform }; // copy renders at the same placement as the source
     dup.cells = src.cells.map((c): Cell =>
       c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
     );
     layers.splice(idx + 1, 0, dup);
     state.activeLayerId = dup.id;
   });
+}
+
+/** Bake a draw layer's transform into its cells and reset to identity. No commit (caller wraps it). */
+function bakeLayerTransform(layer: DrawingLayer): void {
+  if (isIdentityTransform(layer.transform)) return;
+  const W = state.project.width, H = state.project.height;
+  layer.cells = layer.cells.map((c) => {
+    if (c.kind !== "key") return c;
+    const canvas = createCellCanvas(W, H, DPR);
+    const ctx = canvas.getContext("2d")!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    drawTransformed(ctx, c.canvas, { x: 0, y: 0, w: W * DPR, h: H * DPR }, layer.transform, DPR);
+    return { kind: "key", canvas };
+  });
+  layer.transform = { ...IDENTITY_TRANSFORM };
+}
+
+export function applyLayerTransform(layerId: number): void {
+  const layer = state.project.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
+  commitStructural(() => bakeLayerTransform(layer));
+}
+
+export function resetLayerTransform(layerId: number): void {
+  const layer = state.project.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
+  commitStructural(() => { layer.transform = { ...IDENTITY_TRANSFORM }; });
 }
 
 /** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */
@@ -278,6 +309,8 @@ export function mergeDown(id: number) {
     // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
     // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
     // so the result is independent of mutation order.
+    bakeLayerTransform(upper);
+    bakeLayerTransform(below);
     below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
       if (p.kind === "hold") return { kind: "hold" };
       const canvas = canvasOps.create();

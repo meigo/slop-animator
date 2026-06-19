@@ -16,8 +16,8 @@
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
-  import { containRect, mediaIntrinsicSize, type ReferenceLayer } from "../anim/document";
-  import { hitTestHandle, transformCenter, applyMove, applyScale, applyRotate, type Handle, type Pt, type Rect } from "../core/ref-transform";
+  import { transformBaseRect, isIdentityTransform, type Layer } from "../anim/document";
+  import { hitTestHandle, transformCenter, applyMove, applyScale, applyRotate, inverseTransformPoint, type Handle, type Pt } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
 
@@ -74,6 +74,10 @@
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
     if (layer.kind !== "draw" || layer.locked) return;
+    if (!isIdentityTransform(layer.transform)) {
+      const base = transformBaseRect(layer, state.project.width, state.project.height)!;
+      pt = inverseTransformPoint(base, layer.transform, pt);
+    }
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -109,7 +113,13 @@
   // from the pre-stroke snapshot; stamp = incremental. Both clip to the active selection.
   function paintStroke(pts: InputPoint[], done: boolean) {
     if (!strokeCtx) return;
-    const curved = pts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
+    const al = activeLayer();
+    let inPts = pts;
+    if (al.kind === "draw" && !isIdentityTransform(al.transform)) {
+      const base = transformBaseRect(al, state.project.width, state.project.height)!;
+      inPts = pts.map((p) => ({ ...p, ...inverseTransformPoint(base, al.transform, p) }));
+    }
+    const curved = inPts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
     const sr = (curved[0]?.hasPressure ?? true) ? state.sizeRange : 1;
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
@@ -140,13 +150,12 @@
     recomposite();
   }
 
-  let refDrag: { handle: Handle; start: Pt; startT: ReferenceLayer["transform"]; center: Pt } | null = null;
+  let refDrag: { handle: Handle; start: Pt; startT: Layer["transform"]; center: Pt } | null = null;
 
-  function onRefTransform(layer: ReferenceLayer, points: { x: number; y: number }[], done: boolean) {
+  function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
     const p = points[points.length - 1];
-    const size = mediaIntrinsicSize(layer.media);
-    if (size.w === 0 || size.h === 0) { if (done) refDrag = null; return; }
-    const base: Rect = containRect(size.w, size.h, state.project.width, state.project.height);
+    const base = transformBaseRect(layer, state.project.width, state.project.height);
+    if (!base) { if (done) refDrag = null; return; }
     if (!refDrag) {
       const tol = 10 / viewport.zoom;            // 10 screen px of grab tolerance
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
@@ -165,7 +174,9 @@
 
   function onStroke(points: InputPoint[], done: boolean) {
     const al = activeLayer();
-    if (al.kind === "ref") { onRefTransform(al, points, done); return; }
+    if (al.kind === "ref" || (al.kind === "draw" && state.tool === "transform")) { onTransformDrag(al, points, done); return; }
+    // Selection is disabled while the active draw layer is transformed (Apply first).
+    if ((state.tool === "select" || state.tool === "lasso") && al.kind === "draw" && !isIdentityTransform(al.transform)) return;
     if (state.tool === "select" || state.tool === "lasso") {
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {

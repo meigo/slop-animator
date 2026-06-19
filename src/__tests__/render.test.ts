@@ -27,7 +27,7 @@ function recordingCtx() {
 let id = 0;
 const keyCanvas = () => ({ __id: ++id }) as unknown as HTMLCanvasElement;
 function layer(cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, ...over };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 }, ...over };
 }
 
 describe("renderFrame", () => {
@@ -154,6 +154,30 @@ describe("drawReferenceMedia", () => {
     const ctx = recordingCtx();
     drawReferenceMedia(ctx as unknown as CanvasRenderingContext2D, refLayer(imageMedia(7, 0, 0)), 100, 100, 1);
     expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([]);
+  });
+});
+
+describe("compositeFrameLayers with a drawing-layer transform", () => {
+  it("identity transform uses the plain (non-sized) blit", () => {
+    const c = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#000", frameCount: 1, boil: defaultBoilConfig(), groups: [],
+      layers: [layer([{ kind: "key", canvas: c }], { id: 1 })], audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([`drawImage:${(c as unknown as { __id: number }).__id}@1`]);
+  });
+
+  it("non-identity transform draws sized (through the affine)", () => {
+    const c = keyCanvas();
+    const p: Project = {
+      width: 100, height: 100, fps: 12, bgColor: "#000", frameCount: 1, boil: defaultBoilConfig(), groups: [],
+      layers: [layer([{ kind: "key", canvas: c }], { id: 1, transform: { dx: 5, dy: 0, scale: 1.5, rotation: 0 } })], audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([`drawImage:${(c as unknown as { __id: number }).__id}@1:sized`]);
   });
 });
 
