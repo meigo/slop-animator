@@ -127,7 +127,10 @@ function restoreStructure(s: StructSnapshot) {
   state.project.layers = s.layers.map((snap) => {
     const live = liveById.get(snap.id);
     if (live) {
-      if (live.kind === "draw" && snap.kind === "draw") live.cells = snap.cells.slice();
+      if (live.kind === "draw" && snap.kind === "draw") {
+        live.cells = snap.cells.slice();
+        live.transform = { ...snap.transform }; // transform is undoable (Apply/Reset change it with cells)
+      }
       return live;
     }
     // Layer was removed since the snapshot → bring back the snapshot's clone wholesale.
@@ -257,6 +260,7 @@ export function duplicateLayer(id: number) {
     dup.locked = src.locked;
     dup.opacity = src.opacity;
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
+    dup.transform = { ...src.transform }; // copy renders at the same placement as the source
     dup.cells = src.cells.map((c): Cell =>
       c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
     );

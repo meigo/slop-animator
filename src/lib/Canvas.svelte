@@ -72,13 +72,12 @@
   }
 
   function doFill(pt: { x: number; y: number }) {
-    const fal = activeLayer();
-    if (fal.kind === "draw" && !isIdentityTransform(fal.transform)) {
-      const base = transformBaseRect(fal, state.project.width, state.project.height)!;
-      pt = inverseTransformPoint(base, fal.transform, pt);
-    }
     const layer = activeLayer();
     if (layer.kind !== "draw" || layer.locked) return;
+    if (!isIdentityTransform(layer.transform)) {
+      const base = transformBaseRect(layer, state.project.width, state.project.height)!;
+      pt = inverseTransformPoint(base, layer.transform, pt);
+    }
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
