@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   transformCenter, transformedCorners, hitTestHandle,
-  applyMove, applyScale, applyRotate, type Rect,
+  applyMove, applyScale, applyRotate, inverseTransformPoint, type Rect,
 } from "../core/ref-transform";
 
 const base: Rect = { x: 100, y: 100, w: 200, h: 100 }; // center (200,150)
@@ -77,5 +77,38 @@ describe("applyRotate", () => {
     const out = applyRotate(id, center, { x: 300, y: 150 }, { x: 200, y: 250 });
     expect(out.rotation).toBeCloseTo(Math.PI / 2, 6);
     expect(out.scale).toBe(1); expect(out.dx).toBe(0);
+  });
+});
+
+describe("inverseTransformPoint", () => {
+  const base = { x: 0, y: 0, w: 100, h: 100 }; // doc center = (50,50)
+  const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+
+  it("identity is a no-op", () => {
+    expect(inverseTransformPoint(base, id, { x: 30, y: 70 })).toEqual({ x: 30, y: 70 });
+  });
+
+  it("pure translate subtracts the offset", () => {
+    const p = inverseTransformPoint(base, { ...id, dx: 10, dy: -5 }, { x: 30, y: 70 });
+    expect(p.x).toBeCloseTo(20, 5);
+    expect(p.y).toBeCloseTo(75, 5);
+  });
+
+  it("pure scale divides distance from doc center", () => {
+    const p = inverseTransformPoint(base, { ...id, scale: 2 }, { x: 70, y: 50 });
+    expect(p.x).toBeCloseTo(60, 5);
+    expect(p.y).toBeCloseTo(50, 5);
+  });
+
+  it("round-trips the forward render transform", () => {
+    const t = { dx: 12, dy: -7, scale: 1.5, rotation: 0.6 };
+    const cx = base.x + base.w / 2, cy = base.y + base.h / 2;
+    const local = { x: 73, y: 21 };
+    const ox = local.x - cx, oy = local.y - cy;
+    const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation);
+    const screen = { x: cx + t.dx + t.scale * (ox * cos - oy * sin), y: cy + t.dy + t.scale * (ox * sin + oy * cos) };
+    const back = inverseTransformPoint(base, t, screen);
+    expect(back.x).toBeCloseTo(local.x, 4);
+    expect(back.y).toBeCloseTo(local.y, 4);
   });
 });
