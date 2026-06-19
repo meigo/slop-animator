@@ -1,14 +1,12 @@
-export type Cell =
-  | { kind: "key"; canvas: HTMLCanvasElement }
-  | { kind: "hold" };
+export type Cell = { kind: "key"; canvas: HTMLCanvasElement } | { kind: "hold" };
 
 /** Line-boil settings, persisted per project. */
 export interface BoilConfig {
   enabled: boolean;
-  amount: number;    // displacement px
-  cols: number;      // noise detail (frequency across the canvas)
-  rate: number;      // cycle length (on twos/threes)
-  weight: number;    // line-weight breathing (0..1, in-shader alpha dilate/erode)
+  amount: number; // displacement px
+  cols: number; // noise detail (frequency across the canvas)
+  rate: number; // cycle length (on twos/threes)
+  weight: number; // line-weight breathing (0..1, in-shader alpha dilate/erode)
   holdsOnly: boolean;
 }
 export function defaultBoilConfig(): BoilConfig {
@@ -31,7 +29,7 @@ export interface DrawingLayer {
   opacity: number; // 0..100
   boilStrength: number; // per-layer multiplier on boil amount/weight (1 = full, 0 = none)
   groupId: number | null;
-  cells: Cell[];    // independent per-layer length; document length = the longest layer
+  cells: Cell[]; // independent per-layer length; document length = the longest layer
   transform: RefTransform;
 }
 
@@ -41,10 +39,10 @@ export type ReferenceMedia =
   | { type: "missing"; was: "image" | "video"; name: string };
 
 export interface RefTransform {
-  dx: number;        // translate from fit-center, document logical px
+  dx: number; // translate from fit-center, document logical px
   dy: number;
-  scale: number;     // uniform multiplier on the fit size (1 = fit)
-  rotation: number;  // radians, clockwise, about the center
+  scale: number; // uniform multiplier on the fit size (1 = fit)
+  rotation: number; // radians, clockwise, about the center
 }
 
 export interface ReferenceLayer {
@@ -52,8 +50,8 @@ export interface ReferenceLayer {
   id: number;
   name: string;
   visible: boolean;
-  opacity: number;       // 0..100
-  offsetFrames: number;  // video time offset in frames; ignored for images
+  opacity: number; // 0..100
+  offsetFrames: number; // video time offset in frames; ignored for images
   groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
@@ -69,7 +67,11 @@ export function isIdentityTransform(t: RefTransform): boolean {
 
 /** Logical base rect for a layer's transform: the full document for a draw layer; the media
  *  contain-fit rect for a ref (null when the ref's media isn't loaded). */
-export function transformBaseRect(layer: Layer, docW: number, docH: number): { x: number; y: number; w: number; h: number } | null {
+export function transformBaseRect(
+  layer: Layer,
+  docW: number,
+  docH: number,
+): { x: number; y: number; w: number; h: number } | null {
   if (layer.kind === "draw") return { x: 0, y: 0, w: docW, h: docH };
   const size = mediaIntrinsicSize(layer.media);
   if (size.w === 0 || size.h === 0) return null;
@@ -77,11 +79,11 @@ export function transformBaseRect(layer: Layer, docW: number, docH: number): { x
 }
 
 export interface AudioTrack {
-  name: string;          // file name (display)
-  bytes: Uint8Array;     // original encoded file -> persisted
-  buffer: AudioBuffer;   // decoded PCM -> session-only, rebuilt on load
-  offsetFrames: number;  // start frame (Phase 1: always 0)
-  muted: boolean;        // Phase 1: always false
+  name: string; // file name (display)
+  bytes: Uint8Array; // original encoded file -> persisted
+  buffer: AudioBuffer; // decoded PCM -> session-only, rebuilt on load
+  offsetFrames: number; // start frame (Phase 1: always 0)
+  muted: boolean; // Phase 1: always false
 }
 
 export function isDrawingLayer(l: Layer): l is DrawingLayer {
@@ -126,7 +128,11 @@ export type FrameOp =
  * Ordered (bottom→top) list of what each visible layer contributes at `frame`.
  * Reference layers are omitted when `includeReference` is false (used by export and onion).
  */
-export function buildFrameDrawList(project: Project, frame: number, includeReference = true): FrameOp[] {
+export function buildFrameDrawList(
+  project: Project,
+  frame: number,
+  includeReference = true,
+): FrameOp[] {
   const ops: FrameOp[] = [];
   for (const layer of project.layers) {
     if (!isLayerVisible(layer, project.groups)) continue;
@@ -195,7 +201,12 @@ export function countKeyframesPastLength(project: Project, n: number): number {
 }
 
 /** Aspect-preserving "contain" fit of a `srcW×srcH` source centred in a `boxW×boxH` box. */
-export function containRect(srcW: number, srcH: number, boxW: number, boxH: number): { x: number; y: number; w: number; h: number } {
+export function containRect(
+  srcW: number,
+  srcH: number,
+  boxW: number,
+  boxH: number,
+): { x: number; y: number; w: number; h: number } {
   if (srcW <= 0 || srcH <= 0) return { x: 0, y: 0, w: boxW, h: boxH };
   const scale = Math.min(boxW / srcW, boxH / srcH);
   const w = srcW * scale;
@@ -244,7 +255,9 @@ export function setMinLayerId(n: number): void {
   if (n > nextLayerId) nextLayerId = n;
 }
 
-export function nextId(): number { return nextLayerId++; }
+export function nextId(): number {
+  return nextLayerId++;
+}
 
 /**
  * Create a drawing layer whose cells all start as `hold`. This is intentional:
@@ -289,7 +302,9 @@ export function resolveLayerName(current: string, input: string): string {
   return input.trim() || current;
 }
 
-export function createProject(opts?: Partial<Pick<Project, "width" | "height" | "fps" | "bgColor">>): Project {
+export function createProject(
+  opts?: Partial<Pick<Project, "width" | "height" | "fps" | "bgColor">>,
+): Project {
   const frameCount = 1;
   const layer = createDrawingLayer(frameCount, "Layer 1");
   return {

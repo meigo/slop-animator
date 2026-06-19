@@ -20,7 +20,7 @@ export function computeOnionFrames(
   current: number,
   frameCount: number,
   prevCount: number,
-  nextCount: number
+  nextCount: number,
 ): OnionFrame[] {
   const result: OnionFrame[] = [];
 
@@ -37,7 +37,12 @@ export function computeOnionFrames(
   return result;
 }
 
-import { resolveKeyframeIndex, isLayerVisible, isIdentityTransform, type Project } from "./document";
+import {
+  resolveKeyframeIndex,
+  isLayerVisible,
+  isIdentityTransform,
+  type Project,
+} from "./document";
 import { compositeFrameLayers, drawTransformed } from "./render";
 
 export interface OnionConfig {
@@ -60,7 +65,7 @@ function drawGhost(
   allLayers: boolean,
   activeLayerId: number,
   tint: string,
-  opacity: number
+  opacity: number,
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
@@ -106,7 +111,7 @@ export function renderFrameWithOnion(
   frame: number,
   dpr: number,
   onion: OnionConfig,
-  activeLayerId: number
+  activeLayerId: number,
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
@@ -120,7 +125,17 @@ export function renderFrameWithOnion(
 
   for (const g of computeOnionFrames(frame, project.frameCount, onion.prev, onion.next)) {
     const tint = g.kind === "prev" ? onion.tintPrev : onion.tintNext;
-    drawGhost(display, scratch, project, g.frame, dpr, onion.allLayers, activeLayerId, tint, g.opacity);
+    drawGhost(
+      display,
+      scratch,
+      project,
+      g.frame,
+      dpr,
+      onion.allLayers,
+      activeLayerId,
+      tint,
+      g.opacity,
+    );
   }
 
   compositeFrameLayers(display, project, frame, dpr);

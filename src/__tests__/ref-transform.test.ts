@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-  transformCenter, transformedCorners, hitTestHandle,
-  applyMove, applyScale, applyRotate, inverseTransformPoint, type Rect,
+  transformCenter,
+  transformedCorners,
+  hitTestHandle,
+  applyMove,
+  applyScale,
+  applyRotate,
+  inverseTransformPoint,
+  type Rect,
 } from "../core/ref-transform";
 
 const base: Rect = { x: 100, y: 100, w: 200, h: 100 }; // center (200,150)
@@ -53,8 +59,12 @@ describe("hitTestHandle", () => {
 
 describe("applyMove", () => {
   it("adds to dx/dy and leaves scale/rotation", () => {
-    expect(applyMove({ dx: 1, dy: 2, scale: 3, rotation: 4 }, 10, -5))
-      .toEqual({ dx: 11, dy: -3, scale: 3, rotation: 4 });
+    expect(applyMove({ dx: 1, dy: 2, scale: 3, rotation: 4 }, 10, -5)).toEqual({
+      dx: 11,
+      dy: -3,
+      scale: 3,
+      rotation: 4,
+    });
   });
 });
 
@@ -63,7 +73,9 @@ describe("applyScale", () => {
   it("doubling the distance from center doubles scale", () => {
     const out = applyScale(id, center, { x: 250, y: 150 }, { x: 300, y: 150 });
     expect(out.scale).toBeCloseTo(2, 6);
-    expect(out.dx).toBe(0); expect(out.dy).toBe(0); expect(out.rotation).toBe(0);
+    expect(out.dx).toBe(0);
+    expect(out.dy).toBe(0);
+    expect(out.rotation).toBe(0);
   });
   it("clamps to a small minimum", () => {
     const out = applyScale(id, center, { x: 300, y: 150 }, { x: 200.0001, y: 150 });
@@ -76,7 +88,8 @@ describe("applyRotate", () => {
   it("a 90° pointer sweep adds π/2", () => {
     const out = applyRotate(id, center, { x: 300, y: 150 }, { x: 200, y: 250 });
     expect(out.rotation).toBeCloseTo(Math.PI / 2, 6);
-    expect(out.scale).toBe(1); expect(out.dx).toBe(0);
+    expect(out.scale).toBe(1);
+    expect(out.dx).toBe(0);
   });
 });
 
@@ -102,11 +115,17 @@ describe("inverseTransformPoint", () => {
 
   it("round-trips the forward render transform", () => {
     const t = { dx: 12, dy: -7, scale: 1.5, rotation: 0.6 };
-    const cx = base.x + base.w / 2, cy = base.y + base.h / 2;
+    const cx = base.x + base.w / 2,
+      cy = base.y + base.h / 2;
     const local = { x: 73, y: 21 };
-    const ox = local.x - cx, oy = local.y - cy;
-    const cos = Math.cos(t.rotation), sin = Math.sin(t.rotation);
-    const screen = { x: cx + t.dx + t.scale * (ox * cos - oy * sin), y: cy + t.dy + t.scale * (ox * sin + oy * cos) };
+    const ox = local.x - cx,
+      oy = local.y - cy;
+    const cos = Math.cos(t.rotation),
+      sin = Math.sin(t.rotation);
+    const screen = {
+      x: cx + t.dx + t.scale * (ox * cos - oy * sin),
+      y: cy + t.dy + t.scale * (ox * sin + oy * cos),
+    };
     const back = inverseTransformPoint(base, t, screen);
     expect(back.x).toBeCloseTo(local.x, 4);
     expect(back.y).toBeCloseTo(local.y, 4);

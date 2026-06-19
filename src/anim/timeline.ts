@@ -1,4 +1,10 @@
-import { resolveKeyframeIndex, refreshLength, type Cell, type DrawingLayer, type Project } from "./document";
+import {
+  resolveKeyframeIndex,
+  refreshLength,
+  type Cell,
+  type DrawingLayer,
+  type Project,
+} from "./document";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -59,7 +65,11 @@ export function deleteFrame(layer: DrawingLayer, frame: number): void {
  * - A hold over an earlier keyframe → clones that drawing (draw-on-hold = clone & edit on top).
  * - A hold with nothing held → a fresh blank keyframe.
  */
-export function ensureDrawableKeyframe(layer: DrawingLayer, frame: number, ops: CanvasOps): HTMLCanvasElement {
+export function ensureDrawableKeyframe(
+  layer: DrawingLayer,
+  frame: number,
+  ops: CanvasOps,
+): HTMLCanvasElement {
   if (frame >= layer.cells.length) {
     while (layer.cells.length < frame) layer.cells.push({ kind: "hold" });
     const canvas = ops.create();
@@ -116,7 +126,10 @@ export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number)
   if (desired === current) return;
 
   if (desired > current) {
-    const holds: Cell[] = Array.from({ length: desired - current }, () => ({ kind: "hold" }) as Cell);
+    const holds: Cell[] = Array.from(
+      { length: desired - current },
+      () => ({ kind: "hold" }) as Cell,
+    );
     layer.cells.splice(keyFrame + current, 0, ...holds);
   } else {
     layer.cells.splice(keyFrame + desired, current - desired);

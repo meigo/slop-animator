@@ -15,7 +15,10 @@
       const audio = state.project.audio;
       const ctx = node.getContext("2d");
       if (!ctx) return;
-      if (!audio) { ctx.clearRect(0, 0, node.width, node.height); return; }
+      if (!audio) {
+        ctx.clearRect(0, 0, node.width, node.height);
+        return;
+      }
       const cols = audioFrameSpan(audio.buffer.duration, state.project.fps);
       const naturalW = Math.max(1, cols * cellW);
       const w = Math.min(MAX_CANVAS_W, naturalW);
@@ -40,11 +43,19 @@
 
 {#if state.project.audio}
   <div class="flex items-center">
-    <div class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-xs text-text-secondary"
-         style="width: {labelW}px">
+    <div
+      class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-xs text-text-secondary"
+      style="width: {labelW}px"
+    >
       <Music size={13} />
-      <span class="truncate flex-1" title={state.project.audio.name}>{state.project.audio.name}</span>
-      <button class="text-text-muted hover:text-text-secondary" title="Remove audio" onclick={removeAudioTrack}><X size={13} /></button>
+      <span class="truncate flex-1" title={state.project.audio.name}
+        >{state.project.audio.name}</span
+      >
+      <button
+        class="text-text-muted hover:text-text-secondary"
+        title="Remove audio"
+        onclick={removeAudioTrack}><X size={13} /></button
+      >
     </div>
     <canvas class="h-7" use:waveform={{ audioVersion: state.version }}></canvas>
   </div>

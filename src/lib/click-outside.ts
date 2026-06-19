@@ -12,7 +12,11 @@ export function clickOutside(node: HTMLElement, onOutside: () => void) {
   }
   document.addEventListener("pointerdown", handler, true);
   return {
-    update(next: () => void) { cb = next; },
-    destroy() { document.removeEventListener("pointerdown", handler, true); },
+    update(next: () => void) {
+      cb = next;
+    },
+    destroy() {
+      document.removeEventListener("pointerdown", handler, true);
+    },
   };
 }

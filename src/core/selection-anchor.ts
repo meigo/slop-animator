@@ -27,7 +27,10 @@ export interface AnchorResult {
 export function computeAnchor(input: AnchorInput): AnchorResult {
   const { bboxDoc, docToScreen, panelSize, viewport, margin } = input;
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const p of bboxDoc) {
     const s = docToScreen(p);
     if (s.x < minX) minX = s.x;

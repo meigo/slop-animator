@@ -8,7 +8,16 @@
   import { renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
-  import { state, history, DPR, canvasOps, activeLayer, bump, pressureCurve, toggleEraser } from "../state/appState.svelte";
+  import {
+    state,
+    history,
+    DPR,
+    canvasOps,
+    activeLayer,
+    bump,
+    pressureCurve,
+    toggleEraser,
+  } from "../state/appState.svelte";
   import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
@@ -17,7 +26,16 @@
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import { transformBaseRect, isIdentityTransform, type Layer } from "../anim/document";
-  import { hitTestHandle, transformCenter, applyMove, applyScale, applyRotate, inverseTransformPoint, type Handle, type Pt } from "../core/ref-transform";
+  import {
+    hitTestHandle,
+    transformCenter,
+    applyMove,
+    applyScale,
+    applyRotate,
+    inverseTransformPoint,
+    type Handle,
+    type Pt,
+  } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
 
@@ -61,12 +79,18 @@
     // Onion ghosts are hidden during playback (you want a clean preview while it runs).
     if (state.onion.enabled && !state.playback.isPlaying) {
       renderFrameWithOnion(
-        displayCtx, scratchCtx, state.project, state.playhead, DPR,
-        state.onion, state.activeLayerId
+        displayCtx,
+        scratchCtx,
+        state.project,
+        state.playhead,
+        DPR,
+        state.onion,
+        state.activeLayerId,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
-      const boil = state.project.boil.enabled && state.playback.isPlaying ? state.project.boil : undefined;
+      const boil =
+        state.project.boil.enabled && state.playback.isPlaying ? state.project.boil : undefined;
       renderFrame(displayCtx, state.project, state.playhead, DPR, { boil });
     }
   }
@@ -90,20 +114,32 @@
       tmp.height = canvas.height;
       const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
       tctx.drawImage(canvas, 0, 0);
-      floodFill(tctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+      floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
+        tolerance: state.fill.tolerance,
+        expand: state.fill.expand,
+      });
       ctx.save();
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection.applyClip(ctx);
       ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
       ctx.restore();
     } else {
-      floodFill(ctx, pt.x * DPR, pt.y * DPR, color, { tolerance: state.fill.tolerance, expand: state.fill.expand });
+      floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
+        tolerance: state.fill.tolerance,
+        expand: state.fill.expand,
+      });
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push({
-      undo: () => { ctx.putImageData(before, 0, 0); recomposite(); },
-      redo: () => { ctx.putImageData(after, 0, 0); recomposite(); },
+      undo: () => {
+        ctx.putImageData(before, 0, 0);
+        recomposite();
+      },
+      redo: () => {
+        ctx.putImageData(after, 0, 0);
+        recomposite();
+      },
     });
     bump();
     recomposite();
@@ -155,16 +191,25 @@
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
     const p = points[points.length - 1];
     const base = transformBaseRect(layer, state.project.width, state.project.height);
-    if (!base) { if (done) refDrag = null; return; }
+    if (!base) {
+      if (done) refDrag = null;
+      return;
+    }
     if (!refDrag) {
-      const tol = 10 / viewport.zoom;            // 10 screen px of grab tolerance
+      const tol = 10 / viewport.zoom; // 10 screen px of grab tolerance
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
       const handle = hitTestHandle(base, layer.transform, p, tol, gap);
-      refDrag = { handle, start: p, startT: { ...layer.transform }, center: transformCenter(base, layer.transform) };
+      refDrag = {
+        handle,
+        start: p,
+        startT: { ...layer.transform },
+        center: transformCenter(base, layer.transform),
+      };
     }
     const d = refDrag;
     if (d.handle) {
-      if (d.handle === "body") layer.transform = applyMove(d.startT, p.x - d.start.x, p.y - d.start.y);
+      if (d.handle === "body")
+        layer.transform = applyMove(d.startT, p.x - d.start.x, p.y - d.start.y);
       else if (d.handle === "rotate") layer.transform = applyRotate(d.startT, d.center, d.start, p);
       else layer.transform = applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
       bump();
@@ -174,9 +219,17 @@
 
   function onStroke(points: InputPoint[], done: boolean) {
     const al = activeLayer();
-    if (al.kind === "ref" || (al.kind === "draw" && state.tool === "transform")) { onTransformDrag(al, points, done); return; }
+    if (al.kind === "ref" || (al.kind === "draw" && state.tool === "transform")) {
+      onTransformDrag(al, points, done);
+      return;
+    }
     // Selection is disabled while the active draw layer is transformed (Apply first).
-    if ((state.tool === "select" || state.tool === "lasso") && al.kind === "draw" && !isIdentityTransform(al.transform)) return;
+    if (
+      (state.tool === "select" || state.tool === "lasso") &&
+      al.kind === "draw" &&
+      !isIdentityTransform(al.transform)
+    )
+      return;
     if (state.tool === "select" || state.tool === "lasso") {
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {
@@ -198,7 +251,10 @@
             selectionMode = "drag";
             selection.startDrag("move", p.x, p.y);
           }
-        } else if ((selection.state === "transforming" || selection.state === "warping") && handle) {
+        } else if (
+          (selection.state === "transforming" || selection.state === "warping") &&
+          handle
+        ) {
           selectionMode = "drag";
           selection.startDrag(handle, p.x, p.y);
         } else {
@@ -244,14 +300,23 @@
     // finalize synchronously on stroke end so the undo snapshot captures the exact result.
     lastPoints = points;
     if (done) {
-      if (drawRaf) { cancelAnimationFrame(drawRaf); drawRaf = 0; }
+      if (drawRaf) {
+        cancelAnimationFrame(drawRaf);
+        drawRaf = 0;
+      }
       paintStroke(points, true);
       const after = strokeCtx!.getImageData(0, 0, strokeCanvas!.width, strokeCanvas!.height);
       const target = strokeCtx!;
       const before = beforeSnapshot!;
       history.push({
-        undo: () => { target.putImageData(before, 0, 0); recomposite(); },
-        redo: () => { target.putImageData(after, 0, 0); recomposite(); },
+        undo: () => {
+          target.putImageData(before, 0, 0);
+          recomposite();
+        },
+        redo: () => {
+          target.putImageData(after, 0, 0);
+          recomposite();
+        },
       });
       strokeCanvas = null;
       strokeCtx = null;
@@ -274,7 +339,9 @@
     selection = new Selection(overlay);
     selection.mode = "rect";
     selection.screenScale = viewport.zoom;
-    viewport.onChange = () => { selection.screenScale = viewport.zoom; };
+    viewport.onChange = () => {
+      selection.screenScale = viewport.zoom;
+    };
 
     selection.onChange = () => recomposite();
     selection.onStateChange = () => recomposite();
@@ -288,8 +355,14 @@
       const before = selBefore;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
       history.push({
-        undo: () => { ctx.putImageData(before, 0, 0); recomposite(); },
-        redo: () => { ctx.putImageData(after, 0, 0); recomposite(); },
+        undo: () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        redo: () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
       });
       selCtx = null;
       selBefore = null;
@@ -298,7 +371,10 @@
     };
 
     selection.onCancel = () => {
-      if (selCtx && selBefore) { selCtx.putImageData(selBefore, 0, 0); recomposite(); }
+      if (selCtx && selBefore) {
+        selCtx.putImageData(selBefore, 0, 0);
+        recomposite();
+      }
       selCtx = null;
       selBefore = null;
     };
@@ -345,15 +421,14 @@
       onUndo: () => history.undo(),
       onRedo: () => history.redo(),
       onToggleEraser: () => toggleEraser(),
-      onViewportChange: () => { selection.screenScale = viewport.zoom; },
+      onViewportChange: () => {
+        selection.screenScale = viewport.zoom;
+      },
     });
 
-    const cleanup = setupInput(
-      display,
-      onStroke,
-      (sx, sy) => viewport.screenToCanvas(sx, sy),
-      { streamline: () => state.streamline / 100 }
-    );
+    const cleanup = setupInput(display, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
+      streamline: () => state.streamline / 100,
+    });
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
     let lastVersion = state.version;
@@ -385,7 +460,14 @@
 
     selectionActions.enterWarp = enterWarp;
 
-    return () => { cleanup(); cleanupTouch(); cancelAnimationFrame(raf); if (drawRaf) cancelAnimationFrame(drawRaf); selectionRef.current = null; selectionActions.enterWarp = null; };
+    return () => {
+      cleanup();
+      cleanupTouch();
+      cancelAnimationFrame(raf);
+      if (drawRaf) cancelAnimationFrame(drawRaf);
+      selectionRef.current = null;
+      selectionActions.enterWarp = null;
+    };
   });
 
   $effect(() => {
@@ -402,21 +484,31 @@
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
-  function onWheel(e: WheelEvent) { e.preventDefault(); viewport?.zoomAt(e.clientX, e.clientY, e.deltaY); }
+  function onWheel(e: WheelEvent) {
+    e.preventDefault();
+    viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
+  }
 </script>
 
-<div bind:this={stage} class="relative flex-1 overflow-hidden bg-canvas-bg touch-none" onwheel={onWheel}>
+<div
+  bind:this={stage}
+  class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
+  onwheel={onWheel}
+>
   <div bind:this={wrapper} class="absolute left-0 top-0">
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
-  <SelectionActions getSelection={() => selection} getViewport={() => viewport} getContainer={() => stage}
+  <SelectionActions
+    getSelection={() => selection}
+    getViewport={() => viewport}
+    getContainer={() => stage}
     onTransform={enterTransform}
     onDistort={() => enterWarp(2, 2)}
     onMesh={() => enterWarp(3, 3)}
     onCommit={() => selection?.commit()}
-    onCancel={() => selection?.cancel()} />
+    onCancel={() => selection?.cancel()}
+  />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
-
 </div>

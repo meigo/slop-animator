@@ -4,7 +4,7 @@ export function advancePlayhead(
   current: number,
   start: number,
   end: number,
-  loop: boolean
+  loop: boolean,
 ): { frame: number; stop: boolean } {
   if (current < end) return { frame: current + 1, stop: false };
   if (loop) return { frame: start, stop: false };
@@ -80,7 +80,12 @@ export class Playback {
     const frameDurMs = 1000 / this.opts.getFps();
     while (this.accumulatorMs >= frameDurMs) {
       this.accumulatorMs -= frameDurMs;
-      const next = advancePlayhead(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd(), this.opts.getLoop());
+      const next = advancePlayhead(
+        this.opts.getCurrent(),
+        this.opts.getRangeStart(),
+        this.opts.getRangeEnd(),
+        this.opts.getLoop(),
+      );
       if (next.stop) {
         this.playing = false;
         this.opts.onPlayingChange(false);
@@ -95,7 +100,11 @@ export class Playback {
     this.playing = true;
     this.lastMs = null;
     this.accumulatorMs = 0;
-    const snapped = snapPlayheadToRange(this.opts.getCurrent(), this.opts.getRangeStart(), this.opts.getRangeEnd());
+    const snapped = snapPlayheadToRange(
+      this.opts.getCurrent(),
+      this.opts.getRangeStart(),
+      this.opts.getRangeEnd(),
+    );
     if (snapped !== this.opts.getCurrent()) this.opts.setFrame(snapped);
     this.opts.onPlayingChange(true);
     this.scheduleNext();

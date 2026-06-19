@@ -1,4 +1,14 @@
-import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, isIdentityTransform, type Project, type BoilConfig, type ReferenceLayer, type RefTransform } from "./document";
+import {
+  buildFrameDrawList,
+  containRect,
+  mediaIntrinsicSize,
+  isCrispFrame,
+  isIdentityTransform,
+  type Project,
+  type BoilConfig,
+  type ReferenceLayer,
+  type RefTransform,
+} from "./document";
 import { boilBegin, boilLayer, boilBlit } from "../core/boil-gl";
 
 interface RenderOpts {
@@ -11,7 +21,13 @@ interface RenderOpts {
 }
 
 /** Draw `img` onto `ctx` (assumed at identity, DEVICE pixels) placed by `base` (device rect) + `t`. */
-export function drawTransformed(ctx: CanvasRenderingContext2D, img: CanvasImageSource, base: { x: number; y: number; w: number; h: number }, t: RefTransform, dpr: number): void {
+export function drawTransformed(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  base: { x: number; y: number; w: number; h: number },
+  t: RefTransform,
+  dpr: number,
+): void {
   ctx.save();
   ctx.translate(base.x + base.w / 2 + t.dx * dpr, base.y + base.h / 2 + t.dy * dpr);
   ctx.rotate(t.rotation);
@@ -31,7 +47,7 @@ export function drawReferenceMedia(
   layer: ReferenceLayer,
   docW: number,
   docH: number,
-  dpr: number
+  dpr: number,
 ): void {
   if (layer.media.type === "missing") return;
   const size = mediaIntrinsicSize(layer.media);
@@ -41,9 +57,18 @@ export function drawReferenceMedia(
 }
 
 let boilScratch: HTMLCanvasElement | null = null;
-function transformedCell(cell: HTMLCanvasElement, t: RefTransform, wDev: number, hDev: number, dpr: number): HTMLCanvasElement {
+function transformedCell(
+  cell: HTMLCanvasElement,
+  t: RefTransform,
+  wDev: number,
+  hDev: number,
+  dpr: number,
+): HTMLCanvasElement {
   if (!boilScratch) boilScratch = document.createElement("canvas");
-  if (boilScratch.width !== wDev || boilScratch.height !== hDev) { boilScratch.width = wDev; boilScratch.height = hDev; }
+  if (boilScratch.width !== wDev || boilScratch.height !== hDev) {
+    boilScratch.width = wDev;
+    boilScratch.height = hDev;
+  }
   const c = boilScratch.getContext("2d")!;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, wDev, hDev);
@@ -63,9 +88,10 @@ export function compositeFrameLayers(
   frame: number,
   dpr: number,
   includeReference = true,
-  boil?: BoilConfig
+  boil?: BoilConfig,
 ): void {
-  const w = project.width * dpr, h = project.height * dpr;
+  const w = project.width * dpr,
+    h = project.height * dpr;
   const layersById = new Map(project.layers.map((l) => [l.id, l]));
   const ops = buildFrameDrawList(project, frame, includeReference);
 
@@ -86,10 +112,22 @@ export function compositeFrameLayers(
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
       const strength = layer.boilStrength;
-      const crisp = isCrispFrame(layer.cells, frame, boil.holdsOnly) || strength <= 0 || (boil.amount <= 0 && boil.weight <= 0);
+      const crisp =
+        isCrispFrame(layer.cells, frame, boil.holdsOnly) ||
+        strength <= 0 ||
+        (boil.amount <= 0 && boil.weight <= 0);
       const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
-      const src = isIdentityTransform(layer.transform) ? cell.canvas : transformedCell(cell.canvas, layer.transform, w, h, dpr);
-      boilLayer(src, op.opacity / 100, crisp ? 0 : boil.amount * strength, boil.cols, crisp ? 0 : boil.weight * strength, seed);
+      const src = isIdentityTransform(layer.transform)
+        ? cell.canvas
+        : transformedCell(cell.canvas, layer.transform, w, h, dpr);
+      boilLayer(
+        src,
+        op.opacity / 100,
+        crisp ? 0 : boil.amount * strength,
+        boil.cols,
+        crisp ? 0 : boil.weight * strength,
+        seed,
+      );
     }
     ctx.globalAlpha = 1;
     boilBlit(ctx);
@@ -103,7 +141,14 @@ export function compositeFrameLayers(
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
       if (isIdentityTransform(layer.transform)) ctx.drawImage(cell.canvas, 0, 0);
-      else drawTransformed(ctx, cell.canvas, { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr }, layer.transform, dpr);
+      else
+        drawTransformed(
+          ctx,
+          cell.canvas,
+          { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr },
+          layer.transform,
+          dpr,
+        );
     } else if (op.kind === "ref" && layer.kind === "ref") {
       ctx.globalAlpha = op.opacity / 100;
       drawReferenceMedia(ctx, layer, project.width, project.height, dpr);
@@ -121,7 +166,7 @@ export function renderFrame(
   project: Project,
   frame: number,
   dpr: number,
-  opts: RenderOpts = {}
+  opts: RenderOpts = {},
 ): void {
   const { drawBg = true, includeReference = true, boil } = opts;
 

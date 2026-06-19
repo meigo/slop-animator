@@ -17,7 +17,8 @@ let uFreq: WebGLUniformLocation | null = null;
 let uSeed: WebGLUniformLocation | null = null;
 let uOpacity: WebGLUniformLocation | null = null;
 let uWeight: WebGLUniformLocation | null = null;
-let curW = 0, curH = 0;
+let curW = 0,
+  curH = 0;
 
 const VERT = `
 attribute vec2 aPos;
@@ -59,14 +60,22 @@ function compile(g: WebGLRenderingContext, type: number, src: string): WebGLShad
   const s = g.createShader(type)!;
   g.shaderSource(s, src);
   g.compileShader(s);
-  if (!g.getShaderParameter(s, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(s) ?? "shader");
+  if (!g.getShaderParameter(s, g.COMPILE_STATUS))
+    throw new Error(g.getShaderInfoLog(s) ?? "shader");
   return s;
 }
 
 function init(): boolean {
   if (gl) return true;
   glCanvas = document.createElement("canvas");
-  glCanvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); resetBoilGL(); }, false);
+  glCanvas.addEventListener(
+    "webglcontextlost",
+    (e) => {
+      e.preventDefault();
+      resetBoilGL();
+    },
+    false,
+  );
   glCanvas.width = 1;
   glCanvas.height = 1;
   gl = glCanvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -76,7 +85,10 @@ function init(): boolean {
   g.attachShader(prog, compile(g, g.VERTEX_SHADER, VERT));
   g.attachShader(prog, compile(g, g.FRAGMENT_SHADER, FRAG));
   g.linkProgram(prog);
-  if (!g.getProgramParameter(prog, g.LINK_STATUS)) { gl = null; return false; }
+  if (!g.getProgramParameter(prog, g.LINK_STATUS)) {
+    gl = null;
+    return false;
+  }
   g.useProgram(prog);
 
   const buf = g.createBuffer();
@@ -107,9 +119,14 @@ function init(): boolean {
 /** Begin a frame: size/clear the GL accumulation surface. Returns false if WebGL is unavailable. */
 export function boilBegin(w: number, h: number): boolean {
   if (!init()) return false;
-  const g = gl!, c = glCanvas!;
-  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-  curW = w; curH = h;
+  const g = gl!,
+    c = glCanvas!;
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  curW = w;
+  curH = h;
   g.viewport(0, 0, w, h);
   g.useProgram(prog);
   g.enable(g.BLEND);
@@ -129,7 +146,14 @@ export function boilSeedOffset(seed: number): [number, number] {
 }
 
 /** Composite one drawing layer into the GL surface (displaced by `amount` px; 0 = crisp). */
-export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: number, freq: number, weight: number, seed: number): void {
+export function boilLayer(
+  src: HTMLCanvasElement,
+  opacity: number,
+  amount: number,
+  freq: number,
+  weight: number,
+  seed: number,
+): void {
   const g = gl!;
   g.bindTexture(g.TEXTURE_2D, tex);
   g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, src);
@@ -147,7 +171,10 @@ export function boilLayer(src: HTMLCanvasElement, opacity: number, amount: numbe
 
 /** Drop the GL state so the next boilBegin re-initialises (used on WebGL context loss). */
 export function resetBoilGL(): void {
-  gl = null; glCanvas = null; prog = null; tex = null;
+  gl = null;
+  glCanvas = null;
+  prog = null;
+  tex = null;
 }
 
 /** Blit the accumulated GL surface onto the 2D composite (one read per frame — iOS-safe). */

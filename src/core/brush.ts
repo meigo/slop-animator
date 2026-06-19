@@ -33,7 +33,7 @@ export function drawStroke(
   points: InputPoint[],
   settings: BrushSettings,
   done: boolean = false,
-  sizeRange: number = 1.0
+  sizeRange: number = 1.0,
 ) {
   if (points.length === 0) return;
 
@@ -100,20 +100,17 @@ function getSvgPathFromStroke(points: number[][]): string {
   const max = points.length - 1;
 
   return points
-    .reduce(
-      (acc, point, i, arr) => {
-        if (i === 0) {
-          return `M ${point[0]},${point[1]} Q`;
-        }
+    .reduce((acc, point, i, arr) => {
+      if (i === 0) {
+        return `M ${point[0]},${point[1]} Q`;
+      }
 
-        const mid = [
-          (point[0] + arr[Math.min(i + 1, max)][0]) / 2,
-          (point[1] + arr[Math.min(i + 1, max)][1]) / 2,
-        ];
+      const mid = [
+        (point[0] + arr[Math.min(i + 1, max)][0]) / 2,
+        (point[1] + arr[Math.min(i + 1, max)][1]) / 2,
+      ];
 
-        return `${acc} ${point[0]},${point[1]} ${mid[0]},${mid[1]}`;
-      },
-      ""
-    )
+      return `${acc} ${point[0]},${point[1]} ${mid[0]},${mid[1]}`;
+    }, "")
     .concat(" Z");
 }

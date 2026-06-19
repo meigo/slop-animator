@@ -47,7 +47,10 @@ describe("planCellPointer", () => {
 
   it("resizes when the pointer is near the right edge of a key's span", () => {
     // span [0..2] (key 0 + holds 1,2), next key at 3 → span end column = 3 → right edge x = 72
-    expect(planCellPointer([k(), h(), h(), k()], 71, W, 4)).toEqual({ kind: "resize", keyIndex: 0 });
+    expect(planCellPointer([k(), h(), h(), k()], 71, W, 4)).toEqual({
+      kind: "resize",
+      keyIndex: 0,
+    });
   });
 
   it("resizes at the right edge of a single-cell keyframe", () => {

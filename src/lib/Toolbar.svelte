@@ -1,6 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { state as appState, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve, pasteImageReference, activeLayer } from "../state/appState.svelte";
+  import {
+    state as appState,
+    history,
+    bump,
+    addLayerToProject,
+    replaceProject,
+    setAudioTrack,
+    DPR,
+    pressureCurve,
+    bumpCurve,
+    pasteImageReference,
+    activeLayer,
+  } from "../state/appState.svelte";
   import { isIdentityTransform } from "../anim/document";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
@@ -8,7 +20,28 @@
   import { downloadBlob } from "../export/download";
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
-  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Move, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline, ClipboardPaste } from "@lucide/svelte";
+  import {
+    Paintbrush,
+    Eraser,
+    PaintBucket,
+    BoxSelect,
+    Lasso,
+    Move,
+    Undo2,
+    Redo2,
+    Image,
+    Film,
+    Music,
+    Download,
+    Save,
+    FolderOpen,
+    FilePlus2,
+    Scaling,
+    Sun,
+    Moon,
+    Spline,
+    ClipboardPaste,
+  } from "@lucide/svelte";
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
@@ -47,7 +80,14 @@
 
   function pick(kind: "image" | "video" | "project" | "audio") {
     pendingKind = kind;
-    fileInput.accept = kind === "image" ? "image/*" : kind === "video" ? "video/*" : kind === "audio" ? "audio/*" : ".zip,application/zip";
+    fileInput.accept =
+      kind === "image"
+        ? "image/*"
+        : kind === "video"
+          ? "video/*"
+          : kind === "audio"
+            ? "audio/*"
+            : ".zip,application/zip";
     fileInput.value = "";
     fileInput.click();
   }
@@ -59,10 +99,14 @@
       replaceProject(await loadProjectBlob(file, DPR));
       return;
     }
-    if (pendingKind === "audio") { setAudioTrack(await loadAudioTrack(file)); return; }
-    const layer = pendingKind === "image"
-      ? await loadImageLayer(file)
-      : await loadVideoLayer(file, () => bump());
+    if (pendingKind === "audio") {
+      setAudioTrack(await loadAudioTrack(file));
+      return;
+    }
+    const layer =
+      pendingKind === "image"
+        ? await loadImageLayer(file)
+        : await loadVideoLayer(file, () => bump());
     addLayerToProject(layer);
   }
 
@@ -70,7 +114,9 @@
     // The async Clipboard API is unavailable outside a secure context (e.g. the LAN dev server over
     // plain http on iPad), where navigator.clipboard is undefined. Say so instead of a vague error.
     if (!navigator.clipboard?.read) {
-      alert("Clipboard paste needs HTTPS. On iPad, open the app over https (npm run dev:lan), or use Cmd+V with a keyboard.");
+      alert(
+        "Clipboard paste needs HTTPS. On iPad, open the app over https (npm run dev:lan), or use Cmd+V with a keyboard.",
+      );
       return;
     }
     try {
@@ -103,80 +149,105 @@
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "brush"}
     title="Brush"
-    onclick={() => (appState.tool = "brush")}
-  ><Paintbrush size={18} /></button>
+    onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "eraser"}
     title="Eraser"
-    onclick={() => (appState.tool = "eraser")}
-  ><Eraser size={18} /></button>
+    onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "fill"}
     title="Fill"
-    onclick={() => (appState.tool = "fill")}
-  ><PaintBucket size={18} /></button>
+    onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "select"}
     title="Select"
-    onclick={() => (appState.tool = "select")}
-  ><BoxSelect size={18} /></button>
+    onclick={() => (appState.tool = "select")}><BoxSelect size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "lasso"}
     title="Lasso"
-    onclick={() => (appState.tool = "lasso")}
-  ><Lasso size={18} /></button>
+    onclick={() => (appState.tool = "lasso")}><Lasso size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "transform"}
     title="Transform layer (move/scale/rotate)"
-    onclick={() => (appState.tool = "transform")}
-  ><Move size={18} /></button>
+    onclick={() => (appState.tool = "transform")}><Move size={18} /></button
+  >
   {#if (appState.tool === "select" || appState.tool === "lasso") && activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
-    <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer">Apply layer transform to select</span>
+    <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer"
+      >Apply layer transform to select</span
+    >
   {/if}
-  <label class="flex items-center gap-1 text-sm text-text-secondary">Size
+  <label class="flex items-center gap-1 text-sm text-text-secondary"
+    >Size
     <input type="range" min="0.5" max="60" step="0.5" bind:value={appState.brush.size} />
-    <input class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-           type="number" min="0.5" max="60" step="0.5" bind:value={appState.brush.size}
-           title="Brush size" />
+    <input
+      class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+      type="number"
+      min="0.5"
+      max="60"
+      step="0.5"
+      bind:value={appState.brush.size}
+      title="Brush size"
+    />
   </label>
   <div class="flex items-center gap-0.5" title="Size presets">
     {#each SIZE_PRESETS as preset}
-      <button class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
-              class:bg-surface-active={appState.brush.size === preset}
-              onclick={() => (appState.brush.size = preset)}>{preset}</button>
+      <button
+        class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+        class:bg-surface-active={appState.brush.size === preset}
+        onclick={() => (appState.brush.size = preset)}>{preset}</button
+      >
     {/each}
   </div>
-  <label class="flex items-center gap-1 text-sm text-text-secondary" title="How much pen pressure widens the stroke">Press
+  <label
+    class="flex items-center gap-1 text-sm text-text-secondary"
+    title="How much pen pressure widens the stroke"
+    >Press
     <input type="range" min="1" max="8" step="0.5" bind:value={appState.sizeRange} />
     <span class="text-xs text-text-secondary w-6">{appState.sizeRange}×</span>
   </label>
-  <select class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1" bind:value={appState.brushType} title="Brush type">
+  <select
+    class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1"
+    bind:value={appState.brushType}
+    title="Brush type"
+  >
     <option value="smooth">Smooth</option>
     <option value="ink">Ink</option>
     <option value="pencil">Pencil</option>
     <option value="charcoal">Charcoal</option>
     <option value="airbrush">Airbrush</option>
   </select>
-  <label class="flex items-center gap-1 text-xs text-text-secondary">Opacity
+  <label class="flex items-center gap-1 text-xs text-text-secondary"
+    >Opacity
     <input type="range" min="1" max="100" class="w-16" bind:value={appState.brush.opacity} />
   </label>
-  <label class="flex items-center gap-1 text-xs text-text-secondary">Smooth
+  <label class="flex items-center gap-1 text-xs text-text-secondary"
+    >Smooth
     <input type="range" min="0" max="100" class="w-16" bind:value={appState.brush.smoothing} />
   </label>
-  <label class="flex items-center gap-1 text-xs text-text-secondary">Stream
+  <label class="flex items-center gap-1 text-xs text-text-secondary"
+    >Stream
     <input type="range" min="0" max="100" class="w-16" bind:value={appState.streamline} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
     <input type="checkbox" bind:checked={appState.brush.taper} /> Taper
   </label>
   <div class="relative" use:clickOutside={() => (curveOpen = false)}>
-    <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-            class:bg-surface-active={curveOpen} title="Pressure curve" onclick={() => (curveOpen = !curveOpen)}>
+    <button
+      class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+      class:bg-surface-active={curveOpen}
+      title="Pressure curve"
+      onclick={() => (curveOpen = !curveOpen)}
+    >
       <Spline size={18} />
     </button>
     <div class="curve-popup" class:open={curveOpen} bind:this={curvePopupEl}></div>
@@ -185,62 +256,72 @@
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Undo"
-    onclick={() => history.undo()}
-  ><Undo2 size={18} /></button>
+    onclick={() => history.undo()}><Undo2 size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Redo"
-    onclick={() => history.redo()}
-  ><Redo2 size={18} /></button>
+    onclick={() => history.redo()}><Redo2 size={18} /></button
+  >
   <span class="w-px h-5 bg-border mx-1"></span>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Add Image"
-    onclick={() => pick("image")}
-  ><Image size={18} /></button>
+    onclick={() => pick("image")}><Image size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Paste image from clipboard"
-    onclick={pasteImage}
-  ><ClipboardPaste size={18} /></button>
+    onclick={pasteImage}><ClipboardPaste size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Add Video"
-    onclick={() => pick("video")}
-  ><Film size={18} /></button>
+    onclick={() => pick("video")}><Film size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Import audio"
-    onclick={() => pick("audio")}
-  ><Music size={18} /></button>
+    onclick={() => pick("audio")}><Music size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Export"
-    onclick={() => (appState.exportOpen = true)}
-  ><Download size={18} /></button>
+    onclick={() => (appState.exportOpen = true)}><Download size={18} /></button
+  >
   <span class="w-px h-5 bg-border mx-1"></span>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Save"
-    onclick={saveProject}
-  ><Save size={18} /></button>
+    onclick={saveProject}><Save size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Open"
-    onclick={() => pick("project")}
-  ><FolderOpen size={18} /></button>
+    onclick={() => pick("project")}><FolderOpen size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="New"
-    onclick={() => { appState.sizeDialog.mode = "new"; appState.sizeDialog.open = true; }}
-  ><FilePlus2 size={18} /></button>
+    onclick={() => {
+      appState.sizeDialog.mode = "new";
+      appState.sizeDialog.open = true;
+    }}><FilePlus2 size={18} /></button
+  >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Resize canvas"
-    onclick={() => { appState.sizeDialog.mode = "resize"; appState.sizeDialog.open = true; }}
-  ><Scaling size={18} /></button>
+    onclick={() => {
+      appState.sizeDialog.mode = "resize";
+      appState.sizeDialog.open = true;
+    }}><Scaling size={18} /></button
+  >
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
-  <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover ml-auto" title="Toggle theme" onclick={toggleTheme}>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover ml-auto"
+    title="Toggle theme"
+    onclick={toggleTheme}
+  >
     {#if appState.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}
   </button>
 </div>

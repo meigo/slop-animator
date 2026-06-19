@@ -3,9 +3,19 @@
   import type { Viewport } from "../core/viewport";
   import { state as appState, bump } from "../state/appState.svelte";
   import { transformBaseRect, type Layer } from "../anim/document";
-  import { transformedCorners, rotateHandlePos, transformCenter, applyScale, applyRotate, type Pt } from "../core/ref-transform";
+  import {
+    transformedCorners,
+    rotateHandlePos,
+    transformCenter,
+    applyScale,
+    applyRotate,
+    type Pt,
+  } from "../core/ref-transform";
 
-  let { getViewport, getContainer }: { getViewport: () => Viewport | null; getContainer: () => HTMLElement | null } = $props();
+  let {
+    getViewport,
+    getContainer,
+  }: { getViewport: () => Viewport | null; getContainer: () => HTMLElement | null } = $props();
 
   const ROTATE_GAP_PX = 28;
   let visible = $state(false);
@@ -16,12 +26,18 @@
   type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
   // Active handle drag. center/start are in document logical coords; startT is a snapshot
   // of the layer transform at grab time so each move recomputes from the original.
-  let drag: { handle: DragHandle; layer: Layer; startT: Layer["transform"]; start: Pt; center: Pt } | null = null;
+  let drag: {
+    handle: DragHandle;
+    layer: Layer;
+    startT: Layer["transform"];
+    start: Pt;
+    center: Pt;
+  } | null = null;
 
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
-    if (l.kind === "ref") return l;                                   // refs: any tool (unchanged)
+    if (l.kind === "ref") return l; // refs: any tool (unchanged)
     if (l.kind === "draw" && appState.tool === "transform") return l; // draw: only under the Transform tool
     return null;
   }
@@ -39,7 +55,11 @@
     // Keep this gesture out of the touch-pan/pinch path and the display canvas's drawing path.
     e.stopPropagation();
     e.preventDefault();
-    try { (e.target as Element).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
+    try {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort */
+    }
     drag = {
       handle,
       layer,
@@ -65,7 +85,11 @@
 
   function endHandleDrag(e: PointerEvent) {
     if (drag) {
-      try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch { /* may already be released */ }
+      try {
+        (e.target as Element).releasePointerCapture?.(e.pointerId);
+      } catch {
+        /* may already be released */
+      }
     }
     drag = null;
     window.removeEventListener("pointermove", onDragMove);
@@ -96,7 +120,10 @@
 
   function resetTransform() {
     const layer = activeTransformLayer();
-    if (layer) { layer.transform = { dx: 0, dy: 0, scale: 1, rotation: 0 }; bump(); }
+    if (layer) {
+      layer.transform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+      bump();
+    }
   }
 
   onMount(() => {
@@ -113,20 +140,55 @@
 
 {#if visible && corners.length === 4}
   <svg class="absolute inset-0 w-full h-full pointer-events-none" style="overflow: visible">
-    <polygon points={corners.map((c) => `${c.x},${c.y}`).join(" ")}
-             fill="none" stroke="#3b82f6" stroke-width="1.5" />
-    <line x1={(corners[0].x + corners[1].x) / 2} y1={(corners[0].y + corners[1].y) / 2}
-          x2={rotatePt.x} y2={rotatePt.y} stroke="#3b82f6" stroke-width="1.5" />
+    <polygon
+      points={corners.map((c) => `${c.x},${c.y}`).join(" ")}
+      fill="none"
+      stroke="#3b82f6"
+      stroke-width="1.5"
+    />
+    <line
+      x1={(corners[0].x + corners[1].x) / 2}
+      y1={(corners[0].y + corners[1].y) / 2}
+      x2={rotatePt.x}
+      y2={rotatePt.y}
+      stroke="#3b82f6"
+      stroke-width="1.5"
+    />
     {#each corners as c, i (i)}
-      <rect role="button" tabindex="-1" aria-label="Scale reference" class="pointer-events-auto cursor-pointer" data-ref-handle="" x={c.x - 6} y={c.y - 6} width="12" height="12"
-            fill="#fff" stroke="#3b82f6" stroke-width="1.5"
-            onpointerdown={(e) => startHandleDrag((["nw", "ne", "se", "sw"] as const)[i], e)} />
+      <rect
+        role="button"
+        tabindex="-1"
+        aria-label="Scale reference"
+        class="pointer-events-auto cursor-pointer"
+        data-ref-handle=""
+        x={c.x - 6}
+        y={c.y - 6}
+        width="12"
+        height="12"
+        fill="#fff"
+        stroke="#3b82f6"
+        stroke-width="1.5"
+        onpointerdown={(e) => startHandleDrag((["nw", "ne", "se", "sw"] as const)[i], e)}
+      />
     {/each}
-    <circle role="button" tabindex="-1" aria-label="Rotate reference" class="pointer-events-auto cursor-grab" data-ref-handle="" cx={rotatePt.x} cy={rotatePt.y} r="7"
-            fill="#fff" stroke="#3b82f6" stroke-width="1.5"
-            onpointerdown={(e) => startHandleDrag("rotate", e)} />
+    <circle
+      role="button"
+      tabindex="-1"
+      aria-label="Rotate reference"
+      class="pointer-events-auto cursor-grab"
+      data-ref-handle=""
+      cx={rotatePt.x}
+      cy={rotatePt.y}
+      r="7"
+      fill="#fff"
+      stroke="#3b82f6"
+      stroke-width="1.5"
+      onpointerdown={(e) => startHandleDrag("rotate", e)}
+    />
   </svg>
-  <div class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto">
+  <div
+    class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto"
+  >
     <span>Transform: drag to move · corners scale · top handle rotates</span>
     <button class="underline hover:text-text" onclick={resetTransform}>Reset to fit</button>
   </div>

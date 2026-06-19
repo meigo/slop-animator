@@ -14,15 +14,19 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function idbDo<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return openDb().then((db) =>
-    new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(STORE, mode);
-      const req = fn(tx.objectStore(STORE));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
-    })
+function idbDo<T>(
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  return openDb().then(
+    (db) =>
+      new Promise<T>((resolve, reject) => {
+        const tx = db.transaction(STORE, mode);
+        const req = fn(tx.objectStore(STORE));
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+        tx.oncomplete = () => db.close();
+      }),
   );
 }
 

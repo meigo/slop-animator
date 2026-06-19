@@ -30,7 +30,12 @@
   --color-selection: #6688cc;
 }
 
-html, body, #app { height: 100%; margin: 0; }
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
 body {
   overscroll-behavior: none;
   font-family: system-ui, sans-serif;
@@ -43,19 +48,64 @@ body {
    touch-action: manipulation disables iOS double-tap-to-zoom + the legacy 300ms tap delay on the
    whole app (the viewport's user-scalable=no is ignored by modern iOS). The canvas stage uses
    touch-action: none (more restrictive) so its custom gestures are unaffected. */
-#app { -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+#app {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+input,
+textarea,
+[contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 /* SortableJS drag states */
-.sortable-ghost { opacity: 0.4; background: var(--color-surface-active) !important; }
-.sortable-chosen { background: var(--color-surface-hover); }
+.sortable-ghost {
+  opacity: 0.4;
+  background: var(--color-surface-active) !important;
+}
+.sortable-chosen {
+  background: var(--color-surface-hover);
+}
 
 /* Range input — thin track, small round thumb */
-input[type="range"] { -webkit-appearance: none; appearance: none; height: 18px; background: transparent; cursor: pointer; }
-input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 1.5px; background: var(--color-border); }
-input[type="range"]::-moz-range-track { height: 3px; border-radius: 1.5px; background: var(--color-border); border: none; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--color-accent); border: 2px solid var(--color-surface); margin-top: -4.5px; box-shadow: 0 0 0 1px var(--color-border); }
-input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--color-accent); border: 2px solid var(--color-surface); box-shadow: 0 0 0 1px var(--color-border); }
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--color-border);
+}
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--color-border);
+  border: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface);
+  margin-top: -4.5px;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
 
 /* Pressure curve popup */
 .curve-popup {
@@ -70,5 +120,11 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   display: none;
 }
-.curve-popup.open { display: flex; flex-direction: column; align-items: center; }
-.curve-popup canvas { border-radius: 4px; }
+.curve-popup.open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.curve-popup canvas {
+  border-radius: 4px;
+}

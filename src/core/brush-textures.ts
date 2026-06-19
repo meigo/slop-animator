@@ -6,7 +6,10 @@
 const TIP_SIZE = 64; // all tips generated at this size, scaled when drawn
 const tipCache = new Map<string, HTMLCanvasElement>();
 
-function getCachedTip(key: string, generator: (ctx: CanvasRenderingContext2D, s: number) => void): HTMLCanvasElement {
+function getCachedTip(
+  key: string,
+  generator: (ctx: CanvasRenderingContext2D, s: number) => void,
+): HTMLCanvasElement {
   if (tipCache.has(key)) return tipCache.get(key)!;
 
   const cvs = document.createElement("canvas");
@@ -127,11 +130,16 @@ export type BrushType = "smooth" | "pencil" | "charcoal" | "airbrush";
 
 export function getTip(type: BrushType): HTMLCanvasElement {
   switch (type) {
-    case "smooth": return hardRoundTip();
-    case "pencil": return pencilTip();
-    case "charcoal": return charcoalTip();
-    case "airbrush": return airbrushTip();
-    default: return softRoundTip();
+    case "smooth":
+      return hardRoundTip();
+    case "pencil":
+      return pencilTip();
+    case "charcoal":
+      return charcoalTip();
+    case "airbrush":
+      return airbrushTip();
+    default:
+      return softRoundTip();
   }
 }
 

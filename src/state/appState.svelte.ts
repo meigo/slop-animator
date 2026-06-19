@@ -1,4 +1,26 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, createReferenceLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, mediaIntrinsicSize, isIdentityTransform, IDENTITY_TRANSFORM, type Project, type Layer, type DrawingLayer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
+import {
+  createProject,
+  createCellCanvas,
+  cloneCanvas,
+  isDrawingLayer,
+  createDrawingLayer,
+  createReferenceLayer,
+  resolveLayerName,
+  refreshLength,
+  resizeCells,
+  nextId,
+  nonEmptyGroups,
+  mediaIntrinsicSize,
+  isIdentityTransform,
+  IDENTITY_TRANSFORM,
+  type Project,
+  type Layer,
+  type DrawingLayer,
+  type Cell,
+  type AudioTrack,
+  type ReferenceMedia,
+  type LayerGroup,
+} from "../anim/document";
 import { loadImageMedia } from "../anim/reference";
 import { drawReferenceMedia, drawTransformed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
@@ -20,7 +42,7 @@ export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso" | "transform
 
 interface AnimState {
   project: Project;
-  playhead: number;       // current frame index
+  playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
   brush: BrushSettings;
@@ -261,8 +283,9 @@ export function duplicateLayer(id: number) {
     dup.opacity = src.opacity;
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
     dup.transform = { ...src.transform }; // copy renders at the same placement as the source
-    dup.cells = src.cells.map((c): Cell =>
-      c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" }
+    dup.cells = src.cells.map(
+      (c): Cell =>
+        c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" },
     );
     layers.splice(idx + 1, 0, dup);
     state.activeLayerId = dup.id;
@@ -272,7 +295,8 @@ export function duplicateLayer(id: number) {
 /** Bake a draw layer's transform into its cells and reset to identity. No commit (caller wraps it). */
 function bakeLayerTransform(layer: DrawingLayer): void {
   if (isIdentityTransform(layer.transform)) return;
-  const W = state.project.width, H = state.project.height;
+  const W = state.project.width,
+    H = state.project.height;
   layer.cells = layer.cells.map((c) => {
     if (c.kind !== "key") return c;
     const canvas = createCellCanvas(W, H, DPR);
@@ -293,7 +317,9 @@ export function applyLayerTransform(layerId: number): void {
 export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
-  commitStructural(() => { layer.transform = { ...IDENTITY_TRANSFORM }; });
+  commitStructural(() => {
+    layer.transform = { ...IDENTITY_TRANSFORM };
+  });
 }
 
 /** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */
@@ -340,7 +366,12 @@ export function renameLayer(id: number, input: string) {
 export function groupActiveLayer() {
   const layer = state.project.layers.find((l) => l.id === state.activeLayerId);
   if (!layer) return;
-  const g: LayerGroup = { id: nextId(), name: `Group ${state.project.groups.length + 1}`, collapsed: false, visible: true };
+  const g: LayerGroup = {
+    id: nextId(),
+    name: `Group ${state.project.groups.length + 1}`,
+    collapsed: false,
+    visible: true,
+  };
   state.project.groups.push(g);
   layer.groupId = g.id;
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers); // drop the layer's prior group if now empty
@@ -354,16 +385,25 @@ export function ungroup(groupId: number) {
 }
 export function toggleGroupCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
-  if (g) { g.collapsed = !g.collapsed; bump(); }
+  if (g) {
+    g.collapsed = !g.collapsed;
+    bump();
+  }
 }
 export function toggleGroupVisible(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
-  if (g) { g.visible = !g.visible; bump(); }
+  if (g) {
+    g.visible = !g.visible;
+    bump();
+  }
 }
 export function renameGroup(groupId: number, name: string) {
   const g = state.project.groups.find((x) => x.id === groupId);
   const n = name.trim();
-  if (g && n) { g.name = n; bump(); }
+  if (g && n) {
+    g.name = n;
+    bump();
+  }
 }
 /** Apply a dragged display→data order with per-layer groupId, as one undoable step; prune empty groups. */
 export function reorderLayersWithGroups(order: { id: number; groupId: number | null }[]) {
@@ -371,13 +411,20 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
   // rebuild can run twice with the same final order — skip when nothing actually changed (also
   // avoids a redundant undo step).
   const cur = state.project.layers;
-  if (order.length === cur.length && order.every((e, i) => cur[i].id === e.id && cur[i].groupId === e.groupId)) return;
+  if (
+    order.length === cur.length &&
+    order.every((e, i) => cur[i].id === e.id && cur[i].groupId === e.groupId)
+  )
+    return;
   const before = beginStructuralEdit();
   const byId = new Map(state.project.layers.map((l) => [l.id, l]));
   const next: Layer[] = [];
   for (const e of order) {
     const l = byId.get(e.id);
-    if (l) { l.groupId = e.groupId; next.push(l); }
+    if (l) {
+      l.groupId = e.groupId;
+      next.push(l);
+    }
   }
   state.project.layers = next;
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
@@ -389,7 +436,10 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
  *  name/opacity/visibility/offset/transform. Not undoable. */
 export function relinkReference(id: number, media: ReferenceMedia) {
   const layer = state.project.layers.find((l) => l.id === id);
-  if (layer && layer.kind === "ref") { layer.media = media; bump(); }
+  if (layer && layer.kind === "ref") {
+    layer.media = media;
+    bump();
+  }
 }
 
 /** Set/replace the project audio track (not undoable; persisted with the project). */
@@ -425,7 +475,14 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
   if (w === state.project.width && h === state.project.height) return;
-  const rect = placeContent(state.project.width * DPR, state.project.height * DPR, w * DPR, h * DPR, mode, anchor);
+  const rect = placeContent(
+    state.project.width * DPR,
+    state.project.height * DPR,
+    w * DPR,
+    h * DPR,
+    mode,
+    anchor,
+  );
   commitStructural(() => {
     for (const layer of state.project.layers) {
       if (layer.kind !== "draw") continue;
@@ -488,8 +545,10 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
   if (p.pressureCurve && typeof p.pressureCurve === "object") {
     const { cp1, cp2 } = p.pressureCurve;
-    if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number") pressureCurve.cp1 = { x: cp1.x, y: cp1.y };
-    if (cp2 && typeof cp2.x === "number" && typeof cp2.y === "number") pressureCurve.cp2 = { x: cp2.x, y: cp2.y };
+    if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")
+      pressureCurve.cp1 = { x: cp1.x, y: cp1.y };
+    if (cp2 && typeof cp2.x === "number" && typeof cp2.y === "number")
+      pressureCurve.cp2 = { x: cp2.x, y: cp2.y };
     pressureCurve.buildLUT();
   }
 }
@@ -526,7 +585,8 @@ export const playbackController = new Playback({
   getLoop: () => state.playback.loop,
   getCurrent: () => state.playhead,
   setFrame: (f) => {
-    if (state.playback.isPlaying && f !== state.playhead && f !== state.playhead + 1) audioEngine.syncTo(f, state.project.fps);
+    if (state.playback.isPlaying && f !== state.playhead && f !== state.playhead + 1)
+      audioEngine.syncTo(f, state.project.fps);
     state.playhead = f;
   },
   onPlayingChange: (p) => {
@@ -557,7 +617,9 @@ export function clearPlayRange() {
 export const selectionRef: { current: Selection | null } = { current: null };
 
 /** Canvas-owned selection actions reachable from App keyboard shortcuts (W/M warp). */
-export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = { enterWarp: null };
+export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = {
+  enterWarp: null,
+};
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
 export const pressureCurve = new PressureCurve();

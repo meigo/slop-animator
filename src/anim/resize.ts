@@ -13,7 +13,12 @@ export interface Anchor {
  * The anchor distributes the leftover margin (negative offset on shrink = crop on that side).
  */
 export function placeContent(
-  oldW: number, oldH: number, newW: number, newH: number, mode: ResizeMode, anchor: Anchor
+  oldW: number,
+  oldH: number,
+  newW: number,
+  newH: number,
+  mode: ResizeMode,
+  anchor: Anchor,
 ): { x: number; y: number; w: number; h: number } {
   if (oldW <= 0 || oldH <= 0) return { x: 0, y: 0, w: newW, h: newH };
   const factor = mode === "scale" ? Math.min(newW / oldW, newH / oldH) : 1;

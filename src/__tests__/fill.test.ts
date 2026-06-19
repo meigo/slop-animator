@@ -27,7 +27,10 @@ function gridCtx(w: number, h: number, fill: (i: number) => [number, number, num
   const data = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const [r, g, b, a] = fill(i);
-    data[i * 4] = r; data[i * 4 + 1] = g; data[i * 4 + 2] = b; data[i * 4 + 3] = a;
+    data[i * 4] = r;
+    data[i * 4 + 1] = g;
+    data[i * 4 + 2] = b;
+    data[i * 4 + 3] = a;
   }
   const img = { data, width: w, height: h };
   const ctx = {

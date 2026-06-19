@@ -4,7 +4,10 @@ import type { AudioTrack } from "../anim/document";
 /** Decode raw encoded audio bytes to an AudioBuffer via the shared AudioContext. */
 export async function decodeAudioBytes(bytes: Uint8Array): Promise<AudioBuffer> {
   const ctx = getAudioContext();
-  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const ab = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
   return ctx.decodeAudioData(ab);
 }
 

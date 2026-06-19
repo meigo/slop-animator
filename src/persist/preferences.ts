@@ -28,9 +28,17 @@ export function parsePreferences(raw: string | null): Partial<Preferences> {
 }
 
 export function loadPreferences(): Partial<Preferences> {
-  try { return parsePreferences(localStorage.getItem(KEY)); } catch { return {}; }
+  try {
+    return parsePreferences(localStorage.getItem(KEY));
+  } catch {
+    return {};
+  }
 }
 
 export function savePreferences(p: Preferences): void {
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* quota / unavailable — ignore */ }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(p));
+  } catch {
+    /* quota / unavailable — ignore */
+  }
 }

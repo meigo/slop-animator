@@ -22,7 +22,7 @@ export function drawInkStrokeIncremental(
   ctx: CanvasRenderingContext2D,
   points: InputPoint[],
   settings: BrushSettings,
-  sizeRange: number = 1.0
+  sizeRange: number = 1.0,
 ) {
   if (points.length < 2) return;
 

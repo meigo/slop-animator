@@ -13,7 +13,7 @@ import type { Cell } from "../anim/document";
 export function computeTimelineGlyphs(
   cells: Cell[],
   frameCount: number,
-  isEmpty: (canvas: HTMLCanvasElement) => boolean
+  isEmpty: (canvas: HTMLCanvasElement) => boolean,
 ): string[] {
   const out: string[] = new Array(frameCount);
   let hasKey = false; // a key has been seen at or before this frame
