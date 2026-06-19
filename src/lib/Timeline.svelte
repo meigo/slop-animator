@@ -445,7 +445,7 @@
         onpointercancel={rulerUp}
         onkeydown={rulerKey}
       >
-        {#each Array(appState.project.frameCount) as _, f}
+        {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = appState.playback.range
             ? effectiveRange(appState.playback.range, appState.project.frameCount)
             : null}
@@ -492,7 +492,7 @@
               onpointercancel={(e) => rowUp(e, layer)}
               onpointerleave={rowLeave}
             >
-              {#each Array(appState.project.frameCount) as _, f}
+              {#each Array(appState.project.frameCount) as _, f (f)}
                 <div
                   class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
                   class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}

@@ -93,6 +93,7 @@
 
   let autosaveTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- read to register the effect dependency
     state.version; // re-run whenever the document changes
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
