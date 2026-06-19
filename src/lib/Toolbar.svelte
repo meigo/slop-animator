@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { writable } from "svelte/store";
-  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve, pasteImageReference, activeLayer } from "../state/appState.svelte";
+  import { state as appState, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve, pasteImageReference, activeLayer } from "../state/appState.svelte";
   import { isIdentityTransform } from "../anim/document";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
@@ -13,7 +12,7 @@
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
-  const curveOpen = writable(false);
+  let curveOpen = $state(false);
   let curvePopupEl: HTMLDivElement;
   let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
 
@@ -36,10 +35,12 @@
 
   // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve,
   // then reposition once it's laid out (next frame) so it can't open off-screen.
-  $: if ($curveOpen) {
-    curveEditor?.redraw();
-    requestAnimationFrame(positionPopup);
-  }
+  $effect(() => {
+    if (curveOpen) {
+      curveEditor?.redraw();
+      requestAnimationFrame(positionPopup);
+    }
+  });
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";
@@ -88,73 +89,73 @@
   }
 
   async function saveProject() {
-    downloadBlob(await saveProjectBlob(state.project), "project.zip");
+    downloadBlob(await saveProjectBlob(appState.project), "project.zip");
   }
 
   function toggleTheme() {
-    state.theme = state.theme === "dark" ? "light" : "dark";
-    document.documentElement.classList.toggle("dark", state.theme === "dark");
+    appState.theme = appState.theme === "dark" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", appState.theme === "dark");
   }
 </script>
 
 <div class="flex flex-wrap items-center gap-2 p-2 border-b border-border bg-surface text-text">
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "brush"}
+    class:bg-surface-active={appState.tool === "brush"}
     title="Brush"
-    onclick={() => (state.tool = "brush")}
+    onclick={() => (appState.tool = "brush")}
   ><Paintbrush size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "eraser"}
+    class:bg-surface-active={appState.tool === "eraser"}
     title="Eraser"
-    onclick={() => (state.tool = "eraser")}
+    onclick={() => (appState.tool = "eraser")}
   ><Eraser size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "fill"}
+    class:bg-surface-active={appState.tool === "fill"}
     title="Fill"
-    onclick={() => (state.tool = "fill")}
+    onclick={() => (appState.tool = "fill")}
   ><PaintBucket size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "select"}
+    class:bg-surface-active={appState.tool === "select"}
     title="Select"
-    onclick={() => (state.tool = "select")}
+    onclick={() => (appState.tool = "select")}
   ><BoxSelect size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "lasso"}
+    class:bg-surface-active={appState.tool === "lasso"}
     title="Lasso"
-    onclick={() => (state.tool = "lasso")}
+    onclick={() => (appState.tool = "lasso")}
   ><Lasso size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    class:bg-surface-active={state.tool === "transform"}
+    class:bg-surface-active={appState.tool === "transform"}
     title="Transform layer (move/scale/rotate)"
-    onclick={() => (state.tool = "transform")}
+    onclick={() => (appState.tool = "transform")}
   ><Move size={18} /></button>
-  {#if (state.tool === "select" || state.tool === "lasso") && activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
+  {#if (appState.tool === "select" || appState.tool === "lasso") && activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
     <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer">Apply layer transform to select</span>
   {/if}
   <label class="flex items-center gap-1 text-sm text-text-secondary">Size
-    <input type="range" min="0.5" max="60" step="0.5" bind:value={state.brush.size} />
+    <input type="range" min="0.5" max="60" step="0.5" bind:value={appState.brush.size} />
     <input class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-           type="number" min="0.5" max="60" step="0.5" bind:value={state.brush.size}
+           type="number" min="0.5" max="60" step="0.5" bind:value={appState.brush.size}
            title="Brush size" />
   </label>
   <div class="flex items-center gap-0.5" title="Size presets">
     {#each SIZE_PRESETS as preset}
       <button class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
-              class:bg-surface-active={state.brush.size === preset}
-              onclick={() => (state.brush.size = preset)}>{preset}</button>
+              class:bg-surface-active={appState.brush.size === preset}
+              onclick={() => (appState.brush.size = preset)}>{preset}</button>
     {/each}
   </div>
   <label class="flex items-center gap-1 text-sm text-text-secondary" title="How much pen pressure widens the stroke">Press
-    <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />
-    <span class="text-xs text-text-secondary w-6">{state.sizeRange}×</span>
+    <input type="range" min="1" max="8" step="0.5" bind:value={appState.sizeRange} />
+    <span class="text-xs text-text-secondary w-6">{appState.sizeRange}×</span>
   </label>
-  <select class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1" bind:value={state.brushType} title="Brush type">
+  <select class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1" bind:value={appState.brushType} title="Brush type">
     <option value="smooth">Smooth</option>
     <option value="ink">Ink</option>
     <option value="pencil">Pencil</option>
@@ -162,25 +163,25 @@
     <option value="airbrush">Airbrush</option>
   </select>
   <label class="flex items-center gap-1 text-xs text-text-secondary">Opacity
-    <input type="range" min="1" max="100" class="w-16" bind:value={state.brush.opacity} />
+    <input type="range" min="1" max="100" class="w-16" bind:value={appState.brush.opacity} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary">Smooth
-    <input type="range" min="0" max="100" class="w-16" bind:value={state.brush.smoothing} />
+    <input type="range" min="0" max="100" class="w-16" bind:value={appState.brush.smoothing} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary">Stream
-    <input type="range" min="0" max="100" class="w-16" bind:value={state.streamline} />
+    <input type="range" min="0" max="100" class="w-16" bind:value={appState.streamline} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
-    <input type="checkbox" bind:checked={state.brush.taper} /> Taper
+    <input type="checkbox" bind:checked={appState.brush.taper} /> Taper
   </label>
-  <div class="relative" use:clickOutside={() => curveOpen.set(false)}>
+  <div class="relative" use:clickOutside={() => (curveOpen = false)}>
     <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-            class:bg-surface-active={$curveOpen} title="Pressure curve" onclick={() => curveOpen.update(v => !v)}>
+            class:bg-surface-active={curveOpen} title="Pressure curve" onclick={() => (curveOpen = !curveOpen)}>
       <Spline size={18} />
     </button>
-    <div class="curve-popup" class:open={$curveOpen} bind:this={curvePopupEl}></div>
+    <div class="curve-popup" class:open={curveOpen} bind:this={curvePopupEl}></div>
   </div>
-  <input type="color" bind:value={state.brush.color} />
+  <input type="color" bind:value={appState.brush.color} />
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Undo"
@@ -215,7 +216,7 @@
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Export"
-    onclick={() => (state.exportOpen = true)}
+    onclick={() => (appState.exportOpen = true)}
   ><Download size={18} /></button>
   <span class="w-px h-5 bg-border mx-1"></span>
   <button
@@ -231,15 +232,15 @@
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="New"
-    onclick={() => { state.sizeDialog.mode = "new"; state.sizeDialog.open = true; }}
+    onclick={() => { appState.sizeDialog.mode = "new"; appState.sizeDialog.open = true; }}
   ><FilePlus2 size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Resize canvas"
-    onclick={() => { state.sizeDialog.mode = "resize"; state.sizeDialog.open = true; }}
+    onclick={() => { appState.sizeDialog.mode = "resize"; appState.sizeDialog.open = true; }}
   ><Scaling size={18} /></button>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
   <button class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover ml-auto" title="Toggle theme" onclick={toggleTheme}>
-    {#if state.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}
+    {#if appState.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}
   </button>
 </div>
