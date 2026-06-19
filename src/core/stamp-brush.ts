@@ -5,6 +5,7 @@
 
 import type { InputPoint } from "./input";
 import type { BrushSettings } from "./brush";
+import { widthRange } from "./brush";
 import { getTip, type BrushType } from "./brush-textures";
 
 export interface StampBrushSettings extends BrushSettings {
@@ -54,8 +55,8 @@ export function drawStampStrokeIncremental(
 ) {
   if (points.length === 0) return;
 
-  const minSize = Math.max(0.5, settings.size);
-  const maxSize = minSize * sizeRange;
+  // Model 2 range (see widthRange in brush.ts): pressure thins below / widens above nominal.
+  const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
   const tip = getTintedTip(settings.brushType, settings.color);
 
   ctx.save();
