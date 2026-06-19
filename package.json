@@ -17,11 +17,11 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{ts,js,cjs,mjs}": [
+    "*.{ts,js,cjs,mjs,svelte}": [
       "eslint --fix",
       "prettier --write"
     ],
-    "*.{svelte,css,json,md,html,yml,yaml}": "prettier --write --ignore-unknown"
+    "*.{css,json,md,html,yml,yaml}": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -31,6 +31,7 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.19.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
     "prettier": "^3.8.4",
@@ -38,6 +39,7 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "svelte": "^5.55.1",
     "svelte-check": "^4.4.6",
+    "svelte-eslint-parser": "^1.8.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.58.0",

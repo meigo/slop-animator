@@ -132,7 +132,7 @@
               onchange={(e) => setFps(+e.currentTarget.value)}
             />
             <div class="flex gap-px ml-auto">
-              {#each FPS_PRESETS as p}
+              {#each FPS_PRESETS as p (p)}
                 <button
                   class="px-1.5 py-0.5 rounded"
                   class:bg-surface-active={appState.project.fps === p}

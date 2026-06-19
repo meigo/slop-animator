@@ -200,7 +200,7 @@
     />
   </label>
   <div class="flex items-center gap-0.5" title="Size presets">
-    {#each SIZE_PRESETS as preset}
+    {#each SIZE_PRESETS as preset (preset)}
       <button
         class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
         class:bg-surface-active={appState.brush.size === preset}

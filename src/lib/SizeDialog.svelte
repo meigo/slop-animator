@@ -70,7 +70,7 @@
       </div>
 
       <div class="flex flex-wrap gap-1">
-        {#each PRESETS as p}
+        {#each PRESETS as p (p)}
           <button
             class="px-2 py-1 rounded border border-border text-xs hover:bg-surface-hover"
             class:bg-surface-active={w === p.w && h === p.h}
@@ -122,7 +122,7 @@
         <div class="flex items-center gap-2">
           <span class="text-text-secondary w-14">Anchor</span>
           <div class="grid grid-cols-3 gap-px w-[3.25rem]">
-            {#each ANCHORS as a}
+            {#each ANCHORS as a (a)}
               <button
                 class="h-4 border border-border hover:bg-surface-hover"
                 class:bg-surface-active={a.ax === anchor.ax && a.ay === anchor.ay}
