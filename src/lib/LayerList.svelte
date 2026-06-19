@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
-  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film, ImageDown } from "@lucide/svelte";
-  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, rasterizeReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups } from "../state/appState.svelte";
-  import { createDrawingLayer, groupOf } from "../anim/document";
+  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film, ImageDown, Stamp, RotateCcw } from "@lucide/svelte";
+  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, rasterizeReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups, applyLayerTransform, resetLayerTransform } from "../state/appState.svelte";
+  import { createDrawingLayer, groupOf, isIdentityTransform } from "../anim/document";
   import type { Layer, LayerGroup } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
 
@@ -180,6 +180,12 @@
         {#if layer.kind === "ref" && layer.media.type === "image"}
           <button class="text-text-muted hover:text-text-secondary" title="Rasterize to drawing layer"
                   onclick={(e) => { e.stopPropagation(); rasterizeReference(layer.id); }}><ImageDown size={13} /></button>
+        {/if}
+        {#if layer.kind === "draw" && !isIdentityTransform(layer.transform)}
+          <button class="text-text-muted hover:text-text-secondary" title="Apply transform (bake to pixels)"
+                  onclick={(e) => { e.stopPropagation(); applyLayerTransform(layer.id); }}><Stamp size={13} /></button>
+          <button class="text-text-muted hover:text-text-secondary" title="Reset transform"
+                  onclick={(e) => { e.stopPropagation(); resetLayerTransform(layer.id); }}><RotateCcw size={13} /></button>
         {/if}
       </div>
     {/if}
