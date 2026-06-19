@@ -158,20 +158,25 @@ calling the toolbar's `navigator.clipboard.read()` path → `pasteImageReference
 - `src/App.svelte` — `window` `paste` listener → extract image blob → `pasteImageReference`.
 - `src/lib/Toolbar.svelte` — Paste-image button + `navigator.clipboard.read()` handler.
 - `src/lib/LayerList.svelte` — rasterize button in the active image-reference row.
-- `src/__tests__/rasterize.test.ts` (new) — see Testing.
+- `src/__tests__/render.test.ts` (existing) — add `drawReferenceMedia` tests (see Testing).
 
 ## Testing
 
-**Automated (Vitest — pure logic; jsdom has a canvas shim but no real raster, so assertions are about
-structure, not pixels):**
+**Test environment reality:** Vitest runs in **node** (no `vitest.config`), so tests mock the canvas
+with a `recordingCtx` (see `render.test.ts`). `appState.svelte.ts` reads `window.devicePixelRatio` at
+module load, so it is **not importable in node** — therefore `rasterizeReference` and
+`pasteImageReference` (both in appState) cannot be unit-tested and are build- + manually-verified, the
+same as every other appState action. Only the pure `drawReferenceMedia` (in `render.ts`) is unit-test
+able.
 
-- `rasterizeReference`: given a project with an image reference layer (a stub `ReferenceMedia` of
-  type `image` with an `el` whose `naturalWidth/Height > 0`), after the call: the layer at the same
-  index is `kind === "draw"`, keeps the ref's `id`/`name`/`groupId`/`opacity`/`visible`,
-  `cells.length === project.frameCount`, `cells[0].kind === "key"`, and the rest are `hold`;
-  `activeLayerId` equals that id. A video or missing ref is left unchanged (no-op).
-- `drawReferenceMedia` is exercised indirectly (it needs a real 2D context for pixels); in jsdom we
-  assert it does not throw for a loaded image stub and is a no-op for `missing` / zero-size media.
+**Automated (Vitest, node + `recordingCtx`):**
+
+- Add to `render.test.ts`: `drawReferenceMedia(ctx, ref, docW, docH, dpr)` with an image media stub
+  (`{type:"image", el:{__id, naturalWidth, naturalHeight}}`, as the existing ref tests use) records
+  `translate`/`rotate`/`scale` then a sized `drawImage:<id>`; it is a **no-op** (no `drawImage`) for a
+  `missing` media and for zero-size media.
+- The existing `compositeFrameLayers` reference tests must stay green after the extraction (they now
+  exercise the helper indirectly) — they are the regression guard that extraction changed nothing.
 
 **Manual (browser):**
 
