@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import type { Viewport } from "../core/viewport";
   import { state as appState, bump } from "../state/appState.svelte";
-  import { containRect, mediaIntrinsicSize, type ReferenceLayer } from "../anim/document";
+  import { transformBaseRect, type Layer } from "../anim/document";
   import { transformedCorners, rotateHandlePos, transformCenter, applyScale, applyRotate, type Pt } from "../core/ref-transform";
 
   let { getViewport, getContainer }: { getViewport: () => Viewport | null; getContainer: () => HTMLElement | null } = $props();
@@ -16,23 +16,23 @@
   type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
   // Active handle drag. center/start are in document logical coords; startT is a snapshot
   // of the layer transform at grab time so each move recomputes from the original.
-  let drag: { handle: DragHandle; layer: ReferenceLayer; startT: ReferenceLayer["transform"]; start: Pt; center: Pt } | null = null;
+  let drag: { handle: DragHandle; layer: Layer; startT: Layer["transform"]; start: Pt; center: Pt } | null = null;
 
-  function activeRef(): ReferenceLayer | null {
+  function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
-    return l && l.kind === "ref" ? l : null;
+    if (!l) return null;
+    if (l.kind === "ref") return l;                                   // refs: any tool (unchanged)
+    if (l.kind === "draw" && appState.tool === "transform") return l; // draw: only under the Transform tool
+    return null;
   }
 
-  /** Logical fit-rect for the active ref layer's media (matches Canvas.onRefTransform). */
-  function baseRect(layer: ReferenceLayer) {
-    const size = mediaIntrinsicSize(layer.media);
-    if (size.w === 0 || size.h === 0) return null;
-    return containRect(size.w, size.h, appState.project.width, appState.project.height);
+  function baseRect(layer: Layer) {
+    return transformBaseRect(layer, appState.project.width, appState.project.height); // {x,y,w,h} | null
   }
 
   function startHandleDrag(handle: DragHandle, e: PointerEvent) {
     const vp = getViewport();
-    const layer = activeRef();
+    const layer = activeTransformLayer();
     if (!vp || !layer) return;
     const base = baseRect(layer);
     if (!base) return;
@@ -76,11 +76,10 @@
   function tick() {
     const vp = getViewport();
     const container = getContainer();
-    const layer = activeRef();
+    const layer = activeTransformLayer();
     if (vp && container && layer) {
-      const size = mediaIntrinsicSize(layer.media);
-      if (size.w > 0 && size.h > 0) {
-        const base = containRect(size.w, size.h, appState.project.width, appState.project.height);
+      const base = baseRect(layer);
+      if (base) {
         const gap = ROTATE_GAP_PX / vp.zoom;
         const rect = container.getBoundingClientRect();
         const toLocal = (p: { x: number; y: number }) => {
@@ -96,7 +95,7 @@
   }
 
   function resetTransform() {
-    const layer = activeRef();
+    const layer = activeTransformLayer();
     if (layer) { layer.transform = { dx: 0, dy: 0, scale: 1, rotation: 0 }; bump(); }
   }
 
@@ -128,7 +127,7 @@
             onpointerdown={(e) => startHandleDrag("rotate", e)} />
   </svg>
   <div class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto">
-    <span>Reference: drag to move · corners scale · top handle rotates</span>
+    <span>Transform: drag to move · corners scale · top handle rotates</span>
     <button class="underline hover:text-text" onclick={resetTransform}>Reset to fit</button>
   </div>
 {/if}
