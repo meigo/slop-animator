@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
-  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight } from "@lucide/svelte";
+  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film } from "@lucide/svelte";
   import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups } from "../state/appState.svelte";
   import { createDrawingLayer, groupOf } from "../anim/document";
   import type { Layer, LayerGroup } from "../anim/document";
@@ -120,48 +120,55 @@
 </script>
 
 {#snippet layerRow(layer: Layer)}
+  {@const active = layer.id === state.activeLayerId}
   <div data-layer-id={layer.id}
-       class="flex items-center gap-1 px-1 py-1 border-b border-border-light cursor-pointer hover:bg-surface-hover"
-       class:bg-surface-active={layer.id === state.activeLayerId}
+       class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
+       class:bg-surface-active={active}
        onclick={() => (state.activeLayerId = layer.id)} role="presentation">
-    <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"><GripVertical size={14} /></span>
-    <button class="text-text-secondary" title="Toggle visibility"
-            onclick={(e) => { e.stopPropagation(); layer.visible = !layer.visible; bump(); }}>
-      {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
-    </button>
-    {#if layer.kind === "ref"}
-      {#if layer.media.type === "missing"}
-        <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.was}?</span>
-        <button class="text-text-muted hover:text-text-secondary" title="Re-link media"
-                onclick={(e) => { e.stopPropagation(); startRelink(layer.id); }}><Link size={13} /></button>
-      {:else}
-        <span class="text-[9px] px-1 rounded bg-surface-active text-text-muted uppercase">{layer.media.type}</span>
-      {/if}
-    {/if}
-    {#if editingId === layer.id}
-      <input class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"
-             use:focusSelect bind:value={draft}
-             onclick={(e) => e.stopPropagation()}
-             onpointerdown={(e) => e.stopPropagation()}
-             onkeydown={(e) => {
-               if (e.key === "Enter") commitEdit(layer.id);
-               else if (e.key === "Escape") editingId = null;
-             }}
-             onblur={() => commitEdit(layer.id)} />
-    {:else}
-      <span class="flex-1 text-xs truncate">{layer.name}</span>
-      <button class="text-text-muted hover:text-text-secondary" title="Rename layer"
-              onclick={(e) => { e.stopPropagation(); startEdit(layer); }}>
-        <Pencil size={13} />
+    <!-- Row 1: compact (every layer) -->
+    <div class="flex items-center gap-1 px-1 py-1">
+      <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"><GripVertical size={14} /></span>
+      <button class="text-text-secondary" title="Toggle visibility"
+              onclick={(e) => { e.stopPropagation(); layer.visible = !layer.visible; bump(); }}>
+        {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
       </button>
+      {#if layer.kind === "ref"}
+        {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
+        <span class="shrink-0" class:text-text-muted={layer.media.type === "missing"} class:text-text-secondary={layer.media.type !== "missing"}
+              title={layer.media.type === "missing" ? "Missing — re-link below" : t}>
+          {#if t === "image"}<Image size={13} />{:else}<Film size={13} />{/if}
+        </span>
+      {/if}
+      {#if editingId === layer.id}
+        <input class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"
+               use:focusSelect bind:value={draft}
+               onclick={(e) => e.stopPropagation()}
+               onpointerdown={(e) => e.stopPropagation()}
+               onkeydown={(e) => { if (e.key === "Enter") commitEdit(layer.id); else if (e.key === "Escape") editingId = null; }}
+               onblur={() => commitEdit(layer.id)} />
+      {:else}
+        <span class="flex-1 text-xs truncate">{layer.name}</span>
+      {/if}
+    </div>
+    <!-- Row 2: detail controls (active layer only) -->
+    {#if active}
+      <div class="flex items-center gap-2 pl-6 pr-1 pb-1 text-text-secondary">
+        <input class="w-14" type="range" min="0" max="100" bind:value={layer.opacity} oninput={bump}
+               onclick={(e) => e.stopPropagation()} title="Opacity" />
+        <span class="text-[10px] tabular-nums w-6 text-text-muted">{layer.opacity}</span>
+        <button class="text-text-muted hover:text-text-secondary" title="Rename layer"
+                onclick={(e) => { e.stopPropagation(); startEdit(layer); }}><Pencil size={13} /></button>
+        {#if layer.kind === "ref" && layer.media.type === "video"}
+          <input class="w-9 text-xs bg-surface border border-border px-0.5 text-text" type="number" step="1"
+                 bind:value={layer.offsetFrames} oninput={bump}
+                 onclick={(e) => e.stopPropagation()} title="Video time offset (frames)" />
+        {/if}
+        {#if layer.kind === "ref" && layer.media.type === "missing"}
+          <button class="text-text-muted hover:text-text-secondary" title="Re-link media"
+                  onclick={(e) => { e.stopPropagation(); startRelink(layer.id); }}><Link size={13} /></button>
+        {/if}
+      </div>
     {/if}
-    {#if layer.kind === "ref" && layer.media.type === "video"}
-      <input class="w-9 text-xs bg-surface border border-border px-0.5 text-text" type="number" step="1"
-             bind:value={layer.offsetFrames} oninput={bump}
-             onclick={(e) => e.stopPropagation()} title="Video time offset (frames)" />
-    {/if}
-    <input class="w-10" type="range" min="0" max="100" bind:value={layer.opacity} oninput={bump}
-           onclick={(e) => e.stopPropagation()} title="Opacity" />
   </div>
 {/snippet}
 
