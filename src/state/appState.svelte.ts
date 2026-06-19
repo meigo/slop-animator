@@ -1,4 +1,6 @@
-import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
+import { createProject, createCellCanvas, cloneCanvas, isDrawingLayer, createDrawingLayer, createReferenceLayer, resolveLayerName, refreshLength, resizeCells, nextId, nonEmptyGroups, mediaIntrinsicSize, type Project, type Layer, type Cell, type AudioTrack, type ReferenceMedia, type LayerGroup } from "../anim/document";
+import { loadImageMedia } from "../anim/reference";
+import { drawReferenceMedia } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -179,6 +181,43 @@ export function addLayerToProject(layer: Layer) {
       state.project.layers.push(layer); // ungrouped → top of the stack (existing behavior)
     }
     state.activeLayerId = layer.id;
+  });
+}
+
+/** Paste a clipboard image blob as a new, fully-opaque image reference layer (auto-selected). */
+export async function pasteImageReference(blob: Blob): Promise<void> {
+  // loadImageMedia reads file.name only for its error message — wrap the blob in a File.
+  const file = new File([blob], "Pasted image", { type: blob.type || "image/png" });
+  const media = await loadImageMedia(file);
+  const layer = createReferenceLayer(media, "Pasted image");
+  layer.opacity = 100; // content, not a dimmed trace underlay (ref default is 60)
+  addLayerToProject(layer);
+}
+
+/** Replace an image reference layer in place with a drawing layer baked at its current transform. */
+export function rasterizeReference(layerId: number): void {
+  commitStructural(() => {
+    const layers = state.project.layers;
+    const idx = layers.findIndex((l) => l.id === layerId);
+    const ref = layers[idx];
+    if (!ref || ref.kind !== "ref" || ref.media.type !== "image") return; // image refs only
+    if (mediaIntrinsicSize(ref.media).w === 0) return; // media not loaded
+
+    const cell = createCellCanvas(state.project.width, state.project.height, DPR);
+    const ctx = cell.getContext("2d")!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // helper draws in device pixels
+    drawReferenceMedia(ctx, ref, state.project.width, state.project.height, DPR);
+
+    // Replace in place: keep id/name/group/opacity/visibility; one keyframe at frame 0 (holds after)
+    // so the image shows on every frame. Off-canvas pixels are clipped (the accepted commit trade).
+    const dl = createDrawingLayer(state.project.frameCount, ref.name);
+    dl.id = ref.id;
+    dl.groupId = ref.groupId;
+    dl.opacity = ref.opacity;
+    dl.visible = ref.visible;
+    dl.cells[0] = { kind: "key", canvas: cell };
+    layers[idx] = dl;
+    state.activeLayerId = dl.id;
   });
 }
 

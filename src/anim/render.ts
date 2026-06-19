@@ -1,4 +1,4 @@
-import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, type Project, type BoilConfig } from "./document";
+import { buildFrameDrawList, containRect, mediaIntrinsicSize, isCrispFrame, type Project, type BoilConfig, type ReferenceLayer } from "./document";
 import { boilBegin, boilLayer, boilBlit } from "../core/boil-gl";
 
 interface RenderOpts {
@@ -8,6 +8,34 @@ interface RenderOpts {
   includeReference?: boolean;
   /** Line-boil warp for drawing layers. Omitted = no boil. */
   boil?: BoilConfig;
+}
+
+/**
+ * Draw a reference layer's media onto `ctx`, sized via containRect and placed by its transform.
+ * ASSUMES `ctx` is at the identity transform and works in DEVICE pixels. The caller sets
+ * `ctx.globalAlpha` (render path uses layer opacity; rasterize leaves it at 1). No-op for missing
+ * or not-yet-loaded media.
+ */
+export function drawReferenceMedia(
+  ctx: CanvasRenderingContext2D,
+  layer: ReferenceLayer,
+  docW: number,
+  docH: number,
+  dpr: number
+): void {
+  if (layer.media.type === "missing") return;
+  const size = mediaIntrinsicSize(layer.media);
+  if (size.w === 0 || size.h === 0) return;
+  const r = containRect(size.w, size.h, docW * dpr, docH * dpr);
+  const t = layer.transform;
+  const cx = r.x + r.w / 2 + t.dx * dpr;
+  const cy = r.y + r.h / 2 + t.dy * dpr;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(t.rotation);
+  ctx.scale(t.scale, t.scale);
+  ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
+  ctx.restore();
 }
 
 /**
@@ -35,19 +63,8 @@ export function compositeFrameLayers(
     for (const op of ops) {
       const layer = layersById.get(op.layerId)!;
       if (op.kind === "ref" && layer.kind === "ref") {
-        const size = mediaIntrinsicSize(layer.media);
-        if (size.w === 0 || size.h === 0) continue;
-        const r = containRect(size.w, size.h, w, h);
         ctx.globalAlpha = op.opacity / 100;
-        const t = layer.transform;
-        const cx = r.x + r.w / 2 + t.dx * dpr;
-        const cy = r.y + r.h / 2 + t.dy * dpr;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(t.rotation);
-        ctx.scale(t.scale, t.scale);
-        if (layer.media.type !== "missing") ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
-        ctx.restore();
+        drawReferenceMedia(ctx, layer, project.width, project.height, dpr);
       }
     }
     for (const op of ops) {
@@ -73,18 +90,8 @@ export function compositeFrameLayers(
       if (cell.kind !== "key") continue;
       ctx.drawImage(cell.canvas, 0, 0);
     } else if (op.kind === "ref" && layer.kind === "ref") {
-      const size = mediaIntrinsicSize(layer.media);
-      if (size.w === 0 || size.h === 0) continue; // media not loaded yet
-      const r = containRect(size.w, size.h, project.width * dpr, project.height * dpr);
-      const t = layer.transform;
-      const cx = r.x + r.w / 2 + t.dx * dpr;
-      const cy = r.y + r.h / 2 + t.dy * dpr;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(t.rotation);
-      ctx.scale(t.scale, t.scale);
-      if (layer.media.type !== "missing") ctx.drawImage(layer.media.el, -r.w / 2, -r.h / 2, r.w, r.h);
-      ctx.restore();
+      ctx.globalAlpha = op.opacity / 100;
+      drawReferenceMedia(ctx, layer, project.width, project.height, dpr);
     }
   }
   ctx.globalAlpha = 1;

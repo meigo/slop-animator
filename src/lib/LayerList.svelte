@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
-  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film } from "@lucide/svelte";
-  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups } from "../state/appState.svelte";
+  import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film, ImageDown } from "@lucide/svelte";
+  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, rasterizeReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups } from "../state/appState.svelte";
   import { createDrawingLayer, groupOf } from "../anim/document";
   import type { Layer, LayerGroup } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
@@ -166,6 +166,10 @@
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button class="text-text-muted hover:text-text-secondary" title="Re-link media"
                   onclick={(e) => { e.stopPropagation(); startRelink(layer.id); }}><Link size={13} /></button>
+        {/if}
+        {#if layer.kind === "ref" && layer.media.type === "image"}
+          <button class="text-text-muted hover:text-text-secondary" title="Rasterize to drawing layer"
+                  onclick={(e) => { e.stopPropagation(); rasterizeReference(layer.id); }}><ImageDown size={13} /></button>
         {/if}
       </div>
     {/if}

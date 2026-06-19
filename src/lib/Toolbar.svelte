@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
-  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve } from "../state/appState.svelte";
+  import { state, history, bump, addLayerToProject, replaceProject, setAudioTrack, DPR, pressureCurve, bumpCurve, pasteImageReference } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
   import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
   import { downloadBlob } from "../export/download";
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
-  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
+  import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline, ClipboardPaste } from "@lucide/svelte";
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
@@ -62,6 +62,22 @@
       ? await loadImageLayer(file)
       : await loadVideoLayer(file, () => bump());
     addLayerToProject(layer);
+  }
+
+  async function pasteImage() {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const type = it.types.find((t) => t.startsWith("image/"));
+        if (type) {
+          await pasteImageReference(await it.getType(type));
+          return;
+        }
+      }
+      alert("No image found in the clipboard.");
+    } catch {
+      alert("Couldn't read the clipboard (permission denied or unsupported).");
+    }
   }
 
   async function saveProject() {
@@ -165,6 +181,11 @@
     title="Add Image"
     onclick={() => pick("image")}
   ><Image size={18} /></button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    title="Paste image from clipboard"
+    onclick={pasteImage}
+  ><ClipboardPaste size={18} /></button>
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Add Video"
