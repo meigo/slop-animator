@@ -6,7 +6,6 @@
   import { SkipBack, ChevronLeft, Play, Pause, ChevronRight, SkipForward, Settings, X } from "@lucide/svelte";
 
   const FPS_PRESETS = [6, 8, 12, 24];
-  // Playbar has no runes, so a plain let is reactive (legacy mode).
   let settingsOpen = $state(false);
 
   function go(f: number) {

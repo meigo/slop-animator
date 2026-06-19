@@ -9,7 +9,7 @@
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
 
-  // Draw the waveform onto the canvas; redraws when params change (legacy-mode action).
+  // Draw the waveform onto the canvas; redraws when params change (Svelte action).
   function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
     const draw = () => {
       const audio = state.project.audio;

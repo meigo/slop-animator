@@ -64,8 +64,7 @@
   // Build display segments (top-first, reverse of the bottom→top data order).
   // Each segment is either a bare layer ({ layer }) or a contiguous group block
   // ({ group, layers }). Called from the template with `appState.project.layers`/`.groups` so the
-  // template tracks those reactive reads — a `$:` block would NOT (this is a legacy-mode component
-  // that imports the `state` proxy, and legacy `$:` doesn't track external rune-proxy reads).
+  // reads are tracked fine-grained (runes mode).
   type Segment = { layer: Layer } | { group: LayerGroup; layers: Layer[] };
   function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] {
     const segs: Segment[] = [];
