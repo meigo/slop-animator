@@ -31,6 +31,14 @@ import { PressureCurve } from "../core/pressure-curve";
 
 /** Brush selection: smooth (perfect-freehand), ink (incremental marker), or a textured stamp type. */
 export type BrushKind = "smooth" | "ink" | BrushType;
+
+/** Per-tool stroke settings (brush and eraser each hold one). `isEraser` is NOT stored — it's
+ *  derived from the active tool at draw time. */
+export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
+  sizeRange: number;
+  streamline: number;
+  brushType: BrushKind;
+};
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
@@ -45,10 +53,8 @@ interface AnimState {
   playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
-  brush: BrushSettings;
-  sizeRange: number;
-  streamline: number;
-  brushType: BrushKind;
+  brush: ToolSettings;
+  eraser: ToolSettings;
   fill: { tolerance: number; expand: number };
   /** Bumped whenever the document changes so the canvas recomposites. */
   version: number;
@@ -73,14 +79,25 @@ export const state: AnimState = $state({
     color: "#1a1a1a",
     opacity: 100,
     smoothing: 50,
-    isEraser: false,
     drawBehind: false,
     alphaLock: false,
     taper: false,
+    sizeRange: 3.0, // full pen pressure → 3× the base width (light pressure → base)
+    streamline: 50,
+    brushType: "smooth",
   },
-  sizeRange: 3.0, // full pen pressure → 3× the base brush width (light pressure → base)
-  streamline: 50,
-  brushType: "smooth",
+  eraser: {
+    size: 8,
+    color: "#000000", // unused (eraser composites destination-out)
+    opacity: 100,
+    smoothing: 50,
+    drawBehind: false,
+    alphaLock: false,
+    taper: false,
+    sizeRange: 3.0,
+    streamline: 50,
+    brushType: "smooth",
+  },
   fill: { tolerance: 32, expand: 2 },
   version: 0,
   curveVersion: 0,
@@ -111,6 +128,11 @@ export const canvasOps: CanvasOps = {
 
 export function activeLayer() {
   return state.project.layers.find((l) => l.id === state.activeLayerId) ?? state.project.layers[0];
+}
+
+/** The stroke settings for the active drawing tool (eraser has its own; everything else uses brush). */
+export function activeStroke(): ToolSettings {
+  return state.tool === "eraser" ? state.eraser : state.brush;
 }
 
 /**
@@ -523,9 +545,7 @@ export function gatherPreferences(): Preferences {
   return {
     tool: state.tool,
     brush: { ...state.brush },
-    brushType: state.brushType,
-    sizeRange: state.sizeRange,
-    streamline: state.streamline,
+    eraser: { ...state.eraser },
     fill: { ...state.fill },
     theme: state.theme,
     loop: state.playback.loop,
@@ -537,9 +557,11 @@ export function gatherPreferences(): Preferences {
 export function applyPreferences(p: Partial<Preferences>): void {
   if (p.tool) state.tool = p.tool;
   if (p.brush && typeof p.brush === "object") state.brush = { ...state.brush, ...p.brush };
-  if (p.brushType) state.brushType = p.brushType;
-  if (typeof p.sizeRange === "number") state.sizeRange = p.sizeRange;
-  if (typeof p.streamline === "number") state.streamline = p.streamline;
+  if (p.eraser && typeof p.eraser === "object") state.eraser = { ...state.eraser, ...p.eraser };
+  // Back-compat: older saves wrote brushType/sizeRange/streamline at the top level → onto the brush.
+  if (p.brushType) state.brush.brushType = p.brushType;
+  if (typeof p.sizeRange === "number") state.brush.sizeRange = p.sizeRange;
+  if (typeof p.streamline === "number") state.brush.streamline = p.streamline;
   if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
   if (p.theme === "dark" || p.theme === "light") state.theme = p.theme;
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;

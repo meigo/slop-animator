@@ -14,6 +14,7 @@
     DPR,
     canvasOps,
     activeLayer,
+    activeStroke,
     bump,
     pressureCurve,
     toggleEraser,
@@ -157,9 +158,19 @@
     }
     const curved = inPts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
-    const sr = (curved[0]?.hasPressure ?? true) ? state.sizeRange : 1;
-    const settings = { ...state.brush, isEraser: state.tool === "eraser" };
-    const kind = state.brushType; // local so TS narrows it across the branches
+    const stroke = activeStroke();
+    const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
+    const settings = {
+      size: stroke.size,
+      color: stroke.color,
+      opacity: stroke.opacity,
+      smoothing: stroke.smoothing,
+      drawBehind: stroke.drawBehind,
+      alphaLock: stroke.alphaLock,
+      taper: stroke.taper,
+      isEraser: state.tool === "eraser",
+    };
+    const kind = stroke.brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
       strokeCtx.putImageData(beforeSnapshot!, 0, 0);
@@ -291,8 +302,8 @@
       strokeCanvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
-      if (state.brushType === "ink") resetInkState();
-      else if (state.brushType !== "smooth") resetStampState();
+      if (activeStroke().brushType === "ink") resetInkState();
+      else if (activeStroke().brushType !== "smooth") resetStampState();
       bump();
     }
 
@@ -427,7 +438,7 @@
     });
 
     const cleanup = setupInput(display, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
-      streamline: () => state.streamline / 100,
+      streamline: () => activeStroke().streamline / 100,
     });
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
