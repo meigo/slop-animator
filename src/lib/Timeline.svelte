@@ -4,33 +4,35 @@
            beginStructuralEdit, commitStructuralEdit, type StructSnapshot } from "../state/appState.svelte";
   import { addFrame, insertKeyframe, duplicateKeyframe, setHold, deleteFrame, ensureDrawableKeyframe,
            moveKeyframe, setHoldSpan } from "../anim/timeline";
-  import { resolveKeyframeIndex, groupOf, type Cell, type DrawingLayer } from "../anim/document";
+  import { groupOf, type DrawingLayer } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
+  import { computeTimelineGlyphs } from "./timeline-glyphs";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
 
   const CELL_W = 24;   // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80;  // px, layer-name gutter
 
-  // What a cell shows: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real
-  // keyframe boundary, just with no content), — hold over an inked key, and a blank cell for
-  // anything else (no key / hold over a blank key / past the layer's end). Showing ◇ makes a blank
-  // keyframe visible so it reads as "the next keyframe" a hold stops at, rather than an invisible gap.
-  // `v` (state.version) is passed from the template so the label re-evaluates when a
-  // draw/clear changes a canvas's ink, and is used as the isCellEmpty memo cache key.
-  function cellLabel(cells: Cell[], f: number, v: number): string {
-    if (f >= cells.length) return "";
-    const ki = resolveKeyframeIndex(cells, f);
-    if (ki === null) return ""; // no keyframe at or before this frame → empty
-    const key = cells[ki];
-    if (key.kind === "key" && isCellEmpty(key.canvas, v)) {
-      // The resolved keyframe is blank: mark the keyframe itself with ◇; holds over it stay empty
-      // (no — markers trailing a blank key).
-      return cells[f].kind === "key" ? "◇" : "";
-    }
-    return cells[f].kind === "key" ? "◆" : "—";
+  // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
+  // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
+  // a blank key / past the layer's end). ◇ makes a blank keyframe visible as "the next keyframe" a
+  // hold stops at, rather than an invisible gap.
+  //
+  // Computed for the WHOLE track in one O(frames) forward pass and memoized by `state.version` (any
+  // edit bumps it; isCellEmpty shares the same key). Scrubbing changes only the playhead — version is
+  // unchanged — so this is a cache hit and does zero work. Previously each cell ran a per-cell
+  // resolveKeyframeIndex backward scan over the reactive cells proxy: O(frames²) of expensive proxy
+  // reads, re-run on every scrub step (the scrub-jitter root cause).
+  const glyphCache = new Map<number, { version: number; frameCount: number; glyphs: string[] }>();
+  function glyphsFor(layer: DrawingLayer, version: number): string[] {
+    const frameCount = state.project.frameCount;
+    const hit = glyphCache.get(layer.id);
+    if (hit && hit.version === version && hit.frameCount === frameCount) return hit.glyphs;
+    const glyphs = computeTimelineGlyphs(layer.cells, frameCount, (c) => isCellEmpty(c, version));
+    glyphCache.set(layer.id, { version, frameCount, glyphs });
+    return glyphs;
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -304,6 +306,7 @@
                   style="width: {LABEL_W}px" title="Select layer"
                   onclick={() => (state.activeLayerId = layer.id)}>{layer.name}</button>
           {#if layer.kind === "draw"}
+            {@const glyphs = glyphsFor(layer, state.version)}
             <div class="flex select-none" style="touch-action: none; cursor: {rowCursor}"
                  class:opacity-100={layer.id === state.activeLayerId}
                  class:opacity-70={layer.id !== state.activeLayerId}
@@ -316,7 +319,7 @@
                      class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
                      class:ring-accent={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
                      class:ring-inset={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
-                     style="width: {CELL_W}px">{cellLabel(layer.cells, f, state.version)}</div>
+                     style="width: {CELL_W}px">{glyphs[f]}</div>
               {/each}
             </div>
           {:else}
