@@ -110,6 +110,8 @@
   function paintStroke(pts: InputPoint[], done: boolean) {
     if (!strokeCtx) return;
     const curved = pts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
+    // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
+    const sr = (curved[0]?.hasPressure ?? true) ? state.sizeRange : 1;
     const settings = { ...state.brush, isEraser: state.tool === "eraser" };
     const kind = state.brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
@@ -118,21 +120,21 @@
       strokeCtx.save();
       strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection?.applyClip(strokeCtx);
-      drawStroke(strokeCtx, curved, settings, done, state.sizeRange);
+      drawStroke(strokeCtx, curved, settings, done, sr);
       strokeCtx.restore();
     } else if (kind === "ink") {
       // Ink/marker: incremental quadratic line — no snapshot restore.
       strokeCtx.save();
       strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection?.applyClip(strokeCtx);
-      drawInkStrokeIncremental(strokeCtx, curved, settings, state.sizeRange);
+      drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
       strokeCtx.restore();
     } else {
       // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
       strokeCtx.save();
       strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       selection?.applyClip(strokeCtx);
-      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, state.sizeRange);
+      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, sr);
       strokeCtx.restore();
     }
     recomposite();

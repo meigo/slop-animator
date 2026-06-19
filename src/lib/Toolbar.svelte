@@ -10,6 +10,8 @@
   import { clickOutside } from "./click-outside";
   import { Paintbrush, Eraser, PaintBucket, BoxSelect, Lasso, Undo2, Redo2, Image, Film, Music, Download, Save, FolderOpen, FilePlus2, Scaling, Sun, Moon, Spline } from "@lucide/svelte";
 
+  const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
+
   const curveOpen = writable(false);
   let curvePopupEl: HTMLDivElement;
   let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
@@ -89,7 +91,17 @@
   ><Lasso size={18} /></button>
   <label class="flex items-center gap-1 text-sm text-text-secondary">Size
     <input type="range" min="0.5" max="60" step="0.5" bind:value={state.brush.size} />
+    <input class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+           type="number" min="0.5" max="60" step="0.5" bind:value={state.brush.size}
+           title="Brush size" />
   </label>
+  <div class="flex items-center gap-0.5" title="Size presets">
+    {#each SIZE_PRESETS as preset}
+      <button class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+              class:bg-surface-active={state.brush.size === preset}
+              onclick={() => (state.brush.size = preset)}>{preset}</button>
+    {/each}
+  </div>
   <label class="flex items-center gap-1 text-sm text-text-secondary" title="How much pen pressure widens the stroke">Press
     <input type="range" min="1" max="8" step="0.5" bind:value={state.sizeRange} />
     <span class="text-xs text-text-secondary w-6">{state.sizeRange}×</span>

@@ -1,6 +1,18 @@
 import getStroke from "perfect-freehand";
 import type { InputPoint } from "./input";
 
+/**
+ * Model 2 pressure→width range. `size` is the nominal (medium) width:
+ * light pressure → size / sizeRange (clamped to the 0.5px floor),
+ * full pressure → size * sizeRange. `size` is floored at 0.5 before scaling so
+ * `max` is unchanged from the legacy model when `sizeRange` is unchanged.
+ * `sizeRange === 1` ⇒ constant width (used for the no-pressure / mouse path).
+ */
+export function widthRange(size: number, sizeRange: number): { min: number; max: number } {
+  const floored = Math.max(0.5, size);
+  return { min: Math.max(0.5, floored / sizeRange), max: floored * sizeRange };
+}
+
 export interface BrushSettings {
   size: number;
   color: string;
@@ -25,12 +37,11 @@ export function drawStroke(
 ) {
   if (points.length === 0) return;
 
-  // sizeRange: light pressure → settings.size, full pressure → settings.size * sizeRange.
-  // We handle size-from-pressure ourselves and tell pf thinning=1 so it
-  // uses our mapped pressure directly: rendered_width = size * pressure.
-  // Use at least 0.5 so strokes can be very thin
-  const minSize = Math.max(0.5, settings.size);
-  const maxSize = minSize * sizeRange;
+  // Model 2: size is the nominal width; pressure opens the range both ways
+  // (light → size/sizeRange clamped at 0.5px, full → size*sizeRange). We map
+  // size→pressure ourselves and tell pf thinning=1 so it uses our mapped
+  // pressure directly: rendered_width = maxSize * mappedPressure.
+  const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
   const inputPoints = points.map((p) => {
     const desiredSize = minSize + p.pressure * (maxSize - minSize);
     const mappedPressure = maxSize > 0 ? desiredSize / maxSize : 1;

@@ -1,5 +1,6 @@
 import type { InputPoint } from "./input";
 import type { BrushSettings } from "./brush";
+import { widthRange } from "./brush";
 
 // Running state for the incremental ink/marker stroke. Reset at each stroke start.
 let drawn = 0;
@@ -25,8 +26,8 @@ export function drawInkStrokeIncremental(
 ) {
   if (points.length < 2) return;
 
-  const minSize = Math.max(0.5, settings.size);
-  const maxSize = minSize * sizeRange;
+  // Model 2 range (see widthRange in brush.ts): pressure thins below / widens above nominal.
+  const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
   const widthAt = (p: InputPoint) => minSize + p.pressure * (maxSize - minSize);
 
   ctx.lineCap = "round";

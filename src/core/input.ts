@@ -2,6 +2,9 @@ export interface InputPoint {
   x: number;
   y: number;
   pressure: number;
+  /** True when the device reports real pressure (pen). False for mouse, so the
+   *  renderer can draw a constant nominal width instead of the thin pressure floor. */
+  hasPressure: boolean;
   timestamp: number;
 }
 
@@ -62,11 +65,11 @@ export function setupInput(
     return {
       x,
       y,
-      // Mouse has no pressure sensor; report 0 so the size mapping in brush.ts/stamp-brush.ts
-      // resolves to minSize = settings.size. This matches the user's mental model where the
-      // size slider value IS the stroke width, with sizeRange only widening pen strokes
-      // *up* from there at higher pressure.
+      // Mouse has no pressure sensor. Under Model 2 the size mapping thins below the
+      // nominal size at low pressure, so a mouse must be flagged hasPressure:false —
+      // Canvas.svelte then draws it at constant nominal width (sizeRange = 1).
       pressure: e.pointerType === "mouse" ? 0 : e.pressure,
+      hasPressure: e.pointerType !== "mouse",
       timestamp: e.timeStamp,
     };
   }
@@ -123,6 +126,7 @@ export function setupInput(
           x: lastStreamlined.x + (raw.x - lastStreamlined.x) * sT,
           y: lastStreamlined.y + (raw.y - lastStreamlined.y) * sT,
           pressure: lastStreamlined.pressure + (raw.pressure - lastStreamlined.pressure) * sT,
+          hasPressure: raw.hasPressure,
           timestamp: raw.timestamp,
         };
       } else {
@@ -144,6 +148,7 @@ export function setupInput(
               x: prev.x + dx * t,
               y: prev.y + dy * t,
               pressure: prev.pressure + (pt.pressure - prev.pressure) * t,
+              hasPressure: pt.hasPressure,
               timestamp: prev.timestamp + (pt.timestamp - prev.timestamp) * t,
             });
           }
