@@ -21,8 +21,24 @@
     curvePopupEl.appendChild(curveEditor);
   });
 
-  // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve.
-  $: if ($curveOpen) curveEditor?.redraw();
+  // Keep the popup within the viewport: it's left-anchored to its trigger, but the toolbar
+  // wraps, so the trigger can sit near the right (or left) edge. Shift it back into view.
+  function positionPopup() {
+    if (!curvePopupEl) return;
+    const margin = 8;
+    curvePopupEl.style.left = "0px"; // reset to the anchor before measuring
+    const rect = curvePopupEl.getBoundingClientRect();
+    const overflowRight = rect.right - (window.innerWidth - margin);
+    if (overflowRight > 0) curvePopupEl.style.left = `${-overflowRight}px`;
+    else if (rect.left < margin) curvePopupEl.style.left = `${margin - rect.left}px`;
+  }
+
+  // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve,
+  // then reposition once it's laid out (next frame) so it can't open off-screen.
+  $: if ($curveOpen) {
+    curveEditor?.redraw();
+    requestAnimationFrame(positionPopup);
+  }
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";
