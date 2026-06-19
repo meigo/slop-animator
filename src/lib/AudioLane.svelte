@@ -4,8 +4,7 @@
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
-  export let cellW: number;
-  export let labelW: number;
+  let { cellW, labelW }: { cellW: number; labelW: number } = $props();
 
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
