@@ -32,8 +32,14 @@ Already runes (no change): Canvas, RefTransformGizmo, ExportDialog, SelectionAct
   `s`, `s.set(x)` with `s = x`, `s.update(fn)` with `s = fn(s)`.
 - **Stay plain** (`let`/`const`, no rune): non-reactive locals, caches (e.g. Timeline's `glyphCache`
   Map), `bind:this` element refs, pure constants, and imported helpers.
-- Template reads of the imported `state` proxy are **unchanged in syntax** and become fine-grained
-  automatically — that is the entire win.
+- **`$state` collision (critical):** a component that uses the `$state` rune CANNOT `import { state }`
+  — Svelte's `store_rune_conflict` (it can't tell `$state`-the-rune from `$`-subscribing a `state`
+  store). Any component introducing `$state` must `import { state as appState }` and rename every
+  `state.` → `appState.` (script + template), matching the existing runes components
+  (RefTransformGizmo/ExportDialog/SizeDialog). `$effect`/`$derived`/`$props` do NOT collide, so a
+  component using only those (e.g. AudioLane, Canvas, App) keeps `import { state }` unaliased.
+- Template reads of the (aliased) `state`/`appState` proxy are otherwise unchanged in meaning and
+  become fine-grained automatically — that is the entire win.
 - `onMount`/`onDestroy` remain valid in runes mode; keep them as-is (don't churn them into `$effect`).
 - The `bump()` / `state.version` signal still works: a `$derived`/`$effect` (or template) that reads
   `state.version` re-runs when it bumps.

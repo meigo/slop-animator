@@ -14,6 +14,8 @@
 
 **The conversion rule (apply per component):** for each top-level `let`, if it is **read in the template** (or in a `$derived`/`$effect`) → `let x = $state(init)`. If it is only a `bind:this` element ref, a pure-logic latch, or drag/undo bookkeeping **not** shown in the UI → leave it a plain `let`. Getting a template-read `let` wrong = it silently stops updating, so the per-task manual check exercises exactly those bindings. No new automated tests (Svelte components aren't node-renderable); the existing **209** must stay green and every build must be **0 errors / 0 warnings**.
 
+**CRITICAL — the `$state` import collision:** a component that uses the `$state` rune CANNOT `import { state } from "../state/appState.svelte"` — it triggers Svelte's `store_rune_conflict`. So **any task that introduces `$state` must also change the import to `import { state as appState }` and rename every `state.` → `appState.` in that component (script AND template)**, matching the existing runes components. This affects Tasks 2 (Toolbar), 4 (Playbar), 5 (LayerList), 6 (Timeline). Task 1 (AudioLane) uses only `$props` (no `$state`) → no alias, no rename. `$effect`/`$derived`/`$props` do NOT collide.
+
 ---
 
 ### Task 1: AudioLane → runes (gate offender, tiny)
