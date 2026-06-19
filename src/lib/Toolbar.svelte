@@ -65,6 +65,12 @@
   }
 
   async function pasteImage() {
+    // The async Clipboard API is unavailable outside a secure context (e.g. the LAN dev server over
+    // plain http on iPad), where navigator.clipboard is undefined. Say so instead of a vague error.
+    if (!navigator.clipboard?.read) {
+      alert("Clipboard paste needs HTTPS. On iPad, open the app over https (npm run dev:lan), or use Cmd+V with a keyboard.");
+      return;
+    }
     try {
       const items = await navigator.clipboard.read();
       for (const it of items) {
