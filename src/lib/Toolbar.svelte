@@ -45,6 +45,8 @@
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
+  const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
+
   let curveOpen = $state(false);
   let curvePopupEl: HTMLDivElement;
   let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
@@ -186,16 +188,17 @@
       >Apply layer transform to select</span
     >
   {/if}
+  {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
   <label class="flex items-center gap-1 text-sm text-text-secondary"
     >Size
-    <input type="range" min="0.5" max="60" step="0.5" bind:value={appState.brush.size} />
+    <input type="range" min="0.5" max="60" step="0.5" bind:value={stroke.size} />
     <input
       class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
       type="number"
       min="0.5"
       max="60"
       step="0.5"
-      bind:value={appState.brush.size}
+      bind:value={stroke.size}
       title="Brush size"
     />
   </label>
@@ -203,8 +206,8 @@
     {#each SIZE_PRESETS as preset (preset)}
       <button
         class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
-        class:bg-surface-active={appState.brush.size === preset}
-        onclick={() => (appState.brush.size = preset)}>{preset}</button
+        class:bg-surface-active={stroke.size === preset}
+        onclick={() => (stroke.size = preset)}>{preset}</button
       >
     {/each}
   </div>
@@ -212,12 +215,12 @@
     class="flex items-center gap-1 text-sm text-text-secondary"
     title="How much pen pressure widens the stroke"
     >Press
-    <input type="range" min="1" max="8" step="0.5" bind:value={appState.sizeRange} />
-    <span class="text-xs text-text-secondary w-6">{appState.sizeRange}×</span>
+    <input type="range" min="1" max="8" step="0.5" bind:value={stroke.sizeRange} />
+    <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
   </label>
   <select
     class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1"
-    bind:value={appState.brushType}
+    bind:value={stroke.brushType}
     title="Brush type"
   >
     <option value="smooth">Smooth</option>
@@ -228,18 +231,18 @@
   </select>
   <label class="flex items-center gap-1 text-xs text-text-secondary"
     >Opacity
-    <input type="range" min="1" max="100" class="w-16" bind:value={appState.brush.opacity} />
+    <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary"
     >Smooth
-    <input type="range" min="0" max="100" class="w-16" bind:value={appState.brush.smoothing} />
+    <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary"
     >Stream
-    <input type="range" min="0" max="100" class="w-16" bind:value={appState.streamline} />
+    <input type="range" min="0" max="100" class="w-16" bind:value={stroke.streamline} />
   </label>
   <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
-    <input type="checkbox" bind:checked={appState.brush.taper} /> Taper
+    <input type="checkbox" bind:checked={stroke.taper} /> Taper
   </label>
   <div class="relative" use:clickOutside={() => (curveOpen = false)}>
     <button
@@ -252,7 +255,7 @@
     </button>
     <div class="curve-popup" class:open={curveOpen} bind:this={curvePopupEl}></div>
   </div>
-  <input type="color" bind:value={appState.brush.color} />
+  {#if appState.tool !== "eraser"}<input type="color" bind:value={appState.brush.color} />{/if}
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Undo"

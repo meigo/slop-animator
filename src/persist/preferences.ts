@@ -1,17 +1,18 @@
-import type { Tool, BrushKind } from "../state/appState.svelte";
-import type { BrushSettings } from "../core/brush";
+import type { Tool, BrushKind, ToolSettings } from "../state/appState.svelte";
 import type { CurvePoint } from "../core/pressure-curve";
 
 export interface Preferences {
   tool: Tool;
-  brush: BrushSettings;
-  brushType: BrushKind;
-  sizeRange: number;
-  streamline: number;
+  brush: ToolSettings;
+  eraser: ToolSettings;
   fill: { tolerance: number; expand: number };
   theme: "dark" | "light";
   loop: boolean;
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
+  // Legacy (read-only back-compat; older versions wrote these at the top level).
+  brushType?: BrushKind;
+  sizeRange?: number;
+  streamline?: number;
 }
 
 const KEY = "slop-animator:prefs";
