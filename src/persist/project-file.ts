@@ -11,6 +11,7 @@ export interface DrawingLayerJson {
   boilStrength: number;
   groupId: number | null;
   cells: ("key" | "hold")[];
+  transform: RefTransform;
 }
 
 export interface ReferenceJson {
@@ -84,6 +85,7 @@ export function projectToJson(project: Project): ProjectJson {
       boilStrength: l.boilStrength,
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
+      transform: l.transform,
     })),
     references: project.layers
       .map((l, index) => ({ l, index }))
@@ -168,9 +170,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     layers.push({
       kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
       locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, groupId: lj.groupId ?? null, cells,
-      // Identity placeholder so the load literal compiles with the new DrawingLayer.transform field;
-      // the persistence task (serialize + `lj.transform ?? identity`) wires this to saved data.
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
     });
   }
   const refsJson = json.references ?? [];

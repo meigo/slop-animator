@@ -29,7 +29,7 @@ describe("projectToJson", () => {
       boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
       groups: [],
       layers: [
-        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells: ["key", "hold"] },
+        { id: 1, name: "L1", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells: ["key", "hold"], transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } },
       ],
       references: [
         { index: 1, id: 2, name: "R2", visible: true, opacity: 60, offsetFrames: 0, groupId: null, was: "image",
