@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project } from "../anim/document";
 import { createReferenceLayer, defaultBoilConfig } from "../anim/document";
-import { renderFrame, compositeFrameLayers } from "../anim/render";
+import { renderFrame, compositeFrameLayers, drawReferenceMedia } from "../anim/render";
 
 function recordingCtx() {
   const calls: string[] = [];
@@ -125,6 +125,35 @@ describe("compositeFrameLayers with reference layers", () => {
     expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
       `drawImage:${(drawC as unknown as { __id: number }).__id}@1`,
     ]);
+  });
+});
+
+describe("drawReferenceMedia", () => {
+  const imageMedia = (id: number, w = 50, h = 40) =>
+    ({ type: "image" as const, el: { __id: id, naturalWidth: w, naturalHeight: h } as unknown as HTMLImageElement });
+  const refLayer = (media: ReturnType<typeof imageMedia> | { type: "missing"; was: "image"; name: string }) =>
+    createReferenceLayer(media as never, "r");
+
+  it("records translate/rotate/scale then a sized drawImage for loaded image media", () => {
+    const ctx = recordingCtx();
+    drawReferenceMedia(ctx as unknown as CanvasRenderingContext2D, refLayer(imageMedia(7)), 100, 100, 1);
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual(["drawImage:7@1:sized"]);
+  });
+
+  it("is a no-op for missing media", () => {
+    const ctx = recordingCtx();
+    drawReferenceMedia(
+      ctx as unknown as CanvasRenderingContext2D,
+      refLayer({ type: "missing", was: "image", name: "x" }),
+      100, 100, 1
+    );
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([]);
+  });
+
+  it("is a no-op for zero-size media", () => {
+    const ctx = recordingCtx();
+    drawReferenceMedia(ctx as unknown as CanvasRenderingContext2D, refLayer(imageMedia(7, 0, 0)), 100, 100, 1);
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([]);
   });
 });
 
