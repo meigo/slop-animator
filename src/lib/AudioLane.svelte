@@ -4,13 +4,12 @@
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
-  export let cellW: number;
-  export let labelW: number;
+  let { cellW, labelW }: { cellW: number; labelW: number } = $props();
 
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
 
-  // Draw the waveform onto the canvas; redraws when params change (legacy-mode action).
+  // Draw the waveform onto the canvas; redraws when params change (Svelte action).
   function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
     const draw = () => {
       const audio = state.project.audio;

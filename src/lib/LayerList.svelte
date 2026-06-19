@@ -2,20 +2,20 @@
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
   import { Plus, Copy, ArrowDownToLine, Trash2, Eye, EyeOff, GripVertical, Pencil, Link, FolderPlus, Ungroup, ChevronDown, ChevronRight, Image, Film, ImageDown, Stamp, RotateCcw } from "@lucide/svelte";
-  import { state, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, rasterizeReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups, applyLayerTransform, resetLayerTransform } from "../state/appState.svelte";
+  import { state as appState, bump, addLayerToProject, removeLayer, duplicateLayer, mergeDown, renameLayer, relinkReference, rasterizeReference, groupActiveLayer, ungroup, toggleGroupCollapsed, toggleGroupVisible, renameGroup, reorderLayersWithGroups, applyLayerTransform, resetLayerTransform } from "../state/appState.svelte";
   import { createDrawingLayer, groupOf, isIdentityTransform } from "../anim/document";
   import type { Layer, LayerGroup } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
 
   let listEl: HTMLDivElement;
-  let dragNonce = 0; // bumped after a drag to force a full {#key} re-render of the list
+  let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
   let dropHandled = false; // latch so a single drop's multiple SortableJS onEnd events run rebuild once
 
-  let editingId: number | null = null;
-  let draft = "";
+  let editingId: number | null = $state(null);
+  let draft = $state("");
 
-  let editingGroupId: number | null = null;
-  let groupDraft = "";
+  let editingGroupId: number | null = $state(null);
+  let groupDraft = $state("");
 
   let relinkInput: HTMLInputElement;
   let relinkTargetId: number | null = null;
@@ -58,14 +58,13 @@
   }
 
   function addLayer() {
-    addLayerToProject(createDrawingLayer(state.project.frameCount)); // undoable
+    addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
   }
 
   // Build display segments (top-first, reverse of the bottom→top data order).
   // Each segment is either a bare layer ({ layer }) or a contiguous group block
-  // ({ group, layers }). Called from the template with `state.project.layers`/`.groups` so the
-  // template tracks those reactive reads — a `$:` block would NOT (this is a legacy-mode component
-  // that imports the `state` proxy, and legacy `$:` doesn't track external rune-proxy reads).
+  // ({ group, layers }). Called from the template with `appState.project.layers`/`.groups` so the
+  // reads are tracked fine-grained (runes mode).
   type Segment = { layer: Layer } | { group: LayerGroup; layers: Layer[] };
   function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] {
     const segs: Segment[] = [];
@@ -130,11 +129,11 @@
 </script>
 
 {#snippet layerRow(layer: Layer)}
-  {@const active = layer.id === state.activeLayerId}
+  {@const active = layer.id === appState.activeLayerId}
   <div data-layer-id={layer.id}
        class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
        class:bg-surface-active={active}
-       onclick={() => (state.activeLayerId = layer.id)} role="presentation">
+       onclick={() => (appState.activeLayerId = layer.id)} role="presentation">
     <!-- Row 1: compact (every layer) -->
     <div class="flex items-center gap-1 px-1 py-1">
       <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"><GripVertical size={14} /></span>
@@ -197,15 +196,15 @@
   <div class="flex items-center gap-1 p-1 border-b border-border">
     <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
     <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Add layer" onclick={addLayer}><Plus size={16} /></button>
-    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Duplicate layer" onclick={() => duplicateLayer(state.activeLayerId)}><Copy size={16} /></button>
-    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Merge down" onclick={() => mergeDown(state.activeLayerId)}><ArrowDownToLine size={16} /></button>
+    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Duplicate layer" onclick={() => duplicateLayer(appState.activeLayerId)}><Copy size={16} /></button>
+    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Merge down" onclick={() => mergeDown(appState.activeLayerId)}><ArrowDownToLine size={16} /></button>
     <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="New group" onclick={groupActiveLayer}><FolderPlus size={16} /></button>
-    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Delete layer" onclick={() => removeLayer(state.activeLayerId)}><Trash2 size={16} /></button>
+    <button class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary" title="Delete layer" onclick={() => removeLayer(appState.activeLayerId)}><Trash2 size={16} /></button>
   </div>
 
   <div bind:this={listEl} class="flex-1 overflow-y-auto">
     {#key dragNonce}
-    {#each buildSegments(state.project.layers, state.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
+    {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
       {#if "layer" in seg}
         {@render layerRow(seg.layer)}
       {:else}
