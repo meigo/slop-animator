@@ -9,6 +9,7 @@
 
   let listEl: HTMLDivElement;
   let dragNonce = 0; // bumped after a drag to force a full {#key} re-render of the list
+  let dropHandled = false; // latch so a single drop's multiple SortableJS onEnd events run rebuild once
 
   let editingId: number | null = null;
   let draft = "";
@@ -81,7 +82,14 @@
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),
   // then reverses to the bottom→top data order.
-  function rebuild() {
+  function rebuild(evt: Sortable.SortableEvent) {
+    // SortableJS can fire onEnd twice for one drop (cross-list: source + destination). Act on the
+    // first only — one DOM walk already captures the full final order, and the evt.item removal
+    // below would corrupt a second walk. Reset on a microtask, before any future drag.
+    if (dropHandled) return;
+    dropHandled = true;
+    queueMicrotask(() => { dropHandled = false; });
+
     const order: { id: number; groupId: number | null }[] = [];
     for (const child of listEl.children) {
       const el = child as HTMLElement;
@@ -94,10 +102,12 @@
       }
     }
     reorderLayersWithGroups(order.reverse());
-    // SortableJS mutated the DOM directly; Svelte's diff against that leaves the dragged node
-    // duplicated. Bumping `dragNonce` forces the `{#key}` list to fully tear down and rebuild from
-    // state, discarding any node SortableJS moved — robust regardless of drag direction. Runs after
-    // this handler returns (Svelte updates are async), so it never destroys a node mid-drag.
+
+    // SortableJS physically relocated evt.item. Dropped at the bottom it lands AFTER the {#each}
+    // end-anchor, so the {#key} re-render's teardown can't reach it and it survives as a duplicate
+    // row. Remove the relocated node ourselves; the dragNonce re-render then rebuilds a clean list
+    // from state (discarding any node SortableJS moved), robust regardless of drop position.
+    evt.item.remove();
     dragNonce++;
   }
 
