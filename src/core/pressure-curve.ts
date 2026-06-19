@@ -84,7 +84,10 @@ export class PressureCurve {
  * Creates the curve editor UI element.
  * Returns the container element and the PressureCurve instance.
  */
-export function createCurveEditor(curve: PressureCurve, onChange: () => void): HTMLElement & { redraw: () => void } {
+export function createCurveEditor(
+  curve: PressureCurve,
+  onChange: () => void,
+): HTMLElement & { redraw: () => void } {
   const SIZE = 160;
   const PAD = 20;
   const FULL = SIZE + PAD * 2;

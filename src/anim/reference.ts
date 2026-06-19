@@ -1,4 +1,9 @@
-import { createReferenceLayer, type ReferenceLayer, type ReferenceMedia, type Project } from "./document";
+import {
+  createReferenceLayer,
+  type ReferenceLayer,
+  type ReferenceMedia,
+  type Project,
+} from "./document";
 
 export function loadImageMedia(file: File): Promise<ReferenceMedia> {
   return new Promise((resolve, reject) => {
@@ -17,13 +22,18 @@ export function loadVideoMedia(file: File, onSeeked: () => void): Promise<Refere
     el.playsInline = true;
     el.addEventListener("seeked", onSeeked);
     el.addEventListener("loadeddata", () => resolve({ type: "video", el }), { once: true });
-    el.addEventListener("error", () => reject(new Error(`Failed to load video: ${file.name}`)), { once: true });
+    el.addEventListener("error", () => reject(new Error(`Failed to load video: ${file.name}`)), {
+      once: true,
+    });
     el.src = URL.createObjectURL(file);
   });
 }
 
 /** Load reference media of either kind, chosen by the file's MIME type (video/* → video, else image). */
-export async function loadReferenceMedia(file: File, onSeeked: () => void): Promise<ReferenceMedia> {
+export async function loadReferenceMedia(
+  file: File,
+  onSeeked: () => void,
+): Promise<ReferenceMedia> {
   return file.type.startsWith("video") ? loadVideoMedia(file, onSeeked) : loadImageMedia(file);
 }
 

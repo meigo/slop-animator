@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { advancePlayhead, Playback, effectiveRange, withRangeIn, withRangeOut, snapPlayheadToRange } from "../anim/playback";
+import {
+  advancePlayhead,
+  Playback,
+  effectiveRange,
+  withRangeIn,
+  withRangeOut,
+  snapPlayheadToRange,
+} from "../anim/playback";
 
 describe("advancePlayhead", () => {
   it("advances to the next frame mid-range", () => {
@@ -16,7 +23,14 @@ describe("advancePlayhead", () => {
   });
 });
 
-function harness(opts: { fps: number; frameCount: number; loop: boolean; start?: number; rangeStart?: number; rangeEnd?: number }) {
+function harness(opts: {
+  fps: number;
+  frameCount: number;
+  loop: boolean;
+  start?: number;
+  rangeStart?: number;
+  rangeEnd?: number;
+}) {
   let current = opts.start ?? 0;
   let playing = true;
   const pb = new Playback({
@@ -25,8 +39,12 @@ function harness(opts: { fps: number; frameCount: number; loop: boolean; start?:
     getRangeEnd: () => opts.rangeEnd ?? opts.frameCount - 1,
     getLoop: () => opts.loop,
     getCurrent: () => current,
-    setFrame: (f) => { current = f; },
-    onPlayingChange: (p) => { playing = p; },
+    setFrame: (f) => {
+      current = f;
+    },
+    onPlayingChange: (p) => {
+      playing = p;
+    },
   });
   return { pb, frame: () => current, playing: () => playing };
 }

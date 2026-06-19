@@ -1,4 +1,17 @@
-import { isDrawingLayer, createCellCanvas, setMinLayerId, refreshLength, defaultBoilConfig, type Project, type Cell, type DrawingLayer, type BoilConfig, type ReferenceLayer, type RefTransform, type Layer } from "../anim/document";
+import {
+  isDrawingLayer,
+  createCellCanvas,
+  setMinLayerId,
+  refreshLength,
+  defaultBoilConfig,
+  type Project,
+  type Cell,
+  type DrawingLayer,
+  type BoilConfig,
+  type ReferenceLayer,
+  type RefTransform,
+  type Layer,
+} from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
 
@@ -15,7 +28,7 @@ export interface DrawingLayerJson {
 }
 
 export interface ReferenceJson {
-  index: number;            // position in the full project.layers stack (z-order)
+  index: number; // position in the full project.layers stack (z-order)
   id: number;
   name: string;
   visible: boolean;
@@ -91,14 +104,22 @@ export function projectToJson(project: Project): ProjectJson {
       .map((l, index) => ({ l, index }))
       .filter((e): e is { l: ReferenceLayer; index: number } => e.l.kind === "ref")
       .map(({ l, index }) => ({
-        index, id: l.id, name: l.name, visible: l.visible, opacity: l.opacity,
+        index,
+        id: l.id,
+        name: l.name,
+        visible: l.visible,
+        opacity: l.opacity,
         offsetFrames: l.offsetFrames,
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
       })),
     audio: project.audio
-      ? { name: project.audio.name, offsetFrames: project.audio.offsetFrames, muted: project.audio.muted }
+      ? {
+          name: project.audio.name,
+          offsetFrames: project.audio.offsetFrames,
+          muted: project.audio.muted,
+        }
       : null,
   };
 }
@@ -113,16 +134,24 @@ function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
     canvas.toBlob(async (b) => {
       if (!b) return reject(new Error("toBlob failed"));
       resolve(new Uint8Array(await b.arrayBuffer()));
-    }, "image/png")
+    }, "image/png"),
   );
 }
 
 function decodePng(bytes: Uint8Array): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/png" }));
+    const url = URL.createObjectURL(
+      new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/png" }),
+    );
     const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("png decode failed")); };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("png decode failed"));
+    };
     img.src = url;
   });
 }
@@ -156,7 +185,10 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     maxId = Math.max(maxId, lj.id);
     const cells: Cell[] = [];
     for (let i = 0; i < lj.cells.length; i++) {
-      if (lj.cells[i] === "hold") { cells.push({ kind: "hold" }); continue; }
+      if (lj.cells[i] === "hold") {
+        cells.push({ kind: "hold" });
+        continue;
+      }
       const canvas = createCellCanvas(json.width, json.height, dpr);
       const bytes = zip[frameAssetPath(lj.id, i)];
       if (bytes) {
@@ -168,8 +200,15 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
       cells.push({ kind: "key", canvas });
     }
     layers.push({
-      kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
-      locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, groupId: lj.groupId ?? null, cells,
+      kind: "draw",
+      id: lj.id,
+      name: lj.name,
+      visible: lj.visible,
+      locked: lj.locked,
+      opacity: lj.opacity,
+      boilStrength: lj.boilStrength ?? 1,
+      groupId: lj.groupId ?? null,
+      cells,
       transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
     });
   }
@@ -178,8 +217,14 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   const refLayers = refsJson.map((rj) => ({
     index: rj.index,
     value: {
-      kind: "ref", id: rj.id, name: rj.name, visible: rj.visible, opacity: rj.opacity,
-      offsetFrames: rj.offsetFrames, groupId: rj.groupId ?? null, transform: rj.transform,
+      kind: "ref",
+      id: rj.id,
+      name: rj.name,
+      visible: rj.visible,
+      opacity: rj.opacity,
+      offsetFrames: rj.offsetFrames,
+      groupId: rj.groupId ?? null,
+      transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer,
   }));
@@ -188,8 +233,14 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
   const project: Project = {
-    width: json.width, height: json.height, fps: json.fps,
-    bgColor: json.bgColor, frameCount: json.frameCount, boil: migrateBoil(json.boil), groups, layers: orderedLayers,
+    width: json.width,
+    height: json.height,
+    fps: json.fps,
+    bgColor: json.bgColor,
+    frameCount: json.frameCount,
+    boil: migrateBoil(json.boil),
+    groups,
+    layers: orderedLayers,
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
@@ -198,7 +249,13 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   if (aj && audioBytes) {
     try {
       const buffer = await decodeAudioBytes(audioBytes);
-      project.audio = { name: aj.name, bytes: audioBytes, buffer, offsetFrames: aj.offsetFrames, muted: aj.muted };
+      project.audio = {
+        name: aj.name,
+        bytes: audioBytes,
+        buffer,
+        offsetFrames: aj.offsetFrames,
+        muted: aj.muted,
+      };
     } catch {
       project.audio = null; // corrupt/unsupported audio → open the project without it
     }

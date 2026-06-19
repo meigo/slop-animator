@@ -9,7 +9,9 @@ export class History {
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private maxSize: number;
-  constructor(maxSize = 50) { this.maxSize = maxSize; }
+  constructor(maxSize = 50) {
+    this.maxSize = maxSize;
+  }
 
   push(cmd: Command): void {
     this.undoStack.push(cmd);
@@ -36,6 +38,10 @@ export class History {
     this.redoStack = [];
   }
 
-  get canUndo(): boolean { return this.undoStack.length > 0; }
-  get canRedo(): boolean { return this.redoStack.length > 0; }
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
 }

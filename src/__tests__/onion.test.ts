@@ -58,23 +58,50 @@ function recCtx(w = 100, h = 100) {
 let oid = 0;
 const kc = () => ({ __id: ++oid }) as unknown as HTMLCanvasElement;
 function dlayer(id: number, cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } };
+  return {
+    kind: "draw",
+    id,
+    name: `L${id}`,
+    visible: true,
+    locked: false,
+    opacity: 100,
+    boilStrength: 1,
+    groupId: null,
+    cells,
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+  };
 }
 
 describe("renderFrameWithOnion", () => {
   const onion: OnionConfig = {
-    enabled: true, prev: 1, next: 1, allLayers: false,
-    tintPrev: "#ff0000", tintNext: "#0000ff",
+    enabled: true,
+    prev: 1,
+    next: 1,
+    allLayers: false,
+    tintPrev: "#ff0000",
+    tintNext: "#0000ff",
   };
 
   it("draws bg, then the prev ghost (tinted+faded) and next ghost, then the current frame on top", () => {
-    const prevC = kc(); const curC = kc(); const nextC = kc();
+    const prevC = kc();
+    const curC = kc();
+    const nextC = kc();
     const layerId = 1;
     const p: Project = {
-      width: 100, height: 100, fps: 12, bgColor: "#eee", frameCount: 3, boil: defaultBoilConfig(), groups: [],
-      layers: [dlayer(layerId, [
-        { kind: "key", canvas: prevC }, { kind: "key", canvas: curC }, { kind: "key", canvas: nextC },
-      ])],
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#eee",
+      frameCount: 3,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [
+        dlayer(layerId, [
+          { kind: "key", canvas: prevC },
+          { kind: "key", canvas: curC },
+          { kind: "key", canvas: nextC },
+        ]),
+      ],
       audio: null,
     };
     const display = recCtx();
@@ -82,7 +109,11 @@ describe("renderFrameWithOnion", () => {
     renderFrameWithOnion(
       display as unknown as CanvasRenderingContext2D,
       scratch as unknown as CanvasRenderingContext2D,
-      p, 1, 1, onion, layerId
+      p,
+      1,
+      1,
+      onion,
+      layerId,
     );
 
     expect(display.calls[0]).toBe("clear");

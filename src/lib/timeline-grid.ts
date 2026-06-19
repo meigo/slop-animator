@@ -14,7 +14,12 @@ const EDGE_PX = 5; // hotspot width at a span's right edge
  * - on the keyframe cell itself → move that key
  * - otherwise → seek to the column.
  */
-export function planCellPointer(cells: Cell[], offsetX: number, cellW: number, count: number): CellPointer {
+export function planCellPointer(
+  cells: Cell[],
+  offsetX: number,
+  cellW: number,
+  count: number,
+): CellPointer {
   const frame = columnAtX(offsetX, cellW, count);
   const ki = resolveKeyframeIndex(cells, frame);
   if (ki !== null) {

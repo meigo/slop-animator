@@ -1,4 +1,11 @@
-import { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH } from "mediabunny";
+import {
+  Output,
+  Mp4OutputFormat,
+  WebMOutputFormat,
+  BufferTarget,
+  CanvasSource,
+  QUALITY_HIGH,
+} from "mediabunny";
 import { renderFrame } from "../anim/render";
 import { evenDimensions } from "./frames";
 import type { Project } from "../anim/document";
@@ -14,8 +21,13 @@ export function isVideoExportSupported(): boolean {
  * Encode every frame (drawing layers over the paper background, reference layers excluded)
  * to an MP4 (H.264) or WebM (VP9) Blob via mediabunny + WebCodecs.
  */
-export async function exportVideo(project: Project, dpr: number, format: VideoFormat): Promise<Blob> {
-  if (!isVideoExportSupported()) throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
+export async function exportVideo(
+  project: Project,
+  dpr: number,
+  format: VideoFormat,
+): Promise<Blob> {
+  if (!isVideoExportSupported())
+    throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
 
   const { w, h } = evenDimensions(project.width * dpr, project.height * dpr);
   const canvas = document.createElement("canvas");
@@ -36,7 +48,11 @@ export async function exportVideo(project: Project, dpr: number, format: VideoFo
 
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
-    renderFrame(ctx, project, f, dpr, { drawBg: true, includeReference: false, boil: project.boil.enabled ? project.boil : undefined });
+    renderFrame(ctx, project, f, dpr, {
+      drawBg: true,
+      includeReference: false,
+      boil: project.boil.enabled ? project.boil : undefined,
+    });
     await source.add(f * dt, dt);
   }
 

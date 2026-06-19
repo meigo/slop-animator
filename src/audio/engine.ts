@@ -37,7 +37,11 @@ class AudioEngine {
 
   stop(): void {
     if (this.source) {
-      try { this.source.stop(); } catch { /* already stopped */ }
+      try {
+        this.source.stop();
+      } catch {
+        /* already stopped */
+      }
       this.source.disconnect();
       this.source = null;
     }

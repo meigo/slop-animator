@@ -51,7 +51,7 @@ export function drawStampStrokeIncremental(
   points: InputPoint[],
   settings: StampBrushSettings,
   sizeRange: number = 1.0,
-  spacing: number = 0.15
+  spacing: number = 0.15,
 ) {
   if (points.length === 0) return;
 

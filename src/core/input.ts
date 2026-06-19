@@ -30,7 +30,7 @@ export function setupInput(
   canvas: HTMLCanvasElement,
   onStroke: StrokeHandler,
   transformCoords?: CoordTransform,
-  options?: Omit<InputOptions, "onStroke" | "transformCoords">
+  options?: Omit<InputOptions, "onStroke" | "transformCoords">,
 ) {
   let isDrawing = false;
   let currentPoints: InputPoint[] = [];

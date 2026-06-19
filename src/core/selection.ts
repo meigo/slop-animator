@@ -142,7 +142,9 @@ export class Selection {
   }
 
   get hasFloating(): boolean {
-    return (this.state === "transforming" || this.state === "warping") && this.floatingPixels !== null;
+    return (
+      (this.state === "transforming" || this.state === "warping") && this.floatingPixels !== null
+    );
   }
 
   get isDragging(): boolean {
@@ -190,7 +192,10 @@ export class Selection {
 
     if (this.mode === "lasso") {
       this.lassoPoints.push({ x, y });
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
       for (const p of this.lassoPoints) {
         if (p.x < minX) minX = p.x;
         if (p.y < minY) minY = p.y;
@@ -336,7 +341,7 @@ export class Selection {
         return this.overlayCtx.isPointInPath(this.lassoPath, x, y) ? "move" : null;
       }
       const r = this.rect;
-      return (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) ? "move" : null;
+      return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h ? "move" : null;
     }
 
     const tol = this.hitTolerance();
@@ -410,7 +415,9 @@ export class Selection {
 
     if (this.state === "warping") {
       if (this.dragging === "move") {
-        this.warpGrid = this.warpGridStart.map((row) => row.map((p) => ({ x: p.x + dx, y: p.y + dy })));
+        this.warpGrid = this.warpGridStart.map((row) =>
+          row.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+        );
       } else if (this.dragging === "grid" && this.dragGridIdx) {
         const { row, col } = this.dragGridIdx;
         this.warpGrid = this.warpGridStart.map((rArr, r) =>
@@ -427,11 +434,18 @@ export class Selection {
 
     switch (this.dragging) {
       case "move": {
-        this.matrix = { ...this.matrixStart, e: this.matrixStart.e + dx, f: this.matrixStart.f + dy };
+        this.matrix = {
+          ...this.matrixStart,
+          e: this.matrixStart.e + dx,
+          f: this.matrixStart.f + dy,
+        };
         break;
       }
 
-      case "tl": case "tr": case "bl": case "br": {
+      case "tl":
+      case "tr":
+      case "bl":
+      case "br": {
         // Non-uniform scale around the opposite corner (in local rect coords).
         const ax = this.dragging === "tl" || this.dragging === "bl" ? r.x + r.w : r.x;
         const ay = this.dragging === "tl" || this.dragging === "tr" ? r.y + r.h : r.y;
@@ -450,7 +464,8 @@ export class Selection {
         break;
       }
 
-      case "l": case "r": {
+      case "l":
+      case "r": {
         // Drag a vertical side; the opposite vertical side is anchored.
         // Translate the dragged side by (dx, dy) in world coords, leaving the opposite side fixed.
         const dl = invertVec(this.matrixStart, dx, dy);
@@ -471,7 +486,8 @@ export class Selection {
         break;
       }
 
-      case "t": case "b": {
+      case "t":
+      case "b": {
         const dl = invertVec(this.matrixStart, dx, dy);
         const ay = this.dragging === "b" ? r.y : r.y + r.h;
         const sign = this.dragging === "b" ? 1 : -1;
@@ -553,7 +569,14 @@ export class Selection {
       ctx.drawImage(this.floatingPixels, this.rect.x, this.rect.y, this.rect.w, this.rect.h);
       ctx.restore();
     } else if (this.state === "warping") {
-      drawWarpedMesh(ctx, this.floatingPixels, this.rect, this.warpGrid, this.warpRows, this.warpCols);
+      drawWarpedMesh(
+        ctx,
+        this.floatingPixels,
+        this.rect,
+        this.warpGrid,
+        this.warpRows,
+        this.warpCols,
+      );
     }
   }
 
@@ -580,14 +603,26 @@ export class Selection {
 
   getCursor(handle: Handle): string {
     switch (handle) {
-      case "move": return "move";
-      case "rotate": return ROTATE_CURSOR;
-      case "tl": case "br": return "nwse-resize";
-      case "tr": case "bl": return "nesw-resize";
-      case "l": case "r": return "ew-resize";
-      case "t": case "b": return "ns-resize";
-      case "grid": return "grab";
-      default: return "crosshair";
+      case "move":
+        return "move";
+      case "rotate":
+        return ROTATE_CURSOR;
+      case "tl":
+      case "br":
+        return "nwse-resize";
+      case "tr":
+      case "bl":
+        return "nesw-resize";
+      case "l":
+      case "r":
+        return "ew-resize";
+      case "t":
+      case "b":
+        return "ns-resize";
+      case "grid":
+        return "grab";
+      default:
+        return "crosshair";
     }
   }
 
@@ -630,9 +665,11 @@ export class Selection {
     // Even-odd ray test against the closed polygon. Handles non-convex / self-intersecting cases gracefully.
     let inside = false;
     for (let i = 0, j = quad.length - 1; i < quad.length; j = i++) {
-      const xi = quad[i].x, yi = quad[i].y;
-      const xj = quad[j].x, yj = quad[j].y;
-      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+      const xi = quad[i].x,
+        yi = quad[i].y;
+      const xj = quad[j].x,
+        yj = quad[j].y;
+      const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
       if (intersect) inside = !inside;
     }
     return inside;
@@ -769,7 +806,12 @@ export class Selection {
     ctx.setLineDash([]);
   }
 
-  private drawHandle(ctx: CanvasRenderingContext2D, x: number, y: number, shape: "square" | "circle") {
+  private drawHandle(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    shape: "square" | "circle",
+  ) {
     if (shape === "square") {
       ctx.fillStyle = "#fff";
       ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
@@ -840,7 +882,13 @@ function sampleGrid(rect: SelectionRect, m: Mat, rows: number, cols: number): Pt
 }
 
 /** Resample a control grid to a new resolution via piecewise bilinear interp over the existing cells. */
-function resampleGrid(grid: Pt[][], oldRows: number, oldCols: number, newRows: number, newCols: number): Pt[][] {
+function resampleGrid(
+  grid: Pt[][],
+  oldRows: number,
+  oldCols: number,
+  newRows: number,
+  newCols: number,
+): Pt[][] {
   const out: Pt[][] = [];
   for (let i = 0; i < newRows; i++) {
     const row: Pt[] = [];
@@ -906,14 +954,20 @@ function drawTriangle(
 /** Affine that maps src triangle to dst triangle (3 corresponding vertices). */
 function triangleAffine(src: [Pt, Pt, Pt], dst: [Pt, Pt, Pt]): Mat {
   const aSrc: Mat = {
-    a: src[1].x - src[0].x, b: src[1].y - src[0].y,
-    c: src[2].x - src[0].x, d: src[2].y - src[0].y,
-    e: src[0].x, f: src[0].y,
+    a: src[1].x - src[0].x,
+    b: src[1].y - src[0].y,
+    c: src[2].x - src[0].x,
+    d: src[2].y - src[0].y,
+    e: src[0].x,
+    f: src[0].y,
   };
   const aDst: Mat = {
-    a: dst[1].x - dst[0].x, b: dst[1].y - dst[0].y,
-    c: dst[2].x - dst[0].x, d: dst[2].y - dst[0].y,
-    e: dst[0].x, f: dst[0].y,
+    a: dst[1].x - dst[0].x,
+    b: dst[1].y - dst[0].y,
+    c: dst[2].x - dst[0].x,
+    d: dst[2].y - dst[0].y,
+    e: dst[0].x,
+    f: dst[0].y,
   };
   return multiply(aDst, invert(aSrc));
 }
