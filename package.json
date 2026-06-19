@@ -17,7 +17,11 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*": "prettier --write --ignore-unknown"
+    "*.{ts,js,cjs,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{svelte,css,json,md,html,yml,yaml}": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
