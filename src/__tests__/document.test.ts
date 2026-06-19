@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, resizeCells, countKeyframesPastLength, mediaIntrinsicSize, isLayerVisible, groupOf, nonEmptyGroups, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
+import { resolveKeyframeIndex, buildFrameDrawList, containRect, createReferenceLayer, documentLength, refreshLength, createProject, createDrawingLayer, defaultBoilConfig, isCrispFrame, resolveLayerName, resizeCells, countKeyframesPastLength, mediaIntrinsicSize, isLayerVisible, groupOf, nonEmptyGroups, IDENTITY_TRANSFORM, isIdentityTransform, transformBaseRect, type Cell, type Project, type DrawingLayer, type ReferenceMedia, type ReferenceLayer } from "../anim/document";
 
 const makeKey = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
 const makeHold = (): Cell => ({ kind: "hold" });
@@ -32,7 +32,7 @@ describe("resolveKeyframeIndex", () => {
 });
 
 function layer(id: number, cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, ...over };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 }, ...over };
 }
 function proj(layers: DrawingLayer[], frameCount: number): Project {
   return { width: 100, height: 100, fps: 12, bgColor: "#fff", frameCount, boil: defaultBoilConfig(), groups: [], layers, audio: null };
@@ -118,6 +118,7 @@ describe("documentLength / refreshLength", () => {
   const draw = (len: number): DrawingLayer => ({
     kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null,
     cells: Array.from({ length: len }, () => ({ kind: "hold" }) as Cell),
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   });
   const ref = (): ReferenceLayer => ({
     kind: "ref", id: 9, name: "R", visible: true, opacity: 60, offsetFrames: 0, groupId: null,
@@ -274,5 +275,30 @@ describe("layer groups", () => {
     const p = { groups: [{ id: 10, name: "G", collapsed: false, visible: false }],
       layers: [dlayer(1, [makeKey()], { groupId: 10 }), dlayer(2, [makeKey()])] } as unknown as Project;
     expect(buildFrameDrawList(p, 0).map((o) => o.layerId)).toEqual([2]);
+  });
+});
+
+describe("layer transform helpers", () => {
+  it("isIdentityTransform detects identity", () => {
+    expect(isIdentityTransform(IDENTITY_TRANSFORM)).toBe(true);
+    expect(isIdentityTransform({ dx: 1, dy: 0, scale: 1, rotation: 0 })).toBe(false);
+    expect(isIdentityTransform({ dx: 0, dy: 0, scale: 2, rotation: 0 })).toBe(false);
+  });
+
+  it("createDrawingLayer starts at identity", () => {
+    expect(isIdentityTransform(createDrawingLayer(3).transform)).toBe(true);
+  });
+
+  it("transformBaseRect: full document for a draw layer", () => {
+    expect(transformBaseRect(createDrawingLayer(1), 100, 80)).toEqual({ x: 0, y: 0, w: 100, h: 80 });
+  });
+
+  it("transformBaseRect: contain-fit for a ref, null when media unloaded", () => {
+    const loaded = createReferenceLayer({ type: "image", el: { naturalWidth: 50, naturalHeight: 50 } as unknown as HTMLImageElement });
+    const r = transformBaseRect(loaded, 100, 100);
+    expect(r).not.toBeNull();
+    expect(r!.w).toBeCloseTo(100, 5);
+    const unloaded = createReferenceLayer({ type: "image", el: { naturalWidth: 0, naturalHeight: 0 } as unknown as HTMLImageElement });
+    expect(transformBaseRect(unloaded, 100, 100)).toBeNull();
   });
 });

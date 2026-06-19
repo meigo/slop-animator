@@ -168,6 +168,9 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     layers.push({
       kind: "draw", id: lj.id, name: lj.name, visible: lj.visible,
       locked: lj.locked, opacity: lj.opacity, boilStrength: lj.boilStrength ?? 1, groupId: lj.groupId ?? null, cells,
+      // Identity placeholder so the load literal compiles with the new DrawingLayer.transform field;
+      // the persistence task (serialize + `lj.transform ?? identity`) wires this to saved data.
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
     });
   }
   const refsJson = json.references ?? [];

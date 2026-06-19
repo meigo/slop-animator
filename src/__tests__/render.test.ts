@@ -27,7 +27,7 @@ function recordingCtx() {
 let id = 0;
 const keyCanvas = () => ({ __id: ++id }) as unknown as HTMLCanvasElement;
 function layer(cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
-  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, ...over };
+  return { kind: "draw", id: 1, name: "L", visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 }, ...over };
 }
 
 describe("renderFrame", () => {

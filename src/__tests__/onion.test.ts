@@ -58,7 +58,7 @@ function recCtx(w = 100, h = 100) {
 let oid = 0;
 const kc = () => ({ __id: ++oid }) as unknown as HTMLCanvasElement;
 function dlayer(id: number, cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } };
 }
 
 describe("renderFrameWithOnion", () => {

@@ -6,7 +6,7 @@ import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/docume
 function key(): Cell { return { kind: "key", canvas: {} as HTMLCanvasElement }; }
 function hold(): Cell { return { kind: "hold" }; }
 function dlayer(id: number, cells: Cell[]): DrawingLayer {
-  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells };
+  return { kind: "draw", id, name: `L${id}`, visible: true, locked: false, opacity: 100, boilStrength: 1, groupId: null, cells, transform: { dx: 0, dy: 0, scale: 1, rotation: 0 } };
 }
 function rlayer(id: number): ReferenceLayer {
   return { kind: "ref", id, name: `R${id}`, visible: true, opacity: 60, offsetFrames: 0, groupId: null,

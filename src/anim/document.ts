@@ -32,6 +32,7 @@ export interface DrawingLayer {
   boilStrength: number; // per-layer multiplier on boil amount/weight (1 = full, 0 = none)
   groupId: number | null;
   cells: Cell[];    // independent per-layer length; document length = the longest layer
+  transform: RefTransform;
 }
 
 export type ReferenceMedia =
@@ -59,6 +60,21 @@ export interface ReferenceLayer {
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
+
+export const IDENTITY_TRANSFORM: RefTransform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+
+export function isIdentityTransform(t: RefTransform): boolean {
+  return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
+}
+
+/** Logical base rect for a layer's transform: the full document for a draw layer; the media
+ *  contain-fit rect for a ref (null when the ref's media isn't loaded). */
+export function transformBaseRect(layer: Layer, docW: number, docH: number): { x: number; y: number; w: number; h: number } | null {
+  if (layer.kind === "draw") return { x: 0, y: 0, w: docW, h: docH };
+  const size = mediaIntrinsicSize(layer.media);
+  if (size.w === 0 || size.h === 0) return null;
+  return containRect(size.w, size.h, docW, docH);
+}
 
 export interface AudioTrack {
   name: string;          // file name (display)
@@ -248,6 +264,7 @@ export function createDrawingLayer(frameCount: number, name?: string): DrawingLa
     boilStrength: 1,
     groupId: null,
     cells: Array.from({ length: frameCount }, () => ({ kind: "hold" }) as Cell),
+    transform: { ...IDENTITY_TRANSFORM },
   };
 }
 
