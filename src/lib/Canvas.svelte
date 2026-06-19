@@ -26,6 +26,7 @@
   import { Selection } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
+  import BrushCursor from "./BrushCursor.svelte";
   import { transformBaseRect, isIdentityTransform, type Layer } from "../anim/document";
   import {
     hitTestHandle,
@@ -504,6 +505,7 @@
 <div
   bind:this={stage}
   class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
+  class:cursor-none={state.tool === "brush" || state.tool === "eraser"}
   onwheel={onWheel}
 >
   <div bind:this={wrapper} class="absolute left-0 top-0">
@@ -522,4 +524,5 @@
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
+  <BrushCursor getViewport={() => viewport} getContainer={() => stage} />
 </div>
