@@ -7,7 +7,7 @@
   import ExportDialog from "./lib/ExportDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
   import { onMount } from "svelte";
-  import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject, gatherPreferences, applyPreferences } from "./state/appState.svelte";
+  import { state, history, bump, playbackController, selectionRef, selectionActions, DPR, replaceProject, gatherPreferences, applyPreferences, pasteImageReference } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
 
@@ -43,6 +43,21 @@
     else if (e.key === "]") state.brush.size = Math.min(60, state.brush.size + 1);
   }
 
+  function onPaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.kind === "file" && it.type.startsWith("image/")) {
+        const blob = it.getAsFile();
+        if (blob) {
+          e.preventDefault();
+          void pasteImageReference(blob);
+        }
+        return;
+      }
+    }
+  }
+
   onMount(async () => {
     applyPreferences(loadPreferences());
     document.documentElement.classList.toggle("dark", state.theme === "dark");
@@ -65,7 +80,7 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onpaste={onPaste} />
 
 <div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
