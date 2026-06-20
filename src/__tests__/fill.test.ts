@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hexToRgba, floodFill } from "../core/fill";
+import { hexToRgba, floodFill, rgbToHex } from "../core/fill";
 
 describe("hexToRgba", () => {
   it("parses black at full opacity", () => {
@@ -64,5 +64,18 @@ describe("floodFill (expand:0)", () => {
     const { ctx, data } = gridCtx(2, 2, () => [255, 0, 0, 255]);
     floodFill(ctx, 0, 0, { r: 255, g: 0, b: 0, a: 255 }, { tolerance: 32, expand: 0 });
     for (let i = 0; i < 4; i++) expect(px(data, i)).toEqual([255, 0, 0, 255]);
+  });
+});
+
+describe("rgbToHex", () => {
+  it("maps black and white", () => {
+    expect(rgbToHex(0, 0, 0)).toBe("#000000");
+    expect(rgbToHex(255, 255, 255)).toBe("#ffffff");
+  });
+  it("maps a mid color", () => {
+    expect(rgbToHex(26, 26, 26)).toBe("#1a1a1a");
+  });
+  it("rounds and clamps out-of-range/fractional inputs", () => {
+    expect(rgbToHex(255.6, -3, 300)).toBe("#ff00ff");
   });
 });

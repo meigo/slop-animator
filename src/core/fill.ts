@@ -208,6 +208,15 @@ function dilateMask(mask: Uint8Array, w: number, h: number, radius: number): Uin
   return result;
 }
 
+/** [0..255] r,g,b → "#rrggbb" (lowercase); clamps + rounds. */
+export function rgbToHex(r: number, g: number, b: number): string {
+  const h = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
 export function hexToRgba(
   hex: string,
   opacity: number,
