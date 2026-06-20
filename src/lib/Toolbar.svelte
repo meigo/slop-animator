@@ -12,6 +12,7 @@
     bumpCurve,
     pasteImageReference,
     activeLayer,
+    selectEyedropper,
   } from "../state/appState.svelte";
   import { isIdentityTransform } from "../anim/document";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -41,6 +42,7 @@
     Moon,
     Spline,
     ClipboardPaste,
+    Pipette,
   } from "@lucide/svelte";
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
@@ -164,6 +166,12 @@
     class:bg-surface-active={appState.tool === "fill"}
     title="Fill"
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
+  >
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={appState.tool === "eyedropper"}
+    title="Eyedropper (sample color)"
+    onclick={selectEyedropper}><Pipette size={18} /></button
   >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"

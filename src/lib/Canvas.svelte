@@ -4,7 +4,7 @@
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
-  import { floodFill, hexToRgba } from "../core/fill";
+  import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
   import { renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
@@ -18,6 +18,7 @@
     bump,
     pressureCurve,
     toggleEraser,
+    applyEyedropper,
   } from "../state/appState.svelte";
   import { selectionRef, selectionActions } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
@@ -69,6 +70,10 @@
 
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
+
+  // A successful eyedropper pick fires on pointer-down and switches the tool back mid-gesture;
+  // this latch swallows the rest of that same gesture so it can't fall through and draw a stray dab.
+  let pickingGesture = false;
 
   function sizeDisplay() {
     display.width = state.project.width * DPR;
@@ -198,6 +203,14 @@
     recomposite();
   }
 
+  function sampleAt(p: { x: number; y: number }): string | null {
+    const px = Math.round(p.x * DPR),
+      py = Math.round(p.y * DPR);
+    if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
+    const [r, g, b] = displayCtx.getImageData(px, py, 1, 1).data;
+    return rgbToHex(r, g, b);
+  }
+
   let refDrag: { handle: Handle; start: Pt; startT: Layer["transform"]; center: Pt } | null = null;
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
@@ -230,6 +243,21 @@
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
+    if (pickingGesture) {
+      // A pick already consumed this gesture (the tool has since switched); ignore its move/up.
+      if (done) pickingGesture = false;
+      return;
+    }
+    if (state.tool === "eyedropper") {
+      if (points.length === 1) {
+        const hex = sampleAt(points[0]);
+        if (hex) {
+          applyEyedropper(hex); // sets color + switches the tool back
+          if (!done) pickingGesture = true; // swallow the rest of this gesture
+        }
+      }
+      return;
+    }
     const al = activeLayer();
     if (al.kind === "ref" || (al.kind === "draw" && state.tool === "transform")) {
       onTransformDrag(al, points, done);
@@ -506,6 +534,7 @@
   bind:this={stage}
   class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
   class:cursor-none={state.tool === "brush" || state.tool === "eraser"}
+  class:cursor-crosshair={state.tool === "eyedropper"}
   onwheel={onWheel}
 >
   <div bind:this={wrapper} class="absolute left-0 top-0">
@@ -524,5 +553,12 @@
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
-  <BrushCursor getViewport={() => viewport} getContainer={() => stage} />
+  <BrushCursor
+    getViewport={() => viewport}
+    getContainer={() => stage}
+    sampleColor={(cx, cy) => {
+      if (!viewport) return null;
+      return sampleAt(viewport.screenToCanvas(cx, cy));
+    }}
+  />
 </div>

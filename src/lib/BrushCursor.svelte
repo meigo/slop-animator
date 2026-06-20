@@ -6,13 +6,19 @@
   let {
     getViewport,
     getContainer,
-  }: { getViewport: () => Viewport | null; getContainer: () => HTMLElement | null } = $props();
+    sampleColor,
+  }: {
+    getViewport: () => Viewport | null;
+    getContainer: () => HTMLElement | null;
+    sampleColor?: (clientX: number, clientY: number) => string | null;
+  } = $props();
 
   let visible = $state(false);
   let x = $state(0);
   let y = $state(0);
   let diameter = $state(0);
   let dashed = $state(false);
+  let swatch = $state<string | null>(null);
   let raf = 0;
 
   const isStrokeTool = () => appState.tool === "brush" || appState.tool === "eraser";
@@ -29,6 +35,10 @@
     x = e.clientX - r.left;
     y = e.clientY - r.top;
     visible = true;
+    // Sample the eyedropper swatch only on pointer movement (NOT per rAF frame) — a per-frame
+    // getImageData readback would demote the GPU-backed display canvas to software.
+    swatch =
+      appState.tool === "eyedropper" && sampleColor ? sampleColor(e.clientX, e.clientY) : null;
   }
   const onLeave = () => (visible = false);
 
@@ -60,6 +70,14 @@
     class:dashed
     style="transform: translate({x}px, {y}px) translate(-50%, -50%); width: {diameter}px; height: {diameter}px;"
   ></div>
+{/if}
+{#if visible && appState.tool === "eyedropper" && swatch}
+  <div
+    class="eyedropper-swatch"
+    style="transform: translate({x}px, {y}px) translate(14px, -32px); background: {swatch};"
+  ></div>
+{/if}
+{#if visible && (isStrokeTool() || appState.tool === "eyedropper")}
   <div
     class="brush-cursor-dot"
     style="transform: translate({x}px, {y}px) translate(-50%, -50%);"
@@ -79,6 +97,18 @@
   }
   .brush-cursor.dashed {
     border-style: dashed;
+  }
+  .eyedropper-swatch {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(0, 0, 0, 0.7);
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+    z-index: 40;
   }
   .brush-cursor-dot {
     position: absolute;

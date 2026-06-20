@@ -46,7 +46,7 @@ import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
 
-export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso" | "transform";
+export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso" | "transform" | "eyedropper";
 
 interface AnimState {
   project: Project;
@@ -532,6 +532,18 @@ export function toggleEraser() {
     toolBeforeEraser = state.tool;
     state.tool = "eraser";
   }
+}
+
+let toolBeforeEyedropper: Tool = "brush";
+export function selectEyedropper() {
+  if (state.tool === "eyedropper") return; // already active → no-op
+  toolBeforeEyedropper = state.tool;
+  state.tool = "eyedropper";
+}
+/** Set the brush color from a sampled pixel, then return to the pre-eyedropper tool. */
+export function applyEyedropper(hex: string) {
+  state.brush.color = hex;
+  state.tool = toolBeforeEyedropper === "eyedropper" ? "brush" : toolBeforeEyedropper;
 }
 
 /** Signal that the (imperative) pressure curve changed, so the preferences save effect re-runs. */
