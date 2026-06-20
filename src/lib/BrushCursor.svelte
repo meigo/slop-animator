@@ -19,8 +19,6 @@
   let diameter = $state(0);
   let dashed = $state(false);
   let swatch = $state<string | null>(null);
-  let clientX = $state(0);
-  let clientY = $state(0);
   let raf = 0;
 
   const isStrokeTool = () => appState.tool === "brush" || appState.tool === "eraser";
@@ -37,8 +35,10 @@
     x = e.clientX - r.left;
     y = e.clientY - r.top;
     visible = true;
-    clientX = e.clientX;
-    clientY = e.clientY;
+    // Sample the eyedropper swatch only on pointer movement (NOT per rAF frame) — a per-frame
+    // getImageData readback would demote the GPU-backed display canvas to software.
+    swatch =
+      appState.tool === "eyedropper" && sampleColor ? sampleColor(e.clientX, e.clientY) : null;
   }
   const onLeave = () => (visible = false);
 
@@ -46,7 +46,6 @@
   function tick() {
     diameter = activeStroke().size * (getViewport()?.zoom ?? 1);
     dashed = appState.tool === "eraser";
-    swatch = appState.tool === "eyedropper" && sampleColor ? sampleColor(clientX, clientY) : null;
     raf = requestAnimationFrame(tick);
   }
 

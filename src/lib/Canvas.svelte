@@ -71,6 +71,10 @@
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
 
+  // A successful eyedropper pick fires on pointer-down and switches the tool back mid-gesture;
+  // this latch swallows the rest of that same gesture so it can't fall through and draw a stray dab.
+  let pickingGesture = false;
+
   function sizeDisplay() {
     display.width = state.project.width * DPR;
     display.height = state.project.height * DPR;
@@ -239,10 +243,18 @@
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
+    if (pickingGesture) {
+      // A pick already consumed this gesture (the tool has since switched); ignore its move/up.
+      if (done) pickingGesture = false;
+      return;
+    }
     if (state.tool === "eyedropper") {
       if (points.length === 1) {
         const hex = sampleAt(points[0]);
-        if (hex) applyEyedropper(hex);
+        if (hex) {
+          applyEyedropper(hex); // sets color + switches the tool back
+          if (!done) pickingGesture = true; // swallow the rest of this gesture
+        }
       }
       return;
     }
