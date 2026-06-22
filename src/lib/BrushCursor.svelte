@@ -42,24 +42,40 @@
   }
   const onLeave = () => (visible = false);
 
+  let boundEl: HTMLElement | null = null;
+  function bindTo(c: HTMLElement) {
+    c.addEventListener("pointermove", onMove);
+    c.addEventListener("pointerover", onMove);
+    c.addEventListener("pointerleave", onLeave);
+    boundEl = c;
+  }
+  function unbind() {
+    boundEl?.removeEventListener("pointermove", onMove);
+    boundEl?.removeEventListener("pointerover", onMove);
+    boundEl?.removeEventListener("pointerleave", onLeave);
+    boundEl = null;
+  }
+
   // Keep size synced to the active tool's size AND zoom, even without a pointer move.
   function tick() {
     diameter = activeStroke().size * (getViewport()?.zoom ?? 1);
     dashed = appState.tool === "eraser";
+    // Attach pointer listeners once the parent's container exists. It's `bind:this` set in the
+    // PARENT's onMount, which runs AFTER this child mounts — so getContainer() is null at our
+    // onMount. Bind lazily here (the container is stable, so this runs once).
+    const c = getContainer();
+    if (c && c !== boundEl) {
+      unbind();
+      bindTo(c);
+    }
     raf = requestAnimationFrame(tick);
   }
 
   onMount(() => {
-    const c = getContainer();
-    c?.addEventListener("pointermove", onMove);
-    c?.addEventListener("pointerover", onMove);
-    c?.addEventListener("pointerleave", onLeave);
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      c?.removeEventListener("pointermove", onMove);
-      c?.removeEventListener("pointerover", onMove);
-      c?.removeEventListener("pointerleave", onLeave);
+      unbind();
     };
   });
 </script>

@@ -39,8 +39,7 @@ export function drawStroke(
 
   // Model 2: size is the nominal width; pressure opens the range both ways
   // (light → size/sizeRange clamped at 0.5px, full → size*sizeRange). We map
-  // size→pressure ourselves and tell pf thinning=1 so it uses our mapped
-  // pressure directly: rendered_width = maxSize * mappedPressure.
+  // size→pressure ourselves and tell pf thinning=1 so it uses our mapped pressure directly.
   const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
   const inputPoints = points.map((p) => {
     const desiredSize = minSize + p.pressure * (maxSize - minSize);
@@ -49,7 +48,10 @@ export function drawStroke(
   });
 
   const strokePoints = getStroke(inputPoints, {
-    size: maxSize,
+    // perfect-freehand's `size` is a radius basis: with thinning=1 the stroke RADIUS = size*pressure,
+    // so diameter = 2*size*pressure. Pass maxSize/2 so the rendered DIAMETER = desiredSize — matching
+    // the stamp/ink engines (which treat size as diameter) and the on-canvas size cursor.
+    size: maxSize / 2,
     thinning: 1,
     smoothing: settings.smoothing / 100,
     streamline: 0.3,

@@ -39,8 +39,16 @@
     reorderLayersWithGroups,
     applyLayerTransform,
     resetLayerTransform,
+    applyCellTransform,
+    resetCellTransform,
   } from "../state/appState.svelte";
-  import { createDrawingLayer, groupOf, isIdentityTransform } from "../anim/document";
+  import {
+    createDrawingLayer,
+    groupOf,
+    isIdentityTransform,
+    cellTransform,
+    resolvedKeyCell,
+  } from "../anim/document";
   import type { Layer, LayerGroup } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
 
@@ -96,6 +104,28 @@
 
   function addLayer() {
     addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
+  }
+
+  // Show Apply/Reset when the layer transform OR the active frame's resolved key cell transform
+  // is non-identity (draw layers only).
+  function hasTransform(layer: Layer): boolean {
+    if (layer.kind !== "draw") return false;
+    if (!isIdentityTransform(layer.transform)) return true;
+    const rk = resolvedKeyCell(layer, appState.playhead);
+    return !!rk && !isIdentityTransform(cellTransform(rk.cell));
+  }
+
+  // Act on whichever transform is actually non-identity; when both are, the scope toggle decides.
+  // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
+  function activeTransformScope(layer: Layer): "frame" | "layer" | null {
+    if (layer.kind !== "draw") return null;
+    const layerNI = !isIdentityTransform(layer.transform);
+    const rk = resolvedKeyCell(layer, appState.playhead);
+    const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
+    if (layerNI && cellNI) return appState.transformScope;
+    if (cellNI) return "frame";
+    if (layerNI) return "layer";
+    return null;
   }
 
   // Build display segments (top-first, reverse of the bottom→top data order).
@@ -280,13 +310,15 @@
             }}><ImageDown size={13} /></button
           >
         {/if}
-        {#if layer.kind === "draw" && !isIdentityTransform(layer.transform)}
+        {#if hasTransform(layer)}
           <button
             class="text-text-muted hover:text-text-secondary"
             title="Apply transform (bake to pixels)"
             onclick={(e) => {
               e.stopPropagation();
-              applyLayerTransform(layer.id);
+              if (activeTransformScope(layer) === "frame")
+                applyCellTransform(layer.id, appState.playhead);
+              else applyLayerTransform(layer.id);
             }}><Stamp size={13} /></button
           >
           <button
@@ -294,7 +326,9 @@
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
-              resetLayerTransform(layer.id);
+              if (activeTransformScope(layer) === "frame")
+                resetCellTransform(layer.id, appState.playhead);
+              else resetLayerTransform(layer.id);
             }}><RotateCcw size={13} /></button
           >
         {/if}

@@ -1,16 +1,27 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Viewport } from "../core/viewport";
-  import { state as appState, bump } from "../state/appState.svelte";
-  import { transformBaseRect, type Layer } from "../anim/document";
+  import { state as appState, bump, DPR } from "../state/appState.svelte";
+  import {
+    transformBaseRect,
+    cellTransform,
+    resolvedKeyCell,
+    type Layer,
+    type RefTransform,
+  } from "../anim/document";
+  import { contentBoxLogical } from "./cell-ink";
   import {
     transformedCorners,
     rotateHandlePos,
     transformCenter,
     applyScale,
     applyRotate,
+    forwardTransformPoint,
+    inverseTransformPoint,
     type Pt,
   } from "../core/ref-transform";
+
+  const IDENTITY: RefTransform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
 
   let {
     getViewport,
@@ -24,14 +35,16 @@
   let raf = 0;
 
   type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
-  // Active handle drag. center/start are in document logical coords; startT is a snapshot
-  // of the layer transform at grab time so each move recomputes from the original.
+  // Active handle drag. center/start are in the TARGET's local logical coords (pointer mapped
+  // through `compose` inverse); startT is a snapshot of the target transform at grab time so each
+  // move recomputes from the original. setT writes back to the target (layer or cell).
   let drag: {
     handle: DragHandle;
-    layer: Layer;
-    startT: Layer["transform"];
+    startT: RefTransform;
     start: Pt;
     center: Pt;
+    compose: RefTransform;
+    setT: (t: RefTransform) => void;
   } | null = null;
 
   function activeTransformLayer(): Layer | null {
@@ -46,12 +59,49 @@
     return transformBaseRect(layer, appState.project.width, appState.project.height); // {x,y,w,h} | null
   }
 
+  type Rect = { x: number; y: number; w: number; h: number };
+  // Scope-aware transform target: which transform the gizmo edits/displays, its logical base
+  // rect, and the layer transform to compose display/pointer through (identity for layer scope).
+  function transformTarget(): {
+    getT: () => RefTransform;
+    setT: (t: RefTransform) => void;
+    base: Rect | null;
+    compose: RefTransform;
+    cell: Extract<import("../anim/document").Cell, { kind: "key" }> | null;
+    frame: boolean;
+  } | null {
+    const l = activeTransformLayer();
+    if (!l) return null;
+    const W = appState.project.width,
+      H = appState.project.height;
+    if (l.kind === "draw" && appState.transformScope === "frame") {
+      const rk = resolvedKeyCell(l, appState.playhead);
+      if (!rk) return null;
+      return {
+        getT: () => cellTransform(rk.cell),
+        setT: (t: RefTransform) => (rk.cell.transform = t),
+        base: contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version),
+        compose: l.transform,
+        cell: rk.cell,
+        frame: true,
+      };
+    }
+    return {
+      getT: () => l.transform,
+      setT: (t: RefTransform) => (l.transform = t),
+      base: baseRect(l),
+      compose: IDENTITY,
+      cell: null,
+      frame: false,
+    };
+  }
+
   function startHandleDrag(handle: DragHandle, e: PointerEvent) {
     const vp = getViewport();
-    const layer = activeTransformLayer();
-    if (!vp || !layer) return;
-    const base = baseRect(layer);
-    if (!base) return;
+    const tgt = transformTarget();
+    if (!vp || !tgt || !tgt.base) return;
+    const base = tgt.base;
+    const t = tgt.getT();
     // Keep this gesture out of the touch-pan/pinch path and the display canvas's drawing path.
     e.stopPropagation();
     e.preventDefault();
@@ -60,12 +110,25 @@
     } catch {
       /* capture is best-effort */
     }
+    // Freeze the content box on grab for a frame transform that's currently identity, so the
+    // gizmo's box stays put as content moves under the new transform.
+    if (tgt.frame && tgt.cell && t.scale === 1 && t.rotation === 0 && t.dx === 0 && t.dy === 0) {
+      tgt.cell.transformBox = base;
+    }
+    // Map the grab point through the compose (layer) inverse into the target's local space.
+    const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
+    const start = inverseTransformPoint(
+      fullDoc,
+      tgt.compose,
+      vp.screenToCanvas(e.clientX, e.clientY),
+    );
     drag = {
       handle,
-      layer,
-      startT: { ...layer.transform },
-      start: vp.screenToCanvas(e.clientX, e.clientY),
-      center: transformCenter(base, layer.transform),
+      startT: { ...t },
+      start,
+      center: transformCenter(base, t),
+      compose: tgt.compose,
+      setT: tgt.setT,
     };
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endHandleDrag);
@@ -77,9 +140,10 @@
     const vp = getViewport();
     if (!d || !vp) return;
     e.preventDefault();
-    const p = vp.screenToCanvas(e.clientX, e.clientY);
-    if (d.handle === "rotate") d.layer.transform = applyRotate(d.startT, d.center, d.start, p);
-    else d.layer.transform = applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+    const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
+    const p = inverseTransformPoint(fullDoc, d.compose, vp.screenToCanvas(e.clientX, e.clientY));
+    if (d.handle === "rotate") d.setT(applyRotate(d.startT, d.center, d.start, p));
+    else d.setT(applyScale(d.startT, d.center, d.start, p)); // any corner = uniform scale
     bump();
   }
 
@@ -100,30 +164,36 @@
   function tick() {
     const vp = getViewport();
     const container = getContainer();
-    const layer = activeTransformLayer();
-    if (vp && container && layer) {
-      const base = baseRect(layer);
-      if (base) {
-        const gap = ROTATE_GAP_PX / vp.zoom;
-        const rect = container.getBoundingClientRect();
-        const toLocal = (p: { x: number; y: number }) => {
-          const s = vp.canvasToScreen(p.x, p.y);
-          return { x: s.x - rect.left, y: s.y - rect.top };
-        };
-        corners = transformedCorners(base, layer.transform).map(toLocal);
-        rotatePt = toLocal(rotateHandlePos(base, layer.transform, gap));
-        visible = true;
-      } else visible = false;
+    const tgt = transformTarget();
+    if (vp && container && tgt && tgt.base) {
+      const base = tgt.base;
+      const t = tgt.getT();
+      const gap = ROTATE_GAP_PX / vp.zoom;
+      const rect = container.getBoundingClientRect();
+      const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
+      // Map the target-local point out through the compose (layer) transform, then to screen.
+      const toLocal = (p: { x: number; y: number }) => {
+        const q = forwardTransformPoint(fullDoc, tgt.compose, p);
+        const s = vp.canvasToScreen(q.x, q.y);
+        return { x: s.x - rect.left, y: s.y - rect.top };
+      };
+      corners = transformedCorners(base, t).map(toLocal);
+      rotatePt = toLocal(rotateHandlePos(base, t, gap));
+      visible = true;
     } else visible = false;
     raf = requestAnimationFrame(tick);
   }
 
   function resetTransform() {
-    const layer = activeTransformLayer();
-    if (layer) {
-      layer.transform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
-      bump();
+    const tgt = transformTarget();
+    if (!tgt) return;
+    if (tgt.frame && tgt.cell) {
+      tgt.cell.transform = { ...IDENTITY };
+      tgt.cell.transformBox = null;
+    } else {
+      tgt.setT({ ...IDENTITY });
     }
+    bump();
   }
 
   onMount(() => {

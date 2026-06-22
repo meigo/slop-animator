@@ -28,7 +28,14 @@
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
-  import { transformBaseRect, isIdentityTransform, type Layer } from "../anim/document";
+  import {
+    transformBaseRect,
+    isIdentityTransform,
+    cellTransform,
+    resolvedKeyCell,
+    type Layer,
+  } from "../anim/document";
+  import { contentBoxLogical } from "./cell-ink";
   import {
     hitTestHandle,
     transformCenter,
@@ -41,6 +48,7 @@
   } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
+  const IDENTITY = { dx: 0, dy: 0, scale: 1, rotation: 0 };
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -109,6 +117,18 @@
       const base = transformBaseRect(layer, state.project.width, state.project.height)!;
       pt = inverseTransformPoint(base, layer.transform, pt);
     }
+    const rkFill = resolvedKeyCell(layer, state.playhead);
+    if (rkFill && !isIdentityTransform(cellTransform(rkFill.cell))) {
+      const box = contentBoxLogical(
+        rkFill.cell.canvas,
+        rkFill.cell.transformBox,
+        state.project.width,
+        state.project.height,
+        DPR,
+        state.version,
+      );
+      pt = inverseTransformPoint(box, cellTransform(rkFill.cell), pt);
+    }
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -158,9 +178,25 @@
     if (!strokeCtx) return;
     const al = activeLayer();
     let inPts = pts;
-    if (al.kind === "draw" && !isIdentityTransform(al.transform)) {
-      const base = transformBaseRect(al, state.project.width, state.project.height)!;
-      inPts = pts.map((p) => ({ ...p, ...inverseTransformPoint(base, al.transform, p) }));
+    if (al.kind === "draw") {
+      const W = state.project.width,
+        H = state.project.height;
+      const rk = resolvedKeyCell(al, state.playhead);
+      const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
+      const layerNI = !isIdentityTransform(al.transform);
+      const cellNI = rk ? !isIdentityTransform(cellT) : false;
+      if (layerNI || cellNI) {
+        const layerBase = { x: 0, y: 0, w: W, h: H };
+        const cellBox = rk
+          ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
+          : layerBase;
+        inPts = pts.map((p) => {
+          let q: { x: number; y: number } = p;
+          if (layerNI) q = inverseTransformPoint(layerBase, al.transform, q);
+          if (cellNI) q = inverseTransformPoint(cellBox, cellT, q);
+          return { ...p, x: q.x, y: q.y };
+        });
+      }
     }
     const curved = inPts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
@@ -214,29 +250,49 @@
   let refDrag: { handle: Handle; start: Pt; startT: Layer["transform"]; center: Pt } | null = null;
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
+    const W = state.project.width,
+      H = state.project.height;
     const p = points[points.length - 1];
-    const base = transformBaseRect(layer, state.project.width, state.project.height);
+
+    // Resolve the active transform target by scope.
+    const frameScope = layer.kind === "draw" && state.transformScope === "frame";
+    const rk = frameScope
+      ? resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, state.playhead)
+      : null;
+    if (frameScope && !rk) {
+      if (done) refDrag = null;
+      return; // nothing to transform on this frame
+    }
+    const layerForCompose = frameScope ? layer.transform : IDENTITY;
+    const base = frameScope
+      ? contentBoxLogical(rk!.cell.canvas, rk!.cell.transformBox, W, H, DPR, state.version)
+      : transformBaseRect(layer, W, H);
     if (!base) {
       if (done) refDrag = null;
       return;
     }
+    const getT = () => (frameScope ? cellTransform(rk!.cell) : layer.transform);
+    const setT = (t: typeof layer.transform) => {
+      if (frameScope) rk!.cell.transform = t;
+      else layer.transform = t;
+    };
+
+    // Map the pointer through the layer transform inverse (no-op when identity / layer scope).
+    const pc = inverseTransformPoint({ x: 0, y: 0, w: W, h: H }, layerForCompose, p);
+
     if (!refDrag) {
-      const tol = 10 / viewport.zoom; // 10 screen px of grab tolerance
+      const tol = 10 / viewport.zoom;
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
-      const handle = hitTestHandle(base, layer.transform, p, tol, gap);
-      refDrag = {
-        handle,
-        start: p,
-        startT: { ...layer.transform },
-        center: transformCenter(base, layer.transform),
-      };
+      const handle = hitTestHandle(base, getT(), pc, tol, gap);
+      // Freeze the box on grab for a frame transform that's currently identity.
+      if (frameScope && handle && isIdentityTransform(getT())) rk!.cell.transformBox = base;
+      refDrag = { handle, start: pc, startT: { ...getT() }, center: transformCenter(base, getT()) };
     }
     const d = refDrag;
     if (d.handle) {
-      if (d.handle === "body")
-        layer.transform = applyMove(d.startT, p.x - d.start.x, p.y - d.start.y);
-      else if (d.handle === "rotate") layer.transform = applyRotate(d.startT, d.center, d.start, p);
-      else layer.transform = applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+      if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
+      else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
+      else setT(applyScale(d.startT, d.center, d.start, pc));
       bump();
     }
     if (done) refDrag = null;
