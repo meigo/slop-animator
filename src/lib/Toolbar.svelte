@@ -191,6 +191,20 @@
     title="Transform layer (move/scale/rotate)"
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
+  {#if appState.tool === "transform"}
+    <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
+      <button
+        class="px-2 py-1"
+        class:bg-surface-active={appState.transformScope === "frame"}
+        onclick={() => (appState.transformScope = "frame")}>Frame</button
+      >
+      <button
+        class="px-2 py-1"
+        class:bg-surface-active={appState.transformScope === "layer"}
+        onclick={() => (appState.transformScope = "layer")}>Layer</button
+      >
+    </div>
+  {/if}
   {#if (appState.tool === "select" || appState.tool === "lasso") && activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
     <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer"
       >Apply layer transform to select</span
