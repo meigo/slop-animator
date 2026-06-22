@@ -75,6 +75,7 @@ describe("projectToJson", () => {
           groupId: null,
           cells: ["key", "hold"],
           transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+          cellTransforms: {},
         },
       ],
       references: [

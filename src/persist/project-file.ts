@@ -25,6 +25,12 @@ export interface DrawingLayerJson {
   groupId: number | null;
   cells: ("key" | "hold")[];
   transform: RefTransform;
+  cellTransforms?: {
+    [index: number]: {
+      transform?: RefTransform;
+      transformBox?: { x: number; y: number; w: number; h: number } | null;
+    };
+  };
 }
 
 export interface ReferenceJson {
@@ -99,6 +105,20 @@ export function projectToJson(project: Project): ProjectJson {
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
+      cellTransforms: Object.fromEntries(
+        l.cells.flatMap((c, i) =>
+          c.kind === "key" &&
+          c.transform &&
+          !(
+            c.transform.dx === 0 &&
+            c.transform.dy === 0 &&
+            c.transform.scale === 1 &&
+            c.transform.rotation === 0
+          )
+            ? [[i, { transform: c.transform, transformBox: c.transformBox ?? null }]]
+            : [],
+        ),
+      ),
     })),
     references: project.layers
       .map((l, index) => ({ l, index }))
@@ -198,6 +218,14 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       }
       cells.push({ kind: "key", canvas });
+    }
+    const ct = lj.cellTransforms ?? {};
+    for (const [k, v] of Object.entries(ct)) {
+      const cell = cells[Number(k)];
+      if (cell && cell.kind === "key") {
+        cell.transform = v.transform;
+        cell.transformBox = v.transformBox ?? null;
+      }
     }
     layers.push({
       kind: "draw",
