@@ -7,6 +7,7 @@ import {
   applyScale,
   applyRotate,
   inverseTransformPoint,
+  forwardTransformPoint,
   type Rect,
 } from "../core/ref-transform";
 
@@ -129,5 +130,20 @@ describe("inverseTransformPoint", () => {
     const back = inverseTransformPoint(base, t, screen);
     expect(back.x).toBeCloseTo(local.x, 4);
     expect(back.y).toBeCloseTo(local.y, 4);
+  });
+});
+
+describe("forwardTransformPoint", () => {
+  const base = { x: 0, y: 0, w: 100, h: 100 };
+  const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  it("identity is a no-op", () => {
+    expect(forwardTransformPoint(base, id, { x: 30, y: 70 })).toEqual({ x: 30, y: 70 });
+  });
+  it("round-trips with inverseTransformPoint", () => {
+    const t = { dx: 12, dy: -7, scale: 1.5, rotation: 0.6 };
+    const p = { x: 73, y: 21 };
+    const back = inverseTransformPoint(base, t, forwardTransformPoint(base, t, p));
+    expect(back.x).toBeCloseTo(p.x, 5);
+    expect(back.y).toBeCloseTo(p.y, 5);
   });
 });
