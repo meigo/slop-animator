@@ -13,6 +13,8 @@ import {
   mediaIntrinsicSize,
   isIdentityTransform,
   IDENTITY_TRANSFORM,
+  resolvedKeyCell,
+  type RefTransform,
   type Project,
   type Layer,
   type DrawingLayer,
@@ -22,7 +24,7 @@ import {
   type LayerGroup,
 } from "../anim/document";
 import { loadImageMedia } from "../anim/reference";
-import { drawReferenceMedia, drawTransformed } from "../anim/render";
+import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -316,19 +318,33 @@ export function duplicateLayer(id: number) {
   });
 }
 
-/** Bake a draw layer's transform into its cells and reset to identity. No commit (caller wraps it). */
-function bakeLayerTransform(layer: DrawingLayer): void {
-  if (isIdentityTransform(layer.transform)) return;
+/** Flatten a key cell through (layerT ∘ its own cellT) into fresh pixels at identity. */
+function bakeCell(
+  cell: Extract<Cell, { kind: "key" }>,
+  layerT: RefTransform,
+): Extract<Cell, { kind: "key" }> {
   const W = state.project.width,
     H = state.project.height;
-  layer.cells = layer.cells.map((c) => {
-    if (c.kind !== "key") return c;
-    const canvas = createCellCanvas(W, H, DPR);
-    const ctx = canvas.getContext("2d")!;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    drawTransformed(ctx, c.canvas, { x: 0, y: 0, w: W * DPR, h: H * DPR }, layer.transform, DPR);
-    return { kind: "key", canvas };
-  });
+  const cellT = cell.transform ?? IDENTITY_TRANSFORM;
+  if (isIdentityTransform(layerT) && isIdentityTransform(cellT)) return cell;
+  const canvas = createCellCanvas(W, H, DPR);
+  const ctx = canvas.getContext("2d")!;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const boxDev = isIdentityTransform(cellT)
+    ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
+    : {
+        x: cell.transformBox!.x * DPR,
+        y: cell.transformBox!.y * DPR,
+        w: cell.transformBox!.w * DPR,
+        h: cell.transformBox!.h * DPR,
+      };
+  drawCellComposed(ctx, cell.canvas, W * DPR, H * DPR, layerT, cellT, boxDev, DPR);
+  return { kind: "key", canvas };
+}
+
+/** Bake a draw layer's transform into its cells and reset to identity. No commit (caller wraps it). */
+function bakeLayerTransform(layer: DrawingLayer): void {
+  layer.cells = layer.cells.map((c) => (c.kind === "key" ? bakeCell(c, layer.transform) : c));
   layer.transform = { ...IDENTITY_TRANSFORM };
 }
 
@@ -343,6 +359,27 @@ export function resetLayerTransform(layerId: number): void {
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
   commitStructural(() => {
     layer.transform = { ...IDENTITY_TRANSFORM };
+  });
+}
+
+export function applyCellTransform(layerId: number, frame: number): void {
+  const layer = state.project.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== "draw") return;
+  const rk = resolvedKeyCell(layer, frame);
+  if (!rk || !rk.cell.transform || isIdentityTransform(rk.cell.transform)) return;
+  commitStructural(() => {
+    layer.cells[rk.index] = bakeCell(rk.cell, { ...IDENTITY_TRANSFORM });
+  });
+}
+
+export function resetCellTransform(layerId: number, frame: number): void {
+  const layer = state.project.layers.find((l) => l.id === layerId);
+  if (!layer || layer.kind !== "draw") return;
+  const rk = resolvedKeyCell(layer, frame);
+  if (!rk) return;
+  commitStructural(() => {
+    rk.cell.transform = { ...IDENTITY_TRANSFORM };
+    rk.cell.transformBox = null;
   });
 }
 
