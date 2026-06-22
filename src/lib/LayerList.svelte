@@ -115,6 +115,19 @@
     return !!rk && !isIdentityTransform(cellTransform(rk.cell));
   }
 
+  // Act on whichever transform is actually non-identity; when both are, the scope toggle decides.
+  // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
+  function activeTransformScope(layer: Layer): "frame" | "layer" | null {
+    if (layer.kind !== "draw") return null;
+    const layerNI = !isIdentityTransform(layer.transform);
+    const rk = resolvedKeyCell(layer, appState.playhead);
+    const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
+    if (layerNI && cellNI) return appState.transformScope;
+    if (cellNI) return "frame";
+    if (layerNI) return "layer";
+    return null;
+  }
+
   // Build display segments (top-first, reverse of the bottom→top data order).
   // Each segment is either a bare layer ({ layer }) or a contiguous group block
   // ({ group, layers }). Called from the template with `appState.project.layers`/`.groups` so the
@@ -303,7 +316,7 @@
             title="Apply transform (bake to pixels)"
             onclick={(e) => {
               e.stopPropagation();
-              if (appState.transformScope === "frame")
+              if (activeTransformScope(layer) === "frame")
                 applyCellTransform(layer.id, appState.playhead);
               else applyLayerTransform(layer.id);
             }}><Stamp size={13} /></button
@@ -313,7 +326,7 @@
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
-              if (appState.transformScope === "frame")
+              if (activeTransformScope(layer) === "frame")
                 resetCellTransform(layer.id, appState.playhead);
               else resetLayerTransform(layer.id);
             }}><RotateCcw size={13} /></button
