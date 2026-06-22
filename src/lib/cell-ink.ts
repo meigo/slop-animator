@@ -42,3 +42,52 @@ export function isCellEmpty(canvas: HTMLCanvasElement, version: number): boolean
   cache.set(canvas, { version, empty });
   return empty;
 }
+
+const boundsCache = new WeakMap<
+  HTMLCanvasElement,
+  { version: number; bounds: { x: number; y: number; w: number; h: number } | null }
+>();
+
+/** Tight non-transparent bounds in DEVICE px, or null if empty. Memoized by document version. */
+export function contentBounds(
+  canvas: HTMLCanvasElement,
+  version: number,
+): { x: number; y: number; w: number; h: number } | null {
+  const hit = boundsCache.get(canvas);
+  if (hit && hit.version === version) return hit.bounds;
+  let bounds: { x: number; y: number; w: number; h: number } | null = null;
+  if (canvas.width > 0 && canvas.height > 0) {
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let minX = width,
+      minY = height,
+      maxX = -1,
+      maxY = -1;
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++)
+        if (data[(y * width + x) * 4 + 3] !== 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+    if (maxX >= minX) bounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  }
+  boundsCache.set(canvas, { version, bounds });
+  return bounds;
+}
+
+/** The logical gizmo/pivot box for a key cell: frozen box if set, else live content bounds, else full doc. */
+export function contentBoxLogical(
+  canvas: HTMLCanvasElement,
+  frozen: { x: number; y: number; w: number; h: number } | null | undefined,
+  docW: number,
+  docH: number,
+  dpr: number,
+  version: number,
+): { x: number; y: number; w: number; h: number } {
+  if (frozen) return frozen;
+  const b = contentBounds(canvas, version);
+  if (!b) return { x: 0, y: 0, w: docW, h: docH };
+  return { x: b.x / dpr, y: b.y / dpr, w: b.w / dpr, h: b.h / dpr };
+}
