@@ -1,5 +1,6 @@
 import {
   buildFrameDrawList,
+  cellTransform,
   containRect,
   mediaIntrinsicSize,
   isCrispFrame,
@@ -56,10 +57,44 @@ export function drawReferenceMedia(
   drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
 }
 
+/** Draw `cell` through cellT (about its content-box center) then layerT (about doc center). DEVICE px. */
+export function drawCellComposed(
+  ctx: CanvasRenderingContext2D,
+  cell: CanvasImageSource,
+  wDev: number,
+  hDev: number,
+  layerT: RefTransform,
+  cellT: RefTransform,
+  cellBoxDev: { x: number; y: number; w: number; h: number },
+  dpr: number,
+): void {
+  ctx.save();
+  const dcx = wDev / 2,
+    dcy = hDev / 2;
+  ctx.translate(dcx + layerT.dx * dpr, dcy + layerT.dy * dpr);
+  ctx.rotate(layerT.rotation);
+  ctx.scale(layerT.scale, layerT.scale);
+  ctx.translate(-dcx, -dcy);
+  const ccx = cellBoxDev.x + cellBoxDev.w / 2,
+    ccy = cellBoxDev.y + cellBoxDev.h / 2;
+  ctx.translate(ccx + cellT.dx * dpr, ccy + cellT.dy * dpr);
+  ctx.rotate(cellT.rotation);
+  ctx.scale(cellT.scale, cellT.scale);
+  ctx.translate(-ccx, -ccy);
+  ctx.drawImage(cell, 0, 0);
+  ctx.restore();
+}
+
+function scaleRect(r: { x: number; y: number; w: number; h: number }, k: number) {
+  return { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k };
+}
+
 let boilScratch: HTMLCanvasElement | null = null;
 function transformedCell(
   cell: HTMLCanvasElement,
-  t: RefTransform,
+  layerT: RefTransform,
+  cellT: RefTransform,
+  cellBoxDev: { x: number; y: number; w: number; h: number },
   wDev: number,
   hDev: number,
   dpr: number,
@@ -72,7 +107,7 @@ function transformedCell(
   const c = boilScratch.getContext("2d")!;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, wDev, hDev);
-  drawTransformed(c, cell, { x: 0, y: 0, w: wDev, h: hDev }, t, dpr);
+  drawCellComposed(c, cell, wDev, hDev, layerT, cellT, cellBoxDev, dpr);
   return boilScratch;
 }
 
@@ -117,9 +152,14 @@ export function compositeFrameLayers(
         strength <= 0 ||
         (boil.amount <= 0 && boil.weight <= 0);
       const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
-      const src = isIdentityTransform(layer.transform)
+      const cellT = cellTransform(cell);
+      const bothId = isIdentityTransform(layer.transform) && isIdentityTransform(cellT);
+      const boxDev = isIdentityTransform(cellT)
+        ? { x: 0, y: 0, w, h }
+        : scaleRect(cell.transformBox!, dpr);
+      const src = bothId
         ? cell.canvas
-        : transformedCell(cell.canvas, layer.transform, w, h, dpr);
+        : transformedCell(cell.canvas, layer.transform, cellT, boxDev, w, h, dpr);
       boilLayer(
         src,
         op.opacity / 100,
@@ -140,15 +180,25 @@ export function compositeFrameLayers(
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      if (isIdentityTransform(layer.transform)) ctx.drawImage(cell.canvas, 0, 0);
-      else
-        drawTransformed(
+      const cellT = cellTransform(cell);
+      const layerId = isIdentityTransform(layer.transform),
+        cellId = isIdentityTransform(cellT);
+      if (layerId && cellId) ctx.drawImage(cell.canvas, 0, 0);
+      else {
+        const boxDev = cellId
+          ? { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr }
+          : scaleRect(cell.transformBox!, dpr);
+        drawCellComposed(
           ctx,
           cell.canvas,
-          { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr },
+          project.width * dpr,
+          project.height * dpr,
           layer.transform,
+          cellT,
+          boxDev,
           dpr,
         );
+      }
     } else if (op.kind === "ref" && layer.kind === "ref") {
       ctx.globalAlpha = op.opacity / 100;
       drawReferenceMedia(ctx, layer, project.width, project.height, dpr);

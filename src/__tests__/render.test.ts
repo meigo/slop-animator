@@ -240,7 +240,7 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
     ]);
   });
 
-  it("non-identity transform draws sized (through the affine)", () => {
+  it("non-identity transform draws through the affine (composed path, natural size)", () => {
     const c = keyCanvas();
     const p: Project = {
       width: 100,
@@ -261,7 +261,50 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
     const ctx = recordingCtx();
     compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
     expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
-      `drawImage:${(c as unknown as { __id: number }).__id}@1:sized`,
+      `drawImage:${(c as unknown as { __id: number }).__id}@1`,
+    ]);
+  });
+});
+
+describe("compositeFrameLayers with a per-cell transform", () => {
+  it("non-identity cell transform still emits exactly one drawImage (composed path, natural size)", () => {
+    const c = keyCanvas();
+    const cellT = { dx: 4, dy: 0, scale: 1.3, rotation: 0 };
+    const box = { x: 0, y: 0, w: 100, h: 100 };
+    const p: Project = {
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#000",
+      frameCount: 1,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [layer([{ kind: "key", canvas: c, transform: cellT, transformBox: box }], { id: 1 })],
+      audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
+      `drawImage:${(c as unknown as { __id: number }).__id}@1`,
+    ]);
+  });
+  it("identity cell + identity layer stays a plain blit", () => {
+    const c = keyCanvas();
+    const p: Project = {
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#000",
+      frameCount: 1,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [layer([{ kind: "key", canvas: c }], { id: 1 })],
+      audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
+      `drawImage:${(c as unknown as { __id: number }).__id}@1`,
     ]);
   });
 });

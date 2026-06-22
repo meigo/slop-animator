@@ -41,9 +41,10 @@ import {
   resolveKeyframeIndex,
   isLayerVisible,
   isIdentityTransform,
+  cellTransform,
   type Project,
 } from "./document";
-import { compositeFrameLayers, drawTransformed } from "./render";
+import { compositeFrameLayers, drawCellComposed } from "./render";
 
 export interface OnionConfig {
   enabled: boolean;
@@ -83,8 +84,21 @@ function drawGhost(
       const ki = resolveKeyframeIndex(layer.cells, ghostFrame);
       const cell = ki === null ? null : layer.cells[ki];
       if (cell && cell.kind === "key") {
-        if (isIdentityTransform(layer.transform)) scratch.drawImage(cell.canvas, 0, 0);
-        else drawTransformed(scratch, cell.canvas, { x: 0, y: 0, w, h }, layer.transform, dpr);
+        const cellT = cellTransform(cell);
+        const layerId = isIdentityTransform(layer.transform),
+          cellId = isIdentityTransform(cellT);
+        if (layerId && cellId) scratch.drawImage(cell.canvas, 0, 0);
+        else {
+          const boxDev = cellId
+            ? { x: 0, y: 0, w, h }
+            : {
+                x: cell.transformBox!.x * dpr,
+                y: cell.transformBox!.y * dpr,
+                w: cell.transformBox!.w * dpr,
+                h: cell.transformBox!.h * dpr,
+              };
+          drawCellComposed(scratch, cell.canvas, w, h, layer.transform, cellT, boxDev, dpr);
+        }
       }
     }
   }
