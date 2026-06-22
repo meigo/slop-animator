@@ -1,4 +1,11 @@
-export type Cell = { kind: "key"; canvas: HTMLCanvasElement } | { kind: "hold" };
+export type Cell =
+  | {
+      kind: "key";
+      canvas: HTMLCanvasElement;
+      transform?: RefTransform;
+      transformBox?: { x: number; y: number; w: number; h: number } | null;
+    }
+  | { kind: "hold" };
 
 /** Line-boil settings, persisted per project. */
 export interface BoilConfig {
@@ -113,6 +120,22 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
     if (cells[i].kind === "key") return i;
   }
   return null;
+}
+
+/** A key cell's own transform (identity when absent / not a key). */
+export function cellTransform(cell: Cell): RefTransform {
+  return cell.kind === "key" && cell.transform ? cell.transform : IDENTITY_TRANSFORM;
+}
+
+/** The resolved key cell shown at `frame` (follows holds), or null. */
+export function resolvedKeyCell(
+  layer: DrawingLayer,
+  frame: number,
+): { cell: Extract<Cell, { kind: "key" }>; index: number } | null {
+  const ki = resolveKeyframeIndex(layer.cells, frame);
+  if (ki === null) return null;
+  const cell = layer.cells[ki];
+  return cell.kind === "key" ? { cell, index: ki } : null;
 }
 
 /** With holds-only boil, a frame that IS its own keyframe renders crisp (un-boiled). */

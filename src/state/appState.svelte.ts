@@ -53,6 +53,7 @@ interface AnimState {
   playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
+  transformScope: "frame" | "layer";
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number };
@@ -74,6 +75,7 @@ export const state: AnimState = $state({
   playhead: 0,
   activeLayerId: project.layers[0].id,
   tool: "brush",
+  transformScope: "frame",
   brush: {
     size: 4,
     color: "#1a1a1a",
