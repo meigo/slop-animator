@@ -55,7 +55,7 @@ interface AnimState {
   playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
-  transformScope: "frame" | "layer";
+  transformScope: "frame" | "layer" | "group";
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number };

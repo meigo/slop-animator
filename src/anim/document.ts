@@ -25,6 +25,8 @@ export interface LayerGroup {
   name: string;
   collapsed: boolean;
   visible: boolean;
+  transform?: RefTransform;
+  transformBox?: { x: number; y: number; w: number; h: number } | null;
 }
 
 export interface DrawingLayer {
@@ -125,6 +127,11 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
 /** A key cell's own transform (identity when absent / not a key). */
 export function cellTransform(cell: Cell): RefTransform {
   return cell.kind === "key" && cell.transform ? cell.transform : IDENTITY_TRANSFORM;
+}
+
+/** A group's own transform (identity when absent / undefined group). */
+export function groupTransform(group: LayerGroup | null | undefined): RefTransform {
+  return group && group.transform ? group.transform : IDENTITY_TRANSFORM;
 }
 
 /** The resolved key cell shown at `frame` (follows holds), or null. */

@@ -117,7 +117,7 @@
 
   // Act on whichever transform is actually non-identity; when both are, the scope toggle decides.
   // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
-  function activeTransformScope(layer: Layer): "frame" | "layer" | null {
+  function activeTransformScope(layer: Layer): "frame" | "layer" | "group" | null {
     if (layer.kind !== "draw") return null;
     const layerNI = !isIdentityTransform(layer.transform);
     const rk = resolvedKeyCell(layer, appState.playhead);
