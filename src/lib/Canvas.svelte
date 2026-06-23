@@ -202,9 +202,7 @@
         : { x: 0, y: 0, w: W, h: H };
       const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(al)];
       // Skip the map when nothing maps (all identity).
-      const anyNonId = steps.some(
-        (s) => !(s.t.dx === 0 && s.t.dy === 0 && s.t.scale === 1 && s.t.rotation === 0),
-      );
+      const anyNonId = steps.some((s) => !isIdentityTransform(s.t));
       if (anyNonId) {
         inPts = pts.map((p) => {
           const q = inverseChain(steps, { x: p.x, y: p.y });
