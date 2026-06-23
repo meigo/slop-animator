@@ -6,12 +6,15 @@ import {
   isCrispFrame,
   isIdentityTransform,
   IDENTITY_TRANSFORM,
+  groupOf,
+  groupTransform,
   type Project,
   type BoilConfig,
   type ReferenceLayer,
   type RefTransform,
 } from "./document";
 import { boilBegin, boilLayer, boilBlit } from "../core/boil-gl";
+import { groupBoxLogical } from "../lib/cell-ink";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -20,6 +23,8 @@ interface RenderOpts {
   includeReference?: boolean;
   /** Line-boil warp for drawing layers. Omitted = no boil. */
   boil?: BoilConfig;
+  /** Content version (bumped on every draw mutation) — forwarded to bounds cache. Default 0. */
+  version?: number;
 }
 
 /** Draw `img` onto `ctx` (assumed at identity, DEVICE pixels) placed by `base` (device rect) + `t`. */
@@ -101,6 +106,23 @@ function scaleRect(r: { x: number; y: number; w: number; h: number }, k: number)
   return { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k };
 }
 
+/** Resolve the outer group transform args for `layer`. Identity / full-doc when ungrouped or
+ *  the group transform is identity. */
+function groupComposeArgs(
+  layer: Project["layers"][number],
+  project: Project,
+  frame: number,
+  dpr: number,
+  version: number,
+): { groupT: RefTransform; groupBoxDev: { x: number; y: number; w: number; h: number } } {
+  const g = groupOf(layer, project.groups);
+  const t = groupTransform(g);
+  const fullDocDev = { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr };
+  if (!g || isIdentityTransform(t)) return { groupT: IDENTITY_TRANSFORM, groupBoxDev: fullDocDev };
+  const box = groupBoxLogical(g, project, frame, dpr, version);
+  return { groupT: t, groupBoxDev: scaleRect(box, dpr) };
+}
+
 let boilScratch: HTMLCanvasElement | null = null;
 function transformedCell(
   cell: HTMLCanvasElement,
@@ -110,6 +132,8 @@ function transformedCell(
   wDev: number,
   hDev: number,
   dpr: number,
+  groupT: RefTransform = IDENTITY_TRANSFORM,
+  groupBoxDev: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: wDev, h: hDev },
 ): HTMLCanvasElement {
   if (!boilScratch) boilScratch = document.createElement("canvas");
   if (boilScratch.width !== wDev || boilScratch.height !== hDev) {
@@ -119,7 +143,7 @@ function transformedCell(
   const c = boilScratch.getContext("2d")!;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, wDev, hDev);
-  drawCellComposed(c, cell, wDev, hDev, layerT, cellT, cellBoxDev, dpr);
+  drawCellComposed(c, cell, wDev, hDev, layerT, cellT, cellBoxDev, dpr, groupT, groupBoxDev);
   return boilScratch;
 }
 
@@ -136,6 +160,7 @@ export function compositeFrameLayers(
   dpr: number,
   includeReference = true,
   boil?: BoilConfig,
+  version = 0,
 ): void {
   const w = project.width * dpr,
     h = project.height * dpr;
@@ -165,13 +190,27 @@ export function compositeFrameLayers(
         (boil.amount <= 0 && boil.weight <= 0);
       const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
       const cellT = cellTransform(cell);
-      const bothId = isIdentityTransform(layer.transform) && isIdentityTransform(cellT);
+      const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
+      const bothId =
+        isIdentityTransform(layer.transform) &&
+        isIdentityTransform(cellT) &&
+        isIdentityTransform(groupT);
       const boxDev = isIdentityTransform(cellT)
         ? { x: 0, y: 0, w, h }
         : scaleRect(cell.transformBox!, dpr);
       const src = bothId
         ? cell.canvas
-        : transformedCell(cell.canvas, layer.transform, cellT, boxDev, w, h, dpr);
+        : transformedCell(
+            cell.canvas,
+            layer.transform,
+            cellT,
+            boxDev,
+            w,
+            h,
+            dpr,
+            groupT,
+            groupBoxDev,
+          );
       boilLayer(
         src,
         op.opacity / 100,
@@ -193,9 +232,11 @@ export function compositeFrameLayers(
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
       const cellT = cellTransform(cell);
+      const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
       const layerId = isIdentityTransform(layer.transform),
-        cellId = isIdentityTransform(cellT);
-      if (layerId && cellId) ctx.drawImage(cell.canvas, 0, 0);
+        cellId = isIdentityTransform(cellT),
+        groupId = isIdentityTransform(groupT);
+      if (layerId && cellId && groupId) ctx.drawImage(cell.canvas, 0, 0);
       else {
         const boxDev = cellId
           ? { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr }
@@ -209,6 +250,8 @@ export function compositeFrameLayers(
           cellT,
           boxDev,
           dpr,
+          groupT,
+          groupBoxDev,
         );
       }
     } else if (op.kind === "ref" && layer.kind === "ref") {
@@ -230,7 +273,7 @@ export function renderFrame(
   dpr: number,
   opts: RenderOpts = {},
 ): void {
-  const { drawBg = true, includeReference = true, boil } = opts;
+  const { drawBg = true, includeReference = true, boil, version = 0 } = opts;
 
   // Reset to identity first so clearRect/fillRect/drawImage operate in raw device
   // pixels regardless of any transform the context carried in.
@@ -243,5 +286,5 @@ export function renderFrame(
     ctx.fillRect(0, 0, project.width * dpr, project.height * dpr);
   }
 
-  compositeFrameLayers(ctx, project, frame, dpr, includeReference, boil);
+  compositeFrameLayers(ctx, project, frame, dpr, includeReference, boil, version);
 }

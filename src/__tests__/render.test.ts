@@ -17,9 +17,9 @@ function recordingCtx() {
       calls.push(`drawImage:${img.__id}@${ctx.globalAlpha}${rest.length >= 4 ? ":sized" : ""}`),
     save: () => {},
     restore: () => {},
-    translate: () => {},
-    rotate: () => {},
-    scale: () => {},
+    translate: () => calls.push("translate"),
+    rotate: () => calls.push("rotate"),
+    scale: () => calls.push("scale"),
   };
   return ctx;
 }
@@ -366,6 +366,7 @@ describe("compositeFrameLayers with a group transform", () => {
     };
     const ctx = recordingCtx();
     compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    expect(ctx.calls).toContain("translate"); // the group wrap ran (proves Task 5 wiring)
     // Exactly one drawImage of the cell at natural size (2-arg form → no ":sized").
     expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
       `drawImage:${(c as unknown as { __id: number }).__id}@1`,

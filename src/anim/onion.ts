@@ -42,9 +42,12 @@ import {
   isLayerVisible,
   isIdentityTransform,
   cellTransform,
+  groupOf,
+  groupTransform,
   type Project,
 } from "./document";
 import { compositeFrameLayers, drawCellComposed } from "./render";
+import { groupBoxLogical } from "../lib/cell-ink";
 
 export interface OnionConfig {
   enabled: boolean;
@@ -67,6 +70,7 @@ function drawGhost(
   activeLayerId: number,
   tint: string,
   opacity: number,
+  version: number,
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
@@ -77,7 +81,7 @@ function drawGhost(
   scratch.clearRect(0, 0, w, h);
 
   if (allLayers) {
-    compositeFrameLayers(scratch, project, ghostFrame, dpr, false);
+    compositeFrameLayers(scratch, project, ghostFrame, dpr, false, undefined, version);
   } else {
     const layer = project.layers.find((l) => l.id === activeLayerId);
     if (layer && layer.kind === "draw" && isLayerVisible(layer, project.groups)) {
@@ -85,9 +89,12 @@ function drawGhost(
       const cell = ki === null ? null : layer.cells[ki];
       if (cell && cell.kind === "key") {
         const cellT = cellTransform(cell);
+        const g = groupOf(layer, project.groups);
+        const groupT = groupTransform(g);
         const layerId = isIdentityTransform(layer.transform),
-          cellId = isIdentityTransform(cellT);
-        if (layerId && cellId) scratch.drawImage(cell.canvas, 0, 0);
+          cellId = isIdentityTransform(cellT),
+          groupId = isIdentityTransform(groupT);
+        if (layerId && cellId && groupId) scratch.drawImage(cell.canvas, 0, 0);
         else {
           const boxDev = cellId
             ? { x: 0, y: 0, w, h }
@@ -97,7 +104,24 @@ function drawGhost(
                 w: cell.transformBox!.w * dpr,
                 h: cell.transformBox!.h * dpr,
               };
-          drawCellComposed(scratch, cell.canvas, w, h, layer.transform, cellT, boxDev, dpr);
+          const groupBoxDev = groupId
+            ? { x: 0, y: 0, w, h }
+            : (() => {
+                const lb = groupBoxLogical(g!, project, ghostFrame, dpr, version);
+                return { x: lb.x * dpr, y: lb.y * dpr, w: lb.w * dpr, h: lb.h * dpr };
+              })();
+          drawCellComposed(
+            scratch,
+            cell.canvas,
+            w,
+            h,
+            layer.transform,
+            cellT,
+            boxDev,
+            dpr,
+            groupT,
+            groupBoxDev,
+          );
         }
       }
     }
@@ -126,6 +150,7 @@ export function renderFrameWithOnion(
   dpr: number,
   onion: OnionConfig,
   activeLayerId: number,
+  version = 0,
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
@@ -149,8 +174,9 @@ export function renderFrameWithOnion(
       activeLayerId,
       tint,
       g.opacity,
+      version,
     );
   }
 
-  compositeFrameLayers(display, project, frame, dpr);
+  compositeFrameLayers(display, project, frame, dpr, true, undefined, version);
 }
