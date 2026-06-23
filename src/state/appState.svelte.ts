@@ -146,6 +146,7 @@ export function activeStroke(): ToolSettings {
  */
 export interface StructSnapshot {
   layers: Layer[];
+  groups: LayerGroup[];
   frameCount: number;
   width: number;
   height: number;
@@ -160,6 +161,11 @@ function cloneLayers(layers: Layer[]): Layer[] {
 function snapshotStructure(): StructSnapshot {
   return {
     layers: cloneLayers(state.project.layers),
+    groups: state.project.groups.map((g) => ({
+      ...g,
+      transform: g.transform ? { ...g.transform } : undefined,
+      transformBox: g.transformBox ? { ...g.transformBox } : g.transformBox,
+    })),
     frameCount: state.project.frameCount,
     width: state.project.width,
     height: state.project.height,
@@ -183,6 +189,23 @@ function restoreStructure(s: StructSnapshot) {
     }
     // Layer was removed since the snapshot → bring back the snapshot's clone wholesale.
     return snap.kind === "draw" ? { ...snap, cells: snap.cells.slice() } : { ...snap };
+  });
+  const liveGroupsById = new Map(state.project.groups.map((g) => [g.id, g]));
+  state.project.groups = s.groups.map((snap) => {
+    const live = liveGroupsById.get(snap.id);
+    if (live) {
+      live.transform = snap.transform ? { ...snap.transform } : undefined;
+      live.transformBox = snap.transformBox
+        ? { ...snap.transformBox }
+        : (snap.transformBox ?? null);
+      // name/collapsed/visible are view-props — keep `live` values (mirror layer pattern).
+      return live;
+    }
+    return {
+      ...snap,
+      transform: snap.transform ? { ...snap.transform } : undefined,
+      transformBox: snap.transformBox ? { ...snap.transformBox } : (snap.transformBox ?? null),
+    };
   });
   state.project.frameCount = s.frameCount;
   state.project.width = s.width;
@@ -380,6 +403,15 @@ export function resetCellTransform(layerId: number, frame: number): void {
   commitStructural(() => {
     rk.cell.transform = { ...IDENTITY_TRANSFORM };
     rk.cell.transformBox = null;
+  });
+}
+
+export function resetGroupTransform(groupId: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g || !g.transform || isIdentityTransform(g.transform)) return;
+  commitStructural(() => {
+    g.transform = { ...IDENTITY_TRANSFORM };
+    g.transformBox = null;
   });
 }
 
