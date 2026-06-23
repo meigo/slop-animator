@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project } from "../anim/document";
-import { createReferenceLayer, defaultBoilConfig } from "../anim/document";
+import { createReferenceLayer, defaultBoilConfig, groupTransform } from "../anim/document";
 import { renderFrame, compositeFrameLayers, drawReferenceMedia } from "../anim/render";
 
 function recordingCtx() {
@@ -338,6 +338,61 @@ describe("renderFrame includeReference", () => {
     });
     expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual([
       `drawImage:${(drawC as unknown as { __id: number }).__id}@1`,
+    ]);
+  });
+});
+
+describe("compositeFrameLayers with a group transform", () => {
+  it("non-identity group transform emits the composed wrap + a single drawImage", () => {
+    const c = keyCanvas();
+    const group = {
+      id: 9,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      transform: { dx: 8, dy: 0, scale: 1.1, rotation: 0 },
+      transformBox: { x: 0, y: 0, w: 100, h: 100 },
+    };
+    const p: Project = {
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#000",
+      frameCount: 1,
+      boil: defaultBoilConfig(),
+      groups: [group],
+      layers: [layer([{ kind: "key", canvas: c }], { id: 1, groupId: 9 })],
+      audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    // Exactly one drawImage of the cell at natural size (2-arg form → no ":sized").
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
+      `drawImage:${(c as unknown as { __id: number }).__id}@1`,
+    ]);
+    // Sanity: `groupTransform` returns the group's transform when set (cheap pure-fn check).
+    expect(groupTransform(group)).toBe(group.transform);
+  });
+
+  it("identity group transform keeps the existing fast-path blit", () => {
+    const c = keyCanvas();
+    const group = { id: 9, name: "G", collapsed: false, visible: true };
+    const p: Project = {
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#000",
+      frameCount: 1,
+      boil: defaultBoilConfig(),
+      groups: [group],
+      layers: [layer([{ kind: "key", canvas: c }], { id: 1, groupId: 9 })],
+      audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    // Fast path: plain blit (no composed wrap). Existing layer-only/cell-only/reference tests stay green.
+    expect(ctx.calls.filter((x) => x.startsWith("drawImage"))).toEqual([
+      `drawImage:${(c as unknown as { __id: number }).__id}@1`,
     ]);
   });
 });

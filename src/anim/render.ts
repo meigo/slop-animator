@@ -5,6 +5,7 @@ import {
   mediaIntrinsicSize,
   isCrispFrame,
   isIdentityTransform,
+  IDENTITY_TRANSFORM,
   type Project,
   type BoilConfig,
   type ReferenceLayer,
@@ -57,7 +58,8 @@ export function drawReferenceMedia(
   drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
 }
 
-/** Draw `cell` through cellT (about its content-box center) then layerT (about doc center). DEVICE px. */
+/** Draw `cell` through cellT (about its content-box center) then layerT (about doc center) then
+ *  groupT (about the group box center). DEVICE px. Outer args default to identity / full-doc. */
 export function drawCellComposed(
   ctx: CanvasRenderingContext2D,
   cell: CanvasImageSource,
@@ -67,8 +69,18 @@ export function drawCellComposed(
   cellT: RefTransform,
   cellBoxDev: { x: number; y: number; w: number; h: number },
   dpr: number,
+  groupT: RefTransform = IDENTITY_TRANSFORM,
+  groupBoxDev: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: wDev, h: hDev },
 ): void {
   ctx.save();
+  if (!isIdentityTransform(groupT)) {
+    const gcx = groupBoxDev.x + groupBoxDev.w / 2,
+      gcy = groupBoxDev.y + groupBoxDev.h / 2;
+    ctx.translate(gcx + groupT.dx * dpr, gcy + groupT.dy * dpr);
+    ctx.rotate(groupT.rotation);
+    ctx.scale(groupT.scale, groupT.scale);
+    ctx.translate(-gcx, -gcy);
+  }
   const dcx = wDev / 2,
     dcy = hDev / 2;
   ctx.translate(dcx + layerT.dx * dpr, dcy + layerT.dy * dpr);
