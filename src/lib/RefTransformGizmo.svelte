@@ -8,7 +8,10 @@
     resolvedKeyCell,
     groupOf,
     groupTransform,
+    isIdentityTransform,
+    type Cell,
     type Layer,
+    type LayerGroup,
     type RefTransform,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
@@ -70,8 +73,8 @@
     setT: (t: RefTransform) => void;
     base: Rect | null;
     outer: ComposeStep[]; // inner-to-outer (innermost first)
-    cell: Extract<import("../anim/document").Cell, { kind: "key" }> | null;
-    group: import("../anim/document").LayerGroup | null;
+    cell: Extract<Cell, { kind: "key" }> | null;
+    group: LayerGroup | null;
     scope: "frame" | "layer" | "group";
   } | null {
     const l = activeTransformLayer();
@@ -79,6 +82,14 @@
     const W = appState.project.width,
       H = appState.project.height;
     const g = groupOf(l, appState.project.groups);
+    const groupStep: ComposeStep[] = g
+      ? [
+          {
+            base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+            t: groupTransform(g),
+          },
+        ]
+      : [];
 
     if (l.kind === "draw" && appState.transformScope === "group") {
       if (!g) return null; // Group scope is disabled when ungrouped; safety fallback.
@@ -96,12 +107,10 @@
     if (l.kind === "draw" && appState.transformScope === "frame") {
       const rk = resolvedKeyCell(l, appState.playhead);
       if (!rk) return null;
-      const outer: ComposeStep[] = [{ base: { x: 0, y: 0, w: W, h: H }, t: l.transform }];
-      if (g)
-        outer.push({
-          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
-          t: groupTransform(g),
-        });
+      const outer: ComposeStep[] = [
+        { base: { x: 0, y: 0, w: W, h: H }, t: l.transform },
+        ...groupStep,
+      ];
       return {
         getT: () => cellTransform(rk.cell),
         setT: (t: RefTransform) => (rk.cell.transform = t),
@@ -114,12 +123,7 @@
     }
 
     // scope = "layer" (or ref layer of any scope)
-    const outer: ComposeStep[] = [];
-    if (g)
-      outer.push({
-        base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
-        t: groupTransform(g),
-      });
+    const outer: ComposeStep[] = [...groupStep];
     return {
       getT: () => l.transform,
       setT: (t: RefTransform) => (l.transform = t),
@@ -147,20 +151,7 @@
     }
     // Freeze the content box on grab for a frame or group transform that's currently identity,
     // so the gizmo's box stays put as content moves under the new transform.
-    if (
-      (tgt.scope === "frame" &&
-        tgt.cell &&
-        t.scale === 1 &&
-        t.rotation === 0 &&
-        t.dx === 0 &&
-        t.dy === 0) ||
-      (tgt.scope === "group" &&
-        tgt.group &&
-        t.scale === 1 &&
-        t.rotation === 0 &&
-        t.dx === 0 &&
-        t.dy === 0)
-    ) {
+    if (isIdentityTransform(t)) {
       if (tgt.scope === "frame" && tgt.cell) tgt.cell.transformBox = base;
       else if (tgt.scope === "group" && tgt.group) tgt.group.transformBox = base;
     }
