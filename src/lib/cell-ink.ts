@@ -1,3 +1,6 @@
+import type { Project, LayerGroup } from "../anim/document";
+import { resolveKeyframeIndex } from "../anim/document";
+
 // Cheap "does this keyframe have any ink?" test for the timeline display.
 // A full-resolution scan per cell would be far too expensive to run every render, so we
 // downscale the keyframe to a small probe and check it for any non-transparent pixel.
@@ -90,4 +93,51 @@ export function contentBoxLogical(
   const b = contentBounds(canvas, version);
   if (!b) return { x: 0, y: 0, w: docW, h: docH };
   return { x: b.x / dpr, y: b.y / dpr, w: b.w / dpr, h: b.h / dpr };
+}
+
+/** Logical bbox of a group's drawable content at `frame`: union of resolved key cells'
+ *  contentBounds (device px → logical). Refs excluded. Empty → full-doc rect. */
+export function groupContentBoxLogical(
+  group: LayerGroup,
+  project: Project,
+  frame: number,
+  dpr: number,
+  version: number,
+): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const layer of project.layers) {
+    if (layer.kind !== "draw" || layer.groupId !== group.id) continue;
+    const ki = resolveKeyframeIndex(layer.cells, frame);
+    if (ki === null) continue;
+    const cell = layer.cells[ki];
+    if (cell.kind !== "key") continue;
+    const b = contentBounds(cell.canvas, version);
+    if (!b) continue;
+    if (b.x < minX) minX = b.x;
+    if (b.y < minY) minY = b.y;
+    if (b.x + b.w - 1 > maxX) maxX = b.x + b.w - 1;
+    if (b.y + b.h - 1 > maxY) maxY = b.y + b.h - 1;
+  }
+  if (maxX === -Infinity) return { x: 0, y: 0, w: project.width, h: project.height };
+  return {
+    x: minX / dpr,
+    y: minY / dpr,
+    w: (maxX - minX + 1) / dpr,
+    h: (maxY - minY + 1) / dpr,
+  };
+}
+
+/** The active gizmo/pivot box for a group: frozen box if set, else live `groupContentBoxLogical`. */
+export function groupBoxLogical(
+  group: LayerGroup,
+  project: Project,
+  frame: number,
+  dpr: number,
+  version: number,
+): { x: number; y: number; w: number; h: number } {
+  if (group.transformBox) return group.transformBox;
+  return groupContentBoxLogical(group, project, frame, dpr, version);
 }
