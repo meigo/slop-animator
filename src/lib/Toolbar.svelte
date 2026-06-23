@@ -192,6 +192,8 @@
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
   {#if appState.tool === "transform"}
+    {@const _activeLayer = activeLayer()}
+    {@const _groupedActive = _activeLayer.groupId != null}
     <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
       <button
         class="px-2 py-1"
@@ -202,6 +204,15 @@
         class="px-2 py-1"
         class:bg-surface-active={appState.transformScope === "layer"}
         onclick={() => (appState.transformScope = "layer")}>Layer</button
+      >
+      <button
+        class="px-2 py-1"
+        class:bg-surface-active={appState.transformScope === "group"}
+        class:opacity-40={!_groupedActive}
+        class:cursor-not-allowed={!_groupedActive}
+        disabled={!_groupedActive}
+        title={_groupedActive ? "Transform the group" : "Active layer is not in a group"}
+        onclick={() => _groupedActive && (appState.transformScope = "group")}>Group</button
       >
     </div>
   {/if}

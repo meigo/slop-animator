@@ -208,7 +208,7 @@ function restoreStructure(s: StructSnapshot) {
   state.project.frameCount = s.frameCount;
   state.project.width = s.width;
   state.project.height = s.height;
-  state.activeLayerId = s.activeLayerId;
+  setActiveLayer(s.activeLayerId);
   state.playhead = s.playhead;
   state.version++;
 }
@@ -252,7 +252,7 @@ export function addLayerToProject(layer: Layer) {
     } else {
       state.project.layers.push(layer); // ungrouped → top of the stack (existing behavior)
     }
-    state.activeLayerId = layer.id;
+    setActiveLayer(layer.id);
   });
 }
 
@@ -289,7 +289,7 @@ export function rasterizeReference(layerId: number): void {
     dl.visible = ref.visible;
     dl.cells[0] = { kind: "key", canvas: cell };
     layers[idx] = dl;
-    state.activeLayerId = dl.id;
+    setActiveLayer(dl.id);
   });
 }
 
@@ -304,7 +304,7 @@ export function removeLayer(id: number) {
     layers.splice(idx, 1);
     if (state.activeLayerId === id) {
       const firstDrawing = layers.find(isDrawingLayer);
-      if (firstDrawing) state.activeLayerId = firstDrawing.id;
+      if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
   });
 }
@@ -335,7 +335,7 @@ export function duplicateLayer(id: number) {
         c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" },
     );
     layers.splice(idx + 1, 0, dup);
-    state.activeLayerId = dup.id;
+    setActiveLayer(dup.id);
   });
 }
 
@@ -441,7 +441,7 @@ export function mergeDown(id: number) {
       return { kind: "key", canvas };
     });
     layers.splice(idx, 1);
-    state.activeLayerId = below.id;
+    setActiveLayer(below.id);
   });
 }
 
@@ -664,7 +664,7 @@ export function replaceProject(project: Project) {
   audioEngine.setTrack(project.audio);
   state.playhead = 0;
   const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
-  state.activeLayerId = firstDrawing.id;
+  setActiveLayer(firstDrawing.id);
   bump();
 }
 
@@ -726,3 +726,15 @@ export const selectionActions: { enterWarp: ((rows: number, cols: number) => voi
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
 export const pressureCurve = new PressureCurve();
+
+/**
+ * Set the active layer. If transformScope is "group" and the new layer is not in a group,
+ * fall back to "frame" scope so the disabled Group button can't stay selected silently.
+ */
+export function setActiveLayer(id: number): void {
+  state.activeLayerId = id;
+  const l = state.project.layers.find((x) => x.id === id);
+  if (state.transformScope === "group" && (!l || l.groupId == null)) {
+    state.transformScope = "frame";
+  }
+}

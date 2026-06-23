@@ -19,6 +19,7 @@
     commitStructural,
     beginStructuralEdit,
     commitStructuralEdit,
+    setActiveLayer,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -132,7 +133,7 @@
   }
 
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
-    appState.activeLayerId = layer.id;
+    setActiveLayer(layer.id);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragLayerId = layer.id;
     const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
@@ -475,7 +476,7 @@
             class:text-text-secondary={layer.id !== appState.activeLayerId}
             style="width: {LABEL_W}px"
             title="Select layer"
-            onclick={() => (appState.activeLayerId = layer.id)}>{layer.name}</button
+            onclick={() => setActiveLayer(layer.id)}>{layer.name}</button
           >
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}

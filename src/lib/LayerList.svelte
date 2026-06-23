@@ -41,6 +41,7 @@
     resetLayerTransform,
     applyCellTransform,
     resetCellTransform,
+    setActiveLayer,
   } from "../state/appState.svelte";
   import {
     createDrawingLayer,
@@ -210,7 +211,7 @@
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
     class:bg-surface-active={active}
-    onclick={() => (appState.activeLayerId = layer.id)}
+    onclick={() => setActiveLayer(layer.id)}
     role="presentation"
   >
     <!-- Row 1: compact (every layer) -->
