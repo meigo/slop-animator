@@ -208,7 +208,7 @@ function restoreStructure(s: StructSnapshot) {
   state.project.frameCount = s.frameCount;
   state.project.width = s.width;
   state.project.height = s.height;
-  setActiveLayer(s.activeLayerId);
+  state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
   state.version++;
 }
