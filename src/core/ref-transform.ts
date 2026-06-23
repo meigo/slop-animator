@@ -118,3 +118,28 @@ export function applyRotate(t: RefTransform, center: Pt, start: Pt, p: Pt): RefT
   const a1 = Math.atan2(p.y - center.y, p.x - center.x);
   return { ...t, rotation: t.rotation + (a1 - a0) };
 }
+
+export interface ComposeStep {
+  base: Rect;
+  t: RefTransform;
+}
+
+function isId(t: RefTransform): boolean {
+  return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
+}
+
+/** Map p outward through a chain of transforms (inner-to-outer order). Identity steps are skipped. */
+export function forwardChain(steps: ComposeStep[], p: Pt): Pt {
+  let q = p;
+  for (const s of steps) if (!isId(s.t)) q = forwardTransformPoint(s.base, s.t, q);
+  return q;
+}
+
+/** Map p inward through a chain of transforms (inner-to-outer order); applies each step's inverse
+ *  starting from the OUTER end so the result lands in the innermost local space. */
+export function inverseChain(steps: ComposeStep[], p: Pt): Pt {
+  let q = p;
+  for (let i = steps.length - 1; i >= 0; i--)
+    if (!isId(steps[i].t)) q = inverseTransformPoint(steps[i].base, steps[i].t, q);
+  return q;
+}

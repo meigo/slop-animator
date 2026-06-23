@@ -8,6 +8,8 @@ import {
   applyRotate,
   inverseTransformPoint,
   forwardTransformPoint,
+  forwardChain,
+  inverseChain,
   type Rect,
 } from "../core/ref-transform";
 
@@ -145,5 +147,59 @@ describe("forwardTransformPoint", () => {
     const back = inverseTransformPoint(base, t, forwardTransformPoint(base, t, p));
     expect(back.x).toBeCloseTo(p.x, 5);
     expect(back.y).toBeCloseTo(p.y, 5);
+  });
+});
+
+describe("forwardChain / inverseChain", () => {
+  const docBase = { x: 0, y: 0, w: 100, h: 100 };
+  const cellBase = { x: 20, y: 30, w: 40, h: 50 };
+  const tLayer = { dx: 5, dy: -7, scale: 1.2, rotation: 0.3 };
+  const tCell = { dx: -2, dy: 4, scale: 0.8, rotation: -0.15 };
+  const tIdent = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+
+  it("empty chain is identity", () => {
+    expect(forwardChain([], { x: 17, y: 23 })).toEqual({ x: 17, y: 23 });
+    expect(inverseChain([], { x: 17, y: 23 })).toEqual({ x: 17, y: 23 });
+  });
+
+  it("single non-identity step matches forward/inverseTransformPoint", () => {
+    const p = { x: 33, y: 44 };
+    const f = forwardChain([{ base: docBase, t: tLayer }], p);
+    expect(f).toEqual(forwardTransformPoint(docBase, tLayer, p));
+    const inv = inverseChain([{ base: docBase, t: tLayer }], f);
+    expect(inv.x).toBeCloseTo(p.x, 5);
+    expect(inv.y).toBeCloseTo(p.y, 5);
+  });
+
+  it("two-step chain composes inner-to-outer and round-trips", () => {
+    // Steps are inner-to-outer: [cell, layer]. Forward = cell-local → doc.
+    const steps = [
+      { base: cellBase, t: tCell },
+      { base: docBase, t: tLayer },
+    ];
+    const p = { x: 11, y: 13 };
+    const fwd = forwardChain(steps, p);
+    // Expected: layer.forward(cell.forward(p))
+    const manual = forwardTransformPoint(
+      docBase,
+      tLayer,
+      forwardTransformPoint(cellBase, tCell, p),
+    );
+    expect(fwd.x).toBeCloseTo(manual.x, 5);
+    expect(fwd.y).toBeCloseTo(manual.y, 5);
+    // Round-trip
+    const back = inverseChain(steps, fwd);
+    expect(back.x).toBeCloseTo(p.x, 5);
+    expect(back.y).toBeCloseTo(p.y, 5);
+  });
+
+  it("identity steps are skipped (no precision drift)", () => {
+    const steps = [
+      { base: cellBase, t: tIdent },
+      { base: docBase, t: tIdent },
+    ];
+    const p = { x: 7, y: 9 };
+    expect(forwardChain(steps, p)).toEqual(p);
+    expect(inverseChain(steps, p)).toEqual(p);
   });
 });
