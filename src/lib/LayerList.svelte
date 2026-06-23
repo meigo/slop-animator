@@ -329,8 +329,8 @@
               title="Apply transform (bake to pixels)"
               onclick={(e) => {
                 e.stopPropagation();
-                if (activeTransformScope(layer) === "frame")
-                  applyCellTransform(layer.id, appState.playhead);
+                const scope = activeTransformScope(layer);
+                if (scope === "frame") applyCellTransform(layer.id, appState.playhead);
                 else applyLayerTransform(layer.id);
               }}><Stamp size={13} /></button
             >
@@ -340,9 +340,10 @@
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
-              if (activeTransformScope(layer) === "frame") {
+              const scope = activeTransformScope(layer);
+              if (scope === "frame") {
                 resetCellTransform(layer.id, appState.playhead);
-              } else if (activeTransformScope(layer) === "group") {
+              } else if (scope === "group") {
                 const g = groupOf(layer, appState.project.groups);
                 if (g) resetGroupTransform(g.id);
               } else {
