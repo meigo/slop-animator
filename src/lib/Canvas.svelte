@@ -277,8 +277,7 @@
     let frameRk: ReturnType<typeof resolvedKeyCell> = null;
 
     if (isDraw && scope === "group" && g) {
-      const t = groupTransform(g);
-      getT = () => t;
+      getT = () => groupTransform(g);
       setT = (nt) => (g.transform = nt);
       base = groupBoxLogical(g, state.project, state.playhead, DPR, state.version);
     } else if (isDraw && scope === "frame") {
