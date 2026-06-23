@@ -195,16 +195,14 @@ function restoreStructure(s: StructSnapshot) {
     const live = liveGroupsById.get(snap.id);
     if (live) {
       live.transform = snap.transform ? { ...snap.transform } : undefined;
-      live.transformBox = snap.transformBox
-        ? { ...snap.transformBox }
-        : (snap.transformBox ?? null);
+      live.transformBox = snap.transformBox ? { ...snap.transformBox } : snap.transformBox;
       // name/collapsed/visible are view-props — keep `live` values (mirror layer pattern).
       return live;
     }
     return {
       ...snap,
       transform: snap.transform ? { ...snap.transform } : undefined,
-      transformBox: snap.transformBox ? { ...snap.transformBox } : (snap.transformBox ?? null),
+      transformBox: snap.transformBox ? { ...snap.transformBox } : snap.transformBox,
     };
   });
   state.project.frameCount = s.frameCount;
