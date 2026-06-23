@@ -33,22 +33,42 @@
     isIdentityTransform,
     cellTransform,
     resolvedKeyCell,
+    groupOf,
+    groupTransform,
     type Layer,
   } from "../anim/document";
-  import { contentBoxLogical } from "./cell-ink";
+  import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
   import {
     hitTestHandle,
     transformCenter,
     applyMove,
     applyScale,
     applyRotate,
-    inverseTransformPoint,
+    inverseChain,
     type Handle,
     type Pt,
+    type ComposeStep,
   } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
   const IDENTITY = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+
+  /** Return the compose steps [layer-step, group-step] (inner-to-outer) above a draw layer. */
+  function layerComposeSteps(layer: Layer): ComposeStep[] {
+    const W = state.project.width,
+      H = state.project.height;
+    const steps: ComposeStep[] = [];
+    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+    const g = groupOf(layer, state.project.groups);
+    if (g) {
+      const gt = groupTransform(g);
+      steps.push({
+        base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+        t: gt,
+      });
+    }
+    return steps;
+  }
 
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
@@ -114,22 +134,15 @@
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
     if (layer.kind !== "draw" || layer.locked) return;
-    if (!isIdentityTransform(layer.transform)) {
-      const base = transformBaseRect(layer, state.project.width, state.project.height)!;
-      pt = inverseTransformPoint(base, layer.transform, pt);
-    }
-    const rkFill = resolvedKeyCell(layer, state.playhead);
-    if (rkFill && !isIdentityTransform(cellTransform(rkFill.cell))) {
-      const box = contentBoxLogical(
-        rkFill.cell.canvas,
-        rkFill.cell.transformBox,
-        state.project.width,
-        state.project.height,
-        DPR,
-        state.version,
-      );
-      pt = inverseTransformPoint(box, cellTransform(rkFill.cell), pt);
-    }
+    const W = state.project.width,
+      H = state.project.height;
+    const rk = resolvedKeyCell(layer, state.playhead);
+    const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
+    const cellBox = rk
+      ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
+      : { x: 0, y: 0, w: W, h: H };
+    const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(layer)];
+    pt = inverseChain(steps, pt);
     const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -184,17 +197,17 @@
         H = state.project.height;
       const rk = resolvedKeyCell(al, state.playhead);
       const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
-      const layerNI = !isIdentityTransform(al.transform);
-      const cellNI = rk ? !isIdentityTransform(cellT) : false;
-      if (layerNI || cellNI) {
-        const layerBase = { x: 0, y: 0, w: W, h: H };
-        const cellBox = rk
-          ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
-          : layerBase;
+      const cellBox = rk
+        ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
+        : { x: 0, y: 0, w: W, h: H };
+      const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(al)];
+      // Skip the map when nothing maps (all identity).
+      const anyNonId = steps.some(
+        (s) => !(s.t.dx === 0 && s.t.dy === 0 && s.t.scale === 1 && s.t.rotation === 0),
+      );
+      if (anyNonId) {
         inPts = pts.map((p) => {
-          let q: { x: number; y: number } = p;
-          if (layerNI) q = inverseTransformPoint(layerBase, al.transform, q);
-          if (cellNI) q = inverseTransformPoint(cellBox, cellT, q);
+          const q = inverseChain(steps, { x: p.x, y: p.y });
           return { ...p, x: q.x, y: q.y };
         });
       }
@@ -255,38 +268,73 @@
       H = state.project.height;
     const p = points[points.length - 1];
 
-    // Resolve the active transform target by scope.
-    const frameScope = layer.kind === "draw" && state.transformScope === "frame";
-    const rk = frameScope
-      ? resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, state.playhead)
-      : null;
-    if (frameScope && !rk) {
-      if (done) refDrag = null;
-      return; // nothing to transform on this frame
+    const scope = state.transformScope;
+    const isDraw = layer.kind === "draw";
+    const g = groupOf(layer, state.project.groups);
+
+    // Resolve target + base + compose-steps (outer transforms above the target, inner-to-outer).
+    let getT: () => typeof layer.transform, setT: (t: typeof layer.transform) => void;
+    let base: { x: number; y: number; w: number; h: number } | null;
+    const outerSteps: ComposeStep[] = [];
+    let frameRk: ReturnType<typeof resolvedKeyCell> = null;
+
+    if (isDraw && scope === "group" && g) {
+      const t = groupTransform(g);
+      getT = () => t;
+      setT = (nt) => (g.transform = nt);
+      base = groupBoxLogical(g, state.project, state.playhead, DPR, state.version);
+    } else if (isDraw && scope === "frame") {
+      frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, state.playhead);
+      if (!frameRk) {
+        if (done) refDrag = null;
+        return;
+      }
+      base = contentBoxLogical(
+        frameRk.cell.canvas,
+        frameRk.cell.transformBox,
+        W,
+        H,
+        DPR,
+        state.version,
+      );
+      getT = () => cellTransform(frameRk!.cell);
+      setT = (nt) => (frameRk!.cell.transform = nt);
+      // Outer = layer, then group (inner-to-outer).
+      outerSteps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+      if (g)
+        outerSteps.push({
+          base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+          t: groupTransform(g),
+        });
+    } else {
+      // scope = "layer" (or ref layer)
+      base = transformBaseRect(layer, W, H);
+      getT = () => layer.transform;
+      setT = (nt) => (layer.transform = nt);
+      // Outer = group (if any).
+      if (g)
+        outerSteps.push({
+          base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+          t: groupTransform(g),
+        });
     }
-    const layerForCompose = frameScope ? layer.transform : IDENTITY;
-    const base = frameScope
-      ? contentBoxLogical(rk!.cell.canvas, rk!.cell.transformBox, W, H, DPR, state.version)
-      : transformBaseRect(layer, W, H);
     if (!base) {
       if (done) refDrag = null;
       return;
     }
-    const getT = () => (frameScope ? cellTransform(rk!.cell) : layer.transform);
-    const setT = (t: typeof layer.transform) => {
-      if (frameScope) rk!.cell.transform = t;
-      else layer.transform = t;
-    };
 
-    // Map the pointer through the layer transform inverse (no-op when identity / layer scope).
-    const pc = inverseTransformPoint({ x: 0, y: 0, w: W, h: H }, layerForCompose, p);
+    // Pointer in target's local space: inverse-map through outer (outermost first → use inverseChain).
+    const pc = inverseChain(outerSteps, p);
 
     if (!refDrag) {
       const tol = 10 / viewport.zoom;
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
       const handle = hitTestHandle(base, getT(), pc, tol, gap);
-      // Freeze the box on grab for a frame transform that's currently identity.
-      if (frameScope && handle && isIdentityTransform(getT())) rk!.cell.transformBox = base;
+      // Freeze the box on grab for a frame/group transform currently at identity.
+      if (handle && isIdentityTransform(getT())) {
+        if (isDraw && scope === "frame" && frameRk) frameRk.cell.transformBox = base;
+        else if (isDraw && scope === "group" && g) g.transformBox = base;
+      }
       refDrag = { handle, start: pc, startT: { ...getT() }, center: transformCenter(base, getT()) };
     }
     const d = refDrag;
