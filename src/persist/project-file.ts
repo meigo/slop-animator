@@ -11,6 +11,7 @@ import {
   type ReferenceLayer,
   type RefTransform,
   type Layer,
+  type LayerGroup,
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
@@ -62,7 +63,14 @@ export interface ProjectJson {
   bgColor: string;
   frameCount: number;
   boil: BoilConfig;
-  groups: { id: number; name: string; collapsed: boolean; visible: boolean }[];
+  groups: {
+    id: number;
+    name: string;
+    collapsed: boolean;
+    visible: boolean;
+    transform?: RefTransform;
+    transformBox?: { x: number; y: number; w: number; h: number } | null;
+  }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
   audio: { name: string; offsetFrames: number; muted: boolean } | null;
@@ -94,7 +102,17 @@ export function projectToJson(project: Project): ProjectJson {
     bgColor: project.bgColor,
     frameCount: project.frameCount,
     boil: project.boil,
-    groups: project.groups,
+    groups: project.groups.map((g) => {
+      const t = g.transform;
+      const isId = !t || (t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0);
+      return {
+        id: g.id,
+        name: g.name,
+        collapsed: g.collapsed,
+        visible: g.visible,
+        ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
+      };
+    }),
     layers: project.layers.filter(isDrawingLayer).map((l) => ({
       id: l.id,
       name: l.name,
@@ -257,7 +275,14 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     } as ReferenceLayer,
   }));
   const orderedLayers = insertReferencesByIndex<Layer>(layers, refLayers);
-  const groups = (json.groups ?? []).map((g) => ({ ...g }));
+  const groups: LayerGroup[] = (json.groups ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    collapsed: g.collapsed,
+    visible: g.visible,
+    transform: g.transform ? { ...g.transform } : undefined,
+    transformBox: g.transformBox ? { ...g.transformBox } : (g.transformBox ?? null),
+  }));
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
   const project: Project = {

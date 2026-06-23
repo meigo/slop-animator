@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { setMinLayerId, createDrawingLayer, defaultBoilConfig } from "../anim/document";
+import { unzipSync, strFromU8 } from "fflate";
+import {
+  setMinLayerId,
+  createDrawingLayer,
+  defaultBoilConfig,
+  createProject,
+} from "../anim/document";
 import {
   projectToJson,
   frameAssetPath,
   migrateBoil,
   insertReferencesByIndex,
+  saveProjectBlob,
+  loadProjectBlob,
 } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
@@ -172,5 +180,56 @@ describe("setMinLayerId", () => {
     setMinLayerId(10);
     const b = createDrawingLayer(1).id;
     expect(b).toBeGreaterThan(a);
+  });
+});
+
+describe("group transform persistence", () => {
+  it("round-trips a non-identity group transform + frozen box", async () => {
+    const project = createProject();
+    const g = {
+      id: 42,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      transform: { dx: 12, dy: -3, scale: 1.4, rotation: 0.2 },
+      transformBox: { x: 5, y: 6, w: 30, h: 20 },
+    };
+    project.groups = [g];
+    // Place an existing layer into the group so it survives the round-trip.
+    project.layers[0].groupId = 42;
+    const blob = await saveProjectBlob(project);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.groups).toHaveLength(1);
+    expect(loaded.groups[0].id).toBe(42);
+    expect(loaded.groups[0].transform).toEqual(g.transform);
+    expect(loaded.groups[0].transformBox).toEqual(g.transformBox);
+  });
+
+  it("legacy saves (no group transform fields) load with identity / null", async () => {
+    const project = createProject();
+    project.groups = [{ id: 7, name: "L", collapsed: false, visible: true }]; // no transform
+    project.layers[0].groupId = 7;
+    const blob = await saveProjectBlob(project);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.groups[0].transform).toBeUndefined();
+    expect(loaded.groups[0].transformBox ?? null).toBeNull();
+  });
+
+  it("identity group transform is NOT serialized (sparse map)", async () => {
+    const project = createProject();
+    project.groups = [
+      {
+        id: 1,
+        name: "I",
+        collapsed: false,
+        visible: true,
+        transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      },
+    ];
+    const blob = await saveProjectBlob(project);
+    // Inspect project.json directly.
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.groups[0].transform).toBeUndefined();
   });
 });
