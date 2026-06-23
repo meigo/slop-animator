@@ -48,6 +48,11 @@ export function drawTransformed(
  * ASSUMES `ctx` is at the identity transform and works in DEVICE pixels. The caller sets
  * `ctx.globalAlpha` (render path uses layer opacity; rasterize leaves it at 1). No-op for missing
  * or not-yet-loaded media.
+ *
+ * When `project`, `frame`, and `version` are provided the layer's group transform (if any) is
+ * applied as an outer wrap so reference layers follow their group — identical to drawing layers.
+ * The extra params are optional so callers without a project context (e.g. rasterizeReference)
+ * continue to work unchanged; those callers want the ref's own transform only.
  */
 export function drawReferenceMedia(
   ctx: CanvasRenderingContext2D,
@@ -55,12 +60,30 @@ export function drawReferenceMedia(
   docW: number,
   docH: number,
   dpr: number,
+  project?: Project,
+  frame?: number,
+  version?: number,
 ): void {
   if (layer.media.type === "missing") return;
   const size = mediaIntrinsicSize(layer.media);
   if (size.w === 0 || size.h === 0) return;
   const base = containRect(size.w, size.h, docW * dpr, docH * dpr);
+  const g = project ? groupOf(layer, project.groups) : null;
+  const groupT = groupTransform(g);
+  if (!g || isIdentityTransform(groupT) || frame == null || project == null) {
+    drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
+    return;
+  }
+  const lb = groupBoxLogical(g, project, frame, dpr, version ?? 0);
+  ctx.save();
+  const gcx = lb.x * dpr + (lb.w * dpr) / 2,
+    gcy = lb.y * dpr + (lb.h * dpr) / 2;
+  ctx.translate(gcx + groupT.dx * dpr, gcy + groupT.dy * dpr);
+  ctx.rotate(groupT.rotation);
+  ctx.scale(groupT.scale, groupT.scale);
+  ctx.translate(-gcx, -gcy);
   drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
+  ctx.restore();
 }
 
 /** Draw `cell` through cellT (about its content-box center) then layerT (about doc center) then
@@ -175,7 +198,7 @@ export function compositeFrameLayers(
       const layer = layersById.get(op.layerId)!;
       if (op.kind === "ref" && layer.kind === "ref") {
         ctx.globalAlpha = op.opacity / 100;
-        drawReferenceMedia(ctx, layer, project.width, project.height, dpr);
+        drawReferenceMedia(ctx, layer, project.width, project.height, dpr, project, frame, version);
       }
     }
     for (const op of ops) {
@@ -256,7 +279,7 @@ export function compositeFrameLayers(
       }
     } else if (op.kind === "ref" && layer.kind === "ref") {
       ctx.globalAlpha = op.opacity / 100;
-      drawReferenceMedia(ctx, layer, project.width, project.height, dpr);
+      drawReferenceMedia(ctx, layer, project.width, project.height, dpr, project, frame, version);
     }
   }
   ctx.globalAlpha = 1;

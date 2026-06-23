@@ -342,6 +342,48 @@ describe("renderFrame includeReference", () => {
   });
 });
 
+describe("drawReferenceMedia — group-aware wrap", () => {
+  function imageMedia(id: number, w = 50, h = 50) {
+    return {
+      type: "image" as const,
+      el: { __id: id, naturalWidth: w, naturalHeight: h } as unknown as HTMLImageElement,
+    };
+  }
+
+  it("a reference in a non-identity group renders through the group wrap", () => {
+    const ref = createReferenceLayer(imageMedia(42), "bg");
+    ref.id = 1;
+    ref.groupId = 5;
+    const group = {
+      id: 5,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      transform: { dx: 0, dy: 0, scale: 1.5, rotation: 0 },
+      transformBox: { x: 0, y: 0, w: 100, h: 100 },
+    };
+    const p: Project = {
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#fff",
+      frameCount: 1,
+      boil: defaultBoilConfig(),
+      groups: [group],
+      layers: [ref],
+      audio: null,
+    };
+    const ctx = recordingCtx();
+    compositeFrameLayers(ctx as unknown as CanvasRenderingContext2D, p, 0, 1);
+    // The group wrap adds extra translate/rotate/scale before drawTransformed's own translate/rotate/scale.
+    // Group wrap: translate + rotate + scale + translate = 4 ops before drawTransformed's 3.
+    // Total translate calls: 2 (group pivot + group restore) + 1 (drawTransformed center) >= 2.
+    expect(ctx.calls.filter((c) => c === "translate").length).toBeGreaterThan(1);
+    // Still exactly one drawImage of the ref media (sized).
+    expect(ctx.calls.filter((c) => c.startsWith("drawImage"))).toEqual(["drawImage:42@0.6:sized"]);
+  });
+});
+
 describe("compositeFrameLayers with a group transform", () => {
   it("non-identity group transform emits the composed wrap + a single drawImage", () => {
     const c = keyCanvas();
