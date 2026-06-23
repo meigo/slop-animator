@@ -6,18 +6,21 @@
     transformBaseRect,
     cellTransform,
     resolvedKeyCell,
+    groupOf,
+    groupTransform,
     type Layer,
     type RefTransform,
   } from "../anim/document";
-  import { contentBoxLogical } from "./cell-ink";
+  import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
   import {
     transformedCorners,
     rotateHandlePos,
     transformCenter,
     applyScale,
     applyRotate,
-    forwardTransformPoint,
-    inverseTransformPoint,
+    forwardChain,
+    inverseChain,
+    type ComposeStep,
     type Pt,
   } from "../core/ref-transform";
 
@@ -36,14 +39,14 @@
 
   type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
   // Active handle drag. center/start are in the TARGET's local logical coords (pointer mapped
-  // through `compose` inverse); startT is a snapshot of the target transform at grab time so each
-  // move recomputes from the original. setT writes back to the target (layer or cell).
+  // through `outer` chain inverse); startT is a snapshot of the target transform at grab time so
+  // each move recomputes from the original. setT writes back to the target (layer, cell, or group).
   let drag: {
     handle: DragHandle;
     startT: RefTransform;
     start: Pt;
     center: Pt;
-    compose: RefTransform;
+    outer: ComposeStep[];
     setT: (t: RefTransform) => void;
   } | null = null;
 
@@ -61,38 +64,70 @@
 
   type Rect = { x: number; y: number; w: number; h: number };
   // Scope-aware transform target: which transform the gizmo edits/displays, its logical base
-  // rect, and the layer transform to compose display/pointer through (identity for layer scope).
+  // rect, and the outer compose chain (inner-to-outer) for display/pointer mapping.
   function transformTarget(): {
     getT: () => RefTransform;
     setT: (t: RefTransform) => void;
     base: Rect | null;
-    compose: RefTransform;
+    outer: ComposeStep[]; // inner-to-outer (innermost first)
     cell: Extract<import("../anim/document").Cell, { kind: "key" }> | null;
-    frame: boolean;
+    group: import("../anim/document").LayerGroup | null;
+    scope: "frame" | "layer" | "group";
   } | null {
     const l = activeTransformLayer();
     if (!l) return null;
     const W = appState.project.width,
       H = appState.project.height;
+    const g = groupOf(l, appState.project.groups);
+
+    if (l.kind === "draw" && appState.transformScope === "group") {
+      if (!g) return null; // Group scope is disabled when ungrouped; safety fallback.
+      return {
+        getT: () => groupTransform(g),
+        setT: (t: RefTransform) => (g.transform = t),
+        base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+        outer: [], // group is top of the compose chain
+        cell: null,
+        group: g,
+        scope: "group",
+      };
+    }
+
     if (l.kind === "draw" && appState.transformScope === "frame") {
       const rk = resolvedKeyCell(l, appState.playhead);
       if (!rk) return null;
+      const outer: ComposeStep[] = [{ base: { x: 0, y: 0, w: W, h: H }, t: l.transform }];
+      if (g)
+        outer.push({
+          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+          t: groupTransform(g),
+        });
       return {
         getT: () => cellTransform(rk.cell),
         setT: (t: RefTransform) => (rk.cell.transform = t),
         base: contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version),
-        compose: l.transform,
+        outer,
         cell: rk.cell,
-        frame: true,
+        group: g,
+        scope: "frame",
       };
     }
+
+    // scope = "layer" (or ref layer of any scope)
+    const outer: ComposeStep[] = [];
+    if (g)
+      outer.push({
+        base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+        t: groupTransform(g),
+      });
     return {
       getT: () => l.transform,
       setT: (t: RefTransform) => (l.transform = t),
       base: baseRect(l),
-      compose: IDENTITY,
+      outer,
       cell: null,
-      frame: false,
+      group: g,
+      scope: "layer",
     };
   }
 
@@ -110,24 +145,33 @@
     } catch {
       /* capture is best-effort */
     }
-    // Freeze the content box on grab for a frame transform that's currently identity, so the
-    // gizmo's box stays put as content moves under the new transform.
-    if (tgt.frame && tgt.cell && t.scale === 1 && t.rotation === 0 && t.dx === 0 && t.dy === 0) {
-      tgt.cell.transformBox = base;
+    // Freeze the content box on grab for a frame or group transform that's currently identity,
+    // so the gizmo's box stays put as content moves under the new transform.
+    if (
+      (tgt.scope === "frame" &&
+        tgt.cell &&
+        t.scale === 1 &&
+        t.rotation === 0 &&
+        t.dx === 0 &&
+        t.dy === 0) ||
+      (tgt.scope === "group" &&
+        tgt.group &&
+        t.scale === 1 &&
+        t.rotation === 0 &&
+        t.dx === 0 &&
+        t.dy === 0)
+    ) {
+      if (tgt.scope === "frame" && tgt.cell) tgt.cell.transformBox = base;
+      else if (tgt.scope === "group" && tgt.group) tgt.group.transformBox = base;
     }
-    // Map the grab point through the compose (layer) inverse into the target's local space.
-    const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
-    const start = inverseTransformPoint(
-      fullDoc,
-      tgt.compose,
-      vp.screenToCanvas(e.clientX, e.clientY),
-    );
+    // Map the grab point through the outer chain inverse into the target's local space.
+    const start = inverseChain(tgt.outer, vp.screenToCanvas(e.clientX, e.clientY));
     drag = {
       handle,
       startT: { ...t },
       start,
       center: transformCenter(base, t),
-      compose: tgt.compose,
+      outer: tgt.outer,
       setT: tgt.setT,
     };
     window.addEventListener("pointermove", onDragMove);
@@ -140,8 +184,7 @@
     const vp = getViewport();
     if (!d || !vp) return;
     e.preventDefault();
-    const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
-    const p = inverseTransformPoint(fullDoc, d.compose, vp.screenToCanvas(e.clientX, e.clientY));
+    const p = inverseChain(d.outer, vp.screenToCanvas(e.clientX, e.clientY));
     if (d.handle === "rotate") d.setT(applyRotate(d.startT, d.center, d.start, p));
     else d.setT(applyScale(d.startT, d.center, d.start, p)); // any corner = uniform scale
     bump();
@@ -170,10 +213,9 @@
       const t = tgt.getT();
       const gap = ROTATE_GAP_PX / vp.zoom;
       const rect = container.getBoundingClientRect();
-      const fullDoc = { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
-      // Map the target-local point out through the compose (layer) transform, then to screen.
+      // Map the target-local point out through the outer chain, then to screen.
       const toLocal = (p: { x: number; y: number }) => {
-        const q = forwardTransformPoint(fullDoc, tgt.compose, p);
+        const q = forwardChain(tgt.outer, p);
         const s = vp.canvasToScreen(q.x, q.y);
         return { x: s.x - rect.left, y: s.y - rect.top };
       };
@@ -187,9 +229,12 @@
   function resetTransform() {
     const tgt = transformTarget();
     if (!tgt) return;
-    if (tgt.frame && tgt.cell) {
+    if (tgt.scope === "frame" && tgt.cell) {
       tgt.cell.transform = { ...IDENTITY };
       tgt.cell.transformBox = null;
+    } else if (tgt.scope === "group" && tgt.group) {
+      tgt.group.transform = { ...IDENTITY };
+      tgt.group.transformBox = null;
     } else {
       tgt.setT({ ...IDENTITY });
     }
