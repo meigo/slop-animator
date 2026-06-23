@@ -69,14 +69,17 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 3. **perfect-freehand `size` is a RADIUS basis**, not diameter: with `thinning:1` the rendered
    diameter is `2×size`. `brush.ts` passes `maxSize/2` so smooth strokes match the stamp/ink engines
    and the brush cursor. Don't "fix" it back.
-4. **Transform compose model** (read `docs/superpowers/specs/2026-06-22-per-cell-transform-design.md`):
-   transforms nest **`group ∘ layer ∘ cell`** at render. Forward render = `drawCellComposed`; the
-   draw-through inverse must be `cell⁻¹(layer⁻¹(point))` (layer inverse first), and the gizmo pushes
-   corners through `forwardTransformPoint`. **Units:** render/bake = DEVICE px (`×dpr`);
-   gizmo/inverse/`contentBoxLogical` = LOGICAL. A stray dpr factor or wrong compose order = strokes
-   land wrong (won't show in tests — verify in browser).
-5. **`transformBox` is frozen on gizmo grab** (per cell/layer) to avoid the moving-pivot jump when you
-   draw more on a transformed target.
+4. **Transform compose model** (read `docs/superpowers/specs/2026-06-22-per-cell-transform-design.md`
+   and `docs/superpowers/specs/2026-06-23-group-transform-design.md`):
+   transforms nest **`group ∘ layer ∘ cell`** at render. Forward render = `drawCellComposed` (takes
+   optional outer group args); the draw-through inverse must be `cell⁻¹(layer⁻¹(group⁻¹(point)))`
+   (outermost first), and the gizmo's `outer: ComposeStep[]` (inner-to-outer) pushes corners through
+   `forwardChain` and pointer through `inverseChain`. **Units:** render/bake = DEVICE px (`×dpr`);
+   gizmo/inverse/`contentBoxLogical`/`groupBoxLogical` = LOGICAL. A stray dpr factor or wrong
+   compose order = strokes land wrong (won't show in tests — verify in browser).
+5. **`transformBox` is frozen on gizmo grab** (per cell/layer/group) to avoid the moving-pivot jump
+   when you draw more on a transformed target. Group bbox = union of member draw-layer
+   `contentBounds` at the current frame (refs excluded; empty group → full-doc).
 6. Gizmo _drags_ don't push undo (only Apply/Reset do) — matches existing behavior, intentional.
 7. Mouse strokes report no pressure (`hasPressure:false`) → drawn at constant nominal width
    (`sizeRange` collapses to 1); only pen pressure widens.
@@ -88,16 +91,22 @@ settings, pressure curve, eyedropper, brush/eraser size cursor), fill, selection
 layers + visual groups (collapse/visibility/drag-reorder), onion skins, WebGL line-boil, timeline
 (keyframe/hold, scrub — perf-tuned), playback, audio Phase 1, MP4/WebM export (mediabunny),
 reference layers (image/video, transform gizmo, metadata-only persistence + re-link), clipboard
-image paste + rasterize-to-drawing-layer, **per-layer free transform** and **per-cell (current-frame)
-transform** (Frame/Layer scope toggle on the Transform tool), autosave + global preferences. Whole
-codebase is Svelte 5 **runes**; Prettier + ESLint + pre-commit hooks in place.
+image paste + rasterize-to-drawing-layer, **per-layer free transform**, **per-cell (current-frame)
+transform**, and **per-group transform** (3-way Frame/Layer/Group scope toggle on the Transform tool;
+group transform composes above the layer for character-rig moves; Reset-only this phase, no Apply),
+autosave + global preferences. Whole codebase is Svelte 5 **runes**; Prettier + ESLint + pre-commit
+hooks in place.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
-- **Transform Phase B — Group ("parent context") transform**: compose a transform ABOVE the layer for
-  all layers in a group. `LayerGroup` is visual-only today (no transform field). The 4-scope model is
-  in the per-cell spec. **This is the natural next transform feature.**
-- **Transform later**: animated/keyframed transforms (per-cell is the stepping stone).
+- **Transform later**: animated/keyframed transforms — `LayerGroup.transform` and `Layer.transform`
+  mirror each other in shape (per Phase B spec), ready for a `RefTransform → KeyframedTransform`
+  migration. Cells stay static-only (they're already the frame-level keyframe).
+- **Group transform Apply (full pixel flatten)**: deferred — Phase B is Reset-only. The math for a
+  clean per-layer fold-down doesn't exist (group rotates about group bbox center, layers about doc
+  center); only a full flatten of all member key cells is correct. Add when there's demand.
+- **User-pickable group pivot** (Flash/Animate-style draggable transformation point) — additive,
+  non-breaking. Useful when animated rotations land.
 - **Audio Phase 2** (scrub, drag-offset clip, mute — fields exist in model/persistence) and **Phase 3**
   (mux audio into export). See `docs/.../2026-06-15-audio-track-phase1-design.md`.
 - **Per-layer boil-strength UI slider** — data path complete (`DrawingLayer.boilStrength` honored +
