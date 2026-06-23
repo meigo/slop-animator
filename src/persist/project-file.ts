@@ -1,5 +1,6 @@
 import {
   isDrawingLayer,
+  isIdentityTransform,
   createCellCanvas,
   setMinLayerId,
   refreshLength,
@@ -104,7 +105,7 @@ export function projectToJson(project: Project): ProjectJson {
     boil: project.boil,
     groups: project.groups.map((g) => {
       const t = g.transform;
-      const isId = !t || (t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0);
+      const isId = !t || isIdentityTransform(t);
       return {
         id: g.id,
         name: g.name,
@@ -281,7 +282,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     collapsed: g.collapsed,
     visible: g.visible,
     transform: g.transform ? { ...g.transform } : undefined,
-    transformBox: g.transformBox ? { ...g.transformBox } : (g.transformBox ?? null),
+    transformBox: g.transformBox ? { ...g.transformBox } : null,
   }));
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
