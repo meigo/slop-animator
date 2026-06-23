@@ -41,11 +41,13 @@
     resetLayerTransform,
     applyCellTransform,
     resetCellTransform,
+    resetGroupTransform,
     setActiveLayer,
   } from "../state/appState.svelte";
   import {
     createDrawingLayer,
     groupOf,
+    groupTransform,
     isIdentityTransform,
     cellTransform,
     resolvedKeyCell,
@@ -107,26 +109,35 @@
     addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
   }
 
-  // Show Apply/Reset when the layer transform OR the active frame's resolved key cell transform
-  // is non-identity (draw layers only).
+  // Show Apply/Reset when the layer transform, the active frame's resolved key cell transform,
+  // or the containing group's transform is non-identity (draw layers only).
   function hasTransform(layer: Layer): boolean {
     if (layer.kind !== "draw") return false;
     if (!isIdentityTransform(layer.transform)) return true;
     const rk = resolvedKeyCell(layer, appState.playhead);
-    return !!rk && !isIdentityTransform(cellTransform(rk.cell));
+    if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
+    const g = groupOf(layer, appState.project.groups);
+    return !!g && !isIdentityTransform(groupTransform(g));
   }
 
-  // Act on whichever transform is actually non-identity; when both are, the scope toggle decides.
+  // Act on whichever transform is actually non-identity; when multiple are, the scope toggle decides.
   // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
   function activeTransformScope(layer: Layer): "frame" | "layer" | "group" | null {
     if (layer.kind !== "draw") return null;
     const layerNI = !isIdentityTransform(layer.transform);
     const rk = resolvedKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
-    if (layerNI && cellNI) return appState.transformScope;
+    const g = groupOf(layer, appState.project.groups);
+    const groupNI = !!g && !isIdentityTransform(groupTransform(g));
+    if (!layerNI && !cellNI && !groupNI) return null;
+    // Honour the active toolbar scope when it points at a non-identity transform.
+    if (appState.transformScope === "frame" && cellNI) return "frame";
+    if (appState.transformScope === "layer" && layerNI) return "layer";
+    if (appState.transformScope === "group" && groupNI) return "group";
+    // Tiebreak: whichever is non-identity (frame > layer > group).
     if (cellNI) return "frame";
     if (layerNI) return "layer";
-    return null;
+    return "group";
   }
 
   // Build display segments (top-first, reverse of the bottom→top data order).
@@ -312,24 +323,31 @@
           >
         {/if}
         {#if hasTransform(layer)}
-          <button
-            class="text-text-muted hover:text-text-secondary"
-            title="Apply transform (bake to pixels)"
-            onclick={(e) => {
-              e.stopPropagation();
-              if (activeTransformScope(layer) === "frame")
-                applyCellTransform(layer.id, appState.playhead);
-              else applyLayerTransform(layer.id);
-            }}><Stamp size={13} /></button
-          >
+          {#if activeTransformScope(layer) !== "group"}
+            <button
+              class="text-text-muted hover:text-text-secondary"
+              title="Apply transform (bake to pixels)"
+              onclick={(e) => {
+                e.stopPropagation();
+                if (activeTransformScope(layer) === "frame")
+                  applyCellTransform(layer.id, appState.playhead);
+                else applyLayerTransform(layer.id);
+              }}><Stamp size={13} /></button
+            >
+          {/if}
           <button
             class="text-text-muted hover:text-text-secondary"
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
-              if (activeTransformScope(layer) === "frame")
+              if (activeTransformScope(layer) === "frame") {
                 resetCellTransform(layer.id, appState.playhead);
-              else resetLayerTransform(layer.id);
+              } else if (activeTransformScope(layer) === "group") {
+                const g = groupOf(layer, appState.project.groups);
+                if (g) resetGroupTransform(g.id);
+              } else {
+                resetLayerTransform(layer.id);
+              }
             }}><RotateCcw size={13} /></button
           >
         {/if}
