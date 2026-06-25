@@ -102,6 +102,11 @@ hooks in place.
 - **Transform later**: animated/keyframed transforms — `LayerGroup.transform` and `Layer.transform`
   mirror each other in shape (per Phase B spec), ready for a `RefTransform → KeyframedTransform`
   migration. Cells stay static-only (they're already the frame-level keyframe).
+- **2D mesh-deform "Deform" tool** for quick per-frame pose editing of characters/limbs/blobs —
+  Laplacian/ARAP mesh deformation, scope = single cell only (no animation, no rigging). Idea-stage
+  notes in `docs/superpowers/specs/2026-06-25-mesh-deform-tool-notes.md` — recommendation is to
+  prototype FFD (control-lattice + bicubic warp) first to validate the pipeline, then upgrade the
+  solver to ARAP.
 - **Group transform Apply (full pixel flatten)**: deferred — Phase B is Reset-only. The math for a
   clean per-layer fold-down doesn't exist (group rotates about group bbox center, layers about doc
   center); only a full flatten of all member key cells is correct. Add when there's demand.
