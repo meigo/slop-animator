@@ -42,6 +42,7 @@
     Moon,
     Spline,
     Workflow,
+    PersonStanding,
     ClipboardPaste,
     Pipette,
   } from "@lucide/svelte";
@@ -197,6 +198,12 @@
     class:bg-surface-active={appState.tool === "deform"}
     title="Deform (warp the drawing)"
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
+  >
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={appState.tool === "pose"}
+    title="Pose (mesh deform)"
+    onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
   {#if appState.tool === "transform"}
     {@const _activeLayer = activeLayer()}
