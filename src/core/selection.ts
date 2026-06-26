@@ -10,6 +10,8 @@
  * Press Enter to commit, Escape to cancel.
  */
 
+import { mlsRigid } from "./mls";
+
 export interface SelectionRect {
   x: number;
   y: number;
@@ -101,6 +103,9 @@ export class Selection {
   warpGrid: { x: number; y: number }[][] = [];
   warpRows = 2;
   warpCols = 2;
+  deformMode: "ffd" | "rigid" = "ffd";
+  warpRest: Pt[][] = []; // uniform rest grid captured at beginWarp/densify (rigid source)
+  pinned = new Map<number, Pt>(); // flat index (row*cols + col) → pinned CSS position (rigid mode)
   floatingPixels: HTMLCanvasElement | null = null;
 
   /** Lasso path points (CSS coords) */
@@ -307,6 +312,8 @@ export class Selection {
     this.warpGrid = sampleGrid(this.rect, this.matrix, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
+    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
+    this.pinned.clear();
     this.state = "warping";
     this.drawOverlay();
     this.onStateChange?.();
@@ -317,14 +324,28 @@ export class Selection {
    * over each existing cell. Preserves user edits when increasing density.
    */
   densifyWarp(rows: number, cols: number) {
-    if (this.state !== "warping") return;
+    if (this.state !== "warping" || !this.rect) return;
     if (rows < 2 || cols < 2) return;
     if (rows === this.warpRows && cols === this.warpCols) return;
     this.warpGrid = resampleGrid(this.warpGrid, this.warpRows, this.warpCols, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
+    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
+    this.pinned.clear();
     this.drawOverlay();
     this.onStateChange?.();
+  }
+
+  setDeformMode(m: "ffd" | "rigid") {
+    this.deformMode = m;
+    this.drawOverlay();
+    this.onChange?.();
+  }
+
+  resetPins() {
+    this.pinned.clear();
+    this.drawOverlay();
+    this.onChange?.();
   }
 
   /** Hit half-width in document px — at least MIN_HIT_PX in screen px, regardless of zoom. */
@@ -420,9 +441,33 @@ export class Selection {
         );
       } else if (this.dragging === "grid" && this.dragGridIdx) {
         const { row, col } = this.dragGridIdx;
-        this.warpGrid = this.warpGridStart.map((rArr, r) =>
-          rArr.map((p, c) => (r === row && c === col ? { x: p.x + dx, y: p.y + dy } : { ...p })),
-        );
+        if (this.deformMode === "rigid") {
+          const cols = this.warpCols;
+          const idx = row * cols + col;
+          const rest = this.warpRest.flat();
+          const target = {
+            x: this.warpGridStart[row][col].x + dx,
+            y: this.warpGridStart[row][col].y + dy,
+          };
+          const from: Pt[] = [];
+          const to: Pt[] = [];
+          for (const [i, pos] of this.pinned) {
+            if (i !== idx) {
+              from.push(rest[i]);
+              to.push(pos);
+            }
+          }
+          from.push(rest[idx]);
+          to.push(target);
+          const deformed = mlsRigid(rest, from, to);
+          this.warpGrid = this.warpRest.map((rArr, r) =>
+            rArr.map((_, c) => deformed[r * cols + c]),
+          );
+        } else {
+          this.warpGrid = this.warpGridStart.map((rArr, r) =>
+            rArr.map((p, c) => (r === row && c === col ? { x: p.x + dx, y: p.y + dy } : { ...p })),
+          );
+        }
       }
       this.drawOverlay();
       this.onChange?.();
@@ -525,6 +570,16 @@ export class Selection {
   }
 
   endDrag() {
+    if (
+      this.state === "warping" &&
+      this.deformMode === "rigid" &&
+      this.dragging === "grid" &&
+      this.dragGridIdx
+    ) {
+      const { row, col } = this.dragGridIdx;
+      this.pinned.set(row * this.warpCols + col, { ...this.warpGrid[row][col] });
+      this.drawOverlay();
+    }
     this.dragging = null;
   }
 
@@ -591,6 +646,9 @@ export class Selection {
     this.warpGridStart = [];
     this.warpRows = 2;
     this.warpCols = 2;
+    this.deformMode = "ffd";
+    this.warpRest = [];
+    this.pinned.clear();
     this.dragGridIdx = null;
     this.hitGridIdx = null;
     this.isCreating = false;
@@ -740,7 +798,8 @@ export class Selection {
       // Handles at every grid intersection.
       for (let r = 0; r < this.warpRows; r++) {
         for (let c = 0; c < this.warpCols; c++) {
-          this.drawHandle(ctx, grid[r][c].x, grid[r][c].y, "square");
+          const isPinned = this.deformMode === "rigid" && this.pinned.has(r * this.warpCols + c);
+          this.drawHandle(ctx, grid[r][c].x, grid[r][c].y, isPinned ? "pin" : "square");
         }
       }
       return;
@@ -810,9 +869,15 @@ export class Selection {
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
-    shape: "square" | "circle",
+    shape: "square" | "circle" | "pin",
   ) {
-    if (shape === "square") {
+    if (shape === "pin") {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+    } else if (shape === "square") {
       ctx.fillStyle = "#fff";
       ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
       ctx.strokeStyle = "#000";

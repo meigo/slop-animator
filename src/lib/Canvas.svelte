@@ -706,6 +706,8 @@
       const n = clampDensity(selection.warpRows + d);
       selection.densifyWarp(n, n);
     }}
+    onSetDeformMode={(m) => selection?.setDeformMode(m)}
+    onResetPins={() => selection?.resetPins()}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
