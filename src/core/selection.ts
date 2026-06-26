@@ -994,7 +994,7 @@ function outerPerimeter(grid: Pt[][], rows: number, cols: number): Pt[] {
   return ring;
 }
 
-function drawTriangle(
+export function drawTriangle(
   ctx: CanvasRenderingContext2D,
   img: HTMLCanvasElement,
   rect: SelectionRect,
