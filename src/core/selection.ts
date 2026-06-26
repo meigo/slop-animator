@@ -312,7 +312,7 @@ export class Selection {
     this.warpGrid = sampleGrid(this.rect, this.matrix, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
-    this.warpRest = sampleGrid(this.rect, identity(), rows, cols);
+    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
     this.pinned.clear();
     this.state = "warping";
     this.drawOverlay();
@@ -330,7 +330,7 @@ export class Selection {
     this.warpGrid = resampleGrid(this.warpGrid, this.warpRows, this.warpCols, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
-    this.warpRest = sampleGrid(this.rect, identity(), rows, cols);
+    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
     this.pinned.clear();
     this.drawOverlay();
     this.onStateChange?.();
