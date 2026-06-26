@@ -17,6 +17,8 @@
     onCommit,
     onCancel,
     onDensify,
+    onSetDeformMode,
+    onResetPins,
   }: {
     getSelection: () => Selection | null;
     getViewport: () => Viewport | null;
@@ -27,6 +29,8 @@
     onCommit: () => void;
     onCancel: () => void;
     onDensify: (delta: number) => void;
+    onSetDeformMode: (m: "ffd" | "rigid") => void;
+    onResetPins: () => void;
   } = $props();
 
   const MARGIN = 12;
@@ -34,6 +38,7 @@
   let visible = $state(false);
   let mode = $state<"selected" | "transforming" | "warping">("selected");
   let warp = $state({ rows: 2, cols: 2 });
+  let deformMode = $state<"ffd" | "rigid">("ffd");
   let pos = $state({ x: 0, y: 0 });
   let rafId = 0;
 
@@ -48,6 +53,7 @@
       } else {
         mode = selection.state as "selected" | "transforming" | "warping";
         warp = { rows: selection.warpRows, cols: selection.warpCols };
+        deformMode = selection.deformMode;
         const wsRect = containerEl.getBoundingClientRect();
         const panelRect = panelEl.getBoundingClientRect();
         const a = computeAnchor({
@@ -141,6 +147,25 @@
       title="More detail"
       onpointerdown={tap(() => onDensify(1))}>+</button
     >
+    <div class="flex rounded border border-border overflow-hidden text-xs">
+      <button
+        class="px-2 py-1"
+        class:bg-surface-active={deformMode === "ffd"}
+        onpointerdown={tap(() => onSetDeformMode("ffd"))}>FFD</button
+      >
+      <button
+        class="px-2 py-1"
+        class:bg-surface-active={deformMode === "rigid"}
+        onpointerdown={tap(() => onSetDeformMode("rigid"))}>Rigid</button
+      >
+    </div>
+    {#if deformMode === "rigid"}
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface"
+        title="Clear pinned handles"
+        onpointerdown={tap(onResetPins)}>Reset pins</button
+      >
+    {/if}
   {/if}
   {#if mode !== "selected"}
     <div class="w-px h-6 bg-border mx-0.5"></div>
