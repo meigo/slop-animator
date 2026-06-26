@@ -48,7 +48,15 @@ import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
 
-export type Tool = "brush" | "eraser" | "fill" | "select" | "lasso" | "transform" | "eyedropper";
+export type Tool =
+  | "brush"
+  | "eraser"
+  | "fill"
+  | "select"
+  | "lasso"
+  | "transform"
+  | "eyedropper"
+  | "deform";
 
 interface AnimState {
   project: Project;
