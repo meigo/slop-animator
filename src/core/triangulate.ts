@@ -1,3 +1,5 @@
+import Delaunator from "delaunator";
+
 export interface Pt {
   x: number;
   y: number;
@@ -66,4 +68,50 @@ export function interiorPoints(
     }
   }
   return out;
+}
+
+/** Triangulate the silhouette of a binary alpha mask into a conforming triangle mesh (pixel space). */
+export function triangulateSilhouette(
+  inside: Inside,
+  width: number,
+  height: number,
+  opts: { spacing?: number } = {},
+): Mesh {
+  const spacing = Math.max(2, opts.spacing ?? 16);
+  const boundary = boundaryPoints(inside, width, height, spacing);
+  const interior = interiorPoints(inside, width, height, spacing, boundary);
+  const pts = boundary.concat(interior);
+  if (pts.length < 3) return { vertices: [], triangles: [] };
+
+  const d = Delaunator.from(
+    pts,
+    (p) => p.x,
+    (p) => p.y,
+  );
+  const tris: [number, number, number][] = [];
+  for (let t = 0; t < d.triangles.length; t += 3) {
+    const a = d.triangles[t],
+      b = d.triangles[t + 1],
+      c = d.triangles[t + 2];
+    const cx = (pts[a].x + pts[b].x + pts[c].x) / 3;
+    const cy = (pts[a].y + pts[b].y + pts[c].y) / 3;
+    if (inside(Math.round(cx), Math.round(cy))) tris.push([a, b, c]);
+  }
+
+  // Reindex: keep only referenced vertices, compact.
+  const remap = new Map<number, number>();
+  const vertices: Pt[] = [];
+  const triangles: [number, number, number][] = tris.map(([a, b, c]) => {
+    const m = (i: number) => {
+      let n = remap.get(i);
+      if (n === undefined) {
+        n = vertices.length;
+        remap.set(i, n);
+        vertices.push(pts[i]);
+      }
+      return n;
+    };
+    return [m(a), m(b), m(c)];
+  });
+  return { vertices, triangles };
 }

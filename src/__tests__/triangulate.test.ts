@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boundaryPoints, interiorPoints } from "../core/triangulate";
+import { boundaryPoints, interiorPoints, triangulateSilhouette } from "../core/triangulate";
 
 // A 20×20 filled square inside a 40×40 field (inside = 10..29 in both axes).
 const sq = (x: number, y: number) => x >= 10 && x <= 29 && y >= 10 && y <= 29;
@@ -37,5 +37,48 @@ describe("interiorPoints", () => {
       expect(sq(p.x, p.y)).toBe(true);
       for (const q of b) expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeGreaterThan(2);
     }
+  });
+});
+
+describe("triangulateSilhouette", () => {
+  const sq2 = (x: number, y: number) => x >= 10 && x <= 29 && y >= 10 && y <= 29;
+  // L-shape: 30×30 block (5..34) minus the top-right quadrant (x>=20 && y>=20) — a concave notch.
+  const L = (x: number, y: number) => x >= 5 && x < 35 && y >= 5 && y < 35 && !(x >= 20 && y >= 20);
+
+  it("meshes a filled square: all triangle centroids inside, indices valid", () => {
+    const m = triangulateSilhouette(sq2, 40, 40, { spacing: 6 });
+    expect(m.triangles.length).toBeGreaterThan(0);
+    for (const [a, b, c] of m.triangles) {
+      for (const i of [a, b, c]) {
+        expect(i).toBeGreaterThanOrEqual(0);
+        expect(i).toBeLessThan(m.vertices.length);
+      }
+      const cx = (m.vertices[a].x + m.vertices[b].x + m.vertices[c].x) / 3;
+      const cy = (m.vertices[a].y + m.vertices[b].y + m.vertices[c].y) / 3;
+      expect(sq2(Math.round(cx), Math.round(cy))).toBe(true);
+    }
+  });
+
+  it("conforms to a concavity: no triangle centroid in the L's notch", () => {
+    const m = triangulateSilhouette(L, 40, 40, { spacing: 5 });
+    expect(m.triangles.length).toBeGreaterThan(0);
+    for (const [a, b, c] of m.triangles) {
+      const cx = (m.vertices[a].x + m.vertices[b].x + m.vertices[c].x) / 3;
+      const cy = (m.vertices[a].y + m.vertices[b].y + m.vertices[c].y) / 3;
+      expect(cx >= 20 && cy >= 20).toBe(false);
+    }
+  });
+
+  it("reindex: no unused vertices", () => {
+    const m = triangulateSilhouette(sq2, 40, 40, { spacing: 6 });
+    const used = new Set(m.triangles.flat());
+    expect(used.size).toBe(m.vertices.length);
+  });
+
+  it("empty mask → empty mesh", () => {
+    expect(triangulateSilhouette(() => false, 40, 40, { spacing: 6 })).toEqual({
+      vertices: [],
+      triangles: [],
+    });
   });
 });
