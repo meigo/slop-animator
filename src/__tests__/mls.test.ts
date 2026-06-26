@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mlsRigid } from "../core/mls";
+import { mlsRigid, mlsRigidWeighted } from "../core/mls";
 
 const grid = [
   { x: 0, y: 0 },
@@ -78,5 +78,34 @@ describe("mlsRigid", () => {
     expect(out[1].x).toBeCloseTo(0, 6);
     expect(out[1].y).toBeCloseTo(10, 6);
     expect(Number.isFinite(out[3].x) && Number.isFinite(out[3].y)).toBe(true);
+  });
+});
+
+describe("mlsRigidWeighted", () => {
+  const pts = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 5, y: 5 },
+  ];
+  const from = [{ x: 0, y: 0 }];
+  const to = [{ x: 3, y: 4 }];
+
+  it("Infinity weight maps a point exactly to that handle's target", () => {
+    const out = mlsRigidWeighted(pts, from, to, [[Infinity], [1], [1]]);
+    expect(out[0]).toEqual({ x: 3, y: 4 });
+  });
+  it("all-zero weight row leaves the point unchanged", () => {
+    const out = mlsRigidWeighted(pts, from, to, [[0], [0], [0]]);
+    out.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(pts[i].x, 6);
+      expect(p.y).toBeCloseTo(pts[i].y, 6);
+    });
+  });
+  it("a single handle (any positive weights) translates uniformly", () => {
+    const out = mlsRigidWeighted(pts, from, to, [[1], [2], [0.5]]);
+    out.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(pts[i].x + 3, 6);
+      expect(p.y).toBeCloseTo(pts[i].y + 4, 6);
+    });
   });
 });
