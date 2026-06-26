@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>triangulate viz</title>
+    <style>
+      body {
+        font: 13px sans-serif;
+        margin: 12px;
+      }
+      canvas {
+        border: 1px solid #ccc;
+        image-rendering: pixelated;
+      }
+      label {
+        margin-right: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label
+        >shape
+        <select id="shape">
+          <option>rect</option>
+          <option>L</option>
+          <option>disc</option>
+        </select></label
+      >
+      <label
+        >spacing <input id="spacing" type="range" min="4" max="40" value="16" />
+        <span id="spacingVal">16</span></label
+      >
+    </div>
+    <canvas id="cv" width="300" height="300"></canvas>
+    <div id="stats"></div>
+    <script type="module" src="/src/triangulate-viz.ts"></script>
+  </body>
+</html>
