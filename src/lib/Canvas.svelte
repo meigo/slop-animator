@@ -39,6 +39,7 @@
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
+  import { MeshPose } from "../core/mesh-pose";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -89,6 +90,10 @@
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
+  // Pose tool: lifted mesh + the handle index currently being dragged.
+  let meshPose: MeshPose | null = null;
+  let poseDrag: number | null = null;
+  const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
 
   // The cell canvas being drawn on for the current stroke, and its undo snapshot.
   let strokeCanvas: HTMLCanvasElement | null = null;
@@ -370,11 +375,34 @@
     }
     // Selection is disabled while the active draw layer is transformed (Apply first).
     if (
-      (state.tool === "select" || state.tool === "lasso" || state.tool === "deform") &&
+      (state.tool === "select" ||
+        state.tool === "lasso" ||
+        state.tool === "deform" ||
+        state.tool === "pose") &&
       al.kind === "draw" &&
       !isIdentityTransform(al.transform)
     )
       return;
+    if (state.tool === "pose") {
+      const p = points[points.length - 1];
+      if (!meshPose) {
+        if (points.length === 1 && !done) enterPose();
+        return;
+      }
+      if (points.length === 1 && !done) {
+        const hit = meshPose.handleAt(p, 10 / viewport.zoom);
+        poseDrag = hit !== null ? hit : meshPose.addHandleAt(p);
+        posePaint();
+      } else if (!done) {
+        if (poseDrag !== null) {
+          meshPose.dragHandle(poseDrag, p);
+          posePaint();
+        }
+      } else {
+        poseDrag = null;
+      }
+      return;
+    }
     if (state.tool === "deform") {
       const p = points[points.length - 1];
       if (selection.state !== "warping") {
@@ -585,6 +613,71 @@
     selection.beginWarp(4, 4);
   }
 
+  function posePaint() {
+    const octx = overlay.getContext("2d")!;
+    octx.setTransform(1, 0, 0, 1, 0, 0);
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    if (meshPose) {
+      meshPose.render(octx);
+      meshPose.drawWireframe(octx);
+    }
+  }
+
+  function enterPose() {
+    const al = activeLayer();
+    if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
+    const canvas = ensureDrawableKeyframe(al, state.playhead, canvasOps);
+    const rect = contentRectLogical(contentBounds(canvas, state.version), DPR);
+    if (!rect) return;
+    selection.cancel(); // clear any stale selection/lasso so liftPixels uses our content rect
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    selection.rect = rect;
+    const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
+    if (!lifted) {
+      selCtx = null;
+      selBefore = null;
+      return;
+    }
+    meshPose = MeshPose.fromLift(lifted, rect, DPR, POSE_SPACING);
+    if (!meshPose) {
+      if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
+      selCtx = null;
+      selBefore = null;
+      recomposite();
+      return;
+    }
+    recomposite(); // show the hole where the content lifted out
+    posePaint(); // draw the deformed raster + wireframe on the overlay
+  }
+
+  function applyPose() {
+    if (!meshPose || !selCtx || !selBefore) return;
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    meshPose.render(selCtx); // bake the deformed raster into the cell
+    const ctx = selCtx;
+    const before = selBefore;
+    const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    history.push({
+      undo: () => {
+        ctx.putImageData(before, 0, 0);
+        recomposite();
+      },
+      redo: () => {
+        ctx.putImageData(after, 0, 0);
+        recomposite();
+      },
+    });
+    meshPose = null;
+    poseDrag = null;
+    selCtx = null;
+    selBefore = null;
+    posePaint(); // meshPose null → clears overlay
+    bump();
+    recomposite();
+  }
+
   function enterWarp(rows: number, cols: number) {
     if (!selection) return;
     if (selection.state === "selected") enterTransform();
@@ -663,6 +756,7 @@
     if (!selection) return;
     // Leaving the deform tool banks the floating warp (one undo step via onCommit).
     if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
+    if (prevTool === "pose" && t !== "pose" && meshPose) applyPose();
     prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
