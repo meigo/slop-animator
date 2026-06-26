@@ -568,6 +568,9 @@
     const canvas = ensureDrawableKeyframe(al, state.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, state.version), DPR);
     if (!rect) return; // empty cell → nothing to deform
+    // Clear any leftover selection (esp. a lasso path) so liftPixels uses our content rect, not a
+    // stale lasso clip. cancel() reverts an in-progress lift (onCancel no-ops when nothing's lifted).
+    selection.cancel();
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
