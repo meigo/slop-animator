@@ -16,6 +16,7 @@
     onMesh,
     onCommit,
     onCancel,
+    onDensify,
   }: {
     getSelection: () => Selection | null;
     getViewport: () => Viewport | null;
@@ -25,6 +26,7 @@
     onMesh: () => void;
     onCommit: () => void;
     onCancel: () => void;
+    onDensify: (delta: number) => void;
   } = $props();
 
   const MARGIN = 12;
@@ -127,6 +129,19 @@
   >
     <Grid3x3 size={18} />
   </button>
+  {#if mode === "warping"}
+    <button
+      class="px-2 py-1 text-xs border border-border rounded bg-surface"
+      title="Less detail"
+      onpointerdown={tap(() => onDensify(-1))}>−</button
+    >
+    <span class="text-xs text-text-secondary tabular-nums">{warp.rows}×{warp.cols}</span>
+    <button
+      class="px-2 py-1 text-xs border border-border rounded bg-surface"
+      title="More detail"
+      onpointerdown={tap(() => onDensify(1))}>+</button
+    >
+  {/if}
   {#if mode !== "selected"}
     <div class="w-px h-6 bg-border mx-0.5"></div>
     <button

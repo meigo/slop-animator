@@ -38,7 +38,7 @@
     type Layer,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
-  import { contentRectLogical } from "../core/deform";
+  import { contentRectLogical, clampDensity } from "../core/deform";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -698,6 +698,11 @@
     onMesh={() => enterWarp(3, 3)}
     onCommit={() => selection?.commit()}
     onCancel={() => selection?.cancel()}
+    onDensify={(d) => {
+      if (!selection) return;
+      const n = clampDensity(selection.warpRows + d);
+      selection.densifyWarp(n, n);
+    }}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
