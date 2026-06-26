@@ -419,39 +419,57 @@ git commit -m "feat: Canvas — pose tool lift/interaction/overlay/bake"
 
 ### Task 5: Panel — Apply / Cancel / Reset handles / density
 
-**Files:** Modify `src/lib/SelectionActions.svelte`, `src/lib/Canvas.svelte`.
+**Files:** Modify `src/lib/Canvas.svelte`.
 
-- [ ] **Step 1:** The pose panel is simplest as a **dedicated small block** rendered when `appState.tool === "pose"` and a pose is active. Add props to `SelectionActions.svelte`: `posing: boolean`, `onPoseApply: () => void`, `onPoseCancel: () => void`, `onPoseReset: () => void`, `onPoseDensity: (delta: number) => void` (+ their types). Sync `posing` from a getter (Canvas passes whether `meshPose` is set). Render when `posing`:
-```svelte
-{#if posing}
-  <button class="px-2 py-1 text-xs border border-border rounded bg-surface" onpointerdown={tap(() => onPoseDensity(-1))}>−</button>
-  <button class="px-2 py-1 text-xs border border-border rounded bg-surface" onpointerdown={tap(() => onPoseDensity(1))}>+</button>
-  <button class="px-2 py-1 text-xs border border-border rounded bg-surface" onpointerdown={tap(onPoseReset)}>Reset</button>
-  <button class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text" onpointerdown={tap(onPoseApply)}>Apply</button>
-  <button class="px-2 py-1 text-xs border border-border rounded bg-surface" onpointerdown={tap(onPoseCancel)}>Cancel</button>
-{/if}
-```
-(SelectionActions visibility currently gates on a selection; ensure the panel container shows when `posing` even with no selection — read the component and add `|| posing` to its visibility condition, or render this block in its own always-evaluated `{#if posing}` outside the selection gate.)
+**Why not `SelectionActions`:** that panel anchors itself to the *selection's* screen bbox (`getScreenBounds()`) and gates its visibility on an active selection. A pose has **no selection** — routing pose controls through it would mean fighting that anchoring/visibility logic. The pose bar has nothing to anchor to a moving bbox, so render it as a **self-contained, fixed-position bar inside the `stage` div**, gated purely on `meshPose`. No `SelectionActions` changes.
 
-- [ ] **Step 2: Canvas wiring + density** — expose `posing` and handlers. Add a re-mesh on density:
+- [ ] **Step 1: Density re-mesh + state** — in `Canvas.svelte` add `let poseSpacing = POSE_SPACING;` (and use `poseSpacing` instead of the `POSE_SPACING` const inside `enterPose`'s `fromLift` call). Add the density handler:
 ```ts
   function poseDensity(delta: number) {
     if (!meshPose) return;
     poseSpacing = Math.max(4, poseSpacing + delta * 4);
-    // rebuild from the SAME lifted img (resets handles, indices change)
+    // rebuild from the SAME lifted img (resets handles — vertex indices change)
     meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
     poseDrag = null;
     posePaint();
   }
 ```
-Add `let poseSpacing = POSE_SPACING;` (replace the const use in `enterPose` with `poseSpacing`). On the `<SelectionActions … />` element add:
+
+- [ ] **Step 2: The pose bar** — add this block inside the `stage` `<div>` (sibling of `<SelectionActions … />`, before the closing `</div>`). It is centered at the top of the stage, only mounted while a pose is active, and uses `onpointerdown` so a pencil/touch tap fires without a click delay:
 ```svelte
-    posing={meshPose !== null}
-    onPoseApply={applyPose}
-    onPoseCancel={cancelPose}
-    onPoseReset={() => { meshPose?.resetHandles(); poseDrag = null; posePaint(); }}
-    onPoseDensity={poseDensity}
+  {#if meshPose}
+    <div
+      class="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
+    >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Coarser mesh"
+        onpointerdown={(e) => { e.preventDefault(); poseDensity(-1); }}>−</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Denser mesh"
+        onpointerdown={(e) => { e.preventDefault(); poseDensity(1); }}>+</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Reset handles"
+        onpointerdown={(e) => { e.preventDefault(); meshPose?.resetHandles(); poseDrag = null; posePaint(); }}>Reset</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
+        title="Apply pose"
+        onpointerdown={(e) => { e.preventDefault(); applyPose(); }}>Apply</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Cancel pose"
+        onpointerdown={(e) => { e.preventDefault(); cancelPose(); }}>Cancel</button
+      >
+    </div>
+  {/if}
 ```
+(`meshPose` is component-local state, so `{#if meshPose}` reactively mounts/unmounts the bar as `enterPose`/`applyPose`/`cancelPose` set it. `e.preventDefault()` keeps the tap from also reaching the stage's pointer handlers / starting a stroke.)
 
 - [ ] **Step 3: Verify** — `npm run build` → 0/0; `npm test` → 262; lint clean.
 - [ ] **Step 4: Manual (browser, `npm run dev`)**
@@ -465,7 +483,7 @@ Add `let poseSpacing = POSE_SPACING;` (replace the const use in `enterPose` with
     (if a dense mesh stutters, that's the noted wireframe-during-drag fallback candidate).
 - [ ] **Step 5: Commit**
 ```bash
-git add src/lib/SelectionActions.svelte src/lib/Canvas.svelte
+git add src/lib/Canvas.svelte
 git commit -m "feat: pose panel (Apply/Cancel/Reset/density)"
 ```
 
