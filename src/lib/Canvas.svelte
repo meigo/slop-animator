@@ -94,6 +94,7 @@
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
+  let poseSpacing = POSE_SPACING;
 
   // The cell canvas being drawn on for the current stroke, and its undo snapshot.
   let strokeCanvas: HTMLCanvasElement | null = null;
@@ -613,6 +614,14 @@
     selection.beginWarp(4, 4);
   }
 
+  // Reactive gate for the pose bar: read the proxy's version (reactive) so the bar
+  // re-evaluates whenever bump() runs on enter/apply/cancel. meshPose itself is a plain
+  // local (this component imports the store unaliased as `state`, so a $state rune on
+  // meshPose would trip store_rune_conflict — see CLAUDE.md gotcha #1).
+  function poseBarVisible(): boolean {
+    return state.version >= 0 && meshPose !== null;
+  }
+
   function posePaint() {
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
@@ -640,7 +649,7 @@
       selBefore = null;
       return;
     }
-    meshPose = MeshPose.fromLift(lifted, rect, DPR, POSE_SPACING);
+    meshPose = MeshPose.fromLift(lifted, rect, DPR, poseSpacing);
     if (!meshPose) {
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
       selCtx = null;
@@ -650,6 +659,7 @@
     }
     recomposite(); // show the hole where the content lifted out
     posePaint(); // draw the deformed raster + wireframe on the overlay
+    bump(); // bump version so the reactive pose bar mounts
   }
 
   function applyPose() {
@@ -676,6 +686,26 @@
     posePaint(); // meshPose null → clears overlay
     bump();
     recomposite();
+  }
+
+  function cancelPose() {
+    if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
+    meshPose = null;
+    poseDrag = null;
+    selCtx = null;
+    selBefore = null;
+    posePaint();
+    recomposite();
+    bump(); // bump version so the reactive pose bar unmounts
+  }
+
+  function poseDensity(delta: number) {
+    if (!meshPose) return;
+    poseSpacing = Math.max(4, poseSpacing + delta * 4);
+    // rebuild from the SAME lifted img (resets handles — vertex indices change)
+    meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
+    poseDrag = null;
+    posePaint();
   }
 
   function enterWarp(rows: number, cols: number) {
@@ -813,4 +843,52 @@
       return sampleAt(viewport.screenToCanvas(cx, cy));
     }}
   />
+  {#if poseBarVisible()}
+    <div
+      class="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
+    >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Coarser mesh"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          poseDensity(-1);
+        }}>−</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Denser mesh"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          poseDensity(1);
+        }}>+</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Reset handles"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          meshPose?.resetHandles();
+          poseDrag = null;
+          posePaint();
+        }}>Reset</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
+        title="Apply pose"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          applyPose();
+        }}>Apply</button
+      >
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+        title="Cancel pose"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          cancelPose();
+        }}>Cancel</button
+      >
+    </div>
+  {/if}
 </div>
