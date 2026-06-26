@@ -37,7 +37,9 @@
     groupTransform,
     type Layer,
   } from "../anim/document";
-  import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
+  import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
+  import { contentRectLogical, clampDensity } from "../core/deform";
+  import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
     transformCenter,
@@ -83,6 +85,7 @@
   let overlay: HTMLCanvasElement;
   let selection: Selection;
   let selectionMode: "create" | "drag" | null = null;
+  let prevTool: Tool = "brush";
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
@@ -367,11 +370,31 @@
     }
     // Selection is disabled while the active draw layer is transformed (Apply first).
     if (
-      (state.tool === "select" || state.tool === "lasso") &&
+      (state.tool === "select" || state.tool === "lasso" || state.tool === "deform") &&
       al.kind === "draw" &&
       !isIdentityTransform(al.transform)
     )
       return;
+    if (state.tool === "deform") {
+      const p = points[points.length - 1];
+      if (selection.state !== "warping") {
+        if (points.length === 1 && !done) enterDeform(); // first press lifts + enters the grid
+        return;
+      }
+      if (points.length === 1 && !done) {
+        const handle = selection.hitTest(p.x, p.y);
+        if (handle === "grid") {
+          selectionMode = "drag";
+          selection.startDrag(handle, p.x, p.y);
+        }
+      } else if (!done) {
+        if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
+      } else {
+        if (selectionMode === "drag") selection.endDrag();
+        selectionMode = null;
+      }
+      return;
+    }
     if (state.tool === "select" || state.tool === "lasso") {
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {
@@ -539,6 +562,29 @@
     recomposite();
   }
 
+  function enterDeform() {
+    const al = activeLayer();
+    if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
+    const canvas = ensureDrawableKeyframe(al, state.playhead, canvasOps);
+    const rect = contentRectLogical(contentBounds(canvas, state.version), DPR);
+    if (!rect) return; // empty cell → nothing to deform
+    // Clear any leftover selection (esp. a lasso path) so liftPixels uses our content rect, not a
+    // stale lasso clip. cancel() reverts an in-progress lift (onCancel no-ops when nothing's lifted).
+    selection.cancel();
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
+    selection.rect = rect;
+    const lifted = selection.liftPixels(selCtx, DPR);
+    if (!lifted) {
+      selCtx = null;
+      selBefore = null;
+      return;
+    }
+    selection.beginTransform(lifted);
+    selection.beginWarp(4, 4);
+  }
+
   function enterWarp(rows: number, cols: number) {
     if (!selection) return;
     if (selection.state === "selected") enterTransform();
@@ -615,14 +661,17 @@
   $effect(() => {
     const t = state.tool;
     if (!selection) return;
+    // Leaving the deform tool banks the floating warp (one undo step via onCommit).
+    if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
+    prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
-    else {
-      // Switching to a drawing tool: bank a floating transform, but KEEP a plain
-      // marquee so brush/eraser/fill clip to it. (Esc clears it.)
+    else if (t !== "deform") {
+      // Switching to a drawing tool: bank a floating transform, keep a plain marquee for clipping.
       if (selection.hasFloating) selection.commit();
       selectionMode = null;
     }
+    // t === "deform": entry happens on the first canvas press (onStroke).
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
@@ -652,6 +701,11 @@
     onMesh={() => enterWarp(3, 3)}
     onCommit={() => selection?.commit()}
     onCancel={() => selection?.cancel()}
+    onDensify={(d) => {
+      if (!selection) return;
+      const n = clampDensity(selection.warpRows + d);
+      selection.densifyWarp(n, n);
+    }}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
