@@ -40,19 +40,24 @@ boundary smoothness.
 
 ## Pipeline
 
-1. **Contour** — marching squares over `inside` → closed boundary loop(s), one per connected
-   component (a helper `marchingSquaresContours(inside, w, h): Pt[][]`). Each loop is an ordered ring
-   of points along the silhouette edge.
-2. **Simplify** — Douglas–Peucker (`simplifyPath(pts, tol)`) per loop → boundary vertices on the true
-   outline, not a per-pixel wall.
-3. **Interior samples** — a grid at `spacing`, keep points where `inside` is true and which aren't
-   within ~`spacing/2` of a boundary vertex (avoid degenerate slivers).
-4. **Delaunay** — `delaunator` (new dep) over (boundary ∪ interior) points:
+1. **Boundary points** — `boundaryPoints(inside, w, h, spacing)`: a pixel is a boundary candidate if
+   it is `inside` and has ≥1 outside 4-neighbor; greedily keep candidates ~`spacing` apart (bucketed
+   by a `spacing`-grid). Yields vertices **on the silhouette edge**, evenly spaced — no contour-loop
+   stitching or polygon simplifier (the two most bug-prone pieces). This function is **swappable**: if
+   the dev viz shows the uniform-spaced boundary is too jagged, replace it with marching-squares +
+   Douglas–Peucker without changing the interface.
+2. **Interior samples** — a grid at `spacing`, keep points where `inside` is true and which aren't
+   within ~`spacing/2` of a kept boundary point (avoid degenerate slivers).
+3. **Delaunay** — `delaunator` (new dep) over (boundary ∪ interior) points:
    `Delaunator.from(points, p => p.x, p => p.y).triangles` (flat `Uint32Array`, consecutive triples).
-5. **Centroid filter** — drop any triangle whose centroid fails `inside` → the convex-hull Delaunay
+4. **Centroid filter** — drop any triangle whose centroid fails `inside` → the convex-hull Delaunay
    becomes silhouette-conforming (handles concavities and holes without constrained Delaunay).
-6. **Reindex** — drop vertices referenced by no surviving triangle; compact to a clean
+5. **Reindex** — drop vertices referenced by no surviving triangle; compact to a clean
    `{ vertices, triangles }`.
+
+(Boundary by pixel-decimation replaces the originally-considered marching-squares + Douglas–Peucker
+contour: same silhouette-conforming output and `spacing` density knob, far less code/risk; boundary is
+uniform-spaced rather than curvature-adaptive, validated via the dev viz.)
 
 Degenerate guards: empty/near-empty mask → `{ vertices: [], triangles: [] }`; a mask too small to
 sample → empty (callers treat empty mesh as "can't pose"). Multiple components are fine (each meshes;
@@ -82,8 +87,8 @@ This is how we **see and tune** the mesh before parts 2–3 depend on it.
 - **L-shape** → no triangle centroid lands in the notch (concavity conformance).
 - Disc → boundary vertices approximately on the circle; reasonable triangle count for the `spacing`.
 - Empty mask → `{ vertices: [], triangles: [] }`.
-- `marchingSquaresContours` on a rectangle → one closed loop tracing its perimeter; `simplifyPath` on a
-  straight run of collinear points → just the endpoints.
+- `boundaryPoints` on a rectangle → vertices along its perimeter, ~`spacing` apart, none interior;
+  `interiorPoints` → points inside, none within ~`spacing/2` of a boundary point.
 - Reindex: triangles reference only existing vertices; no unused vertices remain.
 
 **Visual:** the dev viz (above) — the real quality check; tune defaults there.
