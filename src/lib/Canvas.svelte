@@ -93,6 +93,8 @@
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
+  let activeHandle: number | null = null;
+  let poseRotating = false;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
   let poseSpacing = POSE_SPACING;
 
@@ -395,16 +397,28 @@
         return;
       }
       if (points.length === 1 && !done) {
-        const hit = meshPose.handleAt(p, 10 / viewport.zoom);
-        poseDrag = hit !== null ? hit : meshPose.addHandleAt(p);
+        // Press: rotate nub first, then handle body, then add a handle.
+        const nub = poseNubPos();
+        if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 / viewport.zoom) {
+          poseRotating = true;
+        } else {
+          const hit = meshPose.handleAt(p, 10 / viewport.zoom);
+          activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
+          poseDrag = activeHandle;
+        }
         posePaint();
       } else if (!done) {
-        if (poseDrag !== null) {
+        if (poseRotating && activeHandle !== null) {
+          const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
+          meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
+          posePaint();
+        } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
           posePaint();
         }
       } else {
         poseDrag = null;
+        poseRotating = false;
       }
       return;
     }
@@ -626,6 +640,16 @@
     return state.version >= 0 && meshPose !== null;
   }
 
+  // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
+  const POSE_NUB_R = 28; // screen px from the handle center
+  function poseNubPos(): { x: number; y: number } | null {
+    if (!meshPose || activeHandle === null) return null;
+    const h = meshPose.handles[activeHandle];
+    const c = meshPose.deformed[h.vertex];
+    const R = POSE_NUB_R / viewport.zoom;
+    return { x: c.x + R * Math.cos(h.angle), y: c.y + R * Math.sin(h.angle) };
+  }
+
   function posePaint() {
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
@@ -633,6 +657,24 @@
     if (meshPose) {
       meshPose.render(octx);
       meshPose.drawWireframe(octx);
+      if (activeHandle !== null) {
+        const h = meshPose.handles[activeHandle];
+        const c = meshPose.deformed[h.vertex];
+        const nub = poseNubPos()!;
+        octx.strokeStyle = "rgba(0,128,255,0.7)";
+        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.beginPath();
+        octx.moveTo(c.x, c.y);
+        octx.lineTo(nub.x, nub.y);
+        octx.stroke();
+        octx.fillStyle = "#0080ff";
+        octx.beginPath();
+        octx.arc(nub.x, nub.y, 5 / viewport.zoom, 0, Math.PI * 2);
+        octx.fill();
+        octx.strokeStyle = "#fff";
+        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.stroke();
+      }
     }
   }
 
@@ -685,6 +727,8 @@
     });
     meshPose = null;
     poseDrag = null;
+    activeHandle = null;
+    poseRotating = false;
     selCtx = null;
     selBefore = null;
     posePaint(); // meshPose null → clears overlay
@@ -696,6 +740,8 @@
     if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
     meshPose = null;
     poseDrag = null;
+    activeHandle = null;
+    poseRotating = false;
     selCtx = null;
     selBefore = null;
     posePaint();
@@ -709,6 +755,8 @@
     // rebuild from the SAME lifted img (resets handles — vertex indices change)
     meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
     poseDrag = null;
+    activeHandle = null;
+    poseRotating = false;
     posePaint();
   }
 
@@ -888,6 +936,8 @@
           e.preventDefault();
           meshPose?.resetHandles();
           poseDrag = null;
+          activeHandle = null;
+          poseRotating = false;
           posePaint();
         }}>Reset</button
       >

@@ -6,6 +6,51 @@ import { drawTriangle, type SelectionRect } from "./selection";
 export interface PoseHandle {
   vertex: number;
   to: Pt;
+  angle: number; // radians; rotation of the handle's local frame (0 = none)
+}
+
+/** Rotate a vector about the origin. */
+function rotateVec(v: Pt, ang: number): Pt {
+  const c = Math.cos(ang),
+    s = Math.sin(ang);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+}
+
+/** Satellite offset (doc px) used to inject a handle's rotation into the MLS. The recovered angle is
+ *  independent of this magnitude (it cancels in the rigid fit); only numerical conditioning cares. */
+const SAT_OFFSET = 16;
+
+/**
+ * Deform `rest` from pose handles, injecting each handle's rotation as a "satellite" correspondence so
+ * the existing geodesic-MLS reproduces a local rotation about the handle. `from` = pivot rest positions
+ * (poseWeights.from, aligned with `handles`); `weights[vertex][handle]`. Pure.
+ */
+export function solvePoseDeform(
+  rest: Pt[],
+  handles: PoseHandle[],
+  from: Pt[],
+  weights: number[][],
+  satOffset = SAT_OFFSET,
+): Pt[] {
+  if (!handles.length) return rest.map((v) => ({ x: v.x, y: v.y }));
+  const augFrom: Pt[] = [];
+  const augTo: Pt[] = [];
+  const cols: number[] = [];
+  for (let h = 0; h < handles.length; h++) {
+    const hd = handles[h];
+    augFrom.push(from[h]);
+    augTo.push(hd.to);
+    cols.push(h);
+    if (hd.angle) {
+      const e = { x: satOffset, y: 0 };
+      const re = rotateVec(e, hd.angle);
+      augFrom.push({ x: from[h].x + e.x, y: from[h].y + e.y });
+      augTo.push({ x: hd.to.x + re.x, y: hd.to.y + re.y });
+      cols.push(h);
+    }
+  }
+  const augWeights = weights.map((row) => cols.map((h) => row[h]));
+  return mlsRigidWeighted(rest, augFrom, augTo, augWeights);
 }
 
 /** Index of the vertex closest to `p`. */
@@ -77,14 +122,7 @@ export class MeshPose {
     this.solve();
   }
   private solve() {
-    this.deformed = this.handles.length
-      ? mlsRigidWeighted(
-          this.rest,
-          this.from,
-          this.handles.map((h) => h.to),
-          this.weights,
-        )
-      : this.rest.map((v) => ({ x: v.x, y: v.y }));
+    this.deformed = solvePoseDeform(this.rest, this.handles, this.from, this.weights);
   }
 
   /** Hit-test an existing handle dot (deformed position) within `tol` doc px. */
@@ -101,7 +139,7 @@ export class MeshPose {
     const existing = this.handles.findIndex((h) => h.vertex === vtx);
     if (existing >= 0) return existing;
     const d = this.deformed[vtx];
-    this.handles.push({ vertex: vtx, to: { x: d.x, y: d.y } });
+    this.handles.push({ vertex: vtx, to: { x: d.x, y: d.y }, angle: 0 });
     this.recompute(); // handle set changed → geodist + weights
     return this.handles.length - 1;
   }
@@ -109,6 +147,12 @@ export class MeshPose {
   dragHandle(i: number, p: Pt) {
     if (i < 0 || i >= this.handles.length) return;
     this.handles[i].to = { x: p.x, y: p.y };
+    this.solve();
+  }
+  /** Set a handle's rotation angle (radians) and re-solve (cached weights — cheap). */
+  rotateHandle(i: number, angle: number) {
+    if (i < 0 || i >= this.handles.length) return;
+    this.handles[i].angle = angle;
     this.solve();
   }
   resetHandles() {
