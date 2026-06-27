@@ -423,6 +423,19 @@ git commit -m "feat: Canvas — pose tool lift/interaction/overlay/bake"
 
 **Why not `SelectionActions`:** that panel anchors itself to the *selection's* screen bbox (`getScreenBounds()`) and gates its visibility on an active selection. A pose has **no selection** — routing pose controls through it would mean fighting that anchoring/visibility logic. The pose bar has nothing to anchor to a moving bbox, so render it as a **self-contained, fixed-position bar inside the `stage` div**, gated purely on `meshPose`. No `SelectionActions` changes.
 
+- [ ] **Step 0: Add `cancelPose()`** — Task 4 deferred this function (it would have been an unused declaration → fails the 0-warning bar). Add it now, right after `applyPose()`, since the bar's Cancel button (Step 2) is its first consumer:
+```ts
+  function cancelPose() {
+    if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
+    meshPose = null;
+    poseDrag = null;
+    selCtx = null;
+    selBefore = null;
+    posePaint();
+    recomposite();
+  }
+```
+
 - [ ] **Step 1: Density re-mesh + state** — in `Canvas.svelte` add `let poseSpacing = POSE_SPACING;` (and use `poseSpacing` instead of the `POSE_SPACING` const inside `enterPose`'s `fromLift` call). Add the density handler:
 ```ts
   function poseDensity(delta: number) {
