@@ -81,19 +81,23 @@ describe("solvePoseDeform", () => {
     expect(out[7].x).toBeLessThan(mesh.vertices[7].x - 2);
   });
 
-  it("the recovered rotation is independent of the satellite offset magnitude", () => {
+  it("pivot/anchor hold and the region swings at any satellite offset (offset is a falloff knob)", () => {
     const mesh = armMesh();
     const handles: PoseHandle[] = [
       { vertex: 0, to: { x: 0, y: 0 }, angle: 0 },
-      { vertex: 3, to: { x: 30, y: 0 }, angle: 0.7 },
+      { vertex: 3, to: { x: 30, y: 0 }, angle: Math.PI / 2 },
     ];
     const { from, weights } = poseWeights(mesh, [0, 3]);
-    const a = solvePoseDeform(mesh.vertices, handles, from, weights, 8);
-    const b = solvePoseDeform(mesh.vertices, handles, from, weights, 32);
-    a.forEach((p, i) => {
-      expect(p.x).toBeCloseTo(b[i].x, 6);
-      expect(p.y).toBeCloseTo(b[i].y, 6);
-    });
+    // The satellite offset tunes how far the rotation propagates (NOT a cross-offset invariant), but at
+    // every offset the Infinity-weighted pivot/anchor map exactly and the nearby region still swings.
+    for (const off of [8, 32]) {
+      const out = solvePoseDeform(mesh.vertices, handles, from, weights, off);
+      expect(out[3].x).toBeCloseTo(30, 6); // pivot exact
+      expect(out[3].y).toBeCloseTo(0, 6);
+      expect(out[0].x).toBeCloseTo(0, 6); // anchor exact
+      expect(out[0].y).toBeCloseTo(0, 6);
+      expect(out[7].x).toBeLessThan(mesh.vertices[7].x - 2); // rotation occurs
+    }
   });
 });
 ```
@@ -297,7 +301,7 @@ git commit -m "feat: Pose rotate-nub gizmo (drag to rotate a handle)"
 
 ## Self-Review (completed by plan author)
 
-**Spec coverage:** per-handle `angle` + `rotateHandle` (Task 1) ✅; rotation injected via satellite into the existing `mlsRigidWeighted`/`poseWeights`, no kernel rewrite (Task 1 `solvePoseDeform`) ✅; offset-independence (Task 1 test 3) ✅; zero-angle == today regression (Task 1 test 1) ✅; rotate-gizmo interaction with hit priority nub→body→add, active-handle tracking, overlay (Task 2) ✅; validation gate + fallback (final manual) ✅; out-of-scope (skeleton/IK/grid-deform) untouched ✅. Refinements (pure `solvePoseDeform`, inlined `rotateVec`, nub vs ring) noted in the header.
+**Spec coverage:** per-handle `angle` + `rotateHandle` (Task 1) ✅; rotation injected via satellite into the existing `mlsRigidWeighted`/`poseWeights`, no kernel rewrite (Task 1 `solvePoseDeform`) ✅; offset-is-a-falloff-knob: pivot/anchor hold + region swings at any offset (Task 1 test 3) ✅; zero-angle == today regression (Task 1 test 1) ✅; rotate-gizmo interaction with hit priority nub→body→add, active-handle tracking, overlay (Task 2) ✅; validation gate + fallback (final manual) ✅; out-of-scope (skeleton/IK/grid-deform) untouched ✅. Refinements (pure `solvePoseDeform`, inlined `rotateVec`, nub vs ring) noted in the header.
 
 **Placeholder scan:** No TBD/TODO; full code per step. Step 5 references "several `poseDrag = null;` spots" but enumerates exactly which four functions — concrete, not vague.
 

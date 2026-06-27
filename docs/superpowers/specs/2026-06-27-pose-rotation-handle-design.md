@@ -28,12 +28,18 @@ point-correspondences instead of one:
   `R(angle)` is a 2D rotation.
 
 Two nearby correspondences with a relative rotation are exactly what MLS-rigid needs to reproduce a local
-rotation about `to`. **The recovered rotation is independent of `|e|`** — in `rigidFit`, `cos = a/r`,
-`sin = b/r` normalize away the offset magnitude, so any reasonable `e` (e.g. on the order of the mesh
-spacing) yields the same angle; only numerical conditioning cares. The satellite borrows the **pivot's
-geodesic weight column** (it sits at the same vertex geodesically), so **no new geodesic computation** is
-needed — `poseWeights` is unchanged, and rotating only updates the satellite's `to`, making a rotation
-drag as cheap as the existing `dragHandle`.
+rotation about `to`. The **pivot and any anchor handles still map exactly at any `|e|`** (their Infinity
+geodesic weight pins them), and the rotation **direction** is correct regardless of `|e|`. **However the
+offset magnitude is NOT a no-op for the interior:** the satellite is fed as an *equally-weighted* extra
+correspondence into the shared per-vertex weighted rigid fit, so `|e|` acts as a **lever arm** against the
+other handles — it tunes **how strongly/far the rotation propagates into the mesh** (verified empirically:
+the interior result shifts with the offset and converges to an asymptote as it grows). So `SAT_OFFSET` is a
+fixed **falloff/influence tuning constant** (default 16 doc px), dialed in visually at the validation gate
+— not a mathematical invariant. (An earlier draft of this spec wrongly claimed offset-independence of the
+full deformation; corrected here after the implementation measured it.) The satellite borrows the
+**pivot's geodesic weight column** (it sits at the same vertex geodesically), so **no new geodesic
+computation** is needed — `poseWeights` is unchanged, and rotating only updates the satellite's `to`,
+making a rotation drag as cheap as the existing `dragHandle`.
 
 **Why this is the right level of simple:** it reuses `mlsRigidWeighted`, the cached `poseWeights`, and the
 `rotate()` gizmo math already in `ref-transform.ts`. The only genuinely new code is the satellite
@@ -73,15 +79,16 @@ on the ring is optional polish). Existing handle dots + mesh edges unchanged.
 
 ## Testing
 
-The satellite construction is **pure and deterministic** (the angle is offset-independent), so the core is
-unit-testable in node:
+The satellite construction is **pure and deterministic**, so the core is unit-testable in node:
 - **Rotation reproduces near the pivot:** a small mesh, one handle at vertex `k` with `angle = π/2` and one
   anchor handle elsewhere; assert a vertex geodesically close to `k` is rotated ≈90° about `to_k` (within
   tolerance), and the anchor vertex stays put.
 - **Zero angle == today:** a handle with `angle = 0` produces the same `deformed` as the current
   single-column solve (regression: rotation path doesn't change translate-only behavior).
-- **Offset independence:** the same `angle` with two different `SAT_OFFSET` values yields the same deformed
-  result within tolerance (validates the `|e|`-cancels claim).
+- **Offset is a falloff knob, not an invariant:** at two different `SAT_OFFSET` values the pivot and anchor
+  still map exactly and the rotation still occurs (region swings), but the interior result is *not* required
+  to match across offsets (it tunes propagation strength). The test asserts the holds-and-swings facts at
+  each offset, NOT cross-offset equality.
 
 The ring gizmo, hit-testing, and overlay are DOM → **build + manual**.
 
@@ -109,6 +116,7 @@ still works; baking/Apply/Cancel/leave-commit unchanged.
 ## Self-review notes
 - Reuses `mlsRigidWeighted` + cached `poseWeights` + `ref-transform`'s `rotate()` — the new surface is a
   per-handle `angle`, the satellite columns in `solve()`, `rotateHandle`, and a ring gizmo.
-- The math is sound where it counts (angle is offset-independent and unit-testable); the only
-  approximation is falloff weight, with a clear fallback and a validation gate.
+- The math is sound where it counts: the pivot/anchors map exactly and the rotation direction is correct
+  at any offset (unit-tested); `SAT_OFFSET` is an honest falloff/influence tuning knob (not an invariant),
+  with a clear fallback and a validation gate.
 - Stays within the established "per-frame, destructive, no rigging" scope of the Pose/Deform tools.
