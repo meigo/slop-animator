@@ -69,6 +69,7 @@ describe("projectToJson", () => {
       height: 600,
       fps: 8,
       bgColor: "#eee",
+      transparentBg: false,
       frameCount: 2,
       boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
       groups: [],
@@ -101,6 +102,22 @@ describe("projectToJson", () => {
       ],
       audio: null,
     });
+  });
+
+  it("serializes transparentBg when set", () => {
+    const p: Project = {
+      width: 800,
+      height: 600,
+      fps: 8,
+      bgColor: "#eee",
+      transparentBg: true,
+      frameCount: 1,
+      boil: { enabled: false, amount: 0, cols: 12, rate: 1, weight: 0, holdsOnly: false },
+      groups: [],
+      layers: [dlayer(1, [key()])],
+      audio: null,
+    };
+    expect(projectToJson(p).transparentBg).toBe(true);
   });
 
   it("uses defaultBoilConfig() shape", () => {

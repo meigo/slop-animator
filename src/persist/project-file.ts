@@ -62,6 +62,7 @@ export interface ProjectJson {
   height: number;
   fps: number;
   bgColor: string;
+  transparentBg?: boolean;
   frameCount: number;
   boil: BoilConfig;
   groups: {
@@ -101,6 +102,7 @@ export function projectToJson(project: Project): ProjectJson {
     height: project.height,
     fps: project.fps,
     bgColor: project.bgColor,
+    transparentBg: !!project.transparentBg,
     frameCount: project.frameCount,
     boil: project.boil,
     groups: project.groups.map((g) => {
@@ -291,6 +293,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
     height: json.height,
     fps: json.fps,
     bgColor: json.bgColor,
+    transparentBg: json.transparentBg ?? false,
     frameCount: json.frameCount,
     boil: migrateBoil(json.boil),
     groups,

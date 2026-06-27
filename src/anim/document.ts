@@ -104,6 +104,9 @@ export interface Project {
   height: number;
   fps: number;
   bgColor: string;
+  /** When true, the document has NO opaque background: the editor shows a checkerboard and PNG export
+   *  carries alpha. Video export still flattens onto `bgColor`. Absent/undefined = opaque (default). */
+  transparentBg?: boolean;
   frameCount: number;
   boil: BoilConfig;
   groups: LayerGroup[];
@@ -342,6 +345,7 @@ export function createProject(
     height: opts?.height ?? 720,
     fps: opts?.fps ?? 12,
     bgColor: opts?.bgColor ?? "#f4efe2",
+    transparentBg: false,
     frameCount,
     boil: defaultBoilConfig(),
     groups: [],

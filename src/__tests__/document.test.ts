@@ -309,6 +309,12 @@ describe("boil config defaults", () => {
   });
 });
 
+describe("createProject transparentBg", () => {
+  it("defaults to false (opaque)", () => {
+    expect(createProject().transparentBg).toBe(false);
+  });
+});
+
 describe("resolveLayerName", () => {
   it("returns the new name when non-empty", () => {
     expect(resolveLayerName("Old", "Hero")).toBe("Hero");
