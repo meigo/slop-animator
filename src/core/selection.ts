@@ -10,7 +10,7 @@
  * Press Enter to commit, Escape to cancel.
  */
 
-import { mlsRigid } from "./mls";
+import { rigidDeformGrid } from "./rigid-grid";
 
 export interface SelectionRect {
   x: number;
@@ -104,7 +104,6 @@ export class Selection {
   warpRows = 2;
   warpCols = 2;
   deformMode: "ffd" | "rigid" = "ffd";
-  warpRest: Pt[][] = []; // uniform rest grid captured at beginWarp/densify (rigid source)
   pinned = new Map<number, Pt>(); // flat index (row*cols + col) → pinned CSS position (rigid mode)
   floatingPixels: HTMLCanvasElement | null = null;
 
@@ -312,7 +311,6 @@ export class Selection {
     this.warpGrid = sampleGrid(this.rect, this.matrix, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
-    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
     this.pinned.clear();
     this.state = "warping";
     this.drawOverlay();
@@ -330,7 +328,6 @@ export class Selection {
     this.warpGrid = resampleGrid(this.warpGrid, this.warpRows, this.warpCols, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
-    this.warpRest = this.warpGrid.map((row) => row.map((p) => ({ ...p }))); // rest = the starting grid (matches warpGrid in any entry pose)
     this.pinned.clear();
     this.drawOverlay();
     this.onStateChange?.();
@@ -442,26 +439,20 @@ export class Selection {
       } else if (this.dragging === "grid" && this.dragGridIdx) {
         const { row, col } = this.dragGridIdx;
         if (this.deformMode === "rigid") {
-          const cols = this.warpCols;
-          const idx = row * cols + col;
-          const rest = this.warpRest.flat();
+          const idx = row * this.warpCols + col;
           const target = {
             x: this.warpGridStart[row][col].x + dx,
             y: this.warpGridStart[row][col].y + dy,
           };
-          const from: Pt[] = [];
-          const to: Pt[] = [];
-          for (const [i, pos] of this.pinned) {
-            if (i !== idx) {
-              from.push(rest[i]);
-              to.push(pos);
-            }
-          }
-          from.push(rest[idx]);
-          to.push(target);
-          const deformed = mlsRigid(rest, from, to);
-          this.warpGrid = this.warpRest.map((rArr, r) =>
-            rArr.map((_, c) => deformed[r * cols + c]),
+          // Source the rigid solve from the pose at THIS drag's start (warpGridStart), so an
+          // under-constrained drag rigidly moves the CURRENT shape rather than collapsing any
+          // un-pinned deformation back to the uniform entry grid.
+          this.warpGrid = rigidDeformGrid(
+            this.warpGridStart,
+            this.pinned,
+            idx,
+            target,
+            this.warpCols,
           );
         } else {
           this.warpGrid = this.warpGridStart.map((rArr, r) =>
@@ -647,7 +638,6 @@ export class Selection {
     this.warpRows = 2;
     this.warpCols = 2;
     this.deformMode = "ffd";
-    this.warpRest = [];
     this.pinned.clear();
     this.dragGridIdx = null;
     this.hitGridIdx = null;
