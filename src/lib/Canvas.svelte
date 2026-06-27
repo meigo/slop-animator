@@ -95,6 +95,7 @@
   let poseDrag: number | null = null;
   let activeHandle: number | null = null;
   let poseRotating = false;
+  let poseReaching = false;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
   let poseSpacing = POSE_SPACING;
 
@@ -399,8 +400,11 @@
       if (points.length === 1 && !done) {
         // Press: rotate nub first, then handle body, then add a handle.
         const nub = poseNubPos();
+        const rnub = poseReachNubPos();
         if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 / viewport.zoom) {
           poseRotating = true;
+        } else if (rnub && Math.hypot(rnub.x - p.x, rnub.y - p.y) <= 12 / viewport.zoom) {
+          poseReaching = true;
         } else {
           const hit = meshPose.handleAt(p, 10 / viewport.zoom);
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
@@ -412,6 +416,11 @@
           const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
           meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
           posePaint();
+        } else if (poseReaching && activeHandle !== null) {
+          const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
+          const d = Math.hypot(p.x - c.x, p.y - c.y);
+          meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
+          posePaint();
         } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
           posePaint();
@@ -419,6 +428,7 @@
       } else {
         poseDrag = null;
         poseRotating = false;
+        poseReaching = false;
       }
       return;
     }
@@ -650,6 +660,18 @@
     return { x: c.x + R * Math.cos(h.angle), y: c.y + R * Math.sin(h.angle) };
   }
 
+  const POSE_REACH_DIR = { x: 0, y: 1 }; // fixed (screen-down) rail, independent of the rotate nub
+  function poseReachMax(): number {
+    return meshPose ? Math.hypot(meshPose.rect.w, meshPose.rect.h) : 0; // beyond full extent = unlimited
+  }
+  function poseReachNubPos(): { x: number; y: number } | null {
+    if (!meshPose || activeHandle === null) return null;
+    const h = meshPose.handles[activeHandle];
+    const c = meshPose.deformed[h.vertex];
+    const r = h.reach ?? poseReachMax();
+    return { x: c.x + POSE_REACH_DIR.x * r, y: c.y + POSE_REACH_DIR.y * r };
+  }
+
   function posePaint() {
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
@@ -660,6 +682,23 @@
       if (activeHandle !== null) {
         const h = meshPose.handles[activeHandle];
         const c = meshPose.deformed[h.vertex];
+        if (h.reach != null) {
+          const mask = meshPose.reachMask(activeHandle);
+          octx.fillStyle = "rgba(0,200,120,0.18)";
+          for (const [ta, tb, tc] of meshPose.triangles) {
+            if (mask[ta] && mask[tb] && mask[tc]) {
+              const va = meshPose.deformed[ta],
+                vb = meshPose.deformed[tb],
+                vc = meshPose.deformed[tc];
+              octx.beginPath();
+              octx.moveTo(va.x, va.y);
+              octx.lineTo(vb.x, vb.y);
+              octx.lineTo(vc.x, vc.y);
+              octx.closePath();
+              octx.fill();
+            }
+          }
+        }
         const nub = poseNubPos()!;
         octx.strokeStyle = "rgba(0,128,255,0.7)";
         octx.lineWidth = 1.5 / viewport.zoom;
@@ -673,6 +712,25 @@
         octx.fill();
         octx.strokeStyle = "#fff";
         octx.lineWidth = 1.5 / viewport.zoom;
+        octx.stroke();
+
+        const rnub = poseReachNubPos()!;
+        octx.strokeStyle = "rgba(0,200,120,0.7)";
+        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.beginPath();
+        octx.moveTo(c.x, c.y);
+        octx.lineTo(rnub.x, rnub.y);
+        octx.stroke();
+        const rs = 5 / viewport.zoom;
+        octx.fillStyle = "#00c878";
+        octx.beginPath();
+        octx.moveTo(rnub.x, rnub.y - rs);
+        octx.lineTo(rnub.x + rs, rnub.y);
+        octx.lineTo(rnub.x, rnub.y + rs);
+        octx.lineTo(rnub.x - rs, rnub.y);
+        octx.closePath();
+        octx.fill();
+        octx.strokeStyle = "#fff";
         octx.stroke();
       }
     }
@@ -729,6 +787,7 @@
     poseDrag = null;
     activeHandle = null;
     poseRotating = false;
+    poseReaching = false;
     selCtx = null;
     selBefore = null;
     posePaint(); // meshPose null → clears overlay
@@ -742,6 +801,7 @@
     poseDrag = null;
     activeHandle = null;
     poseRotating = false;
+    poseReaching = false;
     selCtx = null;
     selBefore = null;
     posePaint();
@@ -757,6 +817,7 @@
     poseDrag = null;
     activeHandle = null;
     poseRotating = false;
+    poseReaching = false;
     posePaint();
   }
 
@@ -938,6 +999,7 @@
           poseDrag = null;
           activeHandle = null;
           poseRotating = false;
+          poseReaching = false;
           posePaint();
         }}>Reset</button
       >
