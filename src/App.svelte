@@ -6,6 +6,7 @@
   import Timeline from "./lib/Timeline.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
+  import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import { onMount } from "svelte";
   import {
     state,
@@ -124,3 +125,4 @@
 </div>
 <ExportDialog />
 <SizeDialog />
+<ProjectSettingsDialog />
