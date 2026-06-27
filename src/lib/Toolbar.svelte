@@ -43,6 +43,7 @@
     Spline,
     Workflow,
     PersonStanding,
+    Grid2x2,
     ClipboardPaste,
     Pipette,
   } from "@lucide/svelte";
@@ -374,4 +375,13 @@
   >
     {#if appState.theme === "dark"}<Sun size={18} />{:else}<Moon size={18} />{/if}
   </button>
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={appState.project.transparentBg}
+    title="Transparent background (checkerboard)"
+    onclick={() => {
+      appState.project.transparentBg = !appState.project.transparentBg;
+      bump();
+    }}><Grid2x2 size={18} /></button
+  >
 </div>
