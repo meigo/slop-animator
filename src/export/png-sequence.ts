@@ -16,7 +16,7 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
   const files: Record<string, Uint8Array> = {};
   for (let f = 0; f < project.frameCount; f++) {
     renderFrame(ctx, project, f, dpr, {
-      drawBg: true,
+      drawBg: !project.transparentBg,
       includeReference: false,
       boil: project.boil.enabled ? project.boil : undefined,
     });

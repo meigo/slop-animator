@@ -159,8 +159,10 @@ export function renderFrameWithOnion(
   display.globalAlpha = 1;
   display.globalCompositeOperation = "source-over";
   display.clearRect(0, 0, w, h);
-  display.fillStyle = project.bgColor;
-  display.fillRect(0, 0, w, h);
+  if (!project.transparentBg) {
+    display.fillStyle = project.bgColor;
+    display.fillRect(0, 0, w, h);
+  }
 
   for (const g of computeOnionFrames(frame, project.frameCount, onion.prev, onion.next)) {
     const tint = g.kind === "prev" ? onion.tintPrev : onion.tintNext;

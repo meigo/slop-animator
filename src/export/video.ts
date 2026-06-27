@@ -49,6 +49,8 @@ export async function exportVideo(
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
     renderFrame(ctx, project, f, dpr, {
+      // Video has no alpha codec here (MP4/H.264); a transparent project is intentionally
+      // flattened onto project.bgColor.
       drawBg: true,
       includeReference: false,
       boil: project.boil.enabled ? project.boil : undefined,
