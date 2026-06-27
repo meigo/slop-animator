@@ -73,6 +73,7 @@ interface AnimState {
   /** Bumped when the pressure curve is edited (it's an imperative widget, not reactive state). */
   curveVersion: number;
   exportOpen: boolean;
+  settingsOpen: boolean;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
@@ -115,6 +116,7 @@ export const state: AnimState = $state({
   version: 0,
   curveVersion: 0,
   exportOpen: false,
+  settingsOpen: false,
   sizeDialog: { open: false, mode: "new" },
   theme: "dark",
   onion: {
