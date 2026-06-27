@@ -44,6 +44,7 @@
     Workflow,
     PersonStanding,
     Grid2x2,
+    Settings,
     ClipboardPaste,
     Pipette,
   } from "@lucide/svelte";
@@ -391,5 +392,11 @@
       appState.project.transparentBg = !appState.project.transparentBg;
       bump();
     }}><Grid2x2 size={18} /></button
+  >
+  <button
+    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class:bg-surface-active={appState.settingsOpen}
+    title="Project settings"
+    onclick={() => (appState.settingsOpen = true)}><Settings size={18} /></button
   >
 </div>
