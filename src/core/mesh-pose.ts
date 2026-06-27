@@ -7,6 +7,7 @@ export interface PoseHandle {
   vertex: number;
   to: Pt;
   angle: number; // radians; rotation of the handle's local frame (0 = none)
+  reach?: number; // geodesic influence radius in doc px; undefined = unlimited
 }
 
 /** Rotate a vector about the origin. */
@@ -116,7 +117,12 @@ export class MeshPose {
   }
   private recompute() {
     const verts = this.handles.map((h) => h.vertex);
-    const pw = poseWeights(this.restMesh(), verts);
+    const pw = poseWeights(
+      this.restMesh(),
+      verts,
+      1,
+      this.handles.map((h) => h.reach),
+    );
     this.from = pw.from;
     this.weights = pw.weights;
     this.solve();
@@ -154,6 +160,16 @@ export class MeshPose {
     if (i < 0 || i >= this.handles.length) return;
     this.handles[i].angle = angle;
     this.solve();
+  }
+  /** Set a handle's geodesic reach (undefined = unlimited) and re-derive weights + re-solve. */
+  setReach(i: number, reach: number | undefined) {
+    if (i < 0 || i >= this.handles.length) return;
+    this.handles[i].reach = reach;
+    this.recompute();
+  }
+  /** Per-vertex: is this vertex within handle `i`'s influence (non-zero weight)? */
+  reachMask(i: number): boolean[] {
+    return this.weights.map((row) => row[i] > 0);
   }
   resetHandles() {
     this.handles = [];
