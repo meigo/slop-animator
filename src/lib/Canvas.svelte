@@ -817,6 +817,20 @@
   onwheel={onWheel}
 >
   <div bind:this={wrapper} class="absolute left-0 top-0">
+    {#if state.project.transparentBg}
+      <div
+        class="absolute left-0 top-0 pointer-events-none"
+        style="width:{state.project.width}px; height:{state.project.height}px;
+               background-color:#fff;
+               background-image:
+                 linear-gradient(45deg,#ccc 25%,transparent 25%),
+                 linear-gradient(-45deg,#ccc 25%,transparent 25%),
+                 linear-gradient(45deg,transparent 75%,#ccc 75%),
+                 linear-gradient(-45deg,transparent 75%,#ccc 75%);
+               background-size:16px 16px;
+               background-position:0 0,0 8px,8px -8px,-8px 0;"
+      ></div>
+    {/if}
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
