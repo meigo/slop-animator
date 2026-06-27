@@ -292,6 +292,14 @@
   <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
     <input type="checkbox" bind:checked={stroke.taper} /> Taper
   </label>
+  {#if appState.tool !== "eraser"}
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="Paint behind existing pixels (e.g. white fill under a black outline)"
+    >
+      <input type="checkbox" bind:checked={stroke.drawBehind} /> Behind
+    </label>
+  {/if}
   <div class="relative" use:clickOutside={() => (curveOpen = false)}>
     <button
       class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
