@@ -54,20 +54,36 @@ function dijkstra(adj: { to: number; w: number }[][], V: number, src: number): n
   return dist;
 }
 
-/** Deform a mesh's vertices from vertex-anchored handles, weighting by geodesic distance. Pure. */
-export function deformMeshGeodesic(mesh: Mesh, handles: MeshHandle[], alpha = 1): Pt[] {
-  if (handles.length === 0) return mesh.vertices.map((v) => ({ x: v.x, y: v.y }));
-  const dist = geodesicDistances(
-    mesh,
-    handles.map((h) => h.vertex),
-  );
-  const from = handles.map((h) => mesh.vertices[h.vertex]);
-  const to = handles.map((h) => h.to);
+/** Geodesic MLS weights for a fixed handle set (cacheable; depends on mesh + handle vertices, not
+ *  targets). weights[vertex][handle]; Infinity at a handle's own vertex; 0 if unreachable. */
+export function poseWeights(
+  mesh: Mesh,
+  handleVertices: number[],
+  alpha = 1,
+): { from: Pt[]; weights: number[][] } {
+  const dist = geodesicDistances(mesh, handleVertices);
+  const from = handleVertices.map((v) => mesh.vertices[v]);
   const weights = mesh.vertices.map((_, v) =>
-    handles.map((_, h) => {
+    handleVertices.map((_, h) => {
       const g = dist[h][v];
       return g === 0 ? Infinity : g === Infinity ? 0 : 1 / Math.pow(g, 2 * alpha);
     }),
   );
-  return mlsRigidWeighted(mesh.vertices, from, to, weights);
+  return { from, weights };
+}
+
+/** Deform a mesh's vertices from vertex-anchored handles, weighting by geodesic distance. Pure. */
+export function deformMeshGeodesic(mesh: Mesh, handles: MeshHandle[], alpha = 1): Pt[] {
+  if (handles.length === 0) return mesh.vertices.map((v) => ({ x: v.x, y: v.y }));
+  const { from, weights } = poseWeights(
+    mesh,
+    handles.map((h) => h.vertex),
+    alpha,
+  );
+  return mlsRigidWeighted(
+    mesh.vertices,
+    from,
+    handles.map((h) => h.to),
+    weights,
+  );
 }

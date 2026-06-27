@@ -56,7 +56,8 @@ export type Tool =
   | "lasso"
   | "transform"
   | "eyedropper"
-  | "deform";
+  | "deform"
+  | "pose";
 
 interface AnimState {
   project: Project;

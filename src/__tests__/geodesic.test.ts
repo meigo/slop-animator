@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { geodesicDistances, deformMeshGeodesic } from "../core/geodesic";
+import { geodesicDistances, deformMeshGeodesic, poseWeights } from "../core/geodesic";
 import { triangulateSilhouette, type Mesh } from "../core/triangulate";
-import { mlsRigid } from "../core/mls";
+import { mlsRigid, mlsRigidWeighted } from "../core/mls";
 
 const tri = (a: number, b: number, c: number) => [a, b, c] as [number, number, number];
 
@@ -117,5 +117,41 @@ describe("deformMeshGeodesic", () => {
     // the geodesically-far tip is held by the (mesh-near) anchor under geodesic, but bleeds toward the
     // (Euclidean-near) dragged tip under Euclidean — so it moves notably less under geodesic:
     expect(move(geo, rightTip)).toBeLessThan(move(eucl, rightTip) * 0.6);
+  });
+});
+
+describe("poseWeights", () => {
+  const mesh: Mesh = {
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 0, y: 10 },
+      { x: 10, y: 10 },
+    ],
+    triangles: [tri(0, 1, 2), tri(1, 3, 2)],
+  };
+  it("a handle vertex gets Infinity weight (exact placement), others finite", () => {
+    const { from, weights } = poseWeights(mesh, [0]);
+    expect(from).toEqual([mesh.vertices[0]]);
+    expect(weights[0][0]).toBe(Infinity); // vertex 0 is handle 0
+    expect(Number.isFinite(weights[3][0])).toBe(true);
+  });
+  it("composes to the same result as deformMeshGeodesic", () => {
+    const handles = [{ vertex: 0, to: { x: 2, y: 3 } }];
+    const { from, weights } = poseWeights(
+      mesh,
+      handles.map((h) => h.vertex),
+    );
+    const viaPose = mlsRigidWeighted(
+      mesh.vertices,
+      from,
+      handles.map((h) => h.to),
+      weights,
+    );
+    const viaDeform = deformMeshGeodesic(mesh, handles);
+    viaPose.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(viaDeform[i].x, 9);
+      expect(p.y).toBeCloseTo(viaDeform[i].y, 9);
+    });
   });
 });
