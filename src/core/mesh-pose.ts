@@ -21,6 +21,18 @@ function rotateVec(v: Pt, ang: number): Pt {
  *  independent of this magnitude (it cancels in the rigid fit); only numerical conditioning cares. */
 const SAT_OFFSET = 16;
 
+const DEFAULT_REACH_FRAC = 0.33; // a new handle reaches ~a third of the content diagonal
+const REACH_FLOOR_FRAC = 0.12; // ...but never tighter than this (so it always covers a few vertices)
+
+/** Context-aware default reach (doc px) for a newly added handle: ~a fraction of the content diagonal,
+ *  capped by the distance to the nearest existing handle (densely-placed handles auto-tighten), with a
+ *  small floor. Pure. */
+export function defaultHandleReach(at: Pt, others: Pt[], diag: number): number {
+  let r = diag * DEFAULT_REACH_FRAC;
+  for (const o of others) r = Math.min(r, Math.hypot(o.x - at.x, o.y - at.y));
+  return Math.max(diag * REACH_FLOOR_FRAC, r);
+}
+
 /**
  * Deform `rest` from pose handles, injecting each handle's rotation as a "satellite" correspondence so
  * the existing geodesic-MLS reproduces a local rotation about the handle. `from` = pivot rest positions
@@ -145,7 +157,14 @@ export class MeshPose {
     const existing = this.handles.findIndex((h) => h.vertex === vtx);
     if (existing >= 0) return existing;
     const d = this.deformed[vtx];
-    this.handles.push({ vertex: vtx, to: { x: d.x, y: d.y }, angle: 0 });
+    const diag = Math.hypot(this.rect.w, this.rect.h);
+    const others = this.handles.map((h) => this.deformed[h.vertex]);
+    this.handles.push({
+      vertex: vtx,
+      to: { x: d.x, y: d.y },
+      angle: 0,
+      reach: defaultHandleReach(d, others, diag),
+    });
     this.recompute(); // handle set changed → geodist + weights
     return this.handles.length - 1;
   }
