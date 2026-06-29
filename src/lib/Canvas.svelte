@@ -887,11 +887,12 @@
     // t === "deform": entry happens on the first canvas press (onStroke).
   });
 
-  // Discard any in-progress lift (pose / selection transform / deform warp) so switching the active
-  // layer or frame leaves a clean slate. The gizmo-based layer transform self-retargets, so it's exempt.
-  function cancelActiveEdits() {
-    if (meshPose) cancelPose();
-    if (selection?.active) selection.cancel();
+  // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
+  // started on, so switching the active layer or frame leaves a clean slate — mirrors the tool-switch
+  // banker. A plain marquee is document-level and kept; the gizmo-based layer transform self-retargets.
+  function bankActiveEdits() {
+    if (meshPose) applyPose();
+    if (selection?.hasFloating) selection.commit();
   }
   $effect(() => {
     const layer = state.activeLayerId;
@@ -899,7 +900,7 @@
     if (layer !== prevLayer || ph !== prevPlayhead) {
       prevLayer = layer;
       prevPlayhead = ph;
-      cancelActiveEdits();
+      bankActiveEdits();
     }
   });
 
