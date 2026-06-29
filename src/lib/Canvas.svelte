@@ -87,6 +87,9 @@
   let selection: Selection;
   let selectionMode: "create" | "drag" | null = null;
   let prevTool: Tool = "brush";
+  // Track the active layer/frame so a switch can discard any in-progress lift (see the cleanup $effect).
+  let prevLayer = state.activeLayerId;
+  let prevPlayhead = state.playhead;
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
@@ -882,6 +885,22 @@
       selectionMode = null;
     }
     // t === "deform": entry happens on the first canvas press (onStroke).
+  });
+
+  // Discard any in-progress lift (pose / selection transform / deform warp) so switching the active
+  // layer or frame leaves a clean slate. The gizmo-based layer transform self-retargets, so it's exempt.
+  function cancelActiveEdits() {
+    if (meshPose) cancelPose();
+    if (selection?.active) selection.cancel();
+  }
+  $effect(() => {
+    const layer = state.activeLayerId;
+    const ph = state.playhead;
+    if (layer !== prevLayer || ph !== prevPlayhead) {
+      prevLayer = layer;
+      prevPlayhead = ph;
+      cancelActiveEdits();
+    }
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
