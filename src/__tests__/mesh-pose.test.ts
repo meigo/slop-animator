@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { nearestVertex, solvePoseDeform, type PoseHandle } from "../core/mesh-pose";
+import {
+  nearestVertex,
+  solvePoseDeform,
+  defaultHandleReach,
+  type PoseHandle,
+} from "../core/mesh-pose";
 import { poseWeights } from "../core/geodesic";
 import { mlsRigidWeighted } from "../core/mls";
 import type { Mesh } from "../core/triangulate";
@@ -104,5 +109,32 @@ describe("reach localizes the deform", () => {
     // the reached handle still hits its target exactly (Infinity weight at its own vertex).
     expect(out[3].x).toBeCloseTo(40, 6);
     expect(out[3].y).toBeCloseTo(10, 6);
+  });
+});
+
+describe("defaultHandleReach", () => {
+  const diag = 300; // base = 0.33*300 = 99; floor = 0.12*300 = 36
+  it("first handle (no neighbors) uses the mesh-size fraction", () => {
+    expect(defaultHandleReach({ x: 0, y: 0 }, [], diag)).toBeCloseTo(diag * 0.33, 5);
+  });
+  it("caps at the distance to the nearest existing handle", () => {
+    const r = defaultHandleReach(
+      { x: 0, y: 0 },
+      [
+        { x: 50, y: 0 },
+        { x: 200, y: 0 },
+      ],
+      diag,
+    );
+    expect(r).toBeCloseTo(50, 5); // nearest is 50 (< base 99)
+  });
+  it("never exceeds the mesh-size base even with far neighbors", () => {
+    expect(defaultHandleReach({ x: 0, y: 0 }, [{ x: 1000, y: 0 }], diag)).toBeCloseTo(
+      diag * 0.33,
+      5,
+    );
+  });
+  it("floors so a very-close neighbor doesn't collapse the reach", () => {
+    expect(defaultHandleReach({ x: 0, y: 0 }, [{ x: 2, y: 0 }], diag)).toBeCloseTo(diag * 0.12, 5);
   });
 });
