@@ -20,6 +20,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     setActiveLayer,
+    liftGuard,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -224,12 +225,14 @@
     const l = activeLayer();
     if (l.kind !== "draw") return;
     if (l.cells[appState.playhead]?.kind !== "key") return; // already a hold → nothing to do
+    liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
     commitStructural(() => setHold(l, appState.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
     if (l.kind !== "draw") return;
     if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
+    liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
     commitStructural(() => deleteFrame(l, appState.playhead));
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),

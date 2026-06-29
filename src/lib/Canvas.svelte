@@ -11,6 +11,8 @@
   import {
     state,
     history,
+    undo,
+    redo,
     DPR,
     canvasOps,
     activeLayer,
@@ -20,7 +22,7 @@
     toggleEraser,
     applyEyedropper,
   } from "../state/appState.svelte";
-  import { selectionRef, selectionActions } from "../state/appState.svelte";
+  import { selectionRef, selectionActions, liftGuard } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
   import { syncReferenceVideos } from "../anim/reference";
@@ -598,6 +600,7 @@
     };
 
     selectionRef.current = selection;
+    liftGuard.discard = discardActiveEdits;
   }
 
   function enterTransform() {
@@ -818,8 +821,8 @@
     // Finger gestures: 1-finger pan, 1-finger double-tap toggle eraser, 2-finger pinch zoom+rotate,
     // 2-finger tap undo, 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
     const cleanupTouch = setupTouchGestures(stage, viewport, {
-      onUndo: () => history.undo(),
-      onRedo: () => history.redo(),
+      onUndo: () => undo(),
+      onRedo: () => redo(),
       onToggleEraser: () => toggleEraser(),
       onViewportChange: () => {
         selection.screenScale = viewport.zoom;
@@ -866,6 +869,7 @@
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
       selectionRef.current = null;
+      liftGuard.discard = null;
       selectionActions.enterWarp = null;
     };
   });
@@ -879,12 +883,13 @@
     prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
-    else if (t !== "deform") {
-      // Switching to a drawing tool: bank a floating transform, keep a plain marquee for clipping.
+    else {
+      // Any other tool (incl. deform): bank a floating transform so it isn't discarded. (Switching to
+      // deform used to skip this, then enterDeform's cancel() reverted the in-progress move/scale.)
       if (selection.hasFloating) selection.commit();
-      selectionMode = null;
+      if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
     }
-    // t === "deform": entry happens on the first canvas press (onStroke).
+    // t === "deform": lift entry happens on the first canvas press (onStroke).
   });
 
   // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
@@ -893,6 +898,13 @@
   function bankActiveEdits() {
     if (meshPose) applyPose();
     if (selection?.hasFloating) selection.commit();
+  }
+  // Discard (don't bank) an in-progress lift — for ops that destroy/replace the target canvas or replay
+  // history (resize / replaceProject / undo / redo), where banking has no valid target. Restores the
+  // original pixels via the captured context, so the destructive op then sees the un-lifted cell.
+  function discardActiveEdits() {
+    if (meshPose) cancelPose();
+    if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
   }
   $effect(() => {
     const layer = state.activeLayerId;

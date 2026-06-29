@@ -192,6 +192,7 @@ function restoreStructure(s: StructSnapshot) {
   state.project.layers = s.layers.map((snap) => {
     const live = liveById.get(snap.id);
     if (live && live.kind === snap.kind) {
+      live.groupId = snap.groupId; // group membership is structural (reorder/regroup), undoable — not a view-prop
       if (live.kind === "draw" && snap.kind === "draw") {
         live.cells = snap.cells.slice();
         live.transform = { ...snap.transform }; // transform is undoable (Apply/Reset change it with cells)
@@ -579,6 +580,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
   if (w === state.project.width && h === state.project.height) return;
+  liftGuard.discard?.(); // a live lift's captured cell canvas is about to be replaced
   const rect = placeContent(
     state.project.width * DPR,
     state.project.height * DPR,
@@ -674,6 +676,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
   state.project = project;
@@ -740,6 +743,22 @@ export const selectionActions: { enterWarp: ((rows: number, cols: number) => voi
   enterWarp: null,
 };
 
+/** Canvas registers a discard-the-active-lift callback here. Call it BEFORE any operation that
+ *  recreates/removes the active key cell's canvas or replays the history (resize, replaceProject,
+ *  set-hold/delete-frame on the active cell, undo/redo) — otherwise a live selection/deform/pose lift
+ *  would commit to a detached canvas or corrupt the undo baseline. */
+export const liftGuard: { discard: (() => void) | null } = { discard: null };
+
+/** Undo/redo, discarding any in-progress lift first (its captured context/baseline would be stale). */
+export function undo(): void {
+  liftGuard.discard?.();
+  history.undo();
+}
+export function redo(): void {
+  liftGuard.discard?.();
+  history.redo();
+}
+
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
 export const pressureCurve = new PressureCurve();
 
@@ -753,4 +772,6 @@ export function setActiveLayer(id: number): void {
   if (state.transformScope === "group" && (!l || l.groupId == null)) {
     state.transformScope = "frame";
   }
+  // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
+  if (state.onion.enabled && !state.onion.allLayers) state.version++;
 }

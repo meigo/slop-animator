@@ -10,7 +10,8 @@
   import { onMount } from "svelte";
   import {
     state,
-    history,
+    undo,
+    redo,
     bump,
     playbackController,
     selectionRef,
@@ -28,8 +29,8 @@
     const meta = e.ctrlKey || e.metaKey;
     if (meta && e.key.toLowerCase() === "z") {
       e.preventDefault();
-      if (e.shiftKey) history.redo();
-      else history.undo();
+      if (e.shiftKey) redo();
+      else undo();
       return;
     }
     // Don't hijack single-key shortcuts while typing in a field (e.g. the fps input).
