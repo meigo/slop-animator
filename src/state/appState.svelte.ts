@@ -191,14 +191,15 @@ function restoreStructure(s: StructSnapshot) {
   const liveById = new Map(state.project.layers.map((l) => [l.id, l]));
   state.project.layers = s.layers.map((snap) => {
     const live = liveById.get(snap.id);
-    if (live) {
+    if (live && live.kind === snap.kind) {
       if (live.kind === "draw" && snap.kind === "draw") {
         live.cells = snap.cells.slice();
         live.transform = { ...snap.transform }; // transform is undoable (Apply/Reset change it with cells)
       }
       return live;
     }
-    // Layer was removed since the snapshot → bring back the snapshot's clone wholesale.
+    // Layer was removed, OR its kind changed since the snapshot (e.g. rasterize ref→draw, same id) →
+    // bring back the snapshot's clone wholesale so undo restores the original layer.
     return snap.kind === "draw" ? { ...snap, cells: snap.cells.slice() } : { ...snap };
   });
   const liveGroupsById = new Map(state.project.groups.map((g) => [g.id, g]));
@@ -410,8 +411,9 @@ export function resetCellTransform(layerId: number, frame: number): void {
   const rk = resolvedKeyCell(layer, frame);
   if (!rk) return;
   commitStructural(() => {
-    rk.cell.transform = { ...IDENTITY_TRANSFORM };
-    rk.cell.transformBox = null;
+    // Replace the cell (don't mutate it in place): snapshots share cell object refs, so an in-place
+    // edit would corrupt the before-snapshot and make undo a no-op. Drop the transform, keep the canvas.
+    layer.cells[rk.index] = { kind: "key", canvas: rk.cell.canvas };
   });
 }
 
@@ -591,10 +593,13 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
       // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
       layer.cells = layer.cells.map((c): Cell => {
         if (c.kind !== "key") return c;
+        // Bake any per-cell transform into pixels first (at the current dims) so resize preserves the
+        // transformed look instead of silently dropping it. bakeCell returns c unchanged if identity.
+        const src = bakeCell(c, IDENTITY_TRANSFORM).canvas;
         const nc = createCellCanvas(w, h, DPR);
         const ctx = nc.getContext("2d")!;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(c.canvas, rect.x, rect.y, rect.w, rect.h);
+        ctx.drawImage(src, rect.x, rect.y, rect.w, rect.h);
         return { kind: "key", canvas: nc };
       });
     }
