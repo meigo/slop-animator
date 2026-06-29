@@ -69,19 +69,26 @@ export function poseWeights(
 - New `reachMask(i: number): boolean[]` — per vertex, `weights[v][i] > 0` (the active handle's affected
   set), for the overlay highlight. (Exposes the private weights through a method.)
 
-### Interaction & overlay — `src/lib/Canvas.svelte`
-- The **active handle** (already tracked) shows a second **reach nub**, distinct from the rotate nub: a
-  small diamond at a **fixed screen direction** from the handle (so it never collides with the angle-driven
-  rotate nub), at a doc-space distance equal to the handle's reach. If `reach` is undefined, the nub sits
-  at the mesh's full extent (the "unlimited" position).
-- **Press hit priority:** rotate nub → reach nub → handle body → add (extends the existing nub→body→add
-  chain). Hitting the reach nub starts a **reach drag**.
-- **Reach drag:** `reach = hypot(pointer − handleCenter)` (doc px). If that exceeds the mesh's extent
-  (`reachMax`), set `reach = undefined` (snap to unlimited). Call `meshPose.setReach(active, reach)`.
-- **Highlight:** while the active handle has a finite reach (and especially during a reach drag), tint the
-  triangles whose vertices are in `reachMask(active)` in `posePaint` — the honest geodesic extent.
-- New Canvas state `poseReaching: boolean`, reset alongside `poseDrag`/`poseRotating`/`activeHandle` at
-  the four teardown sites (`applyPose`/`cancelPose`/reset/`poseDensity`).
+### Interaction & overlay — `src/lib/Canvas.svelte` (UNIFIED single-nub gizmo)
+This **supersedes the rotation feature's separate rotate-nub**: rotation and reach are folded into ONE nub
+whose polar position relative to the handle encodes both — **direction = rotation angle**, **distance =
+reach**. (The earlier two-nub design — blue rotate nub + green reach diamond — is replaced.)
+
+- The **active handle** shows a single **nub** at `center + (reach || meshExtent)·(cos θ, sin θ)` where
+  `θ = handle.angle` and `center = deformed[handle.vertex]`. A **circle** is drawn at that radius (the reach
+  dial), with the nub riding it. When `reach` is undefined (unlimited), the circle is drawn at the mesh's
+  full extent (`reachMax = hypot(rect.w, rect.h)`) **faint/dashed** to signal "unlimited."
+- **Tint:** when `reach` is finite, fill the triangles whose vertices are all in `reachMask(active)` — the
+  true geodesic affected region (the circle is only a magnitude dial; the tint is the truth).
+- **Press hit priority:** nub → handle body → add. Hitting the nub starts a **gizmo drag**.
+- **Gizmo drag (coupled):** `angle = atan2(pointer − center)` and `reach = hypot(pointer − center)`; if
+  `reach ≥ reachMax`, set `reach = undefined` (snap to unlimited). Apply both and re-solve. Implementation:
+  set `handle.angle` then call `setReach(active, reach)` (one `recompute()` — weights use the new reach,
+  the solve uses the new angle), so a drag is a single recompute+solve.
+- New Canvas state `poseAdjusting: boolean` (replaces the rotation feature's `poseRotating`), reset
+  alongside `poseDrag`/`activeHandle` at the four teardown sites (`applyPose`/`cancelPose`/reset/
+  `poseDensity`) and in the onStroke done branch. The geometry helper `poseNubPos()` is updated to use the
+  reach-based radius (instead of the old fixed `POSE_NUB_R`).
 
 ## Testing
 
@@ -95,9 +102,10 @@ export function poseWeights(
 - Localized solve: `solvePoseDeform` with weights from a tightly-reached handle (small `R`) + one anchor
   leaves a far vertex (geodesic `> R` from both) at its rest position.
 
-**DOM/manual (browser):** the reach nub drags in/out; the affected region highlights and matches what
-moves; a tight reach bends only the local part (e.g. just the hand) while the rest holds; dragging past the
-mesh extent returns to unlimited; rotate + translate still work; Apply/Cancel unchanged.
+**DOM/manual (browser):** the active handle shows one nub on a circle. Dragging the nub **around** rotates;
+dragging it **in/out** resizes the reach (circle grows/shrinks) and the affected region tints; pulling it in
+bends only the local part (e.g. just the hand) while the rest holds; dragging past the mesh extent returns
+to unlimited (circle goes faint/dashed). Translate (drag the body) still works; Apply/Cancel unchanged.
 
 Build **0/0**, lint clean; baseline tests must not drop (plus the new pure tests).
 

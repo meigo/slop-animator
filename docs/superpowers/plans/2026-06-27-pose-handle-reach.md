@@ -173,7 +173,10 @@ git commit -m "feat: MeshPose per-handle reach (setReach, reachMask, recompute t
 
 ---
 
-### Task 3: Canvas — reach nub + affected-region highlight
+### Task 3 (SUPERSEDED — see Task 3R below): Canvas — reach nub + affected-region highlight
+
+> This two-nub version (separate blue rotate nub + green reach diamond) was built (commit 2a28269) then
+> redesigned into a single unified nub. **Implement Task 3R instead.** Kept here for history.
 
 **Files:** Modify `src/lib/Canvas.svelte`. READ the pose state vars (~line 95), `poseNubPos`/`posePaint`, and the onStroke pose branch first. DOM → build + manual.
 
@@ -292,10 +295,120 @@ git commit -m "feat: Pose reach nub + affected-region highlight"
 
 ---
 
+### Task 3R: Canvas — UNIFIED single-nub gizmo (rotation + reach on one circle)
+
+**Files:** Modify `src/lib/Canvas.svelte`. Replaces the two-nub gizmo: one nub whose **direction = rotation** and **distance = reach**, on a circle (the reach dial); folds in the rotation feature's blue rotate-nub. DOM → build + manual. `rotateHandle` + `setReach` (Tasks 1–2) are reused — no MeshPose change.
+
+- [ ] **Step 1: State.** Rename the rotation feature's `let poseRotating = false;` to `let poseAdjusting = false;` (the nub now adjusts both). Remove `let poseReaching = false;` (added by the superseded Task 3). Keep `activeHandle`.
+
+- [ ] **Step 2: Geometry helpers.** Remove the old fixed-screen `POSE_NUB_R` and the separate reach-nub helpers (`POSE_REACH_DIR`, `poseReachNubPos`). Keep/define:
+```ts
+  function poseReachMax(): number {
+    return meshPose ? Math.hypot(meshPose.rect.w, meshPose.rect.h) : 0; // beyond full extent = unlimited
+  }
+  // Single nub: direction = rotation angle, distance = reach (or the mesh extent when unlimited).
+  function poseNubPos(): { x: number; y: number } | null {
+    if (!meshPose || activeHandle === null) return null;
+    const h = meshPose.handles[activeHandle];
+    const c = meshPose.deformed[h.vertex];
+    const r = h.reach ?? poseReachMax();
+    return { x: c.x + r * Math.cos(h.angle), y: c.y + r * Math.sin(h.angle) };
+  }
+```
+
+- [ ] **Step 3: `posePaint()` — circle + tint + one nub.** Replace the existing `if (activeHandle !== null) { ... }` drawing block with:
+```ts
+      if (activeHandle !== null) {
+        const h = meshPose.handles[activeHandle];
+        const c = meshPose.deformed[h.vertex];
+        const r = h.reach ?? poseReachMax();
+        const nub = poseNubPos()!;
+        // affected-region tint (only when reach is finite — the true geodesic extent)
+        if (h.reach != null) {
+          const mask = meshPose.reachMask(activeHandle);
+          octx.fillStyle = "rgba(0,200,120,0.18)";
+          for (const [ta, tb, tc] of meshPose.triangles) {
+            if (mask[ta] && mask[tb] && mask[tc]) {
+              const va = meshPose.deformed[ta],
+                vb = meshPose.deformed[tb],
+                vc = meshPose.deformed[tc];
+              octx.beginPath();
+              octx.moveTo(va.x, va.y);
+              octx.lineTo(vb.x, vb.y);
+              octx.lineTo(vc.x, vc.y);
+              octx.closePath();
+              octx.fill();
+            }
+          }
+        }
+        // reach dial circle (dashed/faint when unlimited)
+        octx.strokeStyle = h.reach == null ? "rgba(0,128,255,0.25)" : "rgba(0,128,255,0.6)";
+        octx.lineWidth = 1 / viewport.zoom;
+        octx.setLineDash(h.reach == null ? [6 / viewport.zoom, 4 / viewport.zoom] : []);
+        octx.beginPath();
+        octx.arc(c.x, c.y, r, 0, Math.PI * 2);
+        octx.stroke();
+        octx.setLineDash([]);
+        // hand line + nub
+        octx.strokeStyle = "rgba(0,128,255,0.7)";
+        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.beginPath();
+        octx.moveTo(c.x, c.y);
+        octx.lineTo(nub.x, nub.y);
+        octx.stroke();
+        octx.fillStyle = "#0080ff";
+        octx.beginPath();
+        octx.arc(nub.x, nub.y, 5 / viewport.zoom, 0, Math.PI * 2);
+        octx.fill();
+        octx.strokeStyle = "#fff";
+        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.stroke();
+      }
+```
+
+- [ ] **Step 4: onStroke pose branch.** Press: nub → body → add. Move: a single coupled adjust. Replace the press/move/done bodies with:
+```ts
+      if (points.length === 1 && !done) {
+        const nub = poseNubPos();
+        if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 / viewport.zoom) {
+          poseAdjusting = true;
+        } else {
+          const hit = meshPose.handleAt(p, 10 / viewport.zoom);
+          activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
+          poseDrag = activeHandle;
+        }
+        posePaint();
+      } else if (!done) {
+        if (poseAdjusting && activeHandle !== null) {
+          const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
+          const d = Math.hypot(p.x - c.x, p.y - c.y);
+          meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
+          meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
+          posePaint();
+        } else if (poseDrag !== null) {
+          meshPose.dragHandle(poseDrag, p);
+          posePaint();
+        }
+      } else {
+        poseDrag = null;
+        poseAdjusting = false;
+      }
+```
+
+- [ ] **Step 5: Teardown.** At the four sites (`applyPose`, `cancelPose`, `poseDensity`, Reset handler) replace the `poseRotating = false; ... poseReaching = false;` lines with a single `poseAdjusting = false;` (keep `poseDrag = null; activeHandle = null;`).
+
+- [ ] **Step 6: Verify.** `npx svelte-check` → `0 ERRORS 0 WARNINGS`; `npm run build` clean; `npm test` → 276; lint clean. Confirm no leftover references to `poseRotating`/`poseReaching`/`POSE_NUB_R`/`poseReachNubPos`/`POSE_REACH_DIR`.
+
+- [ ] **Step 7: Commit.**
+```bash
+git add src/lib/Canvas.svelte
+git commit -m "feat: unified pose handle gizmo (one nub: direction=rotation, distance=reach)"
+```
+
 ## Final verification
 
 - [ ] `npm run build` → 0/0; `npm run lint` → clean; `npm test` → 276.
-- [ ] **Manual (browser, `npm run dev`):** select a handle → a green diamond reach nub appears (below it). Drag the nub in → the affected mesh region (green tint) shrinks and only that part follows the handle's move/rotation; the rest holds. Drag it past the mesh extent → reach returns to unlimited (tint clears). Rotate + translate still work; Apply/Cancel unchanged. A tight reach on a lone handle shows the expected boundary seam (documented).
+- [ ] **Manual (browser, `npm run dev`):** select a handle → one nub on a circle appears. Drag the nub **around** → rotates; drag it **in/out** → the circle (reach dial) resizes and the affected mesh region (green tint) grows/shrinks, with only that part following; the rest holds. Drag past the mesh extent → unlimited (circle goes faint/dashed, tint clears). Translate (drag the body) still works; Apply/Cancel unchanged. A tight reach on a lone handle shows the expected boundary seam (documented). Watch-item: rotating an *unlimited* handle means circling the nub at the large mesh-extent radius (coupling consequence) — confirm it's acceptable.
 
 ## Self-Review (completed by plan author)
 
