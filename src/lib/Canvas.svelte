@@ -663,7 +663,7 @@
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlay.width, overlay.height);
-    if (meshPose) {
+    if (meshPose && activeLayer().visible) {
       meshPose.render(octx);
       meshPose.drawWireframe(octx);
       if (activeHandle !== null) {
@@ -902,6 +902,15 @@
       prevPlayhead = ph;
       bankActiveEdits();
     }
+  });
+
+  // The edited layer's content is lifted into the overlay (pose mesh / floating / warp), which would
+  // otherwise ignore `visible`. Mirror the active layer's visibility onto the overlays so hiding it
+  // hides the in-progress edit too (non-destructively — the lift stays alive).
+  $effect(() => {
+    const vis = activeLayer().visible;
+    if (selection) selection.hidden = !vis;
+    if (meshPose) posePaint();
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
