@@ -105,6 +105,9 @@ export class Selection {
   warpCols = 2;
   deformMode: "ffd" | "rigid" = "ffd";
   pinned = new Map<number, Pt>(); // flat index (row*cols + col) → pinned CSS position (rigid mode)
+  /** When true the overlay is cleared and nothing is drawn (e.g. the edited layer is hidden). The
+   *  marching-ants loop keeps running so it redraws the moment this clears. */
+  hidden = false;
   floatingPixels: HTMLCanvasElement | null = null;
 
   /** Lasso path points (CSS coords) */
@@ -734,6 +737,8 @@ export class Selection {
     this.marchOffset = (this.marchOffset + 0.3) % 8;
     cancelAnimationFrame(this.animFrame);
     this.animFrame = requestAnimationFrame(() => this.drawOverlay());
+
+    if (this.hidden) return; // edited layer hidden → keep looping but draw nothing
 
     // 'selected' state OR mid-creation: draw the actual selection shape with marching ants.
     if (this.state === "selected" || this.isCreating) {
