@@ -94,7 +94,7 @@
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
   let activeHandle: number | null = null;
-  let poseRotating = false;
+  let poseAdjusting = false;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
   let poseSpacing = POSE_SPACING;
 
@@ -397,10 +397,10 @@
         return;
       }
       if (points.length === 1 && !done) {
-        // Press: rotate nub first, then handle body, then add a handle.
+        // Press: gizmo nub first, then handle body, then add a handle.
         const nub = poseNubPos();
         if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 / viewport.zoom) {
-          poseRotating = true;
+          poseAdjusting = true;
         } else {
           const hit = meshPose.handleAt(p, 10 / viewport.zoom);
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
@@ -408,9 +408,12 @@
         }
         posePaint();
       } else if (!done) {
-        if (poseRotating && activeHandle !== null) {
+        if (poseAdjusting && activeHandle !== null) {
+          // Coupled: direction sets rotation, distance sets reach (snap to unlimited past the extent).
           const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
+          const d = Math.hypot(p.x - c.x, p.y - c.y);
           meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
+          meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
           posePaint();
         } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
@@ -418,7 +421,7 @@
         }
       } else {
         poseDrag = null;
-        poseRotating = false;
+        poseAdjusting = false;
       }
       return;
     }
@@ -641,13 +644,16 @@
   }
 
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
-  const POSE_NUB_R = 28; // screen px from the handle center
+  function poseReachMax(): number {
+    return meshPose ? Math.hypot(meshPose.rect.w, meshPose.rect.h) : 0; // beyond full extent = unlimited
+  }
+  // Single gizmo nub: direction from the handle = rotation angle, distance = reach (mesh extent if unlimited).
   function poseNubPos(): { x: number; y: number } | null {
     if (!meshPose || activeHandle === null) return null;
     const h = meshPose.handles[activeHandle];
     const c = meshPose.deformed[h.vertex];
-    const R = POSE_NUB_R / viewport.zoom;
-    return { x: c.x + R * Math.cos(h.angle), y: c.y + R * Math.sin(h.angle) };
+    const r = h.reach ?? poseReachMax();
+    return { x: c.x + r * Math.cos(h.angle), y: c.y + r * Math.sin(h.angle) };
   }
 
   function posePaint() {
@@ -660,7 +666,35 @@
       if (activeHandle !== null) {
         const h = meshPose.handles[activeHandle];
         const c = meshPose.deformed[h.vertex];
+        const r = h.reach ?? poseReachMax();
         const nub = poseNubPos()!;
+        // affected-region tint (only when reach is finite — the true geodesic extent)
+        if (h.reach != null) {
+          const mask = meshPose.reachMask(activeHandle);
+          octx.fillStyle = "rgba(0,200,120,0.18)";
+          for (const [ta, tb, tc] of meshPose.triangles) {
+            if (mask[ta] && mask[tb] && mask[tc]) {
+              const va = meshPose.deformed[ta],
+                vb = meshPose.deformed[tb],
+                vc = meshPose.deformed[tc];
+              octx.beginPath();
+              octx.moveTo(va.x, va.y);
+              octx.lineTo(vb.x, vb.y);
+              octx.lineTo(vc.x, vc.y);
+              octx.closePath();
+              octx.fill();
+            }
+          }
+        }
+        // reach dial circle (faint/dashed when unlimited)
+        octx.strokeStyle = h.reach == null ? "rgba(0,128,255,0.25)" : "rgba(0,128,255,0.6)";
+        octx.lineWidth = 1 / viewport.zoom;
+        octx.setLineDash(h.reach == null ? [6 / viewport.zoom, 4 / viewport.zoom] : []);
+        octx.beginPath();
+        octx.arc(c.x, c.y, r, 0, Math.PI * 2);
+        octx.stroke();
+        octx.setLineDash([]);
+        // hand line + nub (direction = rotation, distance = reach)
         octx.strokeStyle = "rgba(0,128,255,0.7)";
         octx.lineWidth = 1.5 / viewport.zoom;
         octx.beginPath();
@@ -728,7 +762,7 @@
     meshPose = null;
     poseDrag = null;
     activeHandle = null;
-    poseRotating = false;
+    poseAdjusting = false;
     selCtx = null;
     selBefore = null;
     posePaint(); // meshPose null → clears overlay
@@ -741,7 +775,7 @@
     meshPose = null;
     poseDrag = null;
     activeHandle = null;
-    poseRotating = false;
+    poseAdjusting = false;
     selCtx = null;
     selBefore = null;
     posePaint();
@@ -756,7 +790,7 @@
     meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
     poseDrag = null;
     activeHandle = null;
-    poseRotating = false;
+    poseAdjusting = false;
     posePaint();
   }
 
@@ -937,7 +971,7 @@
           meshPose?.resetHandles();
           poseDrag = null;
           activeHandle = null;
-          poseRotating = false;
+          poseAdjusting = false;
           posePaint();
         }}>Reset</button
       >

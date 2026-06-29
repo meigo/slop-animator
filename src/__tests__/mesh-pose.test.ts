@@ -88,3 +88,21 @@ describe("solvePoseDeform", () => {
     }
   });
 });
+
+describe("reach localizes the deform", () => {
+  it("a far vertex stays at rest when the handle's reach excludes it", () => {
+    const mesh = armMesh();
+    const handles: PoseHandle[] = [
+      { vertex: 0, to: { x: 0, y: 0 }, angle: 0 },
+      { vertex: 3, to: { x: 40, y: 10 }, angle: 0, reach: 12 },
+    ];
+    const { from, weights } = poseWeights(mesh, [0, 3], 1, [undefined, 12]);
+    const out = solvePoseDeform(mesh.vertices, handles, from, weights);
+    // vertex 1 is geodesic 20 from handle 3 (≥ 12, outside its reach) and is the anchor's domain → rest.
+    expect(out[1].x).toBeCloseTo(mesh.vertices[1].x, 6);
+    expect(out[1].y).toBeCloseTo(mesh.vertices[1].y, 6);
+    // the reached handle still hits its target exactly (Infinity weight at its own vertex).
+    expect(out[3].x).toBeCloseTo(40, 6);
+    expect(out[3].y).toBeCloseTo(10, 6);
+  });
+});

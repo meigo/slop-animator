@@ -60,13 +60,24 @@ export function poseWeights(
   mesh: Mesh,
   handleVertices: number[],
   alpha = 1,
+  reaches?: (number | undefined)[],
 ): { from: Pt[]; weights: number[][] } {
   const dist = geodesicDistances(mesh, handleVertices);
   const from = handleVertices.map((v) => mesh.vertices[v]);
   const weights = mesh.vertices.map((_, v) =>
     handleVertices.map((_, h) => {
       const g = dist[h][v];
-      return g === 0 ? Infinity : g === Infinity ? 0 : 1 / Math.pow(g, 2 * alpha);
+      if (g === 0) return Infinity;
+      if (g === Infinity) return 0;
+      let w = 1 / Math.pow(g, 2 * alpha);
+      const R = reaches?.[h];
+      if (R != null && R > 0) {
+        if (g >= R) return 0;
+        const t = g / R; // smooth compact window: 1 at g=0 → 0 at g=R
+        const win = 1 - t * t;
+        w *= win * win;
+      }
+      return w;
     }),
   );
   return { from, weights };

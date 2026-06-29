@@ -155,3 +155,41 @@ describe("poseWeights", () => {
     });
   });
 });
+
+describe("poseWeights reach window", () => {
+  // A 4×2 strip; geodesic distance from vertex 0 grows along the top row.
+  const mesh: Mesh = {
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+      { x: 30, y: 0 },
+      { x: 0, y: 10 },
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 30, y: 10 },
+    ],
+    triangles: [tri(0, 1, 4), tri(1, 5, 4), tri(1, 2, 5), tri(2, 6, 5), tri(2, 3, 6), tri(3, 7, 6)],
+  };
+  it("zeros influence beyond the reach and dampens within it", () => {
+    const dist = geodesicDistances(mesh, [0]);
+    const noReach = poseWeights(mesh, [0]).weights;
+    const R = 15; // between vertex 1 (g=10) and vertex 2 (g=20)
+    const reached = poseWeights(mesh, [0], 1, [R]).weights;
+    mesh.vertices.forEach((_, v) => {
+      const g = dist[0][v];
+      if (g === 0) expect(reached[v][0]).toBe(Infinity);
+      else if (g >= R) expect(reached[v][0]).toBe(0);
+      else {
+        expect(reached[v][0]).toBeGreaterThan(0);
+        expect(reached[v][0]).toBeLessThan(noReach[v][0]);
+      }
+    });
+    expect(reached[2][0]).toBe(0);
+  });
+  it("undefined reach equals the no-reach weights (regression)", () => {
+    const a = poseWeights(mesh, [0, 3]).weights;
+    const b = poseWeights(mesh, [0, 3], 1, [undefined, undefined]).weights;
+    expect(b).toEqual(a);
+  });
+});
