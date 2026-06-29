@@ -22,7 +22,7 @@
     toggleEraser,
     applyEyedropper,
   } from "../state/appState.svelte";
-  import { selectionRef, selectionActions, liftGuard } from "../state/appState.svelte";
+  import { selectionRef, selectionActions, poseActions, liftGuard } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
   import { syncReferenceVideos } from "../anim/reference";
@@ -601,6 +601,9 @@
 
     selectionRef.current = selection;
     liftGuard.discard = discardActiveEdits;
+    poseActions.active = () => meshPose !== null;
+    poseActions.apply = () => applyPose();
+    poseActions.cancel = () => cancelPose();
   }
 
   function enterTransform() {
@@ -868,8 +871,10 @@
       cleanupTouch();
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
+      selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
       selectionRef.current = null;
       liftGuard.discard = null;
+      poseActions.active = () => false;
       selectionActions.enterWarp = null;
     };
   });
@@ -920,9 +925,12 @@
   // otherwise ignore `visible`. Mirror the active layer's visibility onto the overlays so hiding it
   // hides the in-progress edit too (non-destructively — the lift stays alive).
   $effect(() => {
-    const vis = activeLayer().visible;
-    if (selection) selection.hidden = !vis;
+    const al = activeLayer();
+    if (selection) selection.hidden = !al.visible;
     if (meshPose) posePaint();
+    // Can't keep editing a layer that just got locked → discard the in-progress lift.
+    if (al.kind === "draw" && al.locked && (meshPose || selection?.hasFloating))
+      discardActiveEdits();
   });
 
   // Wheel zoom, mirroring slop-paint's gesture (minimal subset).

@@ -341,11 +341,19 @@ export function duplicateLayer(id: number) {
     dup.visible = src.visible;
     dup.locked = src.locked;
     dup.opacity = src.opacity;
+    dup.boilStrength = src.boilStrength; // match the source's line-boil strength
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
     dup.transform = { ...src.transform }; // copy renders at the same placement as the source
     dup.cells = src.cells.map(
       (c): Cell =>
-        c.kind === "key" ? { kind: "key", canvas: cloneCanvas(c.canvas) } : { kind: "hold" },
+        c.kind === "key"
+          ? {
+              kind: "key",
+              canvas: cloneCanvas(c.canvas),
+              transform: c.transform ? { ...c.transform } : undefined, // keep per-cell transforms
+              transformBox: c.transformBox ? { ...c.transformBox } : c.transformBox,
+            }
+          : { kind: "hold" },
     );
     layers.splice(idx + 1, 0, dup);
     setActiveLayer(dup.id);
@@ -486,6 +494,11 @@ export function groupActiveLayer() {
 export function ungroup(groupId: number) {
   for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
   state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
+  // Don't leave the Transform tool in Group scope with no group (mirror setActiveLayer's guard).
+  const al = state.project.layers.find((l) => l.id === state.activeLayerId);
+  if (state.transformScope === "group" && (!al || al.groupId == null)) {
+    state.transformScope = "frame";
+  }
   bump();
 }
 export function toggleGroupCollapsed(groupId: number) {
@@ -741,6 +754,13 @@ export const selectionRef: { current: Selection | null } = { current: null };
 /** Canvas-owned selection actions reachable from App keyboard shortcuts (W/M warp). */
 export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = {
   enterWarp: null,
+};
+
+/** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
+export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
+  active: () => false,
+  apply: () => {},
+  cancel: () => {},
 };
 
 /** Canvas registers a discard-the-active-lift callback here. Call it BEFORE any operation that

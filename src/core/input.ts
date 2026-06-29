@@ -187,12 +187,14 @@ export function setupInput(
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointerleave", onPointerUp);
-  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  const onContextMenu = (e: Event) => e.preventDefault();
+  canvas.addEventListener("contextmenu", onContextMenu);
 
   return () => {
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("pointerleave", onPointerUp);
+    canvas.removeEventListener("contextmenu", onContextMenu);
   };
 }

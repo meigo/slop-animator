@@ -300,13 +300,16 @@ export function setupTouchGestures(
   workspace.addEventListener("pointercancel", onPointerCancel, { capture: true });
 
   // Prevent default touch behaviors on the workspace
-  workspace.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-  workspace.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+  const preventTouch = (e: Event) => e.preventDefault();
+  workspace.addEventListener("touchstart", preventTouch, { passive: false });
+  workspace.addEventListener("touchmove", preventTouch, { passive: false });
 
   return () => {
     workspace.removeEventListener("pointerdown", onPointerDown, { capture: true });
     workspace.removeEventListener("pointermove", onPointerMove, { capture: true });
     workspace.removeEventListener("pointerup", onPointerUp, { capture: true });
     workspace.removeEventListener("pointercancel", onPointerCancel, { capture: true });
+    workspace.removeEventListener("touchstart", preventTouch);
+    workspace.removeEventListener("touchmove", preventTouch);
   };
 }

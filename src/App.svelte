@@ -16,6 +16,7 @@
     playbackController,
     selectionRef,
     selectionActions,
+    poseActions,
     DPR,
     replaceProject,
     gatherPreferences,
@@ -54,9 +55,11 @@
       }
     } else if (e.key === "Escape") {
       if (selectionRef.current?.active) selectionRef.current.cancel();
+      else if (poseActions.active()) poseActions.cancel();
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (selectionRef.current?.active) selectionRef.current.commit();
+      else if (poseActions.active()) poseActions.apply();
       else playbackController.toggle();
     } else if (e.key === "k") {
       e.preventDefault();
