@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import {
     state as appState,
-    history,
+    undo,
+    redo,
     bump,
     addLayerToProject,
     replaceProject,
@@ -316,12 +317,12 @@
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Undo"
-    onclick={() => history.undo()}><Undo2 size={18} /></button
+    onclick={() => undo()}><Undo2 size={18} /></button
   >
   <button
     class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Redo"
-    onclick={() => history.redo()}><Redo2 size={18} /></button
+    onclick={() => redo()}><Redo2 size={18} /></button
   >
   <span class="w-px h-5 bg-border mx-1"></span>
   <button
