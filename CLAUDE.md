@@ -17,7 +17,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline ~**219 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline ~**280 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run lint` / `npm run format` — ESLint (incl. `eslint-plugin-svelte`, runes-aware) + Prettier.
 - **Pre-commit hook** (husky + lint-staged) auto-runs `eslint --fix` + `prettier --write` on staged
@@ -83,6 +83,14 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 6. Gizmo _drags_ don't push undo (only Apply/Reset do) — matches existing behavior, intentional.
 7. Mouse strokes report no pressure (`hasPressure:false`) → drawn at constant nominal width
    (`sizeRange` collapses to 1); only pen pressure widens.
+8. **Undo snapshots SHARE cell/canvas object refs** (`cloneLayers` only `slice()`s the array). A
+   structural mutation must **replace** a cell (`layer.cells[i] = {...}`), **never mutate in place**
+   (`cell.transform = ...`) — in-place edits corrupt the before-snapshot and no-op undo. `restoreStructure`
+   keeps the live layer only when `live.kind === snap.kind`, and restores `groupId` (structural).
+9. **Tool lifts** (selection float / deform warp / pose mesh) capture `selCtx`/`selBefore` at lift time.
+   Any state change that re-targets/destroys that canvas must bank or discard the lift first via the
+   `Canvas` effects (`bankActiveEdits` on layer/frame switch) or the **`liftGuard.discard`** hook (call it
+   before resize / replaceProject / set-hold / delete-frame, and route undo/redo through `undo()`/`redo()`).
 
 ## Current state (all shipped & merged to `main`)
 
@@ -97,16 +105,29 @@ group transform composes above the layer for character-rig moves; Reset-only thi
 autosave + global preferences. Whole codebase is Svelte 5 **runes**; Prettier + ESLint + pre-commit
 hooks in place.
 
+Shipped since (2026-06 → 07): **Deform tool** (FFD grid-warp reusing the selection warp engine +
+**Rigid/MLS** mode); the **Pose tool** — silhouette triangulation (`triangulate.ts`, `delaunator`) →
+geodesic-weighted MLS (`geodesic.ts` `poseWeights`/`mesh-pose.ts`), lift/pin/bake, with a **unified
+per-handle gizmo** (one nub: direction = rotation, distance = geodesic **reach** with a dial circle +
+affected-region tint; context-aware default reach); **transparent background** (`Project.transparentBg`)
+
+- checkerboard editor view + **paint-behind** toggle; a **Project Settings dialog** (bg color / transparent
+  / fps, gear button); and a **tool-lifecycle cleanup pass** (bank/discard in-progress lifts on tool /
+  layer / frame switch, layer visibility & lock, and before canvas-recreating ops / undo via `liftGuard`).
+  A 2026-06-29 **multi-agent code review** fixed 8 undo/data-loss + lifecycle bugs (batches A/B/C). Test
+  baseline ~**280**. See `undo-snapshot-and-lift-lifecycle-invariants` memory for the two hardened invariants.
+
 ## Roadmap / deferred (wanted-later, not abandoned)
 
 - **Transform later**: animated/keyframed transforms — `LayerGroup.transform` and `Layer.transform`
   mirror each other in shape (per Phase B spec), ready for a `RefTransform → KeyframedTransform`
   migration. Cells stay static-only (they're already the frame-level keyframe).
-- **2D mesh-deform "Deform" tool** for quick per-frame pose editing of characters/limbs/blobs —
-  Laplacian/ARAP mesh deformation, scope = single cell only (no animation, no rigging). Idea-stage
-  notes in `docs/superpowers/specs/2026-06-25-mesh-deform-tool-notes.md` — recommendation is to
-  prototype FFD (control-lattice + bicubic warp) first to validate the pipeline, then upgrade the
-  solver to ARAP.
+- **Mesh-deform / Pose tool — SHIPPED** (FFD + Rigid Deform, and the geodesic-MLS Pose tool with the
+  unified rotation+reach gizmo). Still deferred: **true Igarashi ARAP** (a real sparse solver, chosen
+  against for now — geodesic-MLS is closed-form/no-solver); **outline-only drawings** pose as a thin
+  web (the silhouette mesh needs a filled region) — a **manual** fill (not auto — the user declined
+  auto fill-holes, see `prefers-manual-over-auto-altering-art` memory) or an opt-in fill-holes pass is
+  the path; and **animated/keyframed** poses (per-frame + destructive only today).
 - **Group transform Apply (full pixel flatten)**: deferred — Phase B is Reset-only. The math for a
   clean per-layer fold-down doesn't exist (group rotates about group bbox center, layers about doc
   center); only a full flatten of all member key cells is correct. Add when there's demand.
@@ -131,3 +152,10 @@ hooks in place.
 Much canvas/DOM/touch/iPad code is build- + unit- + review-verified but **not browser-eyeballed**
 (Vitest has no DOM). The transform features especially warrant an interactive `npm run dev` pass.
 When you finish canvas/UI work, flag this to the user rather than claiming it's confirmed working.
+
+**Owed a browser pass (2026-07):** the user eyeballed the Pose gizmo (rotation, reach) and the
+layer-visibility fix, but the transparent-bg/paint-behind/settings-dialog UI and the code-review
+**batch B/C** lifecycle fixes (bank/discard-on-context-change, lock-mid-lift, undo-mid-lift, resize
+mid-lift) are build+review-verified only — worth an interactive pass. `appState.svelte.ts` isn't
+node-importable (window/audio at module load), so its model/undo logic is build+reasoning-verified, not
+unit-tested.
