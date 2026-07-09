@@ -23,6 +23,18 @@ import {
   type ReferenceMedia,
   type LayerGroup,
 } from "../anim/document";
+import {
+  copyBlock,
+  pasteBlockOverwrite,
+  pasteBlockInsert,
+  deleteBlock,
+  type CellBlock,
+} from "../anim/timeline-block";
+import {
+  resolveSelectionRect,
+  type SelectionEndpoint,
+  type TimelineSelection,
+} from "../anim/timeline-selection";
 import { loadImageMedia } from "../anim/reference";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
@@ -78,6 +90,8 @@ interface AnimState {
   theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
+  timelineSelection: TimelineSelection | null;
+  cellClipboard: CellBlock | null;
 }
 
 const project = createProject();
@@ -128,6 +142,8 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   playback: { isPlaying: false, loop: true, range: null },
+  timelineSelection: null,
+  cellClipboard: null,
 });
 
 export const history = new History();
@@ -250,6 +266,7 @@ export function commitStructural(mutate: () => void): void {
   const before = beginStructuralEdit();
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
+  state.timelineSelection = null; // any structural edit can invalidate stored endpoints
   commitStructuralEdit(before);
 }
 
@@ -590,6 +607,8 @@ export function setAnimationLength(n: number) {
  * (aspect-preserving), `crop` keeps its pixel size; the anchor positions it. One undo step.
  */
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
+  state.timelineSelection = null;
+  state.cellClipboard = null; // clipboard canvases belong to the old document size
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
   if (w === state.project.width && h === state.project.height) return;
@@ -689,6 +708,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  state.timelineSelection = null;
+  state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
@@ -794,4 +815,57 @@ export function setActiveLayer(id: number): void {
   }
   // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
   if (state.onion.enabled && !state.onion.allLayers) state.version++;
+}
+
+export function setTimelineSelection(anchor: SelectionEndpoint, focus: SelectionEndpoint): void {
+  state.timelineSelection = { anchor, focus };
+}
+
+export function clearTimelineSelection(): void {
+  state.timelineSelection = null;
+}
+
+function currentSelectionRect() {
+  const sel = state.timelineSelection;
+  return sel ? resolveSelectionRect(state.project.layers, sel.anchor, sel.focus) : null;
+}
+
+/** Copy the current timeline selection into the internal cell clipboard (non-undoable). */
+export function copyTimelineSelection(): void {
+  const rect = currentSelectionRect();
+  if (!rect) return;
+  state.cellClipboard = copyBlock(
+    state.project,
+    rect.layerIds,
+    rect.startFrame,
+    rect.endFrame,
+    canvasOps,
+  );
+}
+
+/** Replace the selected region with holds (undoable). */
+export function deleteTimelineSelection(): void {
+  const rect = currentSelectionRect();
+  if (!rect) return;
+  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
+}
+
+/** Cut = copy then delete. */
+export function cutTimelineSelection(): void {
+  copyTimelineSelection();
+  deleteTimelineSelection();
+}
+
+/** Paste the clipboard block with its top-left at (active layer, playhead). Overwrite by default;
+ *  `insert = true` ripples the pasted layers right. Undoable. */
+export function pasteCells(insert = false): void {
+  const block = state.cellClipboard;
+  if (!block) return;
+  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  commitStructural(() => {
+    if (insert)
+      pasteBlockInsert(state.project, block, state.activeLayerId, state.playhead, canvasOps);
+    else pasteBlockOverwrite(state.project, block, state.activeLayerId, state.playhead, canvasOps);
+  });
 }
