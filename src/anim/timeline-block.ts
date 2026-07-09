@@ -108,3 +108,20 @@ export function pasteBlockInsert(
     layer.cells.splice(at, 0, ...clones);
   }
 }
+
+/** Replace every cell in the block region with a hold (Delete). Track length is unchanged
+ *  (so ≥1 cell per layer is preserved). Skips missing/reference layers. */
+export function deleteBlock(
+  project: Project,
+  layerIds: number[],
+  startFrame: number,
+  endFrame: number,
+): void {
+  for (const id of layerIds) {
+    const layer = project.layers.find((l) => l.id === id);
+    if (!layer || layer.kind !== "draw") continue;
+    for (let f = startFrame; f <= endFrame && f < layer.cells.length; f++) {
+      layer.cells[f] = { kind: "hold" };
+    }
+  }
+}

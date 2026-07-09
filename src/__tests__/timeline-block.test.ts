@@ -8,6 +8,7 @@ import {
   drawingLayerIdsDown,
   pasteBlockOverwrite,
   pasteBlockInsert,
+  deleteBlock,
 } from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
@@ -238,5 +239,24 @@ describe("pasteBlockInsert", () => {
     expect(l.cells.length).toBe(4); // [A][hold][hold][X]
     expect(l.cells[1]).toEqual({ kind: "hold" });
     expect(l.cells[3].kind).toBe("key");
+  });
+});
+
+describe("deleteBlock", () => {
+  it("replaces the region with holds, keeping track length", () => {
+    const l = drawLayer(1, [key(), key(), key()]);
+    deleteBlock(proj([l], 3), [1], 0, 1);
+    expect(l.cells.length).toBe(3);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2].kind).toBe("key"); // outside the region, untouched
+  });
+
+  it("clamps to the track end and skips reference/missing layers", () => {
+    const l = drawLayer(1, [key(), key()]);
+    deleteBlock(proj([l], 2), [1, 99], 0, 10); // endFrame past end; id 99 missing
+    expect(l.cells.length).toBe(2);
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    expect(l.cells[1]).toEqual({ kind: "hold" });
   });
 });
