@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
 import { defaultBoilConfig } from "../anim/document";
 import type { CanvasOps } from "../anim/timeline";
-import { cloneCell, copyBlock } from "../anim/timeline-block";
+import {
+  cloneCell,
+  copyBlock,
+  drawingLayerIdsDown,
+  pasteBlockOverwrite,
+} from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
 let tag = 0;
@@ -132,5 +137,69 @@ describe("copyBlock", () => {
     const b = drawLayer(2, [key()]);
     const block = copyBlock(proj([a, b], 1), [2, 1], 0, 0, fakeOps);
     expect(block.cols).toBe(2);
+  });
+});
+
+describe("drawingLayerIdsDown", () => {
+  it("lists drawing layers from the active layer downward (toward bottom of stack), skipping refs", () => {
+    // layers[0] = bottom of stack. Display top-first = reversed. "Down" from a layer = toward bottom.
+    const bottom = drawLayer(1, [key()]);
+    const mid = drawLayer(2, [key()]);
+    const top = drawLayer(3, [key()]);
+    const p = proj([bottom, mid, top], 1); // stack bottom→top: 1,2,3
+    expect(drawingLayerIdsDown(p, 3)).toEqual([3, 2, 1]); // from top downward
+    expect(drawingLayerIdsDown(p, 2)).toEqual([2, 1]);
+    expect(drawingLayerIdsDown(p, 99)).toEqual([]); // unknown layer
+  });
+});
+
+describe("pasteBlockOverwrite", () => {
+  it("stamps cells in place without changing track length; trailing hold now resolves to new key", () => {
+    const orig = fakeOps.create();
+    const l = drawLayer(1, [key(orig), hold(), hold()]); // [A][A·][A·]
+    const src = fakeOps.create();
+    // Build the block directly so paste clones exactly once (src → document); a copyBlock
+    // round-trip would clone twice (src → clipboard → document) and break the identity check.
+    const block = { cols: 1, rows: 1, columns: [[key(src)]] }; // 1x1 X
+    pasteBlockOverwrite(proj([l], 3), block, 1, 1, fakeOps); // overwrite frame 1
+    expect(l.cells.length).toBe(3); // length unchanged
+    const c1 = l.cells[1];
+    expect(c1.kind).toBe("key");
+    if (c1.kind === "key") expect(cloneOf(c1.canvas)).toBe(idOf(src));
+    expect(l.cells[2]).toEqual({ kind: "hold" }); // trailing hold now holds the pasted key
+  });
+
+  it("pads with holds when the paste lands past the layer's end", () => {
+    const l = drawLayer(1, [key()]); // length 1
+    const block = copyBlock(proj([drawLayer(9, [key()])], 1), [9], 0, 0, fakeOps);
+    pasteBlockOverwrite(proj([l], 1), block, 1, 3, fakeOps); // land at frame 3
+    expect(l.cells.length).toBe(4);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3].kind).toBe("key");
+  });
+
+  it("ignores overflow columns past the bottom layer", () => {
+    const only = drawLayer(1, [key()]);
+    const block = copyBlock(
+      proj([drawLayer(8, [key()]), drawLayer(9, [key()])], 1),
+      [9, 8],
+      0,
+      0,
+      fakeOps,
+    ); // 2 columns
+    pasteBlockOverwrite(proj([only], 1), block, 1, 0, fakeOps); // only 1 target layer
+    expect(only.cells.length).toBe(1); // second column silently ignored, no crash
+  });
+
+  it("clones out of the clipboard so two pastes never share a canvas ref", () => {
+    const a = drawLayer(1, [key()]);
+    const b = drawLayer(2, [key()]);
+    const block = copyBlock(proj([drawLayer(9, [key()])], 1), [9], 0, 0, fakeOps);
+    pasteBlockOverwrite(proj([a], 1), block, 1, 0, fakeOps);
+    pasteBlockOverwrite(proj([b], 1), block, 2, 0, fakeOps);
+    const ca = a.cells[0],
+      cb = b.cells[0];
+    if (ca.kind === "key" && cb.kind === "key") expect(ca.canvas).not.toBe(cb.canvas);
   });
 });

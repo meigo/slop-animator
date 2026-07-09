@@ -49,3 +49,41 @@ export function copyBlock(
   }
   return { cols: columns.length, rows, columns };
 }
+
+/** Drawing-layer ids from `topLayerId` downward through the stack (toward the bottom = display-down),
+ *  skipping reference layers. Empty if the id is unknown. Column 0 = the top layer. */
+export function drawingLayerIdsDown(project: Project, topLayerId: number): number[] {
+  const idx = project.layers.findIndex((l) => l.id === topLayerId);
+  if (idx < 0) return [];
+  const ids: number[] = [];
+  for (let i = idx; i >= 0; i--)
+    if (project.layers[i].kind === "draw") ids.push(project.layers[i].id);
+  return ids;
+}
+
+/** Overwrite-paste: stamp `block` in place with column 0 at `targetTopLayerId`, filling downward.
+ *  Lands past a layer's end → pad with holds then append. Overflow columns ignored. */
+export function pasteBlockOverwrite(
+  project: Project,
+  block: CellBlock,
+  targetTopLayerId: number,
+  startFrame: number,
+  ops: CanvasOps,
+): void {
+  const targetIds = drawingLayerIdsDown(project, targetTopLayerId);
+  for (let c = 0; c < block.cols; c++) {
+    if (c >= targetIds.length) break; // overflow past bottom layer
+    const layer = project.layers.find((l) => l.id === targetIds[c]);
+    if (!layer || layer.kind !== "draw") continue;
+    for (let r = 0; r < block.rows; r++) {
+      const f = startFrame + r;
+      const cell = cloneCell(block.columns[c][r], ops);
+      if (f >= layer.cells.length) {
+        while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
+        layer.cells.push(cell);
+      } else {
+        layer.cells[f] = cell; // replace, never mutate in place
+      }
+    }
+  }
+}
