@@ -135,10 +135,16 @@ describe("copyBlock", () => {
   });
 
   it("produces one column per layer id, in the given order", () => {
-    const a = drawLayer(1, [key()]);
-    const b = drawLayer(2, [key()]);
+    const ca = fakeOps.create();
+    const cb = fakeOps.create();
+    const a = drawLayer(1, [key(ca)]);
+    const b = drawLayer(2, [key(cb)]);
     const block = copyBlock(proj([a, b], 1), [2, 1], 0, 0, fakeOps);
     expect(block.cols).toBe(2);
+    const c0 = block.columns[0][0];
+    const c1 = block.columns[1][0];
+    if (c0.kind === "key") expect(cloneOf(c0.canvas)).toBe(idOf(cb)); // column 0 = layer 2
+    if (c1.kind === "key") expect(cloneOf(c1.canvas)).toBe(idOf(ca)); // column 1 = layer 1
   });
 });
 

@@ -235,6 +235,8 @@ function restoreStructure(s: StructSnapshot) {
     };
   });
   state.project.frameCount = s.frameCount;
+  if (s.width !== state.project.width || s.height !== state.project.height)
+    state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
@@ -607,11 +609,11 @@ export function setAnimationLength(n: number) {
  * (aspect-preserving), `crop` keeps its pixel size; the anchor positions it. One undo step.
  */
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
-  state.timelineSelection = null;
-  state.cellClipboard = null; // clipboard canvases belong to the old document size
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
   if (w === state.project.width && h === state.project.height) return;
+  state.timelineSelection = null;
+  state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // a live lift's captured cell canvas is about to be replaced
   const rect = placeContent(
     state.project.width * DPR,
@@ -794,10 +796,12 @@ export const liftGuard: { discard: (() => void) | null } = { discard: null };
 export function undo(): void {
   liftGuard.discard?.();
   history.undo();
+  state.timelineSelection = null; // a structural restore can invalidate stored endpoints
 }
 export function redo(): void {
   liftGuard.discard?.();
   history.redo();
+  state.timelineSelection = null;
 }
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
@@ -862,6 +866,8 @@ export function cutTimelineSelection(): void {
 export function pasteCells(insert = false): void {
   const block = state.cellClipboard;
   if (!block) return;
+  const active = state.project.layers.find((l) => l.id === state.activeLayerId);
+  if (!active || active.kind !== "draw") return; // paste anchors on a drawing layer only
   liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
   commitStructural(() => {
     if (insert)

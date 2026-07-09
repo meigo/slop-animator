@@ -125,6 +125,9 @@
   let gridWrapper = $state<HTMLElement | null>(null);
 
   const LONG_PRESS_MS = 400;
+  // INVARIANT: EDGE_PX (resize hotspot, timeline-grid.ts) + MOVE_CANCEL_PX must stay < CELL_W/2,
+  // so a pending long-press can't let a resize cross a column boundary before it's cancelled
+  // (else a resize could mutate the doc with its undo snapshot discarded). Re-check if you raise either.
   const MOVE_CANCEL_PX = 6; // pointer travel that cancels a pending long-press (= a real drag)
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;

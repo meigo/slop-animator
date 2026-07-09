@@ -36,6 +36,9 @@
 
   function onKey(e: KeyboardEvent) {
     const meta = e.ctrlKey || e.metaKey;
+    // Never leave the cell-paste guard stuck true if a `paste` event didn't follow a prior Cmd+V
+    // (browser/platform variance) — reset it on any keydown that isn't itself a Cmd+V.
+    if (!(meta && e.key.toLowerCase() === "v")) cellPasteHandled = false;
     if (meta && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) redo();
