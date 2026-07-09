@@ -47,6 +47,48 @@ function proj(layers: (DrawingLayer | ReferenceLayer)[], frameCount: number): Pr
   };
 }
 
+describe("cloneCell", () => {
+  it("clones a hold as a hold", () => {
+    const h = hold();
+    const cloned = cloneCell(h, fakeOps);
+    expect(cloned).toEqual({ kind: "hold" });
+    expect(cloned).not.toBe(h); // new object, not shared
+  });
+
+  it("clones a key cell with canvas cloning", () => {
+    const k = key();
+    const cloned = cloneCell(k, fakeOps);
+    expect(cloned.kind).toBe("key");
+    if (cloned.kind === "key" && k.kind === "key") {
+      expect(cloneOf(cloned.canvas)).toBe(idOf(k.canvas));
+      expect(cloned.canvas).not.toBe(k.canvas);
+    }
+  });
+
+  it("deep-clones transform and transformBox", () => {
+    const tf = { dx: 1, dy: 2, scale: 3, rotation: 4 };
+    const box = { x: 5, y: 6, w: 7, h: 8 };
+    const k: Cell = { kind: "key", canvas: fakeOps.create(), transform: tf, transformBox: box };
+    const cloned = cloneCell(k, fakeOps);
+    expect(cloned.kind).toBe("key");
+    if (cloned.kind === "key") {
+      expect(cloned.transform).toEqual(tf);
+      expect(cloned.transform).not.toBe(tf);
+      expect(cloned.transformBox).toEqual(box);
+      expect(cloned.transformBox).not.toBe(box);
+    }
+  });
+
+  it("handles null transformBox", () => {
+    const k: Cell = { kind: "key", canvas: fakeOps.create(), transformBox: null };
+    const cloned = cloneCell(k, fakeOps);
+    expect(cloned.kind).toBe("key");
+    if (cloned.kind === "key") {
+      expect(cloned.transformBox).toBe(null);
+    }
+  });
+});
+
 describe("copyBlock", () => {
   it("materializes a leading hold into a cloned KEY of the resolved drawing", () => {
     const k = fakeOps.create();
