@@ -7,6 +7,7 @@ import {
   copyBlock,
   drawingLayerIdsDown,
   pasteBlockOverwrite,
+  pasteBlockInsert,
 } from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
@@ -201,5 +202,41 @@ describe("pasteBlockOverwrite", () => {
     const ca = a.cells[0],
       cb = b.cells[0];
     if (ca.kind === "key" && cb.kind === "key") expect(ca.canvas).not.toBe(cb.canvas);
+  });
+});
+
+describe("pasteBlockInsert", () => {
+  it("splices cells in on the pasted layer, shifting later cells right (length grows)", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = drawLayer(1, [key(a), key(b)]); // [A][B]
+    const src = fakeOps.create();
+    // Build the block directly so paste clones exactly once (src → document); a copyBlock
+    // round-trip would clone twice (src → clipboard → document) and break the identity check.
+    const block = { cols: 1, rows: 1, columns: [[key(src)]] }; // X
+    pasteBlockInsert(proj([l], 2), block, 1, 1, fakeOps); // insert at frame 1
+    expect(l.cells.length).toBe(3); // [A][X][B]
+    const c1 = l.cells[1];
+    expect(c1.kind).toBe("key");
+    if (c1.kind === "key") expect(cloneOf(c1.canvas)).toBe(idOf(src));
+    const c2 = l.cells[2];
+    if (c2.kind === "key") expect(idOf(c2.canvas)).toBe(idOf(b)); // B shifted right, ref preserved
+  });
+
+  it("does not touch a non-pasted layer (pasted-layers-only ripple)", () => {
+    const target = drawLayer(1, [key()]);
+    const other = drawLayer(2, [key(), key()]);
+    const block = copyBlock(proj([drawLayer(9, [key()])], 1), [9], 0, 0, fakeOps);
+    pasteBlockInsert(proj([target, other], 2), block, 1, 0, fakeOps); // paste only into layer 1
+    expect(other.cells.length).toBe(2); // untouched
+  });
+
+  it("pads with holds when inserting past the layer's end", () => {
+    const l = drawLayer(1, [key()]); // length 1
+    const block = copyBlock(proj([drawLayer(9, [key()])], 1), [9], 0, 0, fakeOps);
+    pasteBlockInsert(proj([l], 1), block, 1, 3, fakeOps);
+    expect(l.cells.length).toBe(4); // [A][hold][hold][X]
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[3].kind).toBe("key");
   });
 });

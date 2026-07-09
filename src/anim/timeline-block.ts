@@ -87,3 +87,24 @@ export function pasteBlockOverwrite(
     }
   }
 }
+
+/** Insert-paste: for each pasted layer, splice its column at `startFrame`, shifting later cells
+ *  right (pasted layers only). Pads with holds if `startFrame` is past the layer's end. */
+export function pasteBlockInsert(
+  project: Project,
+  block: CellBlock,
+  targetTopLayerId: number,
+  startFrame: number,
+  ops: CanvasOps,
+): void {
+  const targetIds = drawingLayerIdsDown(project, targetTopLayerId);
+  for (let c = 0; c < block.cols; c++) {
+    if (c >= targetIds.length) break;
+    const layer = project.layers.find((l) => l.id === targetIds[c]);
+    if (!layer || layer.kind !== "draw") continue;
+    const at = startFrame;
+    while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
+    const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
+    layer.cells.splice(at, 0, ...clones);
+  }
+}
