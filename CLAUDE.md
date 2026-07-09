@@ -159,3 +159,16 @@ layer-visibility fix, but the transparent-bg/paint-behind/settings-dialog UI and
 mid-lift) are build+review-verified only — worth an interactive pass. `appState.svelte.ts` isn't
 node-importable (window/audio at module load), so its model/undo logic is build+reasoning-verified, not
 unit-tested.
+
+**Timeline block copy/paste (2026-07-09, merged):** rectangular block selection (frames × layers) +
+copy/cut/paste(overwrite & insert)/delete. Pure block+selection logic is unit-tested (`timeline-block.ts`,
+`timeline-selection.ts`); the whole gesture/UI/keyboard surface is build+review-verified only. The user
+eyeballed the **action-bar positioning** (top row, last track, spanning — flip+clamp inside the vertically-
+clipping grid wrapper). **Still owed a browser pass:** long-press + shift-click selection & highlight;
+overwrite-vs-insert paste; cross-layer paste + **overflow** (block taller than the draw layers at/below the
+active one → extra columns ignored, no layer auto-create); **undo/redo across a paste** and the
+**resize↔undo↔paste** sequence (clipboard is dropped on a size-changing undo/redo so a stale wrong-sized
+canvas can't be pasted); `Cmd+V` cells vs the image-file paste handler. Two known edge cases deferred: (1)
+copying while a selection/pose **lift is active** captures the holed under-canvas (copy doesn't bank the
+float); (2) pasting onto a **reference active layer** now no-ops (guarded). Spec + plan:
+`docs/superpowers/{specs,plans}/2026-07-09-timeline-block-copy-paste*.md`.
