@@ -22,9 +22,17 @@
     gatherPreferences,
     applyPreferences,
     pasteImageReference,
+    copyTimelineSelection,
+    cutTimelineSelection,
+    pasteCells,
+    deleteTimelineSelection,
   } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
+
+  // Set when a Cmd+V is consumed as a cell paste, so the window `paste` event (onPaste) skips
+  // its image-file handling for the same keystroke. keydown fires before paste.
+  let cellPasteHandled = false;
 
   function onKey(e: KeyboardEvent) {
     const meta = e.ctrlKey || e.metaKey;
@@ -37,6 +45,28 @@
     // Don't hijack single-key shortcuts while typing in a field (e.g. the fps input).
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+    if (meta && e.key.toLowerCase() === "c" && state.timelineSelection) {
+      e.preventDefault();
+      copyTimelineSelection();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "x" && state.timelineSelection) {
+      e.preventDefault();
+      cutTimelineSelection();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "v" && state.cellClipboard) {
+      e.preventDefault();
+      cellPasteHandled = true; // tell onPaste to skip this keystroke
+      pasteCells(e.shiftKey);
+      return;
+    }
+    if ((e.key === "Delete" || e.key === "Backspace") && state.timelineSelection) {
+      e.preventDefault();
+      deleteTimelineSelection();
+      return;
+    }
 
     if (e.key === "b") state.tool = "brush";
     else if (e.key === "e") state.tool = "eraser";
@@ -77,6 +107,10 @@
   }
 
   function onPaste(e: ClipboardEvent) {
+    if (cellPasteHandled) {
+      cellPasteHandled = false;
+      return; // this Cmd+V was a cell paste; don't also handle it as an image paste
+    }
     const items = e.clipboardData?.items;
     if (!items) return;
     for (const it of items) {
