@@ -23,6 +23,18 @@ import {
   type ReferenceMedia,
   type LayerGroup,
 } from "../anim/document";
+import {
+  copyBlock,
+  pasteBlockOverwrite,
+  pasteBlockInsert,
+  deleteBlock,
+  type CellBlock,
+} from "../anim/timeline-block";
+import {
+  resolveSelectionRect,
+  type SelectionEndpoint,
+  type TimelineSelection,
+} from "../anim/timeline-selection";
 import { loadImageMedia } from "../anim/reference";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
@@ -78,6 +90,8 @@ interface AnimState {
   theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
+  timelineSelection: TimelineSelection | null;
+  cellClipboard: CellBlock | null;
 }
 
 const project = createProject();
@@ -128,6 +142,8 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   playback: { isPlaying: false, loop: true, range: null },
+  timelineSelection: null,
+  cellClipboard: null,
 });
 
 export const history = new History();
@@ -219,6 +235,8 @@ function restoreStructure(s: StructSnapshot) {
     };
   });
   state.project.frameCount = s.frameCount;
+  if (s.width !== state.project.width || s.height !== state.project.height)
+    state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
@@ -250,6 +268,7 @@ export function commitStructural(mutate: () => void): void {
   const before = beginStructuralEdit();
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
+  state.timelineSelection = null; // any structural edit can invalidate stored endpoints
   commitStructuralEdit(before);
 }
 
@@ -593,6 +612,8 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
   if (w === state.project.width && h === state.project.height) return;
+  state.timelineSelection = null;
+  state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // a live lift's captured cell canvas is about to be replaced
   const rect = placeContent(
     state.project.width * DPR,
@@ -689,6 +710,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  state.timelineSelection = null;
+  state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
@@ -773,10 +796,12 @@ export const liftGuard: { discard: (() => void) | null } = { discard: null };
 export function undo(): void {
   liftGuard.discard?.();
   history.undo();
+  state.timelineSelection = null; // a structural restore can invalidate stored endpoints
 }
 export function redo(): void {
   liftGuard.discard?.();
   history.redo();
+  state.timelineSelection = null;
 }
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
@@ -794,4 +819,59 @@ export function setActiveLayer(id: number): void {
   }
   // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
   if (state.onion.enabled && !state.onion.allLayers) state.version++;
+}
+
+export function setTimelineSelection(anchor: SelectionEndpoint, focus: SelectionEndpoint): void {
+  state.timelineSelection = { anchor, focus };
+}
+
+export function clearTimelineSelection(): void {
+  state.timelineSelection = null;
+}
+
+function currentSelectionRect() {
+  const sel = state.timelineSelection;
+  return sel ? resolveSelectionRect(state.project.layers, sel.anchor, sel.focus) : null;
+}
+
+/** Copy the current timeline selection into the internal cell clipboard (non-undoable). */
+export function copyTimelineSelection(): void {
+  const rect = currentSelectionRect();
+  if (!rect) return;
+  state.cellClipboard = copyBlock(
+    state.project,
+    rect.layerIds,
+    rect.startFrame,
+    rect.endFrame,
+    canvasOps,
+  );
+}
+
+/** Replace the selected region with holds (undoable). */
+export function deleteTimelineSelection(): void {
+  const rect = currentSelectionRect();
+  if (!rect) return;
+  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
+}
+
+/** Cut = copy then delete. */
+export function cutTimelineSelection(): void {
+  copyTimelineSelection();
+  deleteTimelineSelection();
+}
+
+/** Paste the clipboard block with its top-left at (active layer, playhead). Overwrite by default;
+ *  `insert = true` ripples the pasted layers right. Undoable. */
+export function pasteCells(insert = false): void {
+  const block = state.cellClipboard;
+  if (!block) return;
+  const active = state.project.layers.find((l) => l.id === state.activeLayerId);
+  if (!active || active.kind !== "draw") return; // paste anchors on a drawing layer only
+  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  commitStructural(() => {
+    if (insert)
+      pasteBlockInsert(state.project, block, state.activeLayerId, state.playhead, canvasOps);
+    else pasteBlockOverwrite(state.project, block, state.activeLayerId, state.playhead, canvasOps);
+  });
 }

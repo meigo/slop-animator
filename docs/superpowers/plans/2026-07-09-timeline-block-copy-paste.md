@@ -256,7 +256,9 @@ describe("pasteBlockOverwrite", () => {
     const orig = fakeOps.create();
     const l = drawLayer(1, [key(orig), hold(), hold()]); // [A][A·][A·]
     const src = fakeOps.create();
-    const block = copyBlock(proj([drawLayer(9, [key(src)])], 1), [9], 0, 0, fakeOps); // 1x1 X
+    // Build the block directly so paste clones exactly once (src → document); a copyBlock
+    // round-trip clones twice (src → clipboard → document) and would break this identity check.
+    const block = { cols: 1, rows: 1, columns: [[key(src)]] }; // 1x1 X
     pasteBlockOverwrite(proj([l], 3), block, 1, 1, fakeOps); // overwrite frame 1
     expect(l.cells.length).toBe(3); // length unchanged
     const c1 = l.cells[1];
@@ -381,7 +383,9 @@ describe("pasteBlockInsert", () => {
     const b = fakeOps.create();
     const l = drawLayer(1, [key(a), key(b)]); // [A][B]
     const src = fakeOps.create();
-    const block = copyBlock(proj([drawLayer(9, [key(src)])], 1), [9], 0, 0, fakeOps); // X
+    // Build the block directly so paste clones exactly once (src → document); a copyBlock
+    // round-trip clones twice (src → clipboard → document) and would break this identity check.
+    const block = { cols: 1, rows: 1, columns: [[key(src)]] }; // X
     pasteBlockInsert(proj([l], 2), block, 1, 1, fakeOps); // insert at frame 1
     expect(l.cells.length).toBe(3); // [A][X][B]
     const c1 = l.cells[1];
@@ -434,7 +438,7 @@ export function pasteBlockInsert(
     if (c >= targetIds.length) break;
     const layer = project.layers.find((l) => l.id === targetIds[c]);
     if (!layer || layer.kind !== "draw") continue;
-    const at = Math.min(startFrame, layer.cells.length);
+    const at = startFrame; // pad up to startFrame (do NOT clamp to length — that defeats pad-past-end)
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
     layer.cells.splice(at, 0, ...clones);
