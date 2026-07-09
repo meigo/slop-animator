@@ -42,6 +42,7 @@
   import { computeTimelineGlyphs } from "./timeline-glyphs";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
+  import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
 
   const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
   const LABEL_W = 80; // px, layer-name gutter
@@ -121,6 +122,7 @@
   let dragStartBoundary = -1; // span edge boundary at the start of a resize (to detect a real change)
   let dragLastBoundary = -1; // last boundary applied during a resize (used on up/cancel, not the event)
   let rowCursor = $state("default");
+  let gridWrapper = $state<HTMLElement | null>(null);
 
   const LONG_PRESS_MS = 400;
   const MOVE_CANCEL_PX = 6; // pointer travel that cancels a pending long-press (= a real drag)
@@ -503,7 +505,7 @@
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
-  <div class="relative overflow-x-auto">
+  <div class="relative overflow-x-auto" bind:this={gridWrapper}>
     <!-- current-frame column highlight: an absolute overlay so scrubbing is O(1) — NOT a per-cell
          `f === appState.playhead` class (that re-evaluated frameCount×layers bindings on every scrub). -->
     <div
@@ -610,5 +612,7 @@
         </div>
       {/if}
     {/each}
+
+    <TimelineSelectionBar container={gridWrapper} rect={selRect} cellW={CELL_W} labelW={LABEL_W} />
   </div>
 </div>
