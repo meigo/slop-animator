@@ -114,10 +114,13 @@
   // space is left alone when a BUTTON is focused so it can still activate it.
   function onViewKeyDown(e: KeyboardEvent) {
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (e.key === " " && tag !== "BUTTON") {
+    if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack typing
+    if (e.key === " ") {
+      // Space always holds grab-to-pan (Photoshop-style), even when a toolbar button is focused —
+      // preventDefault stops both page scroll and the focused button's space-activation. Reliable
+      // panning matters more here than space-clicking a button (Enter still activates buttons).
       spaceHeld = true;
-      e.preventDefault(); // stop page scroll while panning
+      e.preventDefault();
     } else if (e.key === "0") {
       e.preventDefault();
       viewport?.fitView(appState.project.width, appState.project.height);
@@ -125,6 +128,14 @@
   }
   function onViewKeyUp(e: KeyboardEvent) {
     if (e.key === " ") spaceHeld = false;
+  }
+  // Space/pan can get stuck if focus leaves the window mid-press (no keyup fires) — reset on blur.
+  function onViewBlur() {
+    spaceHeld = false;
+    if (panning) {
+      viewport?.endPan();
+      panning = false;
+    }
   }
   // Offscreen scratch surface used to tint onion-skin ghosts before compositing.
   let scratch: HTMLCanvasElement;
@@ -874,6 +885,7 @@
     stage.addEventListener("pointercancel", stagePanUp, { capture: true });
     window.addEventListener("keydown", onViewKeyDown);
     window.addEventListener("keyup", onViewKeyUp);
+    window.addEventListener("blur", onViewBlur);
     recomposite();
     setupSelection();
 
@@ -931,6 +943,7 @@
       stage.removeEventListener("pointercancel", stagePanUp, { capture: true });
       window.removeEventListener("keydown", onViewKeyDown);
       window.removeEventListener("keyup", onViewKeyUp);
+      window.removeEventListener("blur", onViewBlur);
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
