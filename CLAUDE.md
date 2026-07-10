@@ -172,3 +172,33 @@ canvas can't be pasted); `Cmd+V` cells vs the image-file paste handler. Two know
 copying while a selection/pose **lift is active** captures the holed under-canvas (copy doesn't bank the
 float); (2) pasting onto a **reference active layer** now no-ops (guarded). Spec + plan:
 `docs/superpowers/{specs,plans}/2026-07-09-timeline-block-copy-paste*.md`.
+
+**Status bar + resizable/scrollable timeline (2026-07-10, merged):** a bottom status bar (left =
+instant hover/press hint sourced from every `title=` via a delegated `pointerover`+`pointerdown`
+window listener — works on iPad tap; right = frame/tool/layer readout) and a bounded, drag-resizable
+(top grip, persisted `timelineHeight`), vertically-scrollable timeline (`overflow-auto` + sticky
+ruler). Pure `clampTimelineHeight` is unit-tested; the rest is build+review-verified. The user
+eyeballed the **grip resize**. **Still owed:** the status hint on iPad tap; vertical track scroll with
+the pinned ruler/gutter; window-shrink re-clamp. Spec/plan: `…/2026-07-10-status-bar-and-resizable-timeline*.md`.
+
+**Selection-first timeline interaction (2026-07-10, merged):** click-select, drag-move (single key or
+frames×layers block, overwrite, live ◆ glyph ghost via `displayGlyph`, selection follows), marquee
+from **any** unselected cell (inside=move / outside=select), tap-empty deselect, seek on the ruler
+only (body scrub removed). Pure `moveBlockFrames` (+ shared `writeColumn`) is unit-tested; gestures
+are build+review-verified. **The user browser-tested this heavily** (marquee-below-tracks clamp, the
+frame-0 collapse bug, marquee-from-key, whole-selection drag were all found + fixed in-session), so
+most of it is eyeballed — but a fresh pass on undo/redo-across-move and iPad parity is still worth it.
+A **high-effort multi-agent code review** ran on the merged timeline work and its 4 findings were
+fixed (ruler-only scrub, frame-0 collapse, DRY, gutter map). Spec/plan:
+`…/2026-07-10-timeline-selection-first-interaction*.md`. The **ruler** now has a distinct shade +
+divider (cosmetic; eyeballed).
+
+**Desktop canvas pan + fit-view (2026-07-10, merged):** space-drag / middle-mouse / plain-scroll pan,
+⌘Ctrl+scroll & pinch zoom, `0` = fit-to-view. Pure `computeFitTransform` is unit-tested;
+`Viewport.panBy/fitView` + the `Canvas.svelte` wiring (capture-phase pan preempts drawing; touch/iPad
+unchanged) are build+review-verified — **NOT browser-eyeballed yet.** **Owed a desktop pass:** all
+pan/zoom gestures, `0` centering, that a space-drag never draws, and **middle-mouse browser
+autoscroll** (may need a `mousedown`/`auxclick` preventDefault for button 1 — the one unverified
+risk). Deferred minor: `fitView` pan/zoom desync only at pathological canvas sizes. Note:
+`Canvas.svelte` now imports the store as `state as appState` (runes gotcha #1, forced by new `$state`
+runes). Spec/plan: `…/2026-07-10-desktop-canvas-pan*.md`.
