@@ -5,6 +5,8 @@
  * Transform origin is top-left (0,0).
  */
 
+import { computeFitTransform } from "./viewport-fit";
+
 export class Viewport {
   zoom = 1;
   // Pan in screen pixels (how far the canvas origin has moved on screen)
@@ -140,6 +142,30 @@ export class Viewport {
     this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
+    this.rotation = 0;
+    this.applyTransform();
+    this.onChange?.();
+  }
+
+  /** Pan by a screen-pixel delta (for wheel / trackpad scrolling). */
+  panBy(dx: number, dy: number) {
+    this.panX += dx;
+    this.panY += dy;
+    this.applyTransform();
+    this.onChange?.();
+  }
+
+  /** Fit `contentW × contentH` (logical px) into the parent, centered, resetting rotation. */
+  fitView(contentW: number, contentH: number) {
+    const fit = computeFitTransform(
+      this.parent.clientWidth,
+      this.parent.clientHeight,
+      contentW,
+      contentH,
+    );
+    this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, fit.zoom)); // clamp is a no-op at realistic sizes
+    this.panX = fit.panX;
+    this.panY = fit.panY;
     this.rotation = 0;
     this.applyTransform();
     this.onChange?.();
