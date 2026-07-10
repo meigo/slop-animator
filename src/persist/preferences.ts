@@ -8,6 +8,7 @@ export interface Preferences {
   fill: { tolerance: number; expand: number };
   theme: "dark" | "light";
   loop: boolean;
+  timelineHeight?: number; // px height of the resizable timeline panel
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
   // Legacy (read-only back-compat; older versions wrote these at the top level).
   brushType?: BrushKind;

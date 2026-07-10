@@ -4,6 +4,7 @@
   import LayerList from "./lib/LayerList.svelte";
   import Playbar from "./lib/Playbar.svelte";
   import Timeline from "./lib/Timeline.svelte";
+  import StatusBar from "./lib/StatusBar.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
@@ -109,6 +110,15 @@
     }
   }
 
+  // Instant status hint: mirror the hovered/pressed control's title= into the status bar. pointerover
+  // covers desktop hover; pointerdown covers touch/Pencil (iPad has no hover). Moving onto an untitled
+  // element sets "" (natural clear). No pointerup clear — a tapped control's hint persists until the
+  // next hover/press, which is the readable behavior on touch.
+  function onPointerHint(e: PointerEvent) {
+    const el = (e.target as Element | null)?.closest("[title]");
+    state.statusHint = el?.getAttribute("title") ?? "";
+  }
+
   function onPaste(e: ClipboardEvent) {
     if (cellPasteHandled) {
       cellPasteHandled = false;
@@ -153,7 +163,12 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} onpaste={onPaste} />
+<svelte:window
+  onkeydown={onKey}
+  onpaste={onPaste}
+  onpointerover={onPointerHint}
+  onpointerdown={onPointerHint}
+/>
 
 <div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
@@ -163,6 +178,7 @@
   </div>
   <Playbar />
   <Timeline />
+  <StatusBar />
 </div>
 <ExportDialog />
 <SizeDialog />
