@@ -159,7 +159,8 @@
   let moveDelta = $state(0);
   let moved = false; // did a moveblock drag actually change frame? (a net-zero drag ≠ a tap)
   // empty-press arming: might become a marquee (on drag) or a deselect (on tap).
-  let armedEmpty = false;
+  let armedOutside = false; // pressed OUTSIDE the selection: tap selects/deselects, drag → marquee
+  let armedOnKey = false; // …and the pressed cell was a key (tap selects it) vs empty (tap deselects)
   let pressFrame = -1;
 
   const LONG_PRESS_MS = 400;
@@ -289,18 +290,12 @@
       return;
     }
 
-    if (plan.kind === "move") {
-      // A key OUTSIDE the selection: select it (1×1) + seek, then prepare to move it.
-      setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
-      go(frame); // tap-a-key also seeks to it
-      dragMode = "moveblock";
-      moveGrabFrame = frame;
-      moveDelta = 0;
-    } else {
-      // Empty/hold cell OUTSIDE the selection: tap → deselect; drag → marquee. Decided on move/up.
-      armedEmpty = true;
-      pressFrame = frame;
-    }
+    // OUTSIDE the selection: arm a tap-vs-drag (resolved in rowMove/rowUp). A tap selects the key (or
+    // deselects on empty); a drag starts a marquee from here — so you can rubber-band from anywhere,
+    // including on a key. Moving lives INSIDE the selection: tap a key to select it, then drag it.
+    armedOutside = true;
+    armedOnKey = plan.kind === "move";
+    pressFrame = frame;
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
     // A real drag cancels a pending long-press.
@@ -337,13 +332,13 @@
       bump();
       return;
     }
-    // Empty-armed: once the pointer really moves, start a marquee from the press cell.
+    // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
     if (
-      armedEmpty &&
+      armedOutside &&
       (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
         Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
     ) {
-      armedEmpty = false;
+      armedOutside = false;
       cancelLongPress();
       dragMode = "marquee";
       setTimelineSelection(
@@ -381,8 +376,17 @@
       // else: dragged out and back to net-zero → no-op, keep the selection intact.
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
-    } else if (dragMode === "none" && armedEmpty) {
-      clearTimelineSelection(); // tap on empty with no drag → deselect
+    } else if (dragMode === "none" && armedOutside) {
+      if (armedOnKey) {
+        // tap on a key outside the selection → select it (1×1) + seek to its frame
+        setTimelineSelection(
+          { layerId: dragLayerId, frame: pressFrame },
+          { layerId: dragLayerId, frame: pressFrame },
+        );
+        go(pressFrame);
+      } else {
+        clearTimelineSelection(); // tap on empty with no drag → deselect
+      }
     }
 
     dragMode = "none";
@@ -394,7 +398,8 @@
     moveGrabFrame = -1;
     moveDelta = 0;
     moved = false;
-    armedEmpty = false;
+    armedOutside = false;
+    armedOnKey = false;
     pressFrame = -1;
   }
   function rowLeave() {
