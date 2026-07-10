@@ -9,7 +9,7 @@
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import {
-    state,
+    state as appState,
     history,
     undo,
     redo,
@@ -60,15 +60,15 @@
 
   /** Return the compose steps [layer-step, group-step] (inner-to-outer) above a draw layer. */
   function layerComposeSteps(layer: Layer): ComposeStep[] {
-    const W = state.project.width,
-      H = state.project.height;
+    const W = appState.project.width,
+      H = appState.project.height;
     const steps: ComposeStep[] = [];
     steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
-    const g = groupOf(layer, state.project.groups);
+    const g = groupOf(layer, appState.project.groups);
     if (g) {
       const gt = groupTransform(g);
       steps.push({
-        base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+        base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
         t: gt,
       });
     }
@@ -79,6 +79,64 @@
   let displayCtx: CanvasRenderingContext2D;
   let viewport: Viewport;
   let stage: HTMLDivElement;
+  let spaceHeld = $state(false);
+  let panning = $state(false);
+
+  // Desktop pan: middle-mouse drag, or space + left-drag. Capture-phase on `stage` so it preempts the
+  // bubble-phase drawing handler on `display` — a pan never starts a stroke.
+  function stagePanDown(e: PointerEvent) {
+    if (!viewport) return;
+    const wantPan = e.button === 1 || (spaceHeld && e.button === 0);
+    if (!wantPan) return;
+    e.preventDefault();
+    e.stopPropagation();
+    viewport.startPan(e.clientX, e.clientY);
+    panning = true;
+    stage.setPointerCapture(e.pointerId);
+  }
+  function stagePanMove(e: PointerEvent) {
+    if (!panning || !viewport) return;
+    e.stopPropagation();
+    viewport.updatePan(e.clientX, e.clientY);
+  }
+  function stagePanUp(e: PointerEvent) {
+    if (!panning) return;
+    viewport?.endPan();
+    panning = false;
+    try {
+      stage.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
+
+  // Space holds a grab-to-pan mode; `0` fits the canvas to the view. Skipped while typing in a field;
+  // space is left alone when a BUTTON is focused so it can still activate it.
+  function onViewKeyDown(e: KeyboardEvent) {
+    const tag = (document.activeElement as HTMLElement | null)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack typing
+    if (e.key === " ") {
+      // Space always holds grab-to-pan (Photoshop-style), even when a toolbar button is focused —
+      // preventDefault stops both page scroll and the focused button's space-activation. Reliable
+      // panning matters more here than space-clicking a button (Enter still activates buttons).
+      spaceHeld = true;
+      e.preventDefault();
+    } else if (e.key === "0") {
+      e.preventDefault();
+      viewport?.fitView(appState.project.width, appState.project.height);
+    }
+  }
+  function onViewKeyUp(e: KeyboardEvent) {
+    if (e.key === " ") spaceHeld = false;
+  }
+  // Space/pan can get stuck if focus leaves the window mid-press (no keyup fires) — reset on blur.
+  function onViewBlur() {
+    spaceHeld = false;
+    if (panning) {
+      viewport?.endPan();
+      panning = false;
+    }
+  }
   // Offscreen scratch surface used to tint onion-skin ghosts before compositing.
   let scratch: HTMLCanvasElement;
   let scratchCtx: CanvasRenderingContext2D;
@@ -90,8 +148,8 @@
   let selectionMode: "create" | "drag" | null = null;
   let prevTool: Tool = "brush";
   // Track the active layer/frame so a switch can discard any in-progress lift (see the cleanup $effect).
-  let prevLayer = state.activeLayerId;
-  let prevPlayhead = state.playhead;
+  let prevLayer = appState.activeLayerId;
+  let prevPlayhead = appState.playhead;
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
@@ -120,33 +178,35 @@
   let pickingGesture = false;
 
   function sizeDisplay() {
-    display.width = state.project.width * DPR;
-    display.height = state.project.height * DPR;
-    display.style.width = `${state.project.width}px`;
-    display.style.height = `${state.project.height}px`;
+    display.width = appState.project.width * DPR;
+    display.height = appState.project.height * DPR;
+    display.style.width = `${appState.project.width}px`;
+    display.style.height = `${appState.project.height}px`;
   }
 
   function recomposite() {
     // Onion ghosts are hidden during playback (you want a clean preview while it runs).
-    if (state.onion.enabled && !state.playback.isPlaying) {
+    if (appState.onion.enabled && !appState.playback.isPlaying) {
       renderFrameWithOnion(
         displayCtx,
         scratchCtx,
-        state.project,
-        state.playhead,
+        appState.project,
+        appState.playhead,
         DPR,
-        state.onion,
-        state.activeLayerId,
-        state.version,
+        appState.onion,
+        appState.activeLayerId,
+        appState.version,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
       const boil =
-        state.project.boil.enabled && state.playback.isPlaying ? state.project.boil : undefined;
-      renderFrame(displayCtx, state.project, state.playhead, DPR, {
-        drawBg: !state.project.transparentBg,
+        appState.project.boil.enabled && appState.playback.isPlaying
+          ? appState.project.boil
+          : undefined;
+      renderFrame(displayCtx, appState.project, appState.playhead, DPR, {
+        drawBg: !appState.project.transparentBg,
         boil,
-        version: state.version,
+        version: appState.version,
       });
     }
   }
@@ -154,20 +214,20 @@
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
     if (layer.kind !== "draw" || layer.locked) return;
-    const W = state.project.width,
-      H = state.project.height;
-    const rk = resolvedKeyCell(layer, state.playhead);
+    const W = appState.project.width,
+      H = appState.project.height;
+    const rk = resolvedKeyCell(layer, appState.playhead);
     const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
     const cellBox = rk
-      ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
+      ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
       : { x: 0, y: 0, w: W, h: H };
     const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(layer)];
     pt = inverseChain(steps, pt);
-    const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const color = hexToRgba(state.brush.color, state.brush.opacity);
+    const color = hexToRgba(appState.brush.color, appState.brush.opacity);
     if (selection && selection.state === "selected") {
       // Flood on a temp copy, then composite back through the selection clip.
       const tmp = document.createElement("canvas");
@@ -176,8 +236,8 @@
       const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
-        tolerance: state.fill.tolerance,
-        expand: state.fill.expand,
+        tolerance: appState.fill.tolerance,
+        expand: appState.fill.expand,
       });
       ctx.save();
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -186,8 +246,8 @@
       ctx.restore();
     } else {
       floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
-        tolerance: state.fill.tolerance,
-        expand: state.fill.expand,
+        tolerance: appState.fill.tolerance,
+        expand: appState.fill.expand,
       });
     }
 
@@ -213,12 +273,12 @@
     const al = activeLayer();
     let inPts = pts;
     if (al.kind === "draw") {
-      const W = state.project.width,
-        H = state.project.height;
-      const rk = resolvedKeyCell(al, state.playhead);
+      const W = appState.project.width,
+        H = appState.project.height;
+      const rk = resolvedKeyCell(al, appState.playhead);
       const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
       const cellBox = rk
-        ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version)
+        ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
         : { x: 0, y: 0, w: W, h: H };
       const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(al)];
       // Skip the map when nothing maps (all identity).
@@ -242,7 +302,7 @@
       drawBehind: stroke.drawBehind,
       alphaLock: stroke.alphaLock,
       taper: stroke.taper,
-      isEraser: state.tool === "eraser",
+      isEraser: appState.tool === "eraser",
     };
     const kind = stroke.brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
@@ -282,13 +342,13 @@
   let refDrag: { handle: Handle; start: Pt; startT: Layer["transform"]; center: Pt } | null = null;
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
-    const W = state.project.width,
-      H = state.project.height;
+    const W = appState.project.width,
+      H = appState.project.height;
     const p = points[points.length - 1];
 
-    const scope = state.transformScope;
+    const scope = appState.transformScope;
     const isDraw = layer.kind === "draw";
-    const g = groupOf(layer, state.project.groups);
+    const g = groupOf(layer, appState.project.groups);
 
     // Resolve target + base + compose-steps (outer transforms above the target, inner-to-outer).
     let getT: () => typeof layer.transform, setT: (t: typeof layer.transform) => void;
@@ -299,9 +359,9 @@
     if (isDraw && scope === "group" && g) {
       getT = () => groupTransform(g);
       setT = (nt) => (g.transform = nt);
-      base = groupBoxLogical(g, state.project, state.playhead, DPR, state.version);
+      base = groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version);
     } else if (isDraw && scope === "frame") {
-      frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, state.playhead);
+      frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
         if (done) refDrag = null;
         return;
@@ -312,7 +372,7 @@
         W,
         H,
         DPR,
-        state.version,
+        appState.version,
       );
       getT = () => cellTransform(frameRk!.cell);
       setT = (nt) => (frameRk!.cell.transform = nt);
@@ -320,7 +380,7 @@
       outerSteps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
       if (g)
         outerSteps.push({
-          base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
           t: groupTransform(g),
         });
     } else {
@@ -331,7 +391,7 @@
       // Outer = group (if any).
       if (g)
         outerSteps.push({
-          base: groupBoxLogical(g, state.project, state.playhead, DPR, state.version),
+          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
           t: groupTransform(g),
         });
     }
@@ -370,7 +430,7 @@
       if (done) pickingGesture = false;
       return;
     }
-    if (state.tool === "eyedropper") {
+    if (appState.tool === "eyedropper") {
       if (points.length === 1) {
         const hex = sampleAt(points[0]);
         if (hex) {
@@ -381,21 +441,21 @@
       return;
     }
     const al = activeLayer();
-    if (al.kind === "ref" || (al.kind === "draw" && state.tool === "transform")) {
+    if (al.kind === "ref" || (al.kind === "draw" && appState.tool === "transform")) {
       onTransformDrag(al, points, done);
       return;
     }
     // Selection is disabled while the active draw layer is transformed (Apply first).
     if (
-      (state.tool === "select" ||
-        state.tool === "lasso" ||
-        state.tool === "deform" ||
-        state.tool === "pose") &&
+      (appState.tool === "select" ||
+        appState.tool === "lasso" ||
+        appState.tool === "deform" ||
+        appState.tool === "pose") &&
       al.kind === "draw" &&
       !isIdentityTransform(al.transform)
     )
       return;
-    if (state.tool === "pose") {
+    if (appState.tool === "pose") {
       const p = points[points.length - 1];
       if (!meshPose) {
         if (points.length === 1 && !done) enterPose();
@@ -430,7 +490,7 @@
       }
       return;
     }
-    if (state.tool === "deform") {
+    if (appState.tool === "deform") {
       const p = points[points.length - 1];
       if (selection.state !== "warping") {
         if (points.length === 1 && !done) enterDeform(); // first press lifts + enters the grid
@@ -450,7 +510,7 @@
       }
       return;
     }
-    if (state.tool === "select" || state.tool === "lasso") {
+    if (appState.tool === "select" || appState.tool === "lasso") {
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {
         const handle = selection.hitTest(p.x, p.y);
@@ -458,7 +518,7 @@
           // First grab inside a fresh marquee: lift the pixels and enter transform mode.
           const layer = activeLayer();
           if (layer.kind !== "draw" || layer.locked) return;
-          const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+          const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
           // liftPixels' rect-clear and the later commit blit operate in CSS coords, so the
@@ -494,7 +554,7 @@
       }
       return;
     }
-    if (state.tool === "fill") {
+    if (appState.tool === "fill") {
       if (!fillUsed && points.length > 0) {
         doFill(points[0]);
         fillUsed = true;
@@ -508,7 +568,7 @@
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
       if (layer.kind !== "draw" || layer.locked) return;
-      strokeCanvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+      strokeCanvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
       if (activeStroke().brushType === "ink") resetInkState();
@@ -551,10 +611,10 @@
   }
 
   function setupSelection() {
-    overlay.width = state.project.width;
-    overlay.height = state.project.height;
-    overlay.style.width = `${state.project.width}px`;
-    overlay.style.height = `${state.project.height}px`;
+    overlay.width = appState.project.width;
+    overlay.height = appState.project.height;
+    overlay.style.width = `${appState.project.width}px`;
+    overlay.style.height = `${appState.project.height}px`;
 
     selection = new Selection(overlay);
     selection.mode = "rect";
@@ -610,7 +670,7 @@
     if (!selection || selection.state !== "selected") return;
     const layer = activeLayer();
     if (layer.kind !== "draw" || layer.locked) return;
-    const canvas = ensureDrawableKeyframe(layer, state.playhead, canvasOps);
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     // See note in onStroke: the cell ctx must carry the dpr transform for lift/commit.
@@ -624,8 +684,8 @@
   function enterDeform() {
     const al = activeLayer();
     if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
-    const canvas = ensureDrawableKeyframe(al, state.playhead, canvasOps);
-    const rect = contentRectLogical(contentBounds(canvas, state.version), DPR);
+    const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return; // empty cell → nothing to deform
     // Clear any leftover selection (esp. a lasso path) so liftPixels uses our content rect, not a
     // stale lasso clip. cancel() reverts an in-progress lift (onCancel no-ops when nothing's lifted).
@@ -645,11 +705,12 @@
   }
 
   // Reactive gate for the pose bar: read the proxy's version (reactive) so the bar
-  // re-evaluates whenever bump() runs on enter/apply/cancel. meshPose itself is a plain
-  // local (this component imports the store unaliased as `state`, so a $state rune on
-  // meshPose would trip store_rune_conflict — see CLAUDE.md gotcha #1).
+  // re-evaluates whenever bump() runs on enter/apply/cancel. meshPose itself is kept as a
+  // plain local rather than migrated to `$state` (this file now aliases the store import as
+  // `appState` — see CLAUDE.md gotcha #1 — so a rune would no longer conflict, but that's out
+  // of scope for this change).
   function poseBarVisible(): boolean {
-    return state.version >= 0 && meshPose !== null;
+    return appState.version >= 0 && meshPose !== null;
   }
 
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
@@ -724,8 +785,8 @@
   function enterPose() {
     const al = activeLayer();
     if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
-    const canvas = ensureDrawableKeyframe(al, state.playhead, canvasOps);
-    const rect = contentRectLogical(contentBounds(canvas, state.version), DPR);
+    const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return;
     selection.cancel(); // clear any stale selection/lasso so liftPixels uses our content rect
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -813,11 +874,18 @@
   onMount(() => {
     displayCtx = display.getContext("2d")!;
     scratch = document.createElement("canvas");
-    scratch.width = state.project.width * DPR;
-    scratch.height = state.project.height * DPR;
+    scratch.width = appState.project.width * DPR;
+    scratch.height = appState.project.height * DPR;
     scratchCtx = scratch.getContext("2d")!;
     sizeDisplay();
     viewport = new Viewport(wrapper);
+    stage.addEventListener("pointerdown", stagePanDown, { capture: true });
+    stage.addEventListener("pointermove", stagePanMove, { capture: true });
+    stage.addEventListener("pointerup", stagePanUp, { capture: true });
+    stage.addEventListener("pointercancel", stagePanUp, { capture: true });
+    window.addEventListener("keydown", onViewKeyDown);
+    window.addEventListener("keyup", onViewKeyUp);
+    window.addEventListener("blur", onViewBlur);
     recomposite();
     setupSelection();
 
@@ -837,27 +905,27 @@
     });
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
-    let lastVersion = state.version;
-    let lastPlayhead = state.playhead;
-    let lastW = state.project.width;
-    let lastH = state.project.height;
+    let lastVersion = appState.version;
+    let lastPlayhead = appState.playhead;
+    let lastW = appState.project.width;
+    let lastH = appState.project.height;
     const tick = () => {
-      const dimsChanged = state.project.width !== lastW || state.project.height !== lastH;
+      const dimsChanged = appState.project.width !== lastW || appState.project.height !== lastH;
       if (dimsChanged) {
-        lastW = state.project.width;
-        lastH = state.project.height;
+        lastW = appState.project.width;
+        lastH = appState.project.height;
         sizeDisplay();
-        scratch.width = state.project.width * DPR;
-        scratch.height = state.project.height * DPR;
-        overlay.width = state.project.width;
-        overlay.height = state.project.height;
-        overlay.style.width = `${state.project.width}px`;
-        overlay.style.height = `${state.project.height}px`;
+        scratch.width = appState.project.width * DPR;
+        scratch.height = appState.project.height * DPR;
+        overlay.width = appState.project.width;
+        overlay.height = appState.project.height;
+        overlay.style.width = `${appState.project.width}px`;
+        overlay.style.height = `${appState.project.height}px`;
       }
-      if (dimsChanged || state.version !== lastVersion || state.playhead !== lastPlayhead) {
-        lastVersion = state.version;
-        lastPlayhead = state.playhead;
-        syncReferenceVideos(state.project, state.playhead, state.project.fps);
+      if (dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead) {
+        lastVersion = appState.version;
+        lastPlayhead = appState.playhead;
+        syncReferenceVideos(appState.project, appState.playhead, appState.project.fps);
         recomposite();
       }
       raf = requestAnimationFrame(tick);
@@ -869,6 +937,13 @@
     return () => {
       cleanup();
       cleanupTouch();
+      stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
+      stage.removeEventListener("pointermove", stagePanMove, { capture: true });
+      stage.removeEventListener("pointerup", stagePanUp, { capture: true });
+      stage.removeEventListener("pointercancel", stagePanUp, { capture: true });
+      window.removeEventListener("keydown", onViewKeyDown);
+      window.removeEventListener("keyup", onViewKeyUp);
+      window.removeEventListener("blur", onViewBlur);
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
@@ -880,7 +955,7 @@
   });
 
   $effect(() => {
-    const t = state.tool;
+    const t = appState.tool;
     if (!selection) return;
     // Leaving the deform tool banks the floating warp (one undo step via onCommit).
     if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
@@ -912,8 +987,8 @@
     if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
   }
   $effect(() => {
-    const layer = state.activeLayerId;
-    const ph = state.playhead;
+    const layer = appState.activeLayerId;
+    const ph = appState.playhead;
     if (layer !== prevLayer || ph !== prevPlayhead) {
       prevLayer = layer;
       prevPlayhead = ph;
@@ -933,25 +1008,28 @@
       discardActiveEdits();
   });
 
-  // Wheel zoom, mirroring slop-paint's gesture (minimal subset).
+  // Wheel/trackpad: plain scroll pans; ⌘/Ctrl + scroll (and trackpad pinch, which arrives as
+  // ctrl+wheel) zooms at the cursor.
   function onWheel(e: WheelEvent) {
     e.preventDefault();
-    viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
+    if (e.ctrlKey || e.metaKey) viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
+    else viewport?.panBy(-e.deltaX, -e.deltaY); // content follows the scroll
   }
 </script>
 
 <div
   bind:this={stage}
   class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
-  class:cursor-none={state.tool === "brush" || state.tool === "eraser"}
-  class:cursor-crosshair={state.tool === "eyedropper"}
+  class:cursor-none={appState.tool === "brush" || appState.tool === "eraser"}
+  class:cursor-crosshair={appState.tool === "eyedropper"}
+  style:cursor={panning ? "grabbing" : spaceHeld ? "grab" : null}
   onwheel={onWheel}
 >
   <div bind:this={wrapper} class="absolute left-0 top-0">
-    {#if state.project.transparentBg}
+    {#if appState.project.transparentBg}
       <div
         class="absolute left-0 top-0 pointer-events-none"
-        style="width:{state.project.width}px; height:{state.project.height}px;
+        style="width:{appState.project.width}px; height:{appState.project.height}px;
                background-color:#fff;
                background-image:
                  linear-gradient(45deg,#ccc 25%,transparent 25%),
