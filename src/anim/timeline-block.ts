@@ -22,22 +22,34 @@ export function cloneCell(cell: Cell, ops: CanvasOps): Cell {
 
 /** Overwrite-write a column of cells onto `layer` starting at `startFrame`: clone each cell, replace
  *  in place, and pad with holds if it lands past the layer's end. Shared by paste and move. */
+/** Place `cells` onto `layer` starting at `startFrame`: replace in place, padding with holds if it
+ *  lands past the layer's end. Does NOT clone — callers pass cells they already own (fresh clones).
+ *  Shared by paste (which clones first) and move (whose cells are already cloned by copyBlock). */
+function writeColumn(layer: DrawingLayer, cells: Cell[], startFrame: number): void {
+  for (let r = 0; r < cells.length; r++) {
+    const f = startFrame + r;
+    if (f >= layer.cells.length) {
+      while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
+      layer.cells.push(cells[r]);
+    } else {
+      layer.cells[f] = cells[r]; // replace, never mutate in place
+    }
+  }
+}
+
+/** Overwrite-write a column onto `layer` at `startFrame`, cloning each cell first (for paste, whose
+ *  source block is a persistent clipboard that must not be aliased into the document). */
 function overwriteColumn(
   layer: DrawingLayer,
   cells: Cell[],
   startFrame: number,
   ops: CanvasOps,
 ): void {
-  for (let r = 0; r < cells.length; r++) {
-    const f = startFrame + r;
-    const cell = cloneCell(cells[r], ops);
-    if (f >= layer.cells.length) {
-      while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
-      layer.cells.push(cell);
-    } else {
-      layer.cells[f] = cell; // replace, never mutate in place
-    }
-  }
+  writeColumn(
+    layer,
+    cells.map((c) => cloneCell(c, ops)),
+    startFrame,
+  );
 }
 
 /** Extract a self-contained block. `layerIds` top-first; frames inclusive [startFrame, endFrame]. */
@@ -158,17 +170,8 @@ export function moveBlockFrames(
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
     if (!layer || layer.kind !== "draw") continue; // mirrors copyBlock's column filter → alignment
-    // Write cloned cells directly (copyBlock already cloned; don't clone again)
-    const cells = block.columns[c];
-    for (let r = 0; r < cells.length; r++) {
-      const f = startFrame + applied + r;
-      if (f >= layer.cells.length) {
-        while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
-        layer.cells.push(cells[r]);
-      } else {
-        layer.cells[f] = cells[r];
-      }
-    }
+    // copyBlock already cloned these cells; write them directly (no second clone).
+    writeColumn(layer, block.columns[c], startFrame + applied);
     c++;
   }
   return applied;

@@ -112,33 +112,6 @@
     e.preventDefault();
   }
 
-  // Draggable playhead line: grab the line in the track body to scrub (body no longer scrubs on
-  // empty cells). Maps clientX to a column against the scrolling grid wrapper.
-  let lineScrubbing = false;
-  function lineScrubTo(e: PointerEvent) {
-    const wrap = gridWrapper;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    const x = e.clientX - rect.left + wrap.scrollLeft - LABEL_W;
-    go(columnAtX(x, CELL_W, appState.project.frameCount));
-  }
-  function lineDown(e: PointerEvent) {
-    lineScrubbing = true;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    lineScrubTo(e);
-  }
-  function lineMove(e: PointerEvent) {
-    if (lineScrubbing) lineScrubTo(e);
-  }
-  function lineUp(e: PointerEvent) {
-    lineScrubbing = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* already released */
-    }
-  }
-
   // Resize the panel by dragging the top grip. Drag UP → taller (shrinks the canvas above);
   // DOWN → shorter. Clamped to [MIN, 60% viewport]. The prefs $effect persists the change.
   let gripStartY = 0;
@@ -186,7 +159,8 @@
   let moveDelta = $state(0);
   let moved = false; // did a moveblock drag actually change frame? (a net-zero drag ≠ a tap)
   // empty-press arming: might become a marquee (on drag) or a deselect (on tap).
-  let armedEmpty = false;
+  let armedOutside = false; // pressed OUTSIDE the selection: tap selects/deselects, drag → marquee
+  let armedOnKey = false; // …and the pressed cell was a key (tap selects it) vs empty (tap deselects)
   let pressFrame = -1;
 
   const LONG_PRESS_MS = 400;
@@ -316,18 +290,12 @@
       return;
     }
 
-    if (plan.kind === "move") {
-      // A key OUTSIDE the selection: select it (1×1) + seek, then prepare to move it.
-      setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
-      go(frame); // tap-a-key also seeks to it
-      dragMode = "moveblock";
-      moveGrabFrame = frame;
-      moveDelta = 0;
-    } else {
-      // Empty/hold cell OUTSIDE the selection: tap → deselect; drag → marquee. Decided on move/up.
-      armedEmpty = true;
-      pressFrame = frame;
-    }
+    // OUTSIDE the selection: arm a tap-vs-drag (resolved in rowMove/rowUp). A tap selects the key (or
+    // deselects on empty); a drag starts a marquee from here — so you can rubber-band from anywhere,
+    // including on a key. Moving lives INSIDE the selection: tap a key to select it, then drag it.
+    armedOutside = true;
+    armedOnKey = plan.kind === "move";
+    pressFrame = frame;
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
     // A real drag cancels a pending long-press.
@@ -349,7 +317,13 @@
     if (dragMode === "moveblock") {
       const raw = rowColumn(e) - moveGrabFrame;
       moveDelta = selRect ? Math.max(raw, -selRect.startFrame) : raw; // clamp so nothing goes < 0
-      if (moveDelta !== 0) moved = true; // a real drag (even if it later returns to net-zero)
+      // Mark a real drag by pointer TRAVEL, not by moveDelta — a drag that stays clamped at 0 (e.g. a
+      // frame-0 selection dragged left) is still a drag, and must not be misread as a tap-to-collapse.
+      if (
+        Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX
+      )
+        moved = true;
       return;
     }
     if (dragMode === "resize") {
@@ -358,13 +332,13 @@
       bump();
       return;
     }
-    // Empty-armed: once the pointer really moves, start a marquee from the press cell.
+    // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
     if (
-      armedEmpty &&
+      armedOutside &&
       (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
         Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
     ) {
-      armedEmpty = false;
+      armedOutside = false;
       cancelLongPress();
       dragMode = "marquee";
       setTimelineSelection(
@@ -402,8 +376,17 @@
       // else: dragged out and back to net-zero → no-op, keep the selection intact.
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
-    } else if (dragMode === "none" && armedEmpty) {
-      clearTimelineSelection(); // tap on empty with no drag → deselect
+    } else if (dragMode === "none" && armedOutside) {
+      if (armedOnKey) {
+        // tap on a key outside the selection → select it (1×1) + seek to its frame
+        setTimelineSelection(
+          { layerId: dragLayerId, frame: pressFrame },
+          { layerId: dragLayerId, frame: pressFrame },
+        );
+        go(pressFrame);
+      } else {
+        clearTimelineSelection(); // tap on empty with no drag → deselect
+      }
     }
 
     dragMode = "none";
@@ -415,7 +398,8 @@
     moveGrabFrame = -1;
     moveDelta = 0;
     moved = false;
-    armedEmpty = false;
+    armedOutside = false;
+    armedOnKey = false;
     pressFrame = -1;
   }
   function rowLeave() {
@@ -674,28 +658,13 @@
         appState.playhead *
           CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"
     ></div>
-    <!-- playhead line — draggable to scrub the body -->
-    <!-- playhead line — draggable to scrub the body. Keeps the slider role for a11y, but NOT tabindex
-         or a keyboard handler: the ruler already exposes the focusable/keyboard slider, so this handle
-         doesn't add a duplicate tab stop. -->
+    <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
+         the ruler only — an interactive line here would sit over the ◆ at the current frame and block
+         grabbing/moving it. -->
     <div
-      class="absolute top-0 bottom-0 z-[15] flex justify-center"
-      style="left: {LABEL_W +
-        appState.playhead * CELL_W +
-        CELL_W / 2 -
-        4}px; width: 8px; touch-action: none; cursor: col-resize"
-      role="slider"
-      aria-label="Scrub frames"
-      aria-valuemin={1}
-      aria-valuemax={appState.project.frameCount}
-      aria-valuenow={appState.playhead + 1}
-      onpointerdown={lineDown}
-      onpointermove={lineMove}
-      onpointerup={lineUp}
-      onpointercancel={lineUp}
-    >
-      <div class="w-0.5 h-full bg-accent"></div>
-    </div>
+      class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
+      style="left: {LABEL_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+    ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line) -->
     <div class="flex items-stretch sticky top-0 z-20 bg-surface">
