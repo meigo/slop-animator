@@ -666,9 +666,10 @@
       style="left: {LABEL_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
     ></div>
 
-    <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line) -->
-    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
-      <span class="shrink-0 sticky left-0 z-20 bg-surface" style="width: {LABEL_W}px"></span>
+    <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
+         distinct shade + a divider set the time band apart from the content tracks below. -->
+    <div class="flex items-stretch sticky top-0 z-20 bg-surface-active border-b border-border">
+      <span class="shrink-0 sticky left-0 z-20 bg-surface-active" style="width: {LABEL_W}px"></span>
       <div
         class="flex cursor-ew-resize select-none"
         style="touch-action: none"
@@ -689,7 +690,7 @@
             ? effectiveRange(appState.playback.range, appState.project.frameCount)
             : null}
           <div
-            class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-muted"
+            class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-secondary"
             class:bg-selection={r && f >= r.start && f <= r.end}
             style="width: {CELL_W}px"
           >
