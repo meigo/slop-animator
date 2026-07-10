@@ -112,33 +112,6 @@
     e.preventDefault();
   }
 
-  // Draggable playhead line: grab the line in the track body to scrub (body no longer scrubs on
-  // empty cells). Maps clientX to a column against the scrolling grid wrapper.
-  let lineScrubbing = false;
-  function lineScrubTo(e: PointerEvent) {
-    const wrap = gridWrapper;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    const x = e.clientX - rect.left + wrap.scrollLeft - LABEL_W;
-    go(columnAtX(x, CELL_W, appState.project.frameCount));
-  }
-  function lineDown(e: PointerEvent) {
-    lineScrubbing = true;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    lineScrubTo(e);
-  }
-  function lineMove(e: PointerEvent) {
-    if (lineScrubbing) lineScrubTo(e);
-  }
-  function lineUp(e: PointerEvent) {
-    lineScrubbing = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* already released */
-    }
-  }
-
   // Resize the panel by dragging the top grip. Drag UP → taller (shrinks the canvas above);
   // DOWN → shorter. Clamped to [MIN, 60% viewport]. The prefs $effect persists the change.
   let gripStartY = 0;
@@ -349,7 +322,13 @@
     if (dragMode === "moveblock") {
       const raw = rowColumn(e) - moveGrabFrame;
       moveDelta = selRect ? Math.max(raw, -selRect.startFrame) : raw; // clamp so nothing goes < 0
-      if (moveDelta !== 0) moved = true; // a real drag (even if it later returns to net-zero)
+      // Mark a real drag by pointer TRAVEL, not by moveDelta — a drag that stays clamped at 0 (e.g. a
+      // frame-0 selection dragged left) is still a drag, and must not be misread as a tap-to-collapse.
+      if (
+        Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX
+      )
+        moved = true;
       return;
     }
     if (dragMode === "resize") {
@@ -674,28 +653,13 @@
         appState.playhead *
           CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"
     ></div>
-    <!-- playhead line — draggable to scrub the body -->
-    <!-- playhead line — draggable to scrub the body. Keeps the slider role for a11y, but NOT tabindex
-         or a keyboard handler: the ruler already exposes the focusable/keyboard slider, so this handle
-         doesn't add a duplicate tab stop. -->
+    <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
+         the ruler only — an interactive line here would sit over the ◆ at the current frame and block
+         grabbing/moving it. -->
     <div
-      class="absolute top-0 bottom-0 z-[15] flex justify-center"
-      style="left: {LABEL_W +
-        appState.playhead * CELL_W +
-        CELL_W / 2 -
-        4}px; width: 8px; touch-action: none; cursor: col-resize"
-      role="slider"
-      aria-label="Scrub frames"
-      aria-valuemin={1}
-      aria-valuemax={appState.project.frameCount}
-      aria-valuenow={appState.playhead + 1}
-      onpointerdown={lineDown}
-      onpointermove={lineMove}
-      onpointerup={lineUp}
-      onpointercancel={lineUp}
-    >
-      <div class="w-0.5 h-full bg-accent"></div>
-    </div>
+      class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
+      style="left: {LABEL_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+    ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line) -->
     <div class="flex items-stretch sticky top-0 z-20 bg-surface">
