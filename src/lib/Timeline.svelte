@@ -306,17 +306,25 @@
       return;
     }
 
+    // Press anywhere INSIDE the current selection (key or empty) → move the whole block; a plain tap
+    // collapses to that cell (handled in rowUp). The whole selection rect is the drag handle, not
+    // just its ◆ cells. (A new marquee from within the bounds is still available via long-press.)
+    if (inSelection(layer.id, frame)) {
+      dragMode = "moveblock";
+      moveGrabFrame = frame;
+      moveDelta = 0;
+      return;
+    }
+
     if (plan.kind === "move") {
-      // On a key: select it (unless already selected) + seek; prepare to move the selection.
-      if (!inSelection(layer.id, frame)) {
-        setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
-        go(frame); // tap-a-key also seeks to it
-      }
+      // A key OUTSIDE the selection: select it (1×1) + seek, then prepare to move it.
+      setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
+      go(frame); // tap-a-key also seeks to it
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
     } else {
-      // Empty/hold cell: tap → deselect; drag → marquee. Decided on move/up.
+      // Empty/hold cell OUTSIDE the selection: tap → deselect; drag → marquee. Decided on move/up.
       armedEmpty = true;
       pressFrame = frame;
     }
