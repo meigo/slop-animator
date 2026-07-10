@@ -35,6 +35,7 @@
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
+  import { clampTimelineHeight } from "../anim/timeline-layout";
   import { groupOf, type DrawingLayer } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
@@ -108,6 +109,34 @@
     else if (e.key === "End") go(appState.project.frameCount - 1);
     else return;
     e.preventDefault();
+  }
+
+  // Resize the panel by dragging the top grip. Drag UP → taller (shrinks the canvas above);
+  // DOWN → shorter. Clamped to [MIN, 60% viewport]. The prefs $effect persists the change.
+  let gripStartY = 0;
+  let gripStartH = 0;
+  function gripDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    gripStartY = e.clientY;
+    gripStartH = appState.timelineHeight;
+  }
+  function gripMove(e: PointerEvent) {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    appState.timelineHeight = clampTimelineHeight(
+      gripStartH + (gripStartY - e.clientY),
+      window.innerHeight,
+    );
+  }
+  function gripUp(e: PointerEvent) {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
+  // Keep the panel within 60% of the viewport if the window shrinks.
+  function onWindowResize() {
+    appState.timelineHeight = clampTimelineHeight(appState.timelineHeight, window.innerHeight);
   }
 
   // Cell-strip pointer interaction: drag a ◆ to move it, drag a span's right edge to resize
@@ -357,8 +386,28 @@
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
 </script>
 
-<div class="border-t border-border bg-surface text-text p-2 text-sm">
-  <div class="flex items-center gap-1 mb-2 flex-wrap">
+<svelte:window onresize={onWindowResize} />
+
+<div
+  class="border-t border-border bg-surface text-text p-2 text-sm flex flex-col min-h-0 relative"
+  style="height: {appState.timelineHeight}px"
+>
+  <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
+  <div
+    class="absolute top-0 left-0 right-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
+    style="touch-action: none"
+    role="separator"
+    aria-orientation="horizontal"
+    aria-label="Resize timeline"
+    title="Drag to resize the timeline"
+    onpointerdown={gripDown}
+    onpointermove={gripMove}
+    onpointerup={gripUp}
+    onpointercancel={gripUp}
+  >
+    <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
+  </div>
+  <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
       ><Plus size={16} /></button
     >
@@ -508,7 +557,7 @@
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
-  <div class="relative overflow-x-auto" bind:this={gridWrapper}>
+  <div class="relative flex-1 min-h-0 overflow-auto" bind:this={gridWrapper}>
     <!-- current-frame column highlight: an absolute overlay so scrubbing is O(1) — NOT a per-cell
          `f === appState.playhead` class (that re-evaluated frameCount×layers bindings on every scrub). -->
     <div
@@ -524,7 +573,7 @@
     ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line) -->
-    <div class="flex items-stretch">
+    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
       <span class="shrink-0 sticky left-0 z-20 bg-surface" style="width: {LABEL_W}px"></span>
       <div
         class="flex cursor-ew-resize select-none"
