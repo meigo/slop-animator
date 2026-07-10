@@ -241,7 +241,23 @@
    *  origin row, so hit-test by client coords to allow vertical cross-layer selection). */
   function layerIdAtPoint(clientX: number, clientY: number, fallback: number): number {
     const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-layer-id]");
-    return el ? Number(el.dataset.layerId) : fallback;
+    if (el) return Number(el.dataset.layerId);
+    // Pointer is off the track rows (e.g. dragging below the last track or above the first, or over
+    // the label gutter): clamp the selection to the vertically-nearest row instead of snapping back
+    // to the origin, so the marquee keeps extending to the top/bottom track.
+    const rows = gridWrapper?.querySelectorAll<HTMLElement>("[data-layer-id]");
+    if (!rows || rows.length === 0) return fallback;
+    let best = fallback;
+    let bestDist = Infinity;
+    for (const row of rows) {
+      const r = row.getBoundingClientRect();
+      const dy = clientY < r.top ? r.top - clientY : clientY > r.bottom ? clientY - r.bottom : 0;
+      if (dy < bestDist) {
+        bestDist = dy;
+        best = Number(row.dataset.layerId);
+      }
+    }
+    return best;
   }
 
   function rowOffset(e: PointerEvent): number {
