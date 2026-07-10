@@ -1,4 +1,4 @@
-import { resolvedKeyCell, type Cell, type Project } from "./document";
+import { resolvedKeyCell, type Cell, type DrawingLayer, type Project } from "./document";
 import type { CanvasOps } from "./timeline";
 
 /** A rectangular block of cells copied from the timeline. cols = layers (top-first),
@@ -18,6 +18,26 @@ export function cloneCell(cell: Cell, ops: CanvasOps): Cell {
   if (cell.transformBox !== undefined)
     out.transformBox = cell.transformBox ? { ...cell.transformBox } : cell.transformBox;
   return out;
+}
+
+/** Overwrite-write a column of cells onto `layer` starting at `startFrame`: clone each cell, replace
+ *  in place, and pad with holds if it lands past the layer's end. Shared by paste and move. */
+function overwriteColumn(
+  layer: DrawingLayer,
+  cells: Cell[],
+  startFrame: number,
+  ops: CanvasOps,
+): void {
+  for (let r = 0; r < cells.length; r++) {
+    const f = startFrame + r;
+    const cell = cloneCell(cells[r], ops);
+    if (f >= layer.cells.length) {
+      while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
+      layer.cells.push(cell);
+    } else {
+      layer.cells[f] = cell; // replace, never mutate in place
+    }
+  }
 }
 
 /** Extract a self-contained block. `layerIds` top-first; frames inclusive [startFrame, endFrame]. */
@@ -75,16 +95,7 @@ export function pasteBlockOverwrite(
     if (c >= targetIds.length) break; // overflow past bottom layer
     const layer = project.layers.find((l) => l.id === targetIds[c]);
     if (!layer || layer.kind !== "draw") continue;
-    for (let r = 0; r < block.rows; r++) {
-      const f = startFrame + r;
-      const cell = cloneCell(block.columns[c][r], ops);
-      if (f >= layer.cells.length) {
-        while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
-        layer.cells.push(cell);
-      } else {
-        layer.cells[f] = cell; // replace, never mutate in place
-      }
-    }
+    overwriteColumn(layer, block.columns[c], startFrame, ops);
   }
 }
 
@@ -124,4 +135,41 @@ export function deleteBlock(
       layer.cells[f] = { kind: "hold" };
     }
   }
+}
+
+/** Move the selected block by `delta` frames on its OWN layers (frames-only), overwriting the
+ *  destination. Returns the applied delta after clamping so the earliest moved frame stays >= 0.
+ *  Self-contained: leading holds are materialized (via copyBlock), the range is blanked, then the
+ *  cloned block is re-stamped at +applied. copyBlock clones first, so source/destination overlap
+ *  is safe. `layerIds` must be drawing layers (as resolveSelectionRect guarantees). */
+export function moveBlockFrames(
+  project: Project,
+  layerIds: number[],
+  startFrame: number,
+  endFrame: number,
+  delta: number,
+  ops: CanvasOps,
+): number {
+  const applied = Math.max(delta, -startFrame);
+  if (applied === 0) return 0;
+  const block = copyBlock(project, layerIds, startFrame, endFrame, ops); // columns for draw layers, in order
+  deleteBlock(project, layerIds, startFrame, endFrame); // vacate the source → holds
+  let c = 0;
+  for (const id of layerIds) {
+    const layer = project.layers.find((l) => l.id === id);
+    if (!layer || layer.kind !== "draw") continue; // mirrors copyBlock's column filter → alignment
+    // Write cloned cells directly (copyBlock already cloned; don't clone again)
+    const cells = block.columns[c];
+    for (let r = 0; r < cells.length; r++) {
+      const f = startFrame + applied + r;
+      if (f >= layer.cells.length) {
+        while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
+        layer.cells.push(cells[r]);
+      } else {
+        layer.cells[f] = cells[r];
+      }
+    }
+    c++;
+  }
+  return applied;
 }

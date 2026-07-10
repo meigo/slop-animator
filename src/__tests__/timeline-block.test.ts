@@ -9,6 +9,7 @@ import {
   pasteBlockOverwrite,
   pasteBlockInsert,
   deleteBlock,
+  moveBlockFrames,
 } from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
@@ -264,5 +265,84 @@ describe("deleteBlock", () => {
     expect(l.cells.length).toBe(2);
     expect(l.cells[0]).toEqual({ kind: "hold" });
     expect(l.cells[1]).toEqual({ kind: "hold" });
+  });
+});
+
+describe("moveBlockFrames", () => {
+  it("shifts keys later and blanks the vacated cells", () => {
+    const a = fakeOps.create();
+    const l = drawLayer(1, [key(a), hold(), hold(), hold()]); // [A][·][·][·]
+    const applied = moveBlockFrames(proj([l], 4), [1], 0, 0, 2, fakeOps); // move frame 0 → 2
+    expect(applied).toBe(2);
+    expect(l.cells[0]).toEqual({ kind: "hold" }); // vacated
+    const c2 = l.cells[2];
+    expect(c2.kind).toBe("key");
+    if (c2.kind === "key") expect(cloneOf(c2.canvas)).toBe(idOf(a));
+  });
+
+  it("overwrites an existing key at the destination", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = drawLayer(1, [key(a), key(b)]); // [A][B]
+    moveBlockFrames(proj([l], 2), [1], 0, 0, 1, fakeOps); // move A onto B
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    const c1 = l.cells[1];
+    if (c1.kind === "key") expect(cloneOf(c1.canvas)).toBe(idOf(a)); // A won
+  });
+
+  it("handles source/destination overlap (delta 1 on a 2-wide block)", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = drawLayer(1, [key(a), key(b), hold()]); // [A][B][·]
+    moveBlockFrames(proj([l], 3), [1], 0, 1, 1, fakeOps); // move [A,B] → frames 1,2
+    expect(l.cells[0]).toEqual({ kind: "hold" });
+    const c1 = l.cells[1];
+    const c2 = l.cells[2];
+    if (c1.kind === "key") expect(cloneOf(c1.canvas)).toBe(idOf(a));
+    if (c2.kind === "key") expect(cloneOf(c2.canvas)).toBe(idOf(b));
+  });
+
+  it("clamps so the earliest frame never goes below 0 (returns the applied delta)", () => {
+    const a = fakeOps.create();
+    const l = drawLayer(1, [hold(), key(a)]); // [·][A]
+    const applied = moveBlockFrames(proj([l], 2), [1], 1, 1, -5, fakeOps); // want -5, start=1 → clamp -1
+    expect(applied).toBe(-1);
+    const c0 = l.cells[0];
+    if (c0.kind === "key") expect(cloneOf(c0.canvas)).toBe(idOf(a));
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+  });
+
+  it("pads with holds when moving past the layer's end", () => {
+    const a = fakeOps.create();
+    const l = drawLayer(1, [key(a)]); // length 1
+    moveBlockFrames(proj([l], 1), [1], 0, 0, 3, fakeOps);
+    expect(l.cells.length).toBe(4); // [·][·][·][A]
+    expect(l.cells[3].kind).toBe("key");
+  });
+
+  it("moves each column on its OWN layer (no cross-layer remap)", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const top = drawLayer(3, [key(a), hold()]);
+    const bottom = drawLayer(1, [key(b), hold()]);
+    // layerIds top-first: [3,1]
+    moveBlockFrames(
+      proj([bottom, drawLayer(2, [hold(), hold()]), top], 2),
+      [3, 1],
+      0,
+      0,
+      1,
+      fakeOps,
+    );
+    const t1 = top.cells[1];
+    const b1 = bottom.cells[1];
+    if (t1.kind === "key") expect(cloneOf(t1.canvas)).toBe(idOf(a)); // layer 3's A stayed on layer 3
+    if (b1.kind === "key") expect(cloneOf(b1.canvas)).toBe(idOf(b)); // layer 1's B stayed on layer 1
+  });
+
+  it("no-ops (returns 0) when applied delta is 0", () => {
+    const l = drawLayer(1, [key()]);
+    expect(moveBlockFrames(proj([l], 1), [1], 0, 0, 0, fakeOps)).toBe(0);
+    expect(l.cells.length).toBe(1);
   });
 });
