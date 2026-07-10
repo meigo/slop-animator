@@ -59,6 +59,7 @@ import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
+import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
 
 export type Tool =
   | "brush"
@@ -90,6 +91,8 @@ interface AnimState {
   theme: "dark" | "light";
   onion: OnionConfig;
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
+  statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
+  timelineHeight: number; // px height of the resizable timeline panel
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
 }
@@ -142,6 +145,8 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   playback: { isPlaying: false, loop: true, range: null },
+  statusHint: "",
+  timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   timelineSelection: null,
   cellClipboard: null,
 });
@@ -682,6 +687,7 @@ export function gatherPreferences(): Preferences {
     fill: { ...state.fill },
     theme: state.theme,
     loop: state.playback.loop,
+    timelineHeight: state.timelineHeight,
     pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
   };
 }
@@ -698,6 +704,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
   if (p.theme === "dark" || p.theme === "light") state.theme = p.theme;
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
+  if (typeof p.timelineHeight === "number")
+    state.timelineHeight = clampTimelineHeight(p.timelineHeight, window.innerHeight);
   if (p.pressureCurve && typeof p.pressureCurve === "object") {
     const { cp1, cp2 } = p.pressureCurve;
     if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")
