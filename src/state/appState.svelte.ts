@@ -28,6 +28,7 @@ import {
   pasteBlockOverwrite,
   pasteBlockInsert,
   deleteBlock,
+  moveBlockFrames,
   type CellBlock,
 } from "../anim/timeline-block";
 import {
@@ -867,6 +868,31 @@ export function deleteTimelineSelection(): void {
 export function cutTimelineSelection(): void {
   copyTimelineSelection();
   deleteTimelineSelection();
+}
+
+/** Move the current timeline selection by `delta` frames (frames-only, overwrite). Undoable; the
+ *  selection follows to the moved range. No-op if there's no selection or the clamped delta is 0. */
+export function moveTimelineSelection(delta: number): void {
+  const rect = currentSelectionRect();
+  if (!rect) return;
+  const applied = Math.max(delta, -rect.startFrame); // clamp before committing so a no-op doesn't push undo
+  if (applied === 0) return;
+  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  commitStructural(() =>
+    moveBlockFrames(
+      state.project,
+      rect.layerIds,
+      rect.startFrame,
+      rect.endFrame,
+      applied,
+      canvasOps,
+    ),
+  );
+  // commitStructural cleared the selection — re-set it to the moved range (same layers).
+  state.timelineSelection = {
+    anchor: { layerId: rect.layerIds[0], frame: rect.startFrame + applied },
+    focus: { layerId: rect.layerIds[rect.layerIds.length - 1], frame: rect.endFrame + applied },
+  };
 }
 
 /** Paste the clipboard block with its top-left at (active layer, playhead). Overwrite by default;
