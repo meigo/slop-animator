@@ -184,6 +184,7 @@
   // moveblock: the grabbed key's frame and the live (clamped) frame offset for the ghost.
   let moveGrabFrame = -1;
   let moveDelta = $state(0);
+  let moved = false; // did a moveblock drag actually change frame? (a net-zero drag ≠ a tap)
   // empty-press arming: might become a marquee (on drag) or a deselect (on tap).
   let armedEmpty = false;
   let pressFrame = -1;
@@ -221,6 +222,19 @@
       f >= selRect.startFrame + shift &&
       f <= selRect.endFrame + shift
     );
+  }
+
+  // During a moveblock drag, preview the keyframe glyphs sliding to the drop target: a cell in the
+  // shifted range shows the glyph moving into it (from `f - moveDelta`); a vacated source cell
+  // clears. Cheap index math over the already-computed glyph array — no recompute. Otherwise the
+  // real glyph.
+  function displayGlyph(layerId: number, glyphs: string[], f: number): string {
+    if (dragMode !== "moveblock" || !selRect || !selRect.layerIds.includes(layerId))
+      return glyphs[f];
+    if (f >= selRect.startFrame + moveDelta && f <= selRect.endFrame + moveDelta)
+      return glyphs[f - moveDelta] ?? ""; // key sliding into the target
+    if (f >= selRect.startFrame && f <= selRect.endFrame) return ""; // vacated source
+    return glyphs[f];
   }
 
   /** Which drawing-layer row the pointer is physically over (pointer capture routes all moves to the
@@ -311,6 +325,7 @@
     if (dragMode === "moveblock") {
       const raw = rowColumn(e) - moveGrabFrame;
       moveDelta = selRect ? Math.max(raw, -selRect.startFrame) : raw; // clamp so nothing goes < 0
+      if (moveDelta !== 0) moved = true; // a real drag (even if it later returns to net-zero)
       return;
     }
     if (dragMode === "resize") {
@@ -349,16 +364,18 @@
     }
 
     if (dragMode === "moveblock") {
-      if (moveDelta !== 0) moveTimelineSelection(moveDelta);
-      else {
-        // Tap with no drag → collapse to the grabbed key (1×1) + seek. (On down we kept an existing
-        // block intact so a drag could move it; a plain tap resolves to just this key, per D6.)
+      if (!moved) {
+        // A true tap (no frame change) → collapse to the grabbed key (1×1) + seek. (On down we kept
+        // an existing block intact so a drag could move it; a plain tap resolves to just this key.)
         setTimelineSelection(
           { layerId: dragLayerId, frame: moveGrabFrame },
           { layerId: dragLayerId, frame: moveGrabFrame },
         );
         go(moveGrabFrame);
+      } else if (moveDelta !== 0) {
+        moveTimelineSelection(moveDelta);
       }
+      // else: dragged out and back to net-zero → no-op, keep the selection intact.
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
     } else if (dragMode === "none" && armedEmpty) {
@@ -373,6 +390,7 @@
     dragLastBoundary = -1;
     moveGrabFrame = -1;
     moveDelta = 0;
+    moved = false;
     armedEmpty = false;
     pressFrame = -1;
   }
@@ -633,6 +651,9 @@
           CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"
     ></div>
     <!-- playhead line — draggable to scrub the body -->
+    <!-- playhead line — draggable to scrub the body. Keeps the slider role for a11y, but NOT tabindex
+         or a keyboard handler: the ruler already exposes the focusable/keyboard slider, so this handle
+         doesn't add a duplicate tab stop. -->
     <div
       class="absolute top-0 bottom-0 z-[15] flex justify-center"
       style="left: {LABEL_W +
@@ -640,7 +661,6 @@
         CELL_W / 2 -
         4}px; width: 8px; touch-action: none; cursor: col-resize"
       role="slider"
-      tabindex="0"
       aria-label="Scrub frames"
       aria-valuemin={1}
       aria-valuemax={appState.project.frameCount}
@@ -649,7 +669,6 @@
       onpointermove={lineMove}
       onpointerup={lineUp}
       onpointercancel={lineUp}
-      onkeydown={rulerKey}
     >
       <div class="w-0.5 h-full bg-accent"></div>
     </div>
@@ -726,7 +745,7 @@
                   class:bg-selection={inSelection(layer.id, f)}
                   style="width: {CELL_W}px"
                 >
-                  {glyphs[f]}
+                  {displayGlyph(layer.id, glyphs, f)}
                 </div>
               {/each}
             </div>
