@@ -22,6 +22,8 @@
     setActiveLayer,
     liftGuard,
     setTimelineSelection,
+    moveTimelineSelection,
+    clearTimelineSelection,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -31,7 +33,6 @@
     setHold,
     deleteFrame,
     ensureDrawableKeyframe,
-    moveKeyframe,
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
@@ -142,22 +143,28 @@
   // Cell-strip pointer interaction: drag a ◆ to move it, drag a span's right edge to resize
   // its hold span, click/drag elsewhere to scrub the playhead. Pointer capture + touch-action
   // keep drags alive and stop the page from panning on iPad.
-  type DragMode = "none" | "seek" | "move" | "resize" | "select";
-  let dragMode: DragMode = $state("none");
-  let dragLayerId = $state(-1);
-  let dragKey = -1; // keyIndex being moved or resized
-  let dragTarget = $state(-1); // current target column (move ghost)
+  // Selection-first gestures: press classifies via planCellPointer + selection membership.
+  type DragMode = "none" | "resize" | "marquee" | "moveblock";
+  let dragMode = $state<DragMode>("none");
+  let dragLayerId = -1;
+  let dragKey = -1; // key index being resized
   let dragUndo: StructSnapshot | null = null;
-  let dragStartBoundary = -1; // span edge boundary at the start of a resize (to detect a real change)
-  let dragLastBoundary = -1; // last boundary applied during a resize (used on up/cancel, not the event)
+  let dragStartBoundary = -1;
+  let dragLastBoundary = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
 
+  // moveblock: the grabbed key's frame and the live (clamped) frame offset for the ghost.
+  let moveGrabFrame = -1;
+  let moveDelta = $state(0);
+  // empty-press arming: might become a marquee (on drag) or a deselect (on tap).
+  let armedEmpty = false;
+  let pressFrame = -1;
+
   const LONG_PRESS_MS = 400;
   // INVARIANT: EDGE_PX (resize hotspot, timeline-grid.ts) + MOVE_CANCEL_PX must stay < CELL_W/2,
-  // so a pending long-press can't let a resize cross a column boundary before it's cancelled
-  // (else a resize could mutate the doc with its undo snapshot discarded). Re-check if you raise either.
-  const MOVE_CANCEL_PX = 6; // pointer travel that cancels a pending long-press (= a real drag)
+  // so a pending long-press can't let a resize cross a column boundary before it's cancelled.
+  const MOVE_CANCEL_PX = 6;
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;
   let pressStartY = 0;
@@ -180,11 +187,12 @@
   );
 
   function inSelection(layerId: number, f: number): boolean {
+    if (!selRect) return false;
+    const shift = dragMode === "moveblock" ? moveDelta : 0; // slide the highlight to the drop target
     return (
-      !!selRect &&
       selRect.layerIds.includes(layerId) &&
-      f >= selRect.startFrame &&
-      f <= selRect.endFrame
+      f >= selRect.startFrame + shift &&
+      f <= selRect.endFrame + shift
     );
   }
 
@@ -213,21 +221,21 @@
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragLayerId = layer.id;
     const frame = rowColumn(e);
+    pressStartX = e.clientX;
+    pressStartY = e.clientY;
 
-    // Shift-click extends an existing selection immediately (desktop).
-    if (e.shiftKey && appState.timelineSelection) {
+    // Shift/Ctrl-click extends an existing selection immediately (desktop).
+    if ((e.shiftKey || e.ctrlKey || e.metaKey) && appState.timelineSelection) {
       setTimelineSelection(appState.timelineSelection.anchor, { layerId: layer.id, frame });
-      dragMode = "select";
+      dragMode = "marquee";
       return;
     }
 
-    // Arm a long-press: staying still ~400ms starts a block selection at this cell.
-    pressStartX = e.clientX;
-    pressStartY = e.clientY;
+    // Long-press anywhere → marquee (touch / packed rows).
     cancelLongPress();
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
-      dragMode = "select";
+      dragMode = "marquee";
       setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
     }, LONG_PRESS_MS);
 
@@ -238,25 +246,34 @@
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
-    } else if (plan.kind === "move") {
-      dragMode = "move";
-      dragKey = plan.keyIndex;
-      dragTarget = plan.keyIndex;
+      return;
+    }
+
+    if (plan.kind === "move") {
+      // On a key: select it (unless already selected) + seek; prepare to move the selection.
+      if (!inSelection(layer.id, frame)) {
+        setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
+        go(frame); // tap-a-key also seeks to it
+      }
+      dragMode = "moveblock";
+      moveGrabFrame = frame;
+      moveDelta = 0;
     } else {
-      dragMode = "seek";
-      go(plan.frame);
+      // Empty/hold cell: tap → deselect; drag → marquee. Decided on move/up.
+      armedEmpty = true;
+      pressFrame = frame;
     }
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
-    // A real drag before the long-press fires = normal seek/move/resize, not a selection.
-    if (longPressTimer !== null) {
-      if (
-        Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
-        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX
-      )
-        cancelLongPress();
-    }
-    if (dragMode === "select" && appState.timelineSelection) {
+    // A real drag cancels a pending long-press.
+    if (
+      longPressTimer !== null &&
+      (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
+    )
+      cancelLongPress();
+
+    if (dragMode === "marquee" && appState.timelineSelection) {
       const overLayer = layerIdAtPoint(e.clientX, e.clientY, dragLayerId);
       setTimelineSelection(appState.timelineSelection.anchor, {
         layerId: overLayer,
@@ -264,18 +281,36 @@
       });
       return;
     }
+    if (dragMode === "moveblock") {
+      const raw = rowColumn(e) - moveGrabFrame;
+      moveDelta = selRect ? Math.max(raw, -selRect.startFrame) : raw; // clamp so nothing goes < 0
+      return;
+    }
+    if (dragMode === "resize") {
+      dragLastBoundary = rowBoundary(e);
+      setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
+      bump();
+      return;
+    }
+    // Empty-armed: once the pointer really moves, start a marquee from the press cell.
+    if (
+      armedEmpty &&
+      (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
+    ) {
+      armedEmpty = false;
+      cancelLongPress();
+      dragMode = "marquee";
+      setTimelineSelection(
+        { layerId: dragLayerId, frame: pressFrame },
+        { layerId: layer.id, frame: rowColumn(e) },
+      );
+      return;
+    }
+    // Idle hover cursor.
     if (dragMode === "none") {
       const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
       rowCursor = plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
-      return;
-    }
-    if (dragLayerId !== layer.id) return;
-    if (dragMode === "seek") go(rowColumn(e));
-    else if (dragMode === "move") dragTarget = rowColumn(e);
-    else if (dragMode === "resize") {
-      dragLastBoundary = rowBoundary(e);
-      setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey)); // live; boundary − key index
-      bump();
     }
   }
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
@@ -285,30 +320,34 @@
     } catch {
       /* already released */
     }
-    if (dragMode === "select") {
-      dragMode = "none";
-      dragLayerId = -1;
-      dragKey = -1;
-      dragTarget = -1;
-      dragUndo = null; // any resize/move snapshot armed before the long-press is discarded (no commit)
-      dragStartBoundary = -1;
-      dragLastBoundary = -1;
-      return;
-    }
-    if (dragMode === "move" && dragLayerId === layer.id) {
-      if (dragTarget >= 0 && dragTarget !== dragKey)
-        commitStructural(() => moveKeyframe(layer, dragKey, dragTarget));
-      else go(dragKey); // a click on a keyframe with no drag → seek to it
+
+    if (dragMode === "moveblock") {
+      if (moveDelta !== 0) moveTimelineSelection(moveDelta);
+      else {
+        // Tap with no drag → collapse to the grabbed key (1×1) + seek. (On down we kept an existing
+        // block intact so a drag could move it; a plain tap resolves to just this key, per D6.)
+        setTimelineSelection(
+          { layerId: dragLayerId, frame: moveGrabFrame },
+          { layerId: dragLayerId, frame: moveGrabFrame },
+        );
+        go(moveGrabFrame);
+      }
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
-      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo); // skip a no-op resize
+      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
+    } else if (dragMode === "none" && armedEmpty) {
+      clearTimelineSelection(); // tap on empty with no drag → deselect
     }
+
     dragMode = "none";
     dragLayerId = -1;
     dragKey = -1;
-    dragTarget = -1;
     dragUndo = null;
     dragStartBoundary = -1;
     dragLastBoundary = -1;
+    moveGrabFrame = -1;
+    moveDelta = 0;
+    armedEmpty = false;
+    pressFrame = -1;
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";
@@ -641,13 +680,6 @@
               {#each Array(appState.project.frameCount) as _, f (f)}
                 <div
                   class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
-                  class:ring-2={dragMode === "move" && dragLayerId === layer.id && f === dragTarget}
-                  class:ring-accent={dragMode === "move" &&
-                    dragLayerId === layer.id &&
-                    f === dragTarget}
-                  class:ring-inset={dragMode === "move" &&
-                    dragLayerId === layer.id &&
-                    f === dragTarget}
                   class:bg-selection={inSelection(layer.id, f)}
                   style="width: {CELL_W}px"
                 >
@@ -665,6 +697,11 @@
       {/if}
     {/each}
 
-    <TimelineSelectionBar container={gridWrapper} rect={selRect} cellW={CELL_W} labelW={LABEL_W} />
+    <TimelineSelectionBar
+      container={gridWrapper}
+      rect={dragMode === "moveblock" ? null : selRect}
+      cellW={CELL_W}
+      labelW={LABEL_W}
+    />
   </div>
 </div>
