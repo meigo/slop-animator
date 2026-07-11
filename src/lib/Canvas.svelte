@@ -3,6 +3,7 @@
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
+  import { ClipboardPaste } from "@lucide/svelte";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
   import { renderFrame } from "../anim/render";
@@ -155,7 +156,8 @@
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
   const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
-  let selectionClipboard: { canvas: HTMLCanvasElement; rect: SelectionRect } | null = null;
+  // $state so the floating Paste button reacts to copy/cut filling the clipboard.
+  let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
@@ -1128,6 +1130,17 @@
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
+  <!-- Floating Paste button: reachable without a keyboard (iPad). Shown when the Select/Lasso tool is
+       active and the pixel clipboard has content; taps paste-as-float (reposition, then Commit). -->
+  {#if selectionClipboard && (appState.tool === "select" || appState.tool === "lasso")}
+    <button
+      class="absolute top-2 left-2 z-20 w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover shadow"
+      title="Paste (Cmd/Ctrl+V)"
+      onclick={() => pasteSelection()}
+    >
+      <ClipboardPaste size={18} />
+    </button>
+  {/if}
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}
