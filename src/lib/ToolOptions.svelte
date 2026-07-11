@@ -33,14 +33,19 @@
 
   // Keep the popup within the viewport: it's left-anchored to its trigger, but the toolbar
   // wraps, so the trigger can sit near the right (or left) edge. Shift it back into view.
+  // The popup is position:fixed (so it escapes the ToolOptions bar's overflow-x-auto clip). Anchor it
+  // just below its trigger wrapper in viewport coords, then clamp horizontally into view.
   function positionPopup() {
     if (!curvePopupEl) return;
     const margin = 8;
-    curvePopupEl.style.left = "0px"; // reset to the anchor before measuring
+    const anchor = curvePopupEl.parentElement?.getBoundingClientRect();
+    if (!anchor) return;
+    curvePopupEl.style.top = `${anchor.bottom + 4}px`;
+    curvePopupEl.style.left = `${anchor.left}px`;
     const rect = curvePopupEl.getBoundingClientRect();
     const overflowRight = rect.right - (window.innerWidth - margin);
-    if (overflowRight > 0) curvePopupEl.style.left = `${-overflowRight}px`;
-    else if (rect.left < margin) curvePopupEl.style.left = `${margin - rect.left}px`;
+    if (overflowRight > 0) curvePopupEl.style.left = `${anchor.left - overflowRight}px`;
+    else if (anchor.left < margin) curvePopupEl.style.left = `${margin}px`;
   }
 
   // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve,

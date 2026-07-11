@@ -107,11 +107,10 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 0 0 1px var(--color-border);
 }
 
-/* Pressure curve popup */
+/* Pressure curve popup — position:fixed so it escapes the ToolOptions bar's overflow clip;
+   its top/left are set from the trigger by positionPopup() when it opens. */
 .curve-popup {
-  position: absolute;
-  top: 40px;
-  left: 0;
+  position: fixed;
   z-index: 30;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
