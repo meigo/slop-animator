@@ -1144,6 +1144,9 @@
     }}
     onSetDeformMode={(m) => selection?.setDeformMode(m)}
     onResetPins={() => selection?.resetPins()}
+    onCopy={copySelection}
+    onCut={cutSelection}
+    onDelete={deleteSelection}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
