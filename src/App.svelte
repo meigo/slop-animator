@@ -50,6 +50,36 @@
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
 
+    const selActive = !!selectionRef.current?.active && !selectionRef.current.hasFloating;
+    const selectTool = state.tool === "select" || state.tool === "lasso";
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selActive) {
+        e.preventDefault();
+        selectionActions.del?.();
+        return;
+      }
+      // (falls through to the existing timeline-selection delete below)
+    }
+    if (meta && e.key.toLowerCase() === "c" && selActive) {
+      e.preventDefault();
+      selectionActions.copy?.();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "x" && selActive) {
+      e.preventDefault();
+      selectionActions.cut?.();
+      return;
+    }
+    if (meta && e.key.toLowerCase() === "v" && selectTool) {
+      if (selectionActions.paste?.()) {
+        e.preventDefault();
+        cellPasteHandled = true; // consume this Cmd+V so onPaste doesn't also image-paste
+        return;
+      }
+      // pixel clipboard empty → fall through to the timeline/image paste below
+    }
+
     if (meta && e.key.toLowerCase() === "c" && state.timelineSelection) {
       e.preventDefault();
       copyTimelineSelection();
