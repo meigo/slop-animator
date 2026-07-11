@@ -1,5 +1,6 @@
 <script lang="ts">
   import Toolbar from "./lib/Toolbar.svelte";
+  import ToolOptions from "./lib/ToolOptions.svelte";
   import Canvas from "./lib/Canvas.svelte";
   import LayerList from "./lib/LayerList.svelte";
   import Playbar from "./lib/Playbar.svelte";
@@ -202,6 +203,7 @@
 
 <div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
+  <ToolOptions />
   <div class="flex-1 flex min-h-0">
     <Canvas />
     <LayerList />
