@@ -22,7 +22,13 @@
 
   onMount(() => {
     curveEditor = createCurveEditor(pressureCurve, bumpCurve);
-    curvePopupEl.appendChild(curveEditor);
+  });
+
+  // Re-attach the curve editor whenever the popup div is (re)created — it lives inside the brush/eraser
+  // {#if} branch, so it's torn down/recreated on tool switches. appendChild moves the single node into
+  // the current div.
+  $effect(() => {
+    if (curvePopupEl && curveEditor) curvePopupEl.appendChild(curveEditor);
   });
 
   // Keep the popup within the viewport: it's left-anchored to its trigger, but the toolbar
