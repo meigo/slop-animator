@@ -20,6 +20,7 @@ import {
   type DrawingLayer,
   type Cell,
   type AudioTrack,
+  type ReferenceLayer,
   type ReferenceMedia,
   type LayerGroup,
 } from "../anim/document";
@@ -36,7 +37,7 @@ import {
   type SelectionEndpoint,
   type TimelineSelection,
 } from "../anim/timeline-selection";
-import { loadImageMedia } from "../anim/reference";
+import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
@@ -584,6 +585,7 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
 export function relinkReference(id: number, media: ReferenceMedia) {
   const layer = state.project.layers.find((l) => l.id === id);
   if (layer && layer.kind === "ref") {
+    releaseReferenceMedia(layer.media); // free the old media (this is not undoable)
     layer.media = media;
     bump();
   }
@@ -728,6 +730,7 @@ export function replaceProject(project: Project) {
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
+  for (const l of state.project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
   state.project = project;
   audioEngine.setTrack(project.audio);
   state.playhead = 0;
@@ -742,6 +745,13 @@ export function bump() {
   if (state.playhead > last) state.playhead = last;
   if (state.playhead < 0) state.playhead = 0;
   state.version++;
+}
+
+/** Video ref elements in the current project. */
+function videoRefEls(): HTMLVideoElement[] {
+  return state.project.layers
+    .filter((l): l is ReferenceLayer => l.kind === "ref" && l.media.type === "video")
+    .map((l) => (l.media as { el: HTMLVideoElement }).el);
 }
 
 /**
@@ -762,8 +772,18 @@ export const playbackController = new Playback({
   },
   onPlayingChange: (p) => {
     state.playback.isPlaying = p;
-    if (p) audioEngine.play(state.playhead, state.project.fps);
-    else audioEngine.pause();
+    if (p) {
+      audioEngine.play(state.playhead, state.project.fps);
+      for (const l of state.project.layers) {
+        if (l.kind !== "ref" || l.media.type !== "video") continue;
+        const el = l.media.el;
+        el.currentTime = (state.playhead + l.offsetFrames) / state.project.fps; // seek onto the frame, then run
+        void el.play().catch(() => {});
+      }
+    } else {
+      audioEngine.pause();
+      for (const el of videoRefEls()) el.pause(); // next tick exact-seeks onto the paused frame
+    }
     state.version++;
   },
 });

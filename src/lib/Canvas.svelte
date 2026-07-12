@@ -1009,7 +1009,12 @@
       if (dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead) {
         lastVersion = appState.version;
         lastPlayhead = appState.playhead;
-        syncReferenceVideos(appState.project, appState.playhead, appState.project.fps);
+        syncReferenceVideos(
+          appState.project,
+          appState.playhead,
+          appState.project.fps,
+          appState.playback.isPlaying,
+        );
         recomposite();
       }
       raf = requestAnimationFrame(tick);
