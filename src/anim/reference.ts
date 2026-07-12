@@ -18,10 +18,10 @@ export function loadVideoMedia(file: File, onSeeked: () => void): Promise<Refere
   return new Promise((resolve, reject) => {
     const el = document.createElement("video");
     el.muted = true;
-    el.preload = "auto";
+    el.preload = "metadata";
     el.playsInline = true;
     el.addEventListener("seeked", onSeeked);
-    el.addEventListener("loadeddata", () => resolve({ type: "video", el }), { once: true });
+    el.addEventListener("loadedmetadata", () => resolve({ type: "video", el }), { once: true });
     el.addEventListener("error", () => reject(new Error(`Failed to load video: ${file.name}`)), {
       once: true,
     });
@@ -48,6 +48,19 @@ export async function loadImageLayer(file: File): Promise<ReferenceLayer> {
  */
 export async function loadVideoLayer(file: File, onSeeked: () => void): Promise<ReferenceLayer> {
   return createReferenceLayer(await loadVideoMedia(file, onSeeked), file.name);
+}
+
+/** Free a reference layer's media: revoke its blob URL and (for video) detach the source so the
+ *  decoder can be reclaimed. Call ONLY when the media is unreachable (relink of the old media,
+ *  or replaceProject clearing the old document) — NOT on removeLayer (undo shares the object). */
+export function releaseReferenceMedia(media: ReferenceMedia): void {
+  if (media.type === "missing") return;
+  if (media.type === "video") media.el.pause();
+  if (media.el.src.startsWith("blob:")) URL.revokeObjectURL(media.el.src);
+  if (media.type === "video") {
+    media.el.removeAttribute("src");
+    media.el.load(); // detach the source; lets the media element release its decode buffers
+  }
 }
 
 const SEEK_EPSILON = 1e-3;
