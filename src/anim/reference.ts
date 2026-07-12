@@ -87,9 +87,12 @@ export function syncReferenceVideos(
     // *latest* playhead, dropping the intermediate targets.
     if (vid.seeking) continue;
     const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0;
-    const wanted = (frame + off) / fps;
+    const spd = Number.isFinite(layer.speed) && layer.speed > 0 ? layer.speed : 1;
+    const wanted = (off + frame * spd) / fps;
     const dur = isFinite(vid.duration) ? vid.duration : wanted;
     const clamped = Math.max(0, Math.min(dur, wanted));
+    const rate = Math.max(0.0625, Math.min(16, spd));
+    if (vid.playbackRate !== rate) vid.playbackRate = rate;
     if (!playing) {
       if (Math.abs(vid.currentTime - clamped) > SEEK_EPSILON) vid.currentTime = clamped;
     } else if (vid.paused) {
