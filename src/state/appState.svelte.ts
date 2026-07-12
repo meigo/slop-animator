@@ -774,8 +774,10 @@ export const playbackController = new Playback({
     state.playback.isPlaying = p;
     if (p) {
       audioEngine.play(state.playhead, state.project.fps);
-      for (const el of videoRefEls()) {
-        el.currentTime = (state.playhead + 0) / state.project.fps; // seek onto the frame, then run
+      for (const l of state.project.layers) {
+        if (l.kind !== "ref" || l.media.type !== "video") continue;
+        const el = l.media.el;
+        el.currentTime = (state.playhead + l.offsetFrames) / state.project.fps; // seek onto the frame, then run
         void el.play().catch(() => {});
       }
     } else {

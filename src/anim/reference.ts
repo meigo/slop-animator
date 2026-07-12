@@ -21,6 +21,7 @@ export function loadVideoMedia(file: File, onSeeked: () => void): Promise<Refere
     el.preload = "metadata";
     el.playsInline = true;
     el.addEventListener("seeked", onSeeked);
+    el.addEventListener("loadeddata", onSeeked, { once: true });
     el.addEventListener("loadedmetadata", () => resolve({ type: "video", el }), { once: true });
     el.addEventListener("error", () => reject(new Error(`Failed to load video: ${file.name}`)), {
       once: true,
