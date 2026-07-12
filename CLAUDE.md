@@ -202,3 +202,40 @@ autoscroll** (may need a `mousedown`/`auxclick` preventDefault for button 1 — 
 risk). Deferred minor: `fitView` pan/zoom desync only at pathological canvas sizes. Note:
 `Canvas.svelte` now imports the store as `state as appState` (runes gotcha #1, forced by new `$state`
 runes). Spec/plan: `…/2026-07-10-desktop-canvas-pan*.md`.
+
+**Canvas selection cut/copy/delete/paste (2026-07-11, merged):** cut/copy/delete the selected pixels;
+paste as a movable float (reposition → Enter commits). Internal `{canvas, rect}` pixel clipboard;
+reuses the lift/commit machinery (`Selection.copyPixels`/`clearRegion`/`pasteFloat`, split from
+`liftPixels`). `⌘C/X/V`/Del gated on the Select/Lasso tool; ops on the ToolOptions bar (see toolbar
+below). Copy reads the resolved key (no keyframe materialized on a hold); delete/paste materialize.
+All canvas-coupled → build+review-verified, **not browser-eyeballed.** **Owed a pass:** copy→paste
+float/reposition/Enter/undo; cut; delete+undo; **lasso-shaped** copy/delete; copy on one frame → paste
+on a different layer/frame; `⌘V` priority (pixels vs timeline cells vs OS image); iPad. Known (app-wide,
+not new): delete/paste on a **hold** frame materializes a keyframe; undo restores pixels but the ·→◆
+marker stays. Spec/plan: `…/2026-07-11-selection-cut-copy-paste*.md`.
+
+**Toolbar reorganization (2026-07-12, merged):** the flat wrapping bar → a **primary bar**
+(`Toolbar.svelte`: tools + undo/redo + **File/Import-Export/View** dropdown menus via new
+`ToolbarMenu.svelte`) + a **contextual `ToolOptions.svelte`** bar showing only the active tool's
+controls (brush settings + pressure curve; fill tolerance/expand/color; Select/Lasso
+Copy/Cut/Paste/Delete gated on new `appState.selectionActive`/`hasPixelClipboard`; transform scope).
+Floating on-canvas paste button removed; near-selection bar keeps only transform ops. All DOM →
+build+review-verified. **Two review-caught bugs fixed** (curve-editor re-attach when the brush branch
+remounts; the curve popup was clipped by the bar's `overflow-x-auto` → made `.curve-popup`
+`position:fixed`). **Owed a pass** (this is the look/behavior the user set out to fix): **confirm the
+pressure-curve popup shows** (the fix); each menu opens/dismisses/acts; per-tool contextual swap has no
+canvas jump; selection ops enable-states; iPad reachability of the right-aligned menus. Minor deferred:
+primary bar dropped `flex-wrap` w/o an overflow fallback (menus could clip on a very narrow viewport).
+Spec/plan: `…/2026-07-12-toolbar-reorganization*.md`.
+
+**Video reference memory + playback (2026-07-12, merged):** fixed the blob-URL leak + seek-per-frame
+playback. `releaseReferenceMedia` (revoke blob + `pause()`+`removeAttribute("src")`+`load()`) called on
+`relinkReference`/`replaceProject` — **NOT `removeLayer`** (undo snapshots share the media object).
+`preload="metadata"`. `syncReferenceVideos(…, playing)` now `play()`s the element rate-matched and
+re-seeks only on >0.3s drift / loop-wrap (paused = exact seek); a `vid.seeking` guard coalesces
+fast-scrub seeks. That seek/drift/coalesce logic **is unit-tested** (`reference.test.ts`, 9 cases). The
+user confirmed it "works ok" in the browser. Review caught + fixed a blank-first-frame regression from
+lazy preload (`loadeddata`→repaint). **Still worth a pass:** playback smoothness on a long clip;
+memory not climbing across repeated import→relink. Deferred: **#5 WebCodecs `VideoDecoder`** frame-exact
+decode (big; iPad-Safari support is the blocker → would need a fallback). Spec/plan:
+`…/2026-07-12-video-reference-perf*.md`.
