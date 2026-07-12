@@ -3,6 +3,7 @@
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
+  import { ClipboardPaste } from "@lucide/svelte";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
   import { renderFrame } from "../anim/render";
@@ -26,7 +27,7 @@
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
   import { syncReferenceVideos } from "../anim/reference";
-  import { Selection } from "../core/selection";
+  import { Selection, type SelectionRect } from "../core/selection";
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
@@ -35,6 +36,7 @@
     isIdentityTransform,
     cellTransform,
     resolvedKeyCell,
+    cloneCanvas,
     groupOf,
     groupTransform,
     type Layer,
@@ -153,6 +155,9 @@
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
+  const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
+  // $state so the floating Paste button reacts to copy/cut filling the clipboard.
+  let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
@@ -666,6 +671,80 @@
     poseActions.cancel = () => cancelPose();
   }
 
+  // Read-only ctx of the resolved key shown at the current frame (for copy — never materializes a key).
+  function activeResolvedCtx(): CanvasRenderingContext2D | null {
+    const layer = activeLayer();
+    if (layer.kind !== "draw") return null;
+    const rk = resolvedKeyCell(layer, appState.playhead);
+    if (!rk) return null;
+    const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return ctx;
+  }
+  // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
+  // active layer isn't an unlocked drawing layer.
+  function activeDrawableCtx(): CanvasRenderingContext2D | null {
+    const layer = activeLayer();
+    if (layer.kind !== "draw" || layer.locked) return null;
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return ctx;
+  }
+
+  function copySelection() {
+    if (!selection || selection.state !== "selected" || !selection.rect) return;
+    const ctx = activeResolvedCtx();
+    if (!ctx) return;
+    const float = selection.copyPixels(ctx, DPR);
+    if (float) selectionClipboard = { canvas: float, rect: { ...selection.rect } };
+  }
+
+  function deleteSelection() {
+    if (!selection || selection.state !== "selected") return;
+    const ctx = activeDrawableCtx();
+    if (!ctx) return;
+    const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    selection.clearRegion(ctx, DPR);
+    const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    history.push({
+      undo: () => {
+        ctx.putImageData(before, 0, 0);
+        bump();
+      },
+      redo: () => {
+        ctx.putImageData(after, 0, 0);
+        bump();
+      },
+    });
+    selection.cancel(); // clear the marquee (no float → onCancel no-ops)
+    bump();
+  }
+
+  function cutSelection() {
+    copySelection();
+    deleteSelection();
+  }
+
+  function pasteSelection(): boolean {
+    if (!selectionClipboard) return false;
+    liftGuard.discard?.(); // drop any in-progress lift before setting up the new float
+    const ctx = activeDrawableCtx();
+    if (!ctx) return false;
+    selCtx = ctx;
+    selBefore = selCtx.getImageData(0, 0, selCtx.canvas.width, selCtx.canvas.height); // for the commit undo
+    const r = selectionClipboard.rect;
+    selection?.pasteFloat(cloneCanvas(selectionClipboard.canvas), {
+      x: r.x + PASTE_OFFSET,
+      y: r.y + PASTE_OFFSET,
+      w: r.w,
+      h: r.h,
+    });
+    appState.tool = "select"; // show the transform gizmo; Enter commits / Esc cancels
+    bump();
+    return true;
+  }
+
   function enterTransform() {
     if (!selection || selection.state !== "selected") return;
     const layer = activeLayer();
@@ -933,6 +1012,10 @@
     let raf = requestAnimationFrame(tick);
 
     selectionActions.enterWarp = enterWarp;
+    selectionActions.copy = copySelection;
+    selectionActions.cut = cutSelection;
+    selectionActions.del = deleteSelection;
+    selectionActions.paste = pasteSelection;
 
     return () => {
       cleanup();
@@ -951,6 +1034,10 @@
       liftGuard.discard = null;
       poseActions.active = () => false;
       selectionActions.enterWarp = null;
+      selectionActions.copy = null;
+      selectionActions.cut = null;
+      selectionActions.del = null;
+      selectionActions.paste = null;
     };
   });
 
@@ -1043,6 +1130,17 @@
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
+  <!-- Floating Paste button: reachable without a keyboard (iPad). Shown when the Select/Lasso tool is
+       active and the pixel clipboard has content; taps paste-as-float (reposition, then Commit). -->
+  {#if selectionClipboard && (appState.tool === "select" || appState.tool === "lasso")}
+    <button
+      class="absolute top-2 left-2 z-20 w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover shadow"
+      title="Paste (Cmd/Ctrl+V)"
+      onclick={() => pasteSelection()}
+    >
+      <ClipboardPaste size={18} />
+    </button>
+  {/if}
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}
@@ -1059,6 +1157,9 @@
     }}
     onSetDeformMode={(m) => selection?.setDeformMode(m)}
     onResetPins={() => selection?.resetPins()}
+    onCopy={copySelection}
+    onCut={cutSelection}
+    onDelete={deleteSelection}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />

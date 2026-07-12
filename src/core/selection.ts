@@ -239,12 +239,8 @@ export class Selection {
     this.drawOverlay();
   }
 
-  /**
-   * Lift pixels from source canvas into a new canvas (using lasso clip if available).
-   * The source canvas is cleared in the lifted region. Returns the lifted canvas.
-   * Caller is responsible for passing the result to beginTransform().
-   */
-  liftPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
+  /** Build a float canvas of the selected region (rect or lasso-clipped). Does NOT modify the source. */
+  copyPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
     if (!this.rect) return null;
     const r = this.rect;
     const px = Math.round(r.x * dpr);
@@ -271,7 +267,17 @@ export class Selection {
       ctx.clip(clipPath);
       ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
       ctx.restore();
+    } else {
+      ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
+    }
+    return cvs;
+  }
 
+  /** Clear the selected region (rect or lasso-clipped) from the source. Does NOT extract. */
+  clearRegion(srcCtx: CanvasRenderingContext2D, dpr: number): void {
+    if (!this.rect) return;
+    const r = this.rect;
+    if (this.lassoPath) {
       srcCtx.save();
       const srcClip = new Path2D();
       for (let i = 0; i < this.lassoPoints.length; i++) {
@@ -287,10 +293,15 @@ export class Selection {
       srcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       srcCtx.restore();
     } else {
-      ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
       srcCtx.clearRect(r.x, r.y, r.w, r.h);
     }
+  }
 
+  /** Lift the selected pixels off the layer: extract to a float AND clear the source. */
+  liftPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
+    const cvs = this.copyPixels(srcCtx, dpr);
+    if (!cvs) return null;
+    this.clearRegion(srcCtx, dpr);
     return cvs;
   }
 
@@ -301,6 +312,16 @@ export class Selection {
     this.state = "transforming";
     this.drawOverlay();
     this.onStateChange?.();
+  }
+
+  /** Enter a floating transform from externally-supplied pixels (paste): position at `rect` as a
+   *  rectangular float and go to "transforming" (beginTransform resets the matrix to identity). */
+  pasteFloat(pixels: HTMLCanvasElement, rect: SelectionRect): void {
+    this.rect = { ...rect };
+    this.mode = "rect";
+    this.lassoPath = null;
+    this.lassoPoints = [];
+    this.beginTransform(pixels);
   }
 
   /**

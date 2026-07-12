@@ -783,10 +783,14 @@ export function clearPlayRange() {
  */
 export const selectionRef: { current: Selection | null } = { current: null };
 
-/** Canvas-owned selection actions reachable from App keyboard shortcuts (W/M warp). */
-export const selectionActions: { enterWarp: ((rows: number, cols: number) => void) | null } = {
-  enterWarp: null,
-};
+/** Canvas-owned selection actions reachable from App keyboard shortcuts + the action bar. */
+export const selectionActions: {
+  enterWarp: ((rows: number, cols: number) => void) | null;
+  copy: (() => void) | null;
+  cut: (() => void) | null;
+  del: (() => void) | null;
+  paste: (() => boolean) | null;
+} = { enterWarp: null, copy: null, cut: null, del: null, paste: null };
 
 /** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
 export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
