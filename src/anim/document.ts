@@ -61,6 +61,7 @@ export interface ReferenceLayer {
   visible: boolean;
   opacity: number; // 0..100
   offsetFrames: number; // video time offset in frames; ignored for images
+  speed: number; // video playback speed multiplier (1 = real-time; 2 = 2× faster, 0.5 = half); video-only
   groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
@@ -324,6 +325,7 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
     visible: true,
     opacity: 60,
     offsetFrames: 0,
+    speed: 1,
     groupId: null,
     media,
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },

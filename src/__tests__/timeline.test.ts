@@ -264,6 +264,7 @@ function refLayerFixture(id: number): ReferenceLayer {
     visible: true,
     opacity: 60,
     offsetFrames: 0,
+    speed: 1,
     groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
