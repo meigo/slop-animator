@@ -777,7 +777,9 @@ export const playbackController = new Playback({
       for (const l of state.project.layers) {
         if (l.kind !== "ref" || l.media.type !== "video") continue;
         const el = l.media.el;
-        el.currentTime = (state.playhead + l.offsetFrames) / state.project.fps; // seek onto the frame, then run
+        const spd = Number.isFinite(l.speed) && l.speed > 0 ? l.speed : 1;
+        el.playbackRate = Math.max(0.0625, Math.min(16, spd));
+        el.currentTime = (l.offsetFrames + state.playhead * spd) / state.project.fps;
         void el.play().catch(() => {});
       }
     } else {
