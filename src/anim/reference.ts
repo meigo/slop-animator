@@ -50,15 +50,35 @@ export async function loadVideoLayer(file: File, onSeeked: () => void): Promise<
   return createReferenceLayer(await loadVideoMedia(file, onSeeked), file.name);
 }
 
-/** Seek every video reference layer to the time matching `frame` at `fps`. */
-export function syncReferenceVideos(project: Project, frame: number, fps: number): void {
+const SEEK_EPSILON = 1e-3;
+const PLAY_DRIFT = 0.3; // s — while playing, only re-seek when the video drifts more than this
+//     (also catches the end→start jump on loop-wrap)
+
+/**
+ * Align each video reference to the playhead. Paused (scrubbing) → exact seek. Playing → let the
+ * element run and only re-seek on large drift, and resume play() if it paused (ended / joined
+ * mid-playback). `onSeeked` (set at load) recomposites when a seek lands.
+ */
+export function syncReferenceVideos(
+  project: Project,
+  frame: number,
+  fps: number,
+  playing = false,
+): void {
   for (const layer of project.layers) {
     if (layer.kind !== "ref" || layer.media.type !== "video") continue;
     const vid = layer.media.el;
-    const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0; // guard a transiently-empty input
+    const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0;
     const wanted = (frame + off) / fps;
     const dur = isFinite(vid.duration) ? vid.duration : wanted;
     const clamped = Math.max(0, Math.min(dur, wanted));
-    if (Math.abs(vid.currentTime - clamped) > 1e-3) vid.currentTime = clamped;
+    if (!playing) {
+      if (Math.abs(vid.currentTime - clamped) > SEEK_EPSILON) vid.currentTime = clamped;
+    } else if (vid.paused) {
+      vid.currentTime = clamped;
+      void vid.play().catch(() => {});
+    } else if (Math.abs(vid.currentTime - clamped) > PLAY_DRIFT) {
+      vid.currentTime = clamped;
+    }
   }
 }
