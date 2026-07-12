@@ -3,11 +3,14 @@ import type { Project } from "../anim/document";
 import { syncReferenceVideos } from "../anim/reference";
 
 // Fake <video>: mutable currentTime/paused/duration + a play() spy.
-function fakeVid(init: Partial<{ currentTime: number; paused: boolean; duration: number }> = {}) {
+function fakeVid(
+  init: Partial<{ currentTime: number; paused: boolean; duration: number; seeking: boolean }> = {},
+) {
   return {
     currentTime: init.currentTime ?? 0,
     paused: init.paused ?? true,
     duration: init.duration ?? 10,
+    seeking: init.seeking ?? false,
     playCount: 0,
     play() {
       this.playCount++;
@@ -80,5 +83,18 @@ describe("syncReferenceVideos", () => {
       offsetFrames: 0,
     } as unknown;
     expect(() => syncReferenceVideos(proj([draw, miss]), 5, 12, true)).not.toThrow();
+  });
+
+  it("does not pile up seeks: skips a scrub seek while one is already in flight", () => {
+    const v = fakeVid({ currentTime: 5, seeking: true }); // wants 1.0 but mid-seek
+    syncReferenceVideos(proj([vidLayer(v)]), 12, 12, false);
+    expect(v.currentTime).toBe(5); // unchanged — no new seek issued (coalesces to latest on seeked)
+  });
+
+  it("also skips a drifting playing element while it's mid-seek", () => {
+    const v = fakeVid({ currentTime: 5, paused: false, seeking: true });
+    syncReferenceVideos(proj([vidLayer(v)]), 12, 12, true);
+    expect(v.currentTime).toBe(5);
+    expect(v.playCount).toBe(0);
   });
 });

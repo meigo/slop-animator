@@ -82,6 +82,10 @@ export function syncReferenceVideos(
   for (const layer of project.layers) {
     if (layer.kind !== "ref" || layer.media.type !== "video") continue;
     const vid = layer.media.el;
+    // Coalesce: don't issue a new seek while one is already in flight — it would pile up and lag
+    // behind a fast scrub. The seeked event bumps the version, so the next tick re-syncs to the
+    // *latest* playhead, dropping the intermediate targets.
+    if (vid.seeking) continue;
     const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0;
     const wanted = (frame + off) / fps;
     const dur = isFinite(vid.duration) ? vid.duration : wanted;
