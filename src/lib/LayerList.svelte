@@ -301,6 +301,17 @@
             onclick={(e) => e.stopPropagation()}
             title="Video time offset (frames)"
           />
+          <input
+            class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
+            type="number"
+            step="0.1"
+            min="0.1"
+            max="8"
+            bind:value={layer.speed}
+            oninput={bump}
+            onclick={(e) => e.stopPropagation()}
+            title="Playback speed (×)"
+          />
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button

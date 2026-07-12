@@ -96,6 +96,7 @@ describe("projectToJson", () => {
           visible: true,
           opacity: 60,
           offsetFrames: 0,
+          speed: 1,
           groupId: null,
           was: "image",
           transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
