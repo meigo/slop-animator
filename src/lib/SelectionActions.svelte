@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Move, SquareDashed, Grid3x3, Check, X, Copy, Scissors, Trash2 } from "@lucide/svelte";
+  import { Move, SquareDashed, Grid3x3, Check, X } from "@lucide/svelte";
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
   import { computeAnchor } from "../core/selection-anchor";
@@ -19,9 +19,6 @@
     onDensify,
     onSetDeformMode,
     onResetPins,
-    onCopy,
-    onCut,
-    onDelete,
   }: {
     getSelection: () => Selection | null;
     getViewport: () => Viewport | null;
@@ -34,9 +31,6 @@
     onDensify: (delta: number) => void;
     onSetDeformMode: (m: "ffd" | "rigid") => void;
     onResetPins: () => void;
-    onCopy: () => void;
-    onCut: () => void;
-    onDelete: () => void;
   } = $props();
 
   const MARGIN = 12;
@@ -113,27 +107,6 @@
       title="Free transform"
     >
       <Move size={18} />
-    </button>
-    <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onCopy)}
-      title="Copy (Cmd/Ctrl+C)"
-    >
-      <Copy size={18} />
-    </button>
-    <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onCut)}
-      title="Cut (Cmd/Ctrl+X)"
-    >
-      <Scissors size={18} />
-    </button>
-    <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onDelete)}
-      title="Delete (Del)"
-    >
-      <Trash2 size={18} />
     </button>
   {/if}
   <button

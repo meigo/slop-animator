@@ -3,7 +3,6 @@
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
-  import { ClipboardPaste } from "@lucide/svelte";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
   import { renderFrame } from "../anim/render";
@@ -629,7 +628,10 @@
     };
 
     selection.onChange = () => recomposite();
-    selection.onStateChange = () => recomposite();
+    selection.onStateChange = () => {
+      recomposite();
+      appState.selectionActive = !!selection && selection.active && !selection.hasFloating;
+    };
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
@@ -697,7 +699,10 @@
     const ctx = activeResolvedCtx();
     if (!ctx) return;
     const float = selection.copyPixels(ctx, DPR);
-    if (float) selectionClipboard = { canvas: float, rect: { ...selection.rect } };
+    if (float) {
+      selectionClipboard = { canvas: float, rect: { ...selection.rect } };
+      appState.hasPixelClipboard = true;
+    }
   }
 
   function deleteSelection() {
@@ -1038,6 +1043,7 @@
       selectionActions.cut = null;
       selectionActions.del = null;
       selectionActions.paste = null;
+      appState.selectionActive = false;
     };
   });
 
@@ -1130,17 +1136,6 @@
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
     <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
-  <!-- Floating Paste button: reachable without a keyboard (iPad). Shown when the Select/Lasso tool is
-       active and the pixel clipboard has content; taps paste-as-float (reposition, then Commit). -->
-  {#if selectionClipboard && (appState.tool === "select" || appState.tool === "lasso")}
-    <button
-      class="absolute top-2 left-2 z-20 w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover shadow"
-      title="Paste (Cmd/Ctrl+V)"
-      onclick={() => pasteSelection()}
-    >
-      <ClipboardPaste size={18} />
-    </button>
-  {/if}
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}
@@ -1157,9 +1152,6 @@
     }}
     onSetDeformMode={(m) => selection?.setDeformMode(m)}
     onResetPins={() => selection?.resetPins()}
-    onCopy={copySelection}
-    onCut={cutSelection}
-    onDelete={deleteSelection}
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />

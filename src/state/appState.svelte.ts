@@ -96,6 +96,8 @@ interface AnimState {
   timelineHeight: number; // px height of the resizable timeline panel
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
+  selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
+  hasPixelClipboard: boolean; // the pixel selection clipboard has content (drives ToolOptions Paste)
 }
 
 const project = createProject();
@@ -150,6 +152,8 @@ export const state: AnimState = $state({
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   timelineSelection: null,
   cellClipboard: null,
+  selectionActive: false,
+  hasPixelClipboard: false,
 });
 
 export const history = new History();
