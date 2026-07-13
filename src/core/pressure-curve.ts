@@ -101,6 +101,7 @@ export function createCurveEditor(
   cvs.style.width = FULL + "px";
   cvs.style.height = FULL + "px";
   cvs.style.cursor = "default";
+  cvs.style.touchAction = "none"; // iPad: a Pencil/finger drag moves a control point, not scroll the page
   const c = cvs.getContext("2d")!;
   c.scale(2, 2);
 
