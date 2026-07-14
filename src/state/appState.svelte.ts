@@ -344,7 +344,9 @@ export function removeLayer(id: number) {
   const drawingCount = layers.filter(isDrawingLayer).length;
   if (isDrawingLayer(layers[idx]) && drawingCount <= 1) return; // keep one drawing layer
   commitStructural(() => {
+    const removed = layers[idx];
     layers.splice(idx, 1);
+    if (removed.kind === "ref" && removed.media.type === "video") removed.media.el.pause();
     if (state.activeLayerId === id) {
       const firstDrawing = layers.find(isDrawingLayer);
       if (firstDrawing) setActiveLayer(firstDrawing.id);

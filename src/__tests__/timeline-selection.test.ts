@@ -26,6 +26,7 @@ function refLayer(id: number): ReferenceLayer {
     opacity: 100,
     offsetFrames: 0,
     speed: 1,
+    audioEnabled: false,
     groupId: null,
     media: { type: "missing", was: "image", name: "x" },
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },

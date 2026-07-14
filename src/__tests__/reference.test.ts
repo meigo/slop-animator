@@ -12,6 +12,7 @@ function fakeVid(
     duration: init.duration ?? 10,
     seeking: init.seeking ?? false,
     playbackRate: 1,
+    muted: true,
     playCount: 0,
     play() {
       this.playCount++;
@@ -21,13 +22,14 @@ function fakeVid(
   };
 }
 type FakeVid = ReturnType<typeof fakeVid>;
-function vidLayer(el: FakeVid, offsetFrames = 0, speed = 1) {
+function vidLayer(el: FakeVid, offsetFrames = 0, speed = 1, audioEnabled = false) {
   return {
     kind: "ref",
     id: 1,
     media: { type: "video", el },
     offsetFrames,
     speed,
+    audioEnabled,
   } as unknown as never;
 }
 function proj(layers: unknown[]): Project {
@@ -143,5 +145,48 @@ describe("syncReferenceVideos", () => {
     const b = fakeVid();
     syncReferenceVideos(proj([vidLayer(b, 0, -3)]), 12, 12, false); // negative → 1
     expect(b.currentTime).toBe(1);
+  });
+
+  it("audioEnabled true → unmutes the element", () => {
+    const v = fakeVid(); // muted: true initially
+    syncReferenceVideos(proj([vidLayer(v, 0, 1, true)]), 0, 12, false);
+    expect(v.muted).toBe(false);
+  });
+
+  it("audioEnabled false → keeps the element muted", () => {
+    const v = fakeVid();
+    v.muted = false; // prove sync re-mutes it
+    syncReferenceVideos(proj([vidLayer(v, 0, 1, false)]), 0, 12, false);
+    expect(v.muted).toBe(true);
+  });
+
+  it("missing audioEnabled → treated as muted", () => {
+    const v = fakeVid();
+    v.muted = false;
+    // layer without audioEnabled (simulates old in-memory/project data)
+    const layer = {
+      kind: "ref",
+      id: 1,
+      media: { type: "video", el: v },
+      offsetFrames: 0,
+      speed: 1,
+    };
+    syncReferenceVideos(proj([layer as unknown as never]), 0, 12, false);
+    expect(v.muted).toBe(true);
+  });
+
+  it("toggling audioEnabled between syncs flips muted", () => {
+    const v = fakeVid();
+    syncReferenceVideos(proj([vidLayer(v, 0, 1, true)]), 0, 12, false);
+    expect(v.muted).toBe(false);
+    syncReferenceVideos(proj([vidLayer(v, 0, 1, false)]), 0, 12, false);
+    expect(v.muted).toBe(true);
+  });
+
+  it("mute enforcement does not disturb currentTime", () => {
+    const v = fakeVid();
+    syncReferenceVideos(proj([vidLayer(v, 0, 1, true)]), 12, 12, false); // wanted 1.0s
+    expect(v.currentTime).toBe(1);
+    expect(v.muted).toBe(false);
   });
 });

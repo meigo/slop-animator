@@ -20,6 +20,8 @@
     ImageDown,
     Stamp,
     RotateCcw,
+    Volume2,
+    VolumeX,
   } from "@lucide/svelte";
   import {
     state as appState,
@@ -241,6 +243,22 @@
       >
         {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
       </button>
+      {#if layer.kind === "ref" && layer.media.type === "video"}
+        <button
+          class="text-text-secondary"
+          onclick={(e) => {
+            e.stopPropagation();
+            layer.audioEnabled = !layer.audioEnabled;
+            if (layer.media.type === "video") layer.media.el.muted = !layer.audioEnabled;
+            bump();
+          }}
+          title={layer.audioEnabled
+            ? "Audio on — click to mute"
+            : "Audio off — click to play video sound"}
+        >
+          {#if layer.audioEnabled}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
+        </button>
+      {/if}
       {#if layer.kind === "ref"}
         {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
         <span
