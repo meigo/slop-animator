@@ -93,6 +93,8 @@ export function syncReferenceVideos(
     const clamped = Math.max(0, Math.min(dur, wanted));
     const rate = Math.max(0.0625, Math.min(16, spd));
     if (vid.playbackRate !== rate) vid.playbackRate = rate;
+    const wantMuted = !(layer.audioEnabled ?? false);
+    if (vid.muted !== wantMuted) vid.muted = wantMuted;
     if (!playing) {
       if (Math.abs(vid.currentTime - clamped) > SEEK_EPSILON) vid.currentTime = clamped;
     } else if (vid.paused) {
