@@ -312,6 +312,21 @@
             onclick={(e) => e.stopPropagation()}
             title="Playback speed (×)"
           />
+          <button
+            class="layer-btn"
+            style="width:auto;padding:2px 6px;font-size:11px"
+            onclick={(e) => {
+              e.stopPropagation();
+              layer.audioEnabled = !layer.audioEnabled;
+              if (layer.media.type === "video") layer.media.el.muted = !layer.audioEnabled;
+              bump();
+            }}
+            title={layer.audioEnabled
+              ? "Audio on — click to mute"
+              : "Audio off — click to play video sound"}
+          >
+            {layer.audioEnabled ? "🔊" : "🔇"}
+          </button>
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button

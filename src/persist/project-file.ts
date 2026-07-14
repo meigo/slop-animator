@@ -43,6 +43,7 @@ export interface ReferenceJson {
   opacity: number;
   offsetFrames: number;
   speed?: number;
+  audioEnabled?: boolean;
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
@@ -153,6 +154,7 @@ export function projectToJson(project: Project): ProjectJson {
         opacity: l.opacity,
         offsetFrames: l.offsetFrames,
         speed: l.speed,
+        audioEnabled: l.audioEnabled,
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
@@ -275,6 +277,7 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
       opacity: rj.opacity,
       offsetFrames: rj.offsetFrames,
       speed: rj.speed ?? 1,
+      audioEnabled: rj.audioEnabled ?? false,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
