@@ -91,6 +91,11 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
    Any state change that re-targets/destroys that canvas must bank or discard the lift first via the
    `Canvas` effects (`bankActiveEdits` on layer/frame switch) or the **`liftGuard.discard`** hook (call it
    before resize / replaceProject / set-hold / delete-frame, and route undo/redo through `undo()`/`redo()`).
+10. **Any draggable surface needs `touch-action: none`** (element style or CSS), or on iPad the browser
+    hijacks a Pencil/finger drag as a scroll/pan and cancels the pointer stream — the drag silently does
+    nothing. Pointer events + `setPointerCapture` are NOT enough on their own. The canvas, timeline rows,
+    ruler, resize grip all set it; the pressure-curve editor lacked it and didn't drag on iPad until fixed
+    (`pressure-curve.ts`, `cvs.style.touchAction = "none"`). Add it to every new drag control.
 
 ## Current state (all shipped & merged to `main`)
 
