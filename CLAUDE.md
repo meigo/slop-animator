@@ -244,3 +244,28 @@ lazy preload (`loadeddata`→repaint). **Still worth a pass:** playback smoothne
 memory not climbing across repeated import→relink. Deferred: **#5 WebCodecs `VideoDecoder`** frame-exact
 decode (big; iPad-Safari support is the blocker → would need a fallback). Spec/plan:
 `…/2026-07-12-video-reference-perf*.md`.
+
+**Per-video reference audio (unmute) + free-run playback (2026-07-14, merged & pushed):** a video
+reference can play **its own soundtrack** during playback via a per-layer `ReferenceLayer.audioEnabled`
+flag (default **off**). No separate audio track / no audio engine — `syncReferenceVideos` enforces
+`vid.muted = !(audioEnabled ?? false)` (guarded, node-unit-tested), so speed-sync is **free** (same
+element already at `playbackRate = clamp(speed)` → 2× plays higher-pitched, in sync). Per-video, and
+**independent of layer visibility** (user's choice: hidden + 🔊 = audio-only) and of the project `audio`
+track. Toggle is a 🔊/🔇 (`Volume2`/`VolumeX`) icon **beside the visibility eye** in `LayerList` (video
+refs only). Persisted (`audioEnabled ?? false` on load; video bytes still re-link, flag re-applies via
+sync). `removeLayer` now `pause()`s a removed video ref (audible-leak fix; `pause()` only — undo shares
+the media object, gotcha #8). **Follow-up fix (same day):** sped-up audio stuttered because every
+corrective re-seek flushes the element's audio pipeline (worse at high `playbackRate`, where the decoder
+falls behind the frame clock). Fixed by making video refs **free-run** during playback — the drift
+re-seek is now **directional** (`vid.currentTime - clamped > PLAY_DRIFT`), so it fires **only when the
+element runs AHEAD** (loop-wrap / backward jump), never on forward drift. **This supersedes the
+2026-07-12 ">0.3s drift" re-seek behavior above.** Trade: a video ref's frame may drift slightly per
+pass, re-locking each loop — accepted for smooth audio. Sync/mute/free-run logic is unit-tested
+(`reference.test.ts`, now 20 cases). **The user browser-confirmed** audio plays on speed-up and the
+stutter is gone ("all good"). **Still owed a pass:** scrub silence; toggle-off mid-playback; 0.5× lower
+pitch + sync; hidden+audio audio-only; two videos with audio at once; save/reload persistence + old-project
+audio-off back-compat; delete-during-playback goes silent; loop re-sync at the wrap; iPad. Deferred (per
+spec Non-goals): per-layer volume, audio-during-scrub, waveform, **muxing video-element audio into export**
+(export still handles only the project `audio` track), and **extracting the video's audio into an editable
+`project.audio` track with its own speed** (the heavier "independent audio" feature). Spec/plan:
+`…/2026-07-14-video-reference-audio*.md`.
