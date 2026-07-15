@@ -69,10 +69,17 @@ describe("syncReferenceVideos", () => {
     expect(v.playCount).toBe(0);
   });
 
-  it("playing + drift > 0.3: re-seeks", () => {
+  it("playing + element AHEAD > 0.3 (loop-wrap): re-seeks back", () => {
     const v = fakeVid({ currentTime: 5, paused: false });
-    syncReferenceVideos(proj([vidLayer(v)]), 12, 12, true); // wanted 1.0, drift 4 > 0.3
+    syncReferenceVideos(proj([vidLayer(v)]), 12, 12, true); // wanted 1.0; element 4s ahead → wrap → seek
     expect(v.currentTime).toBe(1);
+  });
+
+  it("playing + element BEHIND (forward drift): does NOT seek — free-runs", () => {
+    const v = fakeVid({ currentTime: 1, paused: false });
+    syncReferenceVideos(proj([vidLayer(v)]), 60, 12, true); // wanted 5.0; element 4s behind → let it run
+    expect(v.currentTime).toBe(1); // no corrective seek; smooth audio
+    expect(v.playCount).toBe(0);
   });
 
   it("playing + paused element: seeks and resumes play()", () => {
