@@ -1,6 +1,12 @@
 # 2D Mesh-Deform Tool — Notes (idea stage)
 
-**Status:** Idea — no spec, no plan. Captured for future brainstorming.
+> **Superseded — shipped.** This idea-stage note (and its "prototype FFD first, then upgrade" plan +
+> open questions) has been fully realized: the FFD **Deform tool**, **Rigid/MLS** mode, and the
+> geodesic-MLS **Pose tool** all shipped 2026-06-26/27. See `2026-06-26-deform-tool-ffd-design.md`,
+> `2026-06-26-rigid-deform-mls-design.md`, and `2026-06-26-arap-*` / `2026-06-27-pose-*`. Kept as the
+> original idea capture / historical record. (Still deferred, per CLAUDE.md roadmap: true Igarashi ARAP.)
+
+**Status:** Idea — no spec, no plan. Captured for future brainstorming. — SUPERSEDED (shipped; see banner)
 **Date:** 2026-06-25
 
 ## What

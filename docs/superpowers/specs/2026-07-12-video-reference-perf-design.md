@@ -1,7 +1,15 @@
 # Video reference memory + playback pass — design
 
+> **Superseded 2026-07-14 (playback branch only):** the playing-branch re-seek described below as
+> bidirectional (`|currentTime - wanted| > DRIFT`, "re-seek on drift > 0.3s") is now **directional /
+> loop-wrap-only** — video refs **free-run** during playback and only re-seek when the element runs
+> *ahead* of the target (`currentTime - clamped > PLAY_DRIFT`), never on forward drift. This gives
+> clean audio for unmuted refs (every seek flushes the element's audio). The memory/release,
+> `preload=metadata`, and paused/scrub-exact-seek parts of this spec are unchanged. See
+> `2026-07-14-video-reference-audio-design.md`.
+
 **Date:** 2026-07-12
-**Status:** Design (approved for planning)
+**Status:** Design (approved for planning) — playback branch later superseded (see banner)
 **Feature:** Reduce the memory and playback cost of video reference layers — (1) free blob URLs +
 decoder when media becomes unreachable, (2) lazy `preload="metadata"`, (3) `play()` the video during
 playback instead of seeking every frame.

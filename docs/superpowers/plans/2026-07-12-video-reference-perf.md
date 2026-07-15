@@ -1,5 +1,11 @@
 # Video Reference Perf Implementation Plan
 
+> **Superseded 2026-07-14 (playing-branch drift only):** the Task 1 drift branch shown here as
+> `Math.abs(vid.currentTime - clamped) > PLAY_DRIFT` is now **directional** —
+> `vid.currentTime - clamped > PLAY_DRIFT` (re-seek only when the element is *ahead* / loop-wrap;
+> free-run on forward drift, for clean unmuted-ref audio). Everything else in this plan is current.
+> See `2026-07-14-video-reference-audio.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Free video/image blob URLs + decoder when unreachable, lazy `preload="metadata"`, and `play()` the video during playback (drift-corrected) instead of seeking every frame.
