@@ -65,13 +65,16 @@ export function releaseReferenceMedia(media: ReferenceMedia): void {
 }
 
 const SEEK_EPSILON = 1e-3;
-const PLAY_DRIFT = 0.3; // s — while playing, only re-seek when the video drifts more than this
-//     (also catches the end→start jump on loop-wrap)
+const PLAY_DRIFT = 0.3; // s — while playing, re-seek only when the element runs this far AHEAD of the
+//     target, i.e. the playhead jumped backward (loop-wrap). Forward drift is NOT corrected — the
+//     element free-runs so its audio plays cleanly (every seek flushes the audio → stutter, worst
+//     when sped up: playbackRate outruns the decoder, so periodic drift-correction chops the sound).
 
 /**
  * Align each video reference to the playhead. Paused (scrubbing) → exact seek. Playing → let the
- * element run and only re-seek on large drift, and resume play() if it paused (ended / joined
- * mid-playback). `onSeeked` (set at load) recomposites when a seek lands.
+ * element FREE-RUN (no forward-drift correction, for clean audio) and only re-seek when it runs
+ * ahead of the target (loop-wrap), or resume play() if it paused (ended / joined mid-playback).
+ * `onSeeked` (set at load) recomposites when a seek lands.
  */
 export function syncReferenceVideos(
   project: Project,
@@ -100,7 +103,9 @@ export function syncReferenceVideos(
     } else if (vid.paused) {
       vid.currentTime = clamped;
       void vid.play().catch(() => {});
-    } else if (Math.abs(vid.currentTime - clamped) > PLAY_DRIFT) {
+    } else if (vid.currentTime - clamped > PLAY_DRIFT) {
+      // element is well AHEAD of the target → the playhead wrapped backward; re-lock. Otherwise
+      // (element behind, i.e. forward drift) let it free-run so the audio stays smooth.
       vid.currentTime = clamped;
     }
   }
