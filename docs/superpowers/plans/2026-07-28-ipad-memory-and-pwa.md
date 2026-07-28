@@ -634,7 +634,16 @@ storage bucket: existing autosave does not carry over (save to Files, then Open 
 app). **Owed a pass:** the scale change is a one-line diff with canvas-wide effect and no unit test
 can cover it — drawing/brush-cursor width, fill, selection+lasso lift/cut/copy/paste, deform, pose
 (incl. the reach dial), the transform gizmo at all three scopes, onion skins, the WebGL boil path,
-export dimensions, and opening a 2×-era project all need eyeballing. Deferred: incremental
+export dimensions, and opening a 2×-era project all need eyeballing. **Three settings are denominated
+in device px, so their *logical* effect doubles on a device that was previously 2× — all three are the
+intended consequence of a device-independent scale (they now match what a 1× display always did), but
+none is caught by the checks above, so eyeball them explicitly:** line-boil `amount` (default 1,
+persisted per project — the wobble is twice as wide in logical terms), fill `expand` (default 2 —
+twice the reach), and `POSE_SPACING` (16 device px — the pose mesh is ~4× coarser, and faster). Also
+newly reachable: `evenDimensions` rounds **down**, so a project with an **odd** width or height now
+loses 1 px in **video** export (PNG sequence is unaffected); this could not fire at 2×. Unrelated
+oddity worth knowing: `pressure-curve.ts` hardcodes its own 2× raster for the curve widget, so it is
+now the only 2× surface in the app. Deferred: incremental
 (dirty-cell-only) autosave encoding, and LRU cell eviction — revisit only if measurement shows the 4×
 cut wasn't enough. Spec/plan: `…/2026-07-28-ipad-memory-and-pwa*.md`.
 ```
