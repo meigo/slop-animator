@@ -283,13 +283,13 @@ gated on `autosaveReady` (set only after startup restore resolves, because an un
 mid-restore would overwrite the saved project with the blank startup document) and `autosaveDirty`
 (so unchanged projects are not re-encoded) — the `autosaveReady` gate must not be removed. Plus a PWA
 manifest + iOS meta tags + generated icons (`tools/make-icons.mjs`) for Add to Home Screen —
-manifest-only, no service worker, so **no offline launch**. **Safe-area caveat:** `viewport-fit=cover`
-makes every `env(safe-area-inset-*)` non-zero — including the **bottom** — while
-`apple-mobile-web-app-status-bar-style: black` only reserves the **top**. The app does no safe-area
-padding, so on a Face-ID iPad the bottom-pinned status bar / playbar may sit under the home-indicator
-strip. Check this first on a Face-ID device; the fix is either dropping `viewport-fit=cover` (it buys
-nothing with an opaque status bar) or adding `padding-bottom: env(safe-area-inset-bottom)` to the root
-shell. Note an installed web app has its own
+manifest-only, no service worker, so **no offline launch**. **`viewport-fit=cover` is deliberately
+NOT set** (review caught it, spec D11a): it makes every `env(safe-area-inset-*)` non-zero — including
+the **bottom**, the home-indicator strip on Face-ID iPads — while
+`apple-mobile-web-app-status-bar-style: black` reserves only the **top**. Since the app does no
+safe-area padding and pins its status bar and playbar to the bottom, `cover` would push them under the
+swipe strip while buying nothing against an opaque bar. Add it back only together with
+`env(safe-area-inset-*)` handling. Note an installed web app has its own
 storage bucket: existing autosave does not carry over (save to Files, then Open inside the installed
 app). **Owed a pass:** the scale change is a one-line diff with canvas-wide effect and no unit test
 can cover it — drawing/brush-cursor width, fill, selection+lasso lift/cut/copy/paste, deform, pose

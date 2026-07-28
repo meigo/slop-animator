@@ -49,6 +49,7 @@ falls under WebKit's eviction of storage for sites not visited in ~7 days.
 | D9  | Incremental encoding         | **Deferred.** Only re-encoding dirty cells needs a dirty flag threaded through every mutation site. Revisit after measuring with the 4× reduction in place.                                                                  |
 | D10 | Offline                      | **Manifest-only, no service worker.** Gets the standalone window and storage benefits with zero dependencies. Offline launch is additive later via `vite-plugin-pwa`.                                                        |
 | D11 | Status bar style             | **Opaque** (`black`), so iOS reserves the status bar and no `env(safe-area-inset-*)` layout work is needed. The translucent style reclaims ~20px but adds iPad-only inset risk.                                              |
+| D11a | `viewport-fit` (revised during review) | **Omitted.** D11 originally paired the opaque status bar with `viewport-fit=cover`, reasoning only about the top. Review caught that `cover` makes **every** inset non-zero — including the **bottom**, the home-indicator strip on Face-ID iPads — while the opaque status bar reserves only the top. The app does no safe-area padding and pins its status bar and playbar to the bottom, so `cover` risks putting them under the swipe strip while buying nothing with an opaque bar. Add it back only together with `env(safe-area-inset-*)` handling. |
 | D12 | Icons                        | **Generated**, not hand-drawn: a committed Node script rasterizes a simple ink-stroke mark directly to PNG. No new dependency (no rasterizer is installed and none is added).                                                |
 | D13 | Storage bucket migration     | **Documented, not coded.** An installed web app gets its own storage bucket; existing autosave will not appear inside it. The user saves to Files, then Opens once inside the installed app.                                 |
 
@@ -100,7 +101,8 @@ strictly-better-than-today guarantee.
 
 ### Part 3 — PWA metadata
 
-**`index.html`** — the existing viewport meta gains `viewport-fit=cover`; new tags:
+**`index.html`** — the existing viewport meta is left **unchanged** (see D11a — `viewport-fit=cover`
+was dropped during review); new tags:
 
 ```html
 <link rel="manifest" href="/manifest.webmanifest" />
@@ -211,7 +213,7 @@ wired into the build.
 | `src/state/appState.svelte.ts`      | `DPR = 1` + replacement comment                               |
 | `src/persist/project-file.ts`       | frame PNG zip entries at `level: 0`                           |
 | `src/App.svelte`                    | flush autosave on `pagehide` / `visibilitychange → hidden`    |
-| `index.html`                        | `viewport-fit=cover` + manifest / apple-touch / meta tags     |
+| `index.html`                        | manifest / apple-touch / iOS meta tags (viewport meta unchanged — D11a) |
 | `public/manifest.webmanifest`       | new                                                           |
 | `public/icon-180.png`               | new (generated, committed)                                    |
 | `public/icon-192.png`               | new (generated, committed)                                    |
