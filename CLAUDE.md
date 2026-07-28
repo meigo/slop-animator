@@ -269,3 +269,37 @@ spec Non-goals): per-layer volume, audio-during-scrub, waveform, **muxing video-
 (export still handles only the project `audio` track), and **extracting the video's audio into an editable
 `project.audio` track with its own speed** (the heavier "independent audio" feature). Spec/plan:
 `…/2026-07-14-video-reference-audio*.md`.
+
+**1× document scale + Home Screen install (2026-07-28):** `DPR` is now the literal **1**, not
+`devicePixelRatio` — cells, display/scratch canvases, hit-testing and export all render at document
+resolution. On iPad that is **4× less RAM per key cell** (8.3 MB vs 33.2 MB at 1920×1080) and 4× less
+autosave PNG encode work. **Export is now device-independent**: a 1920×1080 project exports
+1920×1080 everywhere, where it previously produced 4K from a 2× display. Old projects downsample
+once on open (the save format is scale-agnostic) — **one-way**, so keep a copy of anything whose
+original pixels matter. The ~60 `* DPR` call sites were deliberately left in place (correct at 1).
+Also: frame PNGs are now stored in the zip at level 0 (no wasted re-DEFLATE), and autosave flushes on
+`pagehide`/`visibilitychange` so a killed tab doesn't cost the 3s debounce window. Plus a PWA
+manifest + iOS meta tags + generated icons (`tools/make-icons.mjs`) for Add to Home Screen —
+manifest-only, no service worker, so **no offline launch**. **Safe-area caveat:** `viewport-fit=cover`
+makes every `env(safe-area-inset-*)` non-zero — including the **bottom** — while
+`apple-mobile-web-app-status-bar-style: black` only reserves the **top**. The app does no safe-area
+padding, so on a Face-ID iPad the bottom-pinned status bar / playbar may sit under the home-indicator
+strip. Check this first on a Face-ID device; the fix is either dropping `viewport-fit=cover` (it buys
+nothing with an opaque status bar) or adding `padding-bottom: env(safe-area-inset-bottom)` to the root
+shell. Note an installed web app has its own
+storage bucket: existing autosave does not carry over (save to Files, then Open inside the installed
+app). **Owed a pass:** the scale change is a one-line diff with canvas-wide effect and no unit test
+can cover it — drawing/brush-cursor width, fill, selection+lasso lift/cut/copy/paste, deform, pose
+(incl. the reach dial), the transform gizmo at all three scopes, onion skins, the WebGL boil path,
+export dimensions, and opening a 2×-era project all need eyeballing. **Three settings are denominated
+in device px, so their _logical_ effect doubles on a device that was previously 2× — all three are the
+intended consequence of a device-independent scale (they now match what a 1× display always did), but
+none is caught by the checks above, so eyeball them explicitly:** line-boil `amount` (default 1,
+persisted per project — the wobble is twice as wide in logical terms), fill `expand` (default 2 —
+twice the reach), and `POSE_SPACING` (16 device px — the pose mesh is ~4× coarser, and faster). Also
+newly reachable: `evenDimensions` rounds **down**, so a project with an **odd** width or height now
+loses 1 px in **video** export (PNG sequence is unaffected); this could not fire at 2×. Unrelated
+oddity worth knowing: `pressure-curve.ts` hardcodes its own 2× raster for the curve widget, so it is
+now the only 2× surface in the app. Deferred: incremental
+(dirty-cell-only) autosave encoding, and LRU cell eviction — revisit only if measurement shows the 4×
+cut wasn't enough. Spec/plan: `…/2026-07-28-ipad-memory-and-pwa*.md`.
