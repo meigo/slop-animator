@@ -186,6 +186,26 @@
     }, 3000);
   });
 
+  // A backgrounded tab can be killed by the OS at any moment (routinely, on iPad), so don't wait
+  // out the debounce — flush as soon as the page is hidden. The write is async, so if the tab dies
+  // mid-write this shrinks the loss window rather than closing it. `pagehide` and visibilitychange
+  // are both needed: iOS Safari does not reliably fire both in every backgrounding path.
+  $effect(() => {
+    const flush = () => {
+      clearTimeout(autosaveTimer);
+      void saveAutosave(state.project);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  });
+
   let prefsTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
     const prefs = gatherPreferences(); // reads every tracked field → re-runs on any pref change
