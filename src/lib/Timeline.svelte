@@ -590,7 +590,7 @@
               class="flex-1"
               min="0"
               max="8"
-              step="0.5"
+              step="0.1"
               bind:value={appState.project.boil.amount}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
