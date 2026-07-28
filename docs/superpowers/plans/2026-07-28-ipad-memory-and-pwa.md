@@ -629,7 +629,13 @@ original pixels matter. The ~60 `* DPR` call sites were deliberately left in pla
 Also: frame PNGs are now stored in the zip at level 0 (no wasted re-DEFLATE), and autosave flushes on
 `pagehide`/`visibilitychange` so a killed tab doesn't cost the 3s debounce window. Plus a PWA
 manifest + iOS meta tags + generated icons (`tools/make-icons.mjs`) for Add to Home Screen —
-manifest-only, no service worker, so **no offline launch**. Note an installed web app has its own
+manifest-only, no service worker, so **no offline launch**. **Safe-area caveat:** `viewport-fit=cover`
+makes every `env(safe-area-inset-*)` non-zero — including the **bottom** — while
+`apple-mobile-web-app-status-bar-style: black` only reserves the **top**. The app does no safe-area
+padding, so on a Face-ID iPad the bottom-pinned status bar / playbar may sit under the home-indicator
+strip. Check this first on a Face-ID device; the fix is either dropping `viewport-fit=cover` (it buys
+nothing with an opaque status bar) or adding `padding-bottom: env(safe-area-inset-bottom)` to the root
+shell. Note an installed web app has its own
 storage bucket: existing autosave does not carry over (save to Files, then Open inside the installed
 app). **Owed a pass:** the scale change is a one-line diff with canvas-wide effect and no unit test
 can cover it — drawing/brush-cursor width, fill, selection+lasso lift/cut/copy/paste, deform, pose
