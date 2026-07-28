@@ -145,7 +145,32 @@ export function boilSeedOffset(seed: number): [number, number] {
   ];
 }
 
-/** Composite one drawing layer into the GL surface (displaced by `amount` px; 0 = crisp). */
+/** Max edge-alpha push at |weight| = 1. The shader only bites on partial-alpha (anti-aliased) pixels,
+ *  so this needs to be generous to read at all — see the `a0*(1-a0)*4` term in the fragment shader. */
+const WEIGHT_MAX_PUSH = 0.25;
+
+/**
+ * Signed line-weight jitter in [-1,1] — the "breathing" half of the boil.
+ *
+ * Derived from the frame's PHASE within the rate cycle, deliberately NOT from a hash of the boil
+ * seed. The seed only takes `rate` distinct values (that is what makes the boil hold on twos and
+ * threes), and hashing a set that small routinely yields an all-one-sign subset: at the default
+ * rate 3 the old hash gave [+0.50, +0.59, +0.22], so the line only ever fattened — a constant bias,
+ * never a breath — and the weight slider looked completely dead. A cosine over the cycle is
+ * zero-mean by construction, so it always thins as well as fattens. The irrational per-layer phase
+ * offset keeps stacked layers from breathing in lockstep.
+ *
+ * `rate === 1` means a single warp state, so the thickness is necessarily constant too.
+ */
+export function boilWeightJitter(frame: number, rate: number, layerId: number): number {
+  const r = Math.max(1, rate);
+  const phase = (frame % r) / r + ((layerId * 0.6180339887498949) % 1);
+  return Math.cos(2 * Math.PI * phase);
+}
+
+/** Composite one drawing layer into the GL surface (displaced by `amount` px; 0 = crisp).
+ *  `weight` is the SIGNED edge bias in [-1,1] (+ fattens, − thins; 0 = no weight effect) — the
+ *  caller applies `boilWeightJitter`, since only it knows the frame and rate. */
 export function boilLayer(
   src: HTMLCanvasElement,
   opacity: number,
@@ -162,9 +187,7 @@ export function boilLayer(
   g.uniform1f(uFreq, Math.max(1, freq));
   const [sx, sy] = boilSeedOffset(seed);
   g.uniform2f(uSeed, sx, sy);
-  // Signed per-frame jitter in [-1,1] (different stream from the displacement seed) so weight breathes.
-  const wjit = (boilSeedOffset(seed + 31)[0] / 17) * 2 - 1;
-  g.uniform1f(uWeight, weight * wjit * 0.12); // 0.12 = max edge-alpha push at full weight
+  g.uniform1f(uWeight, weight * WEIGHT_MAX_PUSH);
   g.uniform1f(uOpacity, opacity);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 }

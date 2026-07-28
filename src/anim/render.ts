@@ -13,7 +13,7 @@ import {
   type ReferenceLayer,
   type RefTransform,
 } from "./document";
-import { boilBegin, boilLayer, boilBlit } from "../core/boil-gl";
+import { boilBegin, boilLayer, boilBlit, boilWeightJitter } from "../core/boil-gl";
 import { groupBoxLogical } from "../lib/cell-ink";
 
 interface RenderOpts {
@@ -234,12 +234,15 @@ export function compositeFrameLayers(
             groupT,
             groupBoxDev,
           );
+      // Weight is passed as a SIGNED bias: the per-frame breathing jitter comes from the rate cycle,
+      // which only this caller knows (boilLayer sees just the seed).
+      const wjit = boilWeightJitter(frame, boil.rate, op.layerId);
       boilLayer(
         src,
         op.opacity / 100,
         crisp ? 0 : boil.amount * strength,
         boil.cols,
-        crisp ? 0 : boil.weight * strength,
+        crisp ? 0 : boil.weight * strength * wjit,
         seed,
       );
     }
