@@ -254,3 +254,22 @@ describe("group transform persistence", () => {
     expect(json.groups[0].transform).toBeUndefined();
   });
 });
+
+describe("saveProjectBlob compression", () => {
+  it("stores frame PNGs without re-compressing them", async () => {
+    const project = createProject();
+    // 20k of trivially compressible bytes standing in for the PNG a real canvas would produce.
+    // Deflated, the whole archive collapses to a few hundred bytes; stored, it cannot be
+    // smaller than the payload. Size is therefore a proxy for "the zip left these alone".
+    const bytes = new Uint8Array(20000);
+    const layer = project.layers[0] as DrawingLayer;
+    layer.cells[0] = {
+      kind: "key",
+      canvas: {
+        toBlob: (cb: BlobCallback) => cb(new Blob([bytes])),
+      } as unknown as HTMLCanvasElement,
+    };
+    const blob = await saveProjectBlob(project);
+    expect(blob.size).toBeGreaterThan(bytes.length);
+  });
+});

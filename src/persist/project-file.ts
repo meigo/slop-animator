@@ -211,7 +211,10 @@ export async function saveProjectBlob(project: Project): Promise<Blob> {
     for (let i = 0; i < layer.cells.length; i++) {
       const cell = layer.cells[i];
       if (cell.kind !== "key") continue;
-      files[frameAssetPath(layer.id, i)] = await canvasToPngBytes(cell.canvas);
+      // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
+      // CPU re-compressing it for ~nothing — the same treatment the audio entry gets below.
+      // Autosave re-encodes every key cell on a 3s debounce, so this pass is paid repeatedly.
+      files[frameAssetPath(layer.id, i)] = [await canvasToPngBytes(cell.canvas), { level: 0 }];
     }
   }
   // Audio is already-compressed media (mp3/aac); store it (level 0) so autosave doesn't re-DEFLATE it.
