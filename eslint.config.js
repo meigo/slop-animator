@@ -53,6 +53,11 @@ export default tseslint.config(
   prettier,
   ...svelte.configs.prettier,
   {
+    // Build-time Node scripts (icon generation) — Node globals, not browser ones.
+    files: ["tools/**/*.mjs"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     ignores: ["dist/"],
   },
 );
