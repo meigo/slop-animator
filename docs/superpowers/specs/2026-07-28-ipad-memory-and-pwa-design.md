@@ -88,11 +88,15 @@ margin, and `MAX_PROBE` should not be tightened on the strength of it.
 `[bytes, { level: 0 }]` instead of bare `bytes`, mirroring the audio entry. PNG is already
 DEFLATE-compressed internally; re-deflating it costs CPU and saves ~nothing.
 
-**`src/App.svelte`** — the existing 3s-debounced autosave effect (`App.svelte:179-187`) gains a
-companion listener: on `pagehide`, and on `visibilitychange` when `document.visibilityState ===
-"hidden"`, clear the pending timer and run `saveAutosave(state.project)` immediately. The write is
-async and may not complete if the tab is killed mid-write, so this reduces the loss window rather
-than eliminating it — an acceptable, strictly-better-than-today guarantee.
+**`src/App.svelte`** — the existing 3s-debounced autosave effect gains a companion listener: on
+`pagehide`, and on `visibilitychange` when `document.visibilityState === "hidden"`, clear the
+pending timer and run `saveAutosave(state.project)` immediately. Both the debounce and the flush
+are gated by two flags: `autosaveReady` (set only after the startup restore settles, because
+`state.project` is a blank `createProject()` until then, and an unguarded flush during restore
+would overwrite the saved slot with an empty document) and `autosaveDirty` (to avoid re-encoding
+an unchanged project on every app switch). The write is async and may not complete if the tab is
+killed mid-write, so this reduces the loss window rather than eliminating it — an acceptable,
+strictly-better-than-today guarantee.
 
 ### Part 3 — PWA metadata
 

@@ -197,7 +197,9 @@
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveDirty = false;
-      void saveAutosave(state.project);
+      // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
+      // next hide-event can retry rather than skipping the save on a stale "clean" status.
+      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
     }, 3000);
   });
 
@@ -210,7 +212,7 @@
       if (!autosaveReady || !autosaveDirty) return;
       clearTimeout(autosaveTimer);
       autosaveDirty = false;
-      void saveAutosave(state.project);
+      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();

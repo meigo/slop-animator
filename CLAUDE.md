@@ -278,7 +278,10 @@ autosave PNG encode work. **Export is now device-independent**: a 1920×1080 pro
 once on open (the save format is scale-agnostic) — **one-way**, so keep a copy of anything whose
 original pixels matter. The ~60 `* DPR` call sites were deliberately left in place (correct at 1).
 Also: frame PNGs are now stored in the zip at level 0 (no wasted re-DEFLATE), and autosave flushes on
-`pagehide`/`visibilitychange` so a killed tab doesn't cost the 3s debounce window. Plus a PWA
+`pagehide`/`visibilitychange` so a killed tab doesn't cost the 3s debounce window; the flush is
+gated on `autosaveReady` (set only after startup restore resolves, because an unguarded flush
+mid-restore would overwrite the saved project with the blank startup document) and `autosaveDirty`
+(so unchanged projects are not re-encoded) — the `autosaveReady` gate must not be removed. Plus a PWA
 manifest + iOS meta tags + generated icons (`tools/make-icons.mjs`) for Add to Home Screen —
 manifest-only, no service worker, so **no offline launch**. **Safe-area caveat:** `viewport-fit=cover`
 makes every `env(safe-area-inset-*)` non-zero — including the **bottom** — while
