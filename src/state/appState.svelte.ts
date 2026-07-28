@@ -159,8 +159,17 @@ export const state: AnimState = $state({
 
 export const history = new History();
 
-/** Device pixel ratio captured once at startup; cell canvases are sized to it. */
-export const DPR = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+/**
+ * Document raster scale: device pixels per logical pixel, for cell canvases, the display and
+ * scratch canvases, hit-testing, and export. Deliberately FIXED AT 1 — it is not read from
+ * `devicePixelRatio` — because this app is low-framerate monochrome ink where hi-res is a non-goal,
+ * and the constant sets three costs at once: per-cell RAM (at 1920×1080, 8.3 MB here vs 33.2 MB at
+ * 2×), the PNG encode work autosave repeats over every key cell, and export dimensions. At 2× on
+ * iPad a "1920×1080" project also exported 4K, so output size depended on which device rendered it.
+ * Trade: lines are softer past 100% zoom on a Retina display. See
+ * docs/superpowers/specs/2026-07-28-ipad-memory-and-pwa-design.md.
+ */
+export const DPR = 1;
 
 /** Real canvas operations for timeline.ts, sized to the active document. */
 export const canvasOps: CanvasOps = {

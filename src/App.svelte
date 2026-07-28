@@ -169,21 +169,60 @@
     }
   }
 
+  // Autosave must not write before the startup restore has settled: `state.project` is a blank
+  // createProject() until loadAutosave resolves, and saveAutosave overwrites the single slot — so a
+  // hide (or the 3s debounce) landing mid-restore would replace the user's work with an empty
+  // project. `autosaveDirty` additionally keeps an unchanged project from being re-encoded on every
+  // app switch, which is a full PNG pass over every key cell.
+  let autosaveReady = false;
+  let autosaveDirty = false;
+
   onMount(async () => {
     applyPreferences(loadPreferences());
     document.documentElement.classList.toggle("dark", state.theme === "dark");
-    const restored = await loadAutosave(DPR);
-    if (restored) replaceProject(restored);
+    try {
+      const restored = await loadAutosave(DPR);
+      if (restored) replaceProject(restored);
+    } finally {
+      autosaveReady = true;
+    }
   });
 
   let autosaveTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- read to register the effect dependency
     state.version; // re-run whenever the document changes
+    if (!autosaveReady) return; // restore still in flight — state.project is not the user's document yet
+    autosaveDirty = true;
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
-      void saveAutosave(state.project);
+      autosaveDirty = false;
+      // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
+      // next hide-event can retry rather than skipping the save on a stale "clean" status.
+      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
     }, 3000);
+  });
+
+  // A backgrounded tab can be killed by the OS at any moment (routinely, on iPad), so don't wait
+  // out the debounce — flush as soon as the page is hidden. The write is async, so if the tab dies
+  // mid-write this shrinks the loss window rather than closing it. `pagehide` and visibilitychange
+  // are both needed: iOS Safari does not reliably fire both in every backgrounding path.
+  $effect(() => {
+    const flush = () => {
+      if (!autosaveReady || !autosaveDirty) return;
+      clearTimeout(autosaveTimer);
+      autosaveDirty = false;
+      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   });
 
   let prefsTimer: ReturnType<typeof setTimeout>;
