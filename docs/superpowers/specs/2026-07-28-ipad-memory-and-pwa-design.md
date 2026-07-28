@@ -76,7 +76,11 @@ canvases (`Canvas.svelte:185`, `961`, `1002`), hit-testing and fill (`Canvas.sve
 Every one of those expressions is correct at 1.
 
 `cell-ink.ts`'s `probeEmpty` derives its downscale ratio from `canvas.width`, so a smaller source
-canvas makes its thin-stroke detection *more* reliable, not less.
+canvas is probed at a proportionally less extreme downscale (e.g. a 2px-wide stroke into a 30:1 probe
+at half scale, vs. a 4px-wide stroke into a 60:1 probe at the old scale, both bounded by
+`MAX_PROBE = 64`). The effect on detection is **neutral**: the stroke's coverage fraction of a probe
+pixel is unchanged, so thin-stroke detection behaves the same as before — this is not extra safety
+margin, and `MAX_PROBE` should not be tightened on the strength of it.
 
 ### Part 2 — autosave
 

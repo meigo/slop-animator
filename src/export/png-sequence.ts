@@ -1,4 +1,4 @@
-import { zipSync } from "fflate";
+import { zipSync, type ZipOptions } from "fflate";
 import { renderFrame } from "../anim/render";
 import { frameFileName } from "./frames";
 import type { Project } from "../anim/document";
@@ -13,7 +13,7 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
   canvas.height = project.height * dpr;
   const ctx = canvas.getContext("2d")!;
 
-  const files: Record<string, Uint8Array> = {};
+  const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
   for (let f = 0; f < project.frameCount; f++) {
     renderFrame(ctx, project, f, dpr, {
       drawBg: !project.transparentBg,
@@ -23,7 +23,12 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
     );
-    files[frameFileName(f, project.frameCount)] = new Uint8Array(await blob.arrayBuffer());
+    // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
+    // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
+    files[frameFileName(f, project.frameCount)] = [
+      new Uint8Array(await blob.arrayBuffer()),
+      { level: 0 },
+    ];
   }
   return new Blob([zipSync(files)], { type: "application/zip" });
 }

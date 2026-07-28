@@ -169,19 +169,34 @@
     }
   }
 
+  // Autosave must not write before the startup restore has settled: `state.project` is a blank
+  // createProject() until loadAutosave resolves, and saveAutosave overwrites the single slot — so a
+  // hide (or the 3s debounce) landing mid-restore would replace the user's work with an empty
+  // project. `autosaveDirty` additionally keeps an unchanged project from being re-encoded on every
+  // app switch, which is a full PNG pass over every key cell.
+  let autosaveReady = false;
+  let autosaveDirty = false;
+
   onMount(async () => {
     applyPreferences(loadPreferences());
     document.documentElement.classList.toggle("dark", state.theme === "dark");
-    const restored = await loadAutosave(DPR);
-    if (restored) replaceProject(restored);
+    try {
+      const restored = await loadAutosave(DPR);
+      if (restored) replaceProject(restored);
+    } finally {
+      autosaveReady = true;
+    }
   });
 
   let autosaveTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- read to register the effect dependency
     state.version; // re-run whenever the document changes
+    if (!autosaveReady) return; // restore still in flight — state.project is not the user's document yet
+    autosaveDirty = true;
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
+      autosaveDirty = false;
       void saveAutosave(state.project);
     }, 3000);
   });
@@ -192,7 +207,9 @@
   // are both needed: iOS Safari does not reliably fire both in every backgrounding path.
   $effect(() => {
     const flush = () => {
+      if (!autosaveReady || !autosaveDirty) return;
       clearTimeout(autosaveTimer);
+      autosaveDirty = false;
       void saveAutosave(state.project);
     };
     const onVisibility = () => {
