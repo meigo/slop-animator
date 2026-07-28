@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - `npm run build` must end with **0 errors, 0 warnings** — this is the project bar for every change.
-- `npm test` baseline is ~**280 passing**; it must not regress.
+- `npm test` baseline is **339 passing**; it must not regress.
 - Vitest runs in the **node environment with no DOM**. `document`, `window`, `HTMLCanvasElement`, and `CanvasRenderingContext2D` do not exist. Only pure logic is unit-testable; `src/state/appState.svelte.ts` is not node-importable at all (it touches `window` and audio at module load).
 - **No new dependencies.** The icon generator uses Node built-ins only.
 - Do **not** strip or rewrite the `* DPR` / `setTransform(DPR, …)` call sites (spec D2). They are correct at 1.
@@ -115,7 +115,7 @@ Expected: **PASS** — the new test plus every pre-existing test in the file.
 
 Run: `npm test && npm run build`
 
-Expected: ~280 passing, and a build with **0 errors, 0 warnings**.
+Expected: **340** passing (the 339 baseline plus the new test), and a build with **0 errors, 0 warnings**.
 
 - [ ] **Step 6: Commit**
 
@@ -253,7 +253,7 @@ Do not touch any `* DPR` or `setTransform(DPR, …)` call site — they are all 
 
 Run: `npm run build && npm test`
 
-Expected: **0 errors, 0 warnings**, ~280 passing. If `svelte-check` reports `window` is now unused in the file, check whether `window` is referenced elsewhere in `appState.svelte.ts` before removing anything — remove only imports/uses that *this* change orphaned.
+Expected: **0 errors, 0 warnings**, 340 passing (339 baseline + Task 1's test). If `svelte-check` reports `window` is now unused in the file, check whether `window` is referenced elsewhere in `appState.svelte.ts` before removing anything — remove only imports/uses that *this* change orphaned.
 
 - [ ] **Step 3: Browser verification pass — this is the real gate**
 
@@ -662,7 +662,7 @@ EOF
 ## Done criteria
 
 - [ ] `npm run build` — 0 errors, 0 warnings
-- [ ] `npm test` — ~280 passing, no regression
+- [ ] `npm test` — 340 passing (339 baseline + Task 1's test), no regression
 - [ ] The Task 3 Step 3 browser pass completed, with any failure reported rather than worked around
 - [ ] The Task 5 Step 5 iPad install verified
 - [ ] Six commits on `ipad-memory-and-pwa`, one per task
