@@ -17,8 +17,17 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline ~**280 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **345 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
+- `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
+  on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
+  `wrangler.jsonc`: **assets-only, no `main`/Worker script** — static-asset requests are free and
+  unlimited on every plan, and only Worker invocations are billed, so adding a Worker would start
+  metering traffic for no benefit. The deployed HTTPS URL is the practical way to test on iPad
+  (real certificate — unlike `dev:lan`'s self-signed one, which iOS treats as a second-class secure
+  context) and is what makes Add-to-Home-Screen behave. Git-connected builds (Workers Builds) would
+  read the same `wrangler.jsonc` with no changes, but a CLI deploy uploads ~8 built files in seconds
+  where a cold CI build takes minutes — hence CLI-first.
 - `npm run lint` / `npm run format` — ESLint (incl. `eslint-plugin-svelte`, runes-aware) + Prettier.
 - **Pre-commit hook** (husky + lint-staged) auto-runs `eslint --fix` + `prettier --write` on staged
   files — expect reformatting on commit; it's fine.

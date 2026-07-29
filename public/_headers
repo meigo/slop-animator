@@ -1,0 +1,10 @@
+# Cloudflare Workers static-assets header rules. Vite copies this to the dist root; it is consumed
+# by the platform and is never served as an asset itself.
+#
+# Only /assets/* is cached hard, because Vite content-hashes those filenames — a changed bundle gets
+# a new URL, so it can never go stale. Everything else (index.html, manifest.webmanifest, the icons)
+# deliberately keeps the platform default of `max-age=0, must-revalidate`: index.html is what points
+# at the hashed bundles, so caching it would pin the app to an old build, and the icons are NOT
+# content-hashed, so an immutable cache would strand a regenerated icon.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
