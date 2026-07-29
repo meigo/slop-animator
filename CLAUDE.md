@@ -142,6 +142,23 @@ affected-region tint; context-aware default reach); **transparent background** (
   (mux audio into export). See `docs/.../2026-06-15-audio-track-phase1-design.md`.
 - **Per-layer boil-strength UI slider** — data path complete (`DrawingLayer.boilStrength` honored +
   persisted), UI-only addition to the timeline layer row.
+- **Noise-matte line weight (variable thickness / erosion)** — deferred 2026-07-28 as not worth the
+  effort _yet_; the analysis is the part worth keeping. Two independent axes, don't conflate them:
+  (1) **the matte** — what modulates the weight. Today `uWeight` is a global scalar. Making it
+  spatial is ~1 extra `vnoise()` eval, which the shader already has (`boil-gl.ts:39`):
+  `float wn = vnoise(vUv * uWeightFreq + uWeightSeed) * 2.0 - 1.0;`. Cheap, no perf risk.
+  (2) **the operator** — what the modulation does, and the reason a matte alone won't give you
+  thickness. The current operator is `a = a0 + uWeight * a0*(1-a0)*4` (`boil-gl.ts:54`), and
+  `a0*(1-a0)*4` is **zero wherever alpha is 0 or 1** — it can only touch the anti-aliased fringe,
+  never the solid core. A noise matte on it buys spatially-varying _edge softness_ (ink density /
+  dry-brush), which is a real look but is **not** variable line weight. Genuine swelling/thinning
+  needs a **morphological dilate/erode**: sample alpha at a ring of offsets, `max` to fatten / `min`
+  to thin, lerp on the signed weight — that moves the actual edge, so ±1–2px is reachable. Cost is
+  4–8 extra `texture2D` per pixel **per layer** (tens of millions of samples/frame at 1920×1080 with
+  several layers) — measure on iPad before committing; the low framerate and the 1× scale both help.
+  Open design questions if picked up: does the noise vary _along_ a stroke (organic ink) or _across
+  the frame_ (bolder regions)? — different frequencies. Must stay render-time/non-destructive, per
+  `prefers-manual-over-auto-altering-art`.
 - **Onion-skin settings as a global preference** — extend `Preferences` + gather/applyPreferences.
 - **Reference media auto-restore** — currently re-pick the file (no-bytes placeholders persist). True
   auto-restore needs File System Access (Chromium desktop) or a native wrapper; shelved.
