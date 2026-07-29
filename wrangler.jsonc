@@ -1,0 +1,16 @@
+{
+  // Cloudflare Workers static-assets deploy. There is deliberately no `main`/Worker script: the app
+  // is 100% static (Vite -> dist/), so this is an assets-only Worker. That matters for cost —
+  // requests to static assets are free and unlimited on every plan, and only requests that invoke a
+  // Worker script are billed. Adding a `main` here would start metering traffic for no benefit.
+  //
+  // `not_found_handling` is intentionally omitted: the app has no client-side router (everything
+  // lives at "/"), so the default 404 behaviour is correct. Add "single-page-application" only if
+  // real routes are introduced.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "slop-animator",
+  "compatibility_date": "2026-07-29",
+  "assets": {
+    "directory": "./dist"
+  }
+}
