@@ -104,7 +104,14 @@
   }
 
   async function saveProject() {
-    downloadBlob(await saveProjectBlob(appState.project, true), "project.zip");
+    downloadBlob(
+      await saveProjectBlob(
+        appState.project,
+        true,
+        () => (appState.statusHint = "Couldn't embed a reference — saved without it"),
+      ),
+      "project.zip",
+    );
   }
 
   function toggleTheme() {

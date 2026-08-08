@@ -309,14 +309,15 @@ export function addLayerToProject(layer: Layer) {
   });
 }
 
-/** Mint a mediaId and store the bytes (write-once). On failure (e.g. iPad quota) the layer
- *  stays live for the session but reverts to a re-link placeholder after reload. */
+/** Mint a mediaId and store the bytes (write-once). On failure (e.g. iPad quota) the layer keeps
+ *  the id — a dangling id is benign on restore (getMedia → undefined → placeholder), and keeping
+ *  it lets an explicit zip save still embed the media from the live element. So the reference
+ *  won't survive a reload, but explicit saves still embed it. */
 export function persistReferenceMedia(layer: ReferenceLayer, blob: Blob, name?: string): void {
   const id = crypto.randomUUID();
   layer.mediaId = id;
   layer.mediaMime = blob.type || (layer.media.type === "video" ? "video/mp4" : "image/png");
   void putMedia(id, { blob, mime: layer.mediaMime, name: name ?? layer.name }).catch(() => {
-    if (layer.mediaId === id) layer.mediaId = undefined; // don't serialize a dangling id
     state.statusHint = "Storage full — this reference won't survive a reload";
   });
 }
@@ -614,6 +615,11 @@ export function relinkReference(id: number, media: ReferenceMedia, blob?: Blob) 
     layer.media = media;
     if (blob && (media.type === "image" || (media.type === "video" && layer.embedMedia)))
       persistReferenceMedia(layer, blob, blob instanceof File ? blob.name : layer.name);
+    else {
+      // The new media isn't persisted — a leftover mediaId would describe the OLD bytes.
+      layer.mediaId = undefined;
+      layer.mediaMime = undefined;
+    }
     bump();
   }
 }
@@ -633,6 +639,11 @@ export async function toggleEmbedMedia(id: number): Promise<void> {
       layer.embedMedia = false; // couldn't read the bytes — don't claim it's stored
       state.statusHint = "Couldn't read the video — not stored";
     }
+  } else if (!layer.embedMedia) {
+    // Bounds storage: the orphaned record gets pruned at the next load boundary instead of
+    // being retained forever, and clears Fix 1's remaining precondition.
+    layer.mediaId = undefined;
+    layer.mediaMime = undefined;
   }
   bump(); // repaint + mark autosave dirty
 }

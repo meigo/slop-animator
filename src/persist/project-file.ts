@@ -254,8 +254,14 @@ function decodePng(bytes: Uint8Array): Promise<HTMLImageElement> {
 
 /** Zip the project: `project.json` + one PNG per key cell. Reference layers are not saved.
  *  `includeMedia` additionally embeds reference media bytes (explicit "Save Project" only —
- *  autosave never sets it, keeping the debounced save cheap). */
-export async function saveProjectBlob(project: Project, includeMedia = false): Promise<Blob> {
+ *  autosave never sets it, keeping the debounced save cheap). `onMediaEmbedFailed` fires (once
+ *  per failed entry) if fetching a live element's bytes fails — that entry is skipped rather than
+ *  failing the whole save, since a lost explicit save is the data lifeline. */
+export async function saveProjectBlob(
+  project: Project,
+  includeMedia = false,
+  onMediaEmbedFailed?: () => void,
+): Promise<Blob> {
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {
     "project.json": strToU8(JSON.stringify(projectToJson(project))),
   };
@@ -277,8 +283,12 @@ export async function saveProjectBlob(project: Project, includeMedia = false): P
     for (const id of mediaIdsToEmbed(project.layers)) {
       const layer = project.layers.find((l) => l.kind === "ref" && l.mediaId === id);
       if (!layer || layer.kind !== "ref" || layer.media.type === "missing") continue;
-      const bytes = new Uint8Array(await (await fetch(layer.media.el.src)).arrayBuffer());
-      files[mediaAssetPath(id)] = [bytes, { level: 0 }];
+      try {
+        const bytes = new Uint8Array(await (await fetch(layer.media.el.src)).arrayBuffer());
+        files[mediaAssetPath(id)] = [bytes, { level: 0 }];
+      } catch {
+        onMediaEmbedFailed?.();
+      }
     }
   }
   return new Blob([zipSync(files)], { type: "application/zip" });

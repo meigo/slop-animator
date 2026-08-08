@@ -354,6 +354,8 @@ unit-tested; the IndexedDB/zip-embed paths are build+review-verified only (proje
 node-testable). **Owed a browser pass:** image import → reload → restore; opted-in video → reload →
 restore; non-embedded video → placeholder; quota warning; opening an old (pre-media) zip; opening a
 new zip on a second device; delete a persisted reference → undo → media still live; toggle-off →
-reload → placeholder; New clears the store; ⌘S save contains the media entries; iPad for all of it.
-The v1→v2 IndexedDB upgrade itself is also untested in a real browser. Spec/plan:
-`…/2026-08-08-reference-media-persistence*.md`.
+reload → placeholder; toggle off → re-link → toggle on → reload shows the NEW video; New clears the
+store; ⌘S save contains the media entries; iPad for all of it. The v1→v2 IndexedDB upgrade itself is
+also untested in a real browser — note a stale pre-upgrade tab left open across the deploy hits an
+IndexedDB `VersionError` on the bumped store and silently stops autosaving until the tab is reloaded.
+Spec/plan: `…/2026-08-08-reference-media-persistence*.md`.
