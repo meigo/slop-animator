@@ -5,6 +5,7 @@ import {
   createDrawingLayer,
   defaultBoilConfig,
   createProject,
+  createReferenceLayer,
 } from "../anim/document";
 import {
   projectToJson,
@@ -13,6 +14,9 @@ import {
   insertReferencesByIndex,
   saveProjectBlob,
   loadProjectBlob,
+  referencedMediaIds,
+  mediaIdsToEmbed,
+  shouldRestoreMedia,
 } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
@@ -271,5 +275,81 @@ describe("saveProjectBlob compression", () => {
     };
     const blob = await saveProjectBlob(project);
     expect(blob.size).toBeGreaterThan(bytes.length);
+  });
+});
+
+describe("reference media persistence fields", () => {
+  it("round-trips mediaId/mediaMime/embedMedia through save/load", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "video", name: "clip.mp4" }, "clip");
+    ref.mediaId = "abc-123";
+    ref.mediaMime = "video/mp4";
+    ref.embedMedia = true;
+    project.layers.push(ref);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.mediaId).toBe("abc-123");
+    expect(lref.kind === "ref" && lref.mediaMime).toBe("video/mp4");
+    expect(lref.kind === "ref" && lref.embedMedia).toBe(true);
+  });
+
+  it("layers without the fields round-trip as undefined (old saves)", async () => {
+    const project = createProject();
+    project.layers.push(createReferenceLayer({ type: "missing", was: "image", name: "a.png" }));
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.mediaId).toBeUndefined();
+    expect(lref.kind === "ref" && lref.embedMedia).toBeUndefined();
+  });
+});
+
+describe("zip media entries", () => {
+  it("includeMedia=true writes no media/ entry for missing media; =false never writes any", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" });
+    ref.mediaId = "gone-1";
+    project.layers.push(ref);
+    for (const include of [true, false]) {
+      const blob = await saveProjectBlob(project, include);
+      const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+      expect(Object.keys(zip).filter((k) => k.startsWith("media/"))).toEqual([]);
+    }
+  });
+});
+
+describe("media selection helpers", () => {
+  const img = { kind: "ref", mediaId: "i1", media: { type: "image" } };
+  const vidOn = { kind: "ref", mediaId: "v1", embedMedia: true, media: { type: "video" } };
+  const vidOff = { kind: "ref", mediaId: "v2", media: { type: "video" } };
+  const missing = { kind: "ref", mediaId: "m1", media: { type: "missing", was: "image" as const } };
+  const noId = { kind: "ref", media: { type: "image" } };
+  const draw = { kind: "draw" }; // drawing layers have no media property
+
+  it("referencedMediaIds: every ref with a mediaId, live or missing", () => {
+    expect(referencedMediaIds([img, vidOn, vidOff, missing, noId, draw])).toEqual(
+      new Set(["i1", "v1", "v2", "m1"]),
+    );
+  });
+
+  it("mediaIdsToEmbed: live images always, live videos only when embedMedia; never missing", () => {
+    expect(mediaIdsToEmbed([img, vidOn, vidOff, missing, noId, draw])).toEqual(["i1", "v1"]);
+  });
+
+  it("shouldRestoreMedia: missing + mediaId; videos gated on embedMedia", () => {
+    expect(shouldRestoreMedia(missing)).toBe(true);
+    expect(shouldRestoreMedia({ ...missing, media: { type: "missing", was: "video" } })).toBe(
+      false,
+    );
+    expect(
+      shouldRestoreMedia({
+        ...missing,
+        embedMedia: true,
+        media: { type: "missing", was: "video" },
+      }),
+    ).toBe(true);
+    expect(shouldRestoreMedia(img)).toBe(false); // already live
+    expect(shouldRestoreMedia({ kind: "ref", media: { type: "missing", was: "image" } })).toBe(
+      false,
+    ); // no id
   });
 });

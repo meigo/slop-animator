@@ -30,6 +30,17 @@ export function loadVideoMedia(file: File, onSeeked: () => void): Promise<Refere
   });
 }
 
+/** Rebuild live reference media from persisted bytes (zip entry or ref-media store). */
+export async function mediaFromBlob(
+  blob: Blob,
+  mime: string,
+  name: string,
+  onSeeked: () => void,
+): Promise<ReferenceMedia> {
+  const file = new File([blob], name, { type: mime });
+  return mime.startsWith("video") ? loadVideoMedia(file, onSeeked) : loadImageMedia(file);
+}
+
 /** Load reference media of either kind, chosen by the file's MIME type (video/* → video, else image). */
 export async function loadReferenceMedia(
   file: File,

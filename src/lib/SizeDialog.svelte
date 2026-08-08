@@ -2,6 +2,7 @@
   import { state as appState, replaceProject, resizeProject } from "../state/appState.svelte";
   import { createProject } from "../anim/document";
   import { clearAutosave } from "../persist/autosave";
+  import { clearAllMedia } from "../persist/media-store";
   import type { ResizeMode, Anchor } from "../anim/resize";
 
   const PRESETS = [
@@ -47,6 +48,7 @@
     if (appState.sizeDialog.mode === "new") {
       replaceProject(createProject({ width: cw, height: ch }));
       clearAutosave();
+      void clearAllMedia();
     } else {
       resizeProject(cw, ch, mode, anchor);
     }

@@ -9,11 +9,13 @@
     setAudioTrack,
     DPR,
     pasteImageReference,
+    persistReferenceMedia,
     selectEyedropper,
   } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
-  import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
+  import { saveProjectBlob, loadProjectBlob, referencedMediaIds } from "../persist/project-file";
+  import { pruneMedia } from "../persist/media-store";
   import { downloadBlob } from "../export/download";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
@@ -54,7 +56,15 @@
     const file = fileInput.files?.[0];
     if (!file) return;
     if (pendingKind === "project") {
-      replaceProject(await loadProjectBlob(file, DPR));
+      replaceProject(
+        await loadProjectBlob(
+          file,
+          DPR,
+          () => bump(),
+          () => (appState.statusHint = "Storage full — references won't survive a reload"),
+        ),
+      );
+      void pruneMedia(referencedMediaIds(appState.project.layers));
       return;
     }
     if (pendingKind === "audio") {
@@ -65,6 +75,7 @@
       pendingKind === "image"
         ? await loadImageLayer(file)
         : await loadVideoLayer(file, () => bump());
+    if (pendingKind === "image") persistReferenceMedia(layer, file, file.name);
     addLayerToProject(layer);
   }
 
@@ -93,7 +104,14 @@
   }
 
   async function saveProject() {
-    downloadBlob(await saveProjectBlob(appState.project), "project.zip");
+    downloadBlob(
+      await saveProjectBlob(
+        appState.project,
+        true,
+        () => (appState.statusHint = "Couldn't embed a reference — saved without it"),
+      ),
+      "project.zip",
+    );
   }
 
   function toggleTheme() {

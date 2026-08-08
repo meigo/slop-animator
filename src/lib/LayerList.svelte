@@ -22,6 +22,8 @@
     RotateCcw,
     Volume2,
     VolumeX,
+    Save,
+    SaveOff,
   } from "@lucide/svelte";
   import {
     state as appState,
@@ -45,6 +47,7 @@
     resetCellTransform,
     resetGroupTransform,
     setActiveLayer,
+    toggleEmbedMedia,
   } from "../state/appState.svelte";
   import {
     createDrawingLayer,
@@ -79,7 +82,7 @@
     const file = relinkInput.files?.[0];
     const id = relinkTargetId;
     if (!file || id == null) return;
-    relinkReference(id, await loadReferenceMedia(file, () => bump()));
+    relinkReference(id, await loadReferenceMedia(file, () => bump()), file);
   }
 
   function startEdit(layer: { id: number; name: string }) {
@@ -257,6 +260,18 @@
             : "Audio off — click to play video sound"}
         >
           {#if layer.audioEnabled}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
+        </button>
+        <button
+          class="text-text-secondary"
+          onclick={(e) => {
+            e.stopPropagation();
+            void toggleEmbedMedia(layer.id);
+          }}
+          title={layer.embedMedia
+            ? "Video stored in project — survives reload & save"
+            : "Video not stored — re-link after reload (tap to keep it)"}
+        >
+          {#if layer.embedMedia}<Save size={15} />{:else}<SaveOff size={15} />{/if}
         </button>
       {/if}
       {#if layer.kind === "ref"}

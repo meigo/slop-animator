@@ -332,3 +332,30 @@ oddity worth knowing: `pressure-curve.ts` hardcodes its own 2× raster for the c
 now the only 2× surface in the app. Deferred: incremental
 (dirty-cell-only) autosave encoding, and LRU cell eviction — revisit only if measurement shows the 4×
 cut wasn't enough. Spec/plan: `…/2026-07-28-ipad-memory-and-pwa*.md`.
+
+**Reference media persistence (2026-08-08, on branch):** reference layers now survive reload and
+travel with the `.zip`. A write-once `ref-media` IndexedDB object store (DB bumped to **v2**,
+`src/persist/db.ts`) holds `{blob, mime, name}` keyed by a stable `mediaId` minted at
+import/relink — the ~3s autosave debounce never touches it (re-copying 100s of MB of video on every
+edit was disqualifying). Images always persist; videos are opt-in per layer via a
+`embedMedia` flag, toggled with a Save/SaveOff icon beside the existing 🔊 audio toggle in
+`LayerList`. Zip entries are `media/<mediaId>` (no extension; `mediaMime` in `project.json` rebuilds
+the Blob type) at compression level 0, written only for images + opted-in videos. Restore is
+two-path: same-device autosave reload calls `hydrateFromStore` (`src/persist/media-store.ts`)
+against the existing store; opening a `.zip` hydrates from the zip's `media/` entries **and** seeds
+the store so the file keeps restoring on later reloads of that device. Orphan collection
+(`pruneMedia`) runs **only at project-load boundaries** (`replaceProject`/open/startup restore, see
+`App.svelte`) — never from `removeLayer`, which (per gotcha #8) must leave the store alone because
+undo snapshots share layer objects; `relinkReference` mints a **new** `mediaId` rather than
+overwriting, so an old undo snapshot's blob survives until the next load boundary. A quota/write
+failure leaves the reference live for the session with a status-bar warning; it won't survive
+reload. Pure logic (mediaId round-trip, orphan-set computation, embed-flag zip filtering) is
+unit-tested; the IndexedDB/zip-embed paths are build+review-verified only (project convention — not
+node-testable). **Owed a browser pass:** image import → reload → restore; opted-in video → reload →
+restore; non-embedded video → placeholder; quota warning; opening an old (pre-media) zip; opening a
+new zip on a second device; delete a persisted reference → undo → media still live; toggle-off →
+reload → placeholder; toggle off → re-link → toggle on → reload shows the NEW video; New clears the
+store; ⌘S save contains the media entries; iPad for all of it. The v1→v2 IndexedDB upgrade itself is
+also untested in a real browser — note a stale pre-upgrade tab left open across the deploy hits an
+IndexedDB `VersionError` on the bumped store and silently stops autosaving until the tab is reloaded.
+Spec/plan: `…/2026-08-08-reference-media-persistence*.md`.

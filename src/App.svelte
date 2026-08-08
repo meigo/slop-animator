@@ -31,6 +31,8 @@
   } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
+  import { hydrateFromStore, pruneMedia } from "./persist/media-store";
+  import { referencedMediaIds } from "./persist/project-file";
 
   // Set when a Cmd+V is consumed as a cell paste, so the window `paste` event (onPaste) skips
   // its image-file handling for the same keystroke. keydown fires before paste.
@@ -183,6 +185,9 @@
     try {
       const restored = await loadAutosave(DPR);
       if (restored) replaceProject(restored);
+      if (await hydrateFromStore(state.project, () => bump())) bump();
+      // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
+      void pruneMedia(referencedMediaIds(state.project.layers));
     } finally {
       autosaveReady = true;
     }

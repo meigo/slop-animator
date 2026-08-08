@@ -16,6 +16,8 @@ import {
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
+import { mediaFromBlob } from "../anim/reference";
+import { putMedia } from "./media-store";
 
 export interface DrawingLayerJson {
   id: number;
@@ -44,6 +46,9 @@ export interface ReferenceJson {
   offsetFrames: number;
   speed?: number;
   audioEnabled?: boolean;
+  mediaId?: string;
+  mediaMime?: string;
+  embedMedia?: boolean;
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
@@ -56,6 +61,44 @@ export function insertReferencesByIndex<T>(base: T[], refs: { index: number; val
     out.splice(Math.min(r.index, out.length), 0, r.value);
   }
   return out;
+}
+
+export interface MediaRefShape {
+  kind: string;
+  mediaId?: string;
+  embedMedia?: boolean;
+  media?: { type: string; was?: "image" | "video" }; // absent on drawing layers
+}
+
+/** Every media id the project still references (live or placeholder) — the prune keep-set. */
+export function referencedMediaIds(layers: MediaRefShape[]): Set<string> {
+  return new Set(
+    layers.filter((l) => l.kind === "ref" && l.mediaId).map((l) => l.mediaId as string),
+  );
+}
+
+/** Ids whose bytes go into the exported zip: live images always, live videos on opt-in. */
+export function mediaIdsToEmbed(layers: MediaRefShape[]): string[] {
+  return layers
+    .filter(
+      (l) =>
+        l.kind === "ref" &&
+        l.mediaId &&
+        l.media &&
+        l.media.type !== "missing" &&
+        (l.media.type === "image" || l.embedMedia === true),
+    )
+    .map((l) => l.mediaId as string);
+}
+
+/** Whether a placeholder should hydrate from stored bytes (videos only on opt-in). */
+export function shouldRestoreMedia(l: MediaRefShape): boolean {
+  return (
+    l.kind === "ref" &&
+    !!l.mediaId &&
+    l.media?.type === "missing" &&
+    (l.media.was !== "video" || l.embedMedia === true)
+  );
 }
 
 export interface ProjectJson {
@@ -155,6 +198,9 @@ export function projectToJson(project: Project): ProjectJson {
         offsetFrames: l.offsetFrames,
         speed: l.speed,
         audioEnabled: l.audioEnabled,
+        mediaId: l.mediaId,
+        mediaMime: l.mediaMime,
+        embedMedia: l.embedMedia,
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
@@ -172,6 +218,11 @@ export function projectToJson(project: Project): ProjectJson {
 /** Path inside the zip for a key cell's PNG. */
 export function frameAssetPath(layerId: number, frameIndex: number): string {
   return `frames/${layerId}/${frameIndex}.png`;
+}
+
+/** Path inside the zip for an embedded reference media file. */
+export function mediaAssetPath(mediaId: string): string {
+  return `media/${mediaId}`;
 }
 
 function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -201,8 +252,16 @@ function decodePng(bytes: Uint8Array): Promise<HTMLImageElement> {
   });
 }
 
-/** Zip the project: `project.json` + one PNG per key cell. Reference layers are not saved. */
-export async function saveProjectBlob(project: Project): Promise<Blob> {
+/** Zip the project: `project.json` + one PNG per key cell. Reference layers are not saved.
+ *  `includeMedia` additionally embeds reference media bytes (explicit "Save Project" only —
+ *  autosave never sets it, keeping the debounced save cheap). `onMediaEmbedFailed` fires (once
+ *  per failed entry) if fetching a live element's bytes fails — that entry is skipped rather than
+ *  failing the whole save, since a lost explicit save is the data lifeline. */
+export async function saveProjectBlob(
+  project: Project,
+  includeMedia = false,
+  onMediaEmbedFailed?: () => void,
+): Promise<Blob> {
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {
     "project.json": strToU8(JSON.stringify(projectToJson(project))),
   };
@@ -219,11 +278,31 @@ export async function saveProjectBlob(project: Project): Promise<Blob> {
   }
   // Audio is already-compressed media (mp3/aac); store it (level 0) so autosave doesn't re-DEFLATE it.
   if (project.audio) files["audio/track"] = [project.audio.bytes, { level: 0 }];
+  if (includeMedia) {
+    // Original media formats are already compressed — store at level 0, like audio/track.
+    for (const id of mediaIdsToEmbed(project.layers)) {
+      const layer = project.layers.find((l) => l.kind === "ref" && l.mediaId === id);
+      if (!layer || layer.kind !== "ref" || layer.media.type === "missing") continue;
+      try {
+        const bytes = new Uint8Array(await (await fetch(layer.media.el.src)).arrayBuffer());
+        files[mediaAssetPath(id)] = [bytes, { level: 0 }];
+      } catch {
+        onMediaEmbedFailed?.();
+      }
+    }
+  }
   return new Blob([zipSync(files)], { type: "application/zip" });
 }
 
-/** Rebuild a Project from a saved zip. `dpr` sizes the rebuilt cell canvases for the current display. */
-export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project> {
+/** Rebuild a Project from a saved zip. `dpr` sizes the rebuilt cell canvases for the current display.
+ *  `onSeeked` fires as each hydrated video reference's first frame becomes available (repaint hook).
+ *  `onMediaPersistFailed` fires if seeding the local media store for a hydrated file fails (quota). */
+export async function loadProjectBlob(
+  blob: Blob,
+  dpr: number,
+  onSeeked?: () => void,
+  onMediaPersistFailed?: () => void,
+): Promise<Project> {
   const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
   const json = JSON.parse(strFromU8(zip["project.json"])) as ProjectJson;
 
@@ -270,9 +349,9 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
   }
   const refsJson = json.references ?? [];
   for (const rj of refsJson) maxId = Math.max(maxId, rj.id);
-  const refLayers = refsJson.map((rj) => ({
-    index: rj.index,
-    value: {
+  const refLayers: { index: number; value: ReferenceLayer }[] = [];
+  for (const rj of refsJson) {
+    const value = {
       kind: "ref",
       id: rj.id,
       name: rj.name,
@@ -281,11 +360,29 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
       offsetFrames: rj.offsetFrames,
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
+      mediaId: rj.mediaId,
+      mediaMime: rj.mediaMime,
+      embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
-    } as ReferenceLayer,
-  }));
+    } as ReferenceLayer;
+    const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;
+    if (bytes && rj.mediaId && shouldRestoreMedia(value)) {
+      const mime = rj.mediaMime ?? (rj.was === "video" ? "video/mp4" : "image/png");
+      const mediaBlob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
+      try {
+        value.media = await mediaFromBlob(mediaBlob, mime, rj.name, onSeeked ?? (() => {}));
+        // Seed the local store so this file restores on every later reload (write-once path).
+        void putMedia(rj.mediaId, { blob: mediaBlob, mime, name: rj.name }).catch(() =>
+          onMediaPersistFailed?.(),
+        );
+      } catch {
+        /* corrupt media entry → stays a re-link placeholder */
+      }
+    }
+    refLayers.push({ index: rj.index, value });
+  }
   const orderedLayers = insertReferencesByIndex<Layer>(layers, refLayers);
   const groups: LayerGroup[] = (json.groups ?? []).map((g) => ({
     id: g.id,
