@@ -626,8 +626,13 @@ export async function toggleEmbedMedia(id: number): Promise<void> {
   if (!layer || layer.kind !== "ref") return;
   layer.embedMedia = !layer.embedMedia;
   if (layer.embedMedia && layer.media.type === "video" && !layer.mediaId) {
-    const blob = await fetch(layer.media.el.src).then((r) => r.blob());
-    persistReferenceMedia(layer, blob);
+    try {
+      const blob = await fetch(layer.media.el.src).then((r) => r.blob());
+      persistReferenceMedia(layer, blob);
+    } catch {
+      layer.embedMedia = false; // couldn't read the bytes — don't claim it's stored
+      state.statusHint = "Couldn't read the video — not stored";
+    }
   }
   bump(); // repaint + mark autosave dirty
 }
