@@ -51,8 +51,9 @@ local storage fully covers.
 
 ### Zip format
 
-- New entries `media/<mediaId>.<ext>` at **compression level 0** (media formats are already
-  compressed — same reasoning as the level-0 frame PNGs from 2026-07-28).
+- New entries `media/<mediaId>` at **compression level 0** (media formats are already
+  compressed — same reasoning as the level-0 frame PNGs from 2026-07-28). No extension; `mediaMime`
+  in `project.json` rebuilds the Blob type — follows the `audio/track` precedent.
 - Images always written; videos only when `embedMedia` is on.
 - `project.json` reference entries store `mediaId` and the `embedMedia` flag.
 - **Back-compat, both directions:** old zips have no `media/` entries → placeholder flow. An old
