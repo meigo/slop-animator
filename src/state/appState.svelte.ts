@@ -38,6 +38,7 @@ import {
   type TimelineSelection,
 } from "../anim/timeline-selection";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
+import { putMedia } from "../persist/media-store";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
@@ -308,12 +309,25 @@ export function addLayerToProject(layer: Layer) {
   });
 }
 
+/** Mint a mediaId and store the bytes (write-once). On failure (e.g. iPad quota) the layer
+ *  stays live for the session but reverts to a re-link placeholder after reload. */
+export function persistReferenceMedia(layer: ReferenceLayer, blob: Blob, name?: string): void {
+  const id = crypto.randomUUID();
+  layer.mediaId = id;
+  layer.mediaMime = blob.type || (layer.media.type === "video" ? "video/mp4" : "image/png");
+  void putMedia(id, { blob, mime: layer.mediaMime, name: name ?? layer.name }).catch(() => {
+    if (layer.mediaId === id) layer.mediaId = undefined; // don't serialize a dangling id
+    state.statusHint = "Storage full — this reference won't survive a reload";
+  });
+}
+
 /** Paste a clipboard image blob as a new, fully-opaque image reference layer (auto-selected). */
 export async function pasteImageReference(blob: Blob): Promise<void> {
   // loadImageMedia reads file.name only for its error message — wrap the blob in a File.
   const file = new File([blob], "Pasted image", { type: blob.type || "image/png" });
   const media = await loadImageMedia(file);
   const layer = createReferenceLayer(media, "Pasted image");
+  persistReferenceMedia(layer, blob, "Pasted image");
   layer.opacity = 100; // content, not a dimmed trace underlay (ref default is 60)
   addLayerToProject(layer);
 }
@@ -593,11 +607,13 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
 
 /** Replace a reference layer's media (e.g. re-linking a persisted placeholder), keeping its
  *  name/opacity/visibility/offset/transform. Not undoable. */
-export function relinkReference(id: number, media: ReferenceMedia) {
+export function relinkReference(id: number, media: ReferenceMedia, blob?: Blob) {
   const layer = state.project.layers.find((l) => l.id === id);
   if (layer && layer.kind === "ref") {
     releaseReferenceMedia(layer.media); // free the old media (this is not undoable)
     layer.media = media;
+    if (blob && (media.type === "image" || (media.type === "video" && layer.embedMedia)))
+      persistReferenceMedia(layer, blob, blob instanceof File ? blob.name : layer.name);
     bump();
   }
 }

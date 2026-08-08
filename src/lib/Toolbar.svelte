@@ -9,6 +9,7 @@
     setAudioTrack,
     DPR,
     pasteImageReference,
+    persistReferenceMedia,
     selectEyedropper,
   } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -65,6 +66,7 @@
       pendingKind === "image"
         ? await loadImageLayer(file)
         : await loadVideoLayer(file, () => bump());
+    if (pendingKind === "image") persistReferenceMedia(layer, file, file.name);
     addLayerToProject(layer);
   }
 

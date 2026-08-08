@@ -79,7 +79,7 @@
     const file = relinkInput.files?.[0];
     const id = relinkTargetId;
     if (!file || id == null) return;
-    relinkReference(id, await loadReferenceMedia(file, () => bump()));
+    relinkReference(id, await loadReferenceMedia(file, () => bump()), file);
   }
 
   function startEdit(layer: { id: number; name: string }) {
