@@ -44,6 +44,9 @@ export interface ReferenceJson {
   offsetFrames: number;
   speed?: number;
   audioEnabled?: boolean;
+  mediaId?: string;
+  mediaMime?: string;
+  embedMedia?: boolean;
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
@@ -56,6 +59,44 @@ export function insertReferencesByIndex<T>(base: T[], refs: { index: number; val
     out.splice(Math.min(r.index, out.length), 0, r.value);
   }
   return out;
+}
+
+export interface MediaRefShape {
+  kind: string;
+  mediaId?: string;
+  embedMedia?: boolean;
+  media?: { type: string; was?: "image" | "video" }; // absent on drawing layers
+}
+
+/** Every media id the project still references (live or placeholder) — the prune keep-set. */
+export function referencedMediaIds(layers: MediaRefShape[]): Set<string> {
+  return new Set(
+    layers.filter((l) => l.kind === "ref" && l.mediaId).map((l) => l.mediaId as string),
+  );
+}
+
+/** Ids whose bytes go into the exported zip: live images always, live videos on opt-in. */
+export function mediaIdsToEmbed(layers: MediaRefShape[]): string[] {
+  return layers
+    .filter(
+      (l) =>
+        l.kind === "ref" &&
+        l.mediaId &&
+        l.media &&
+        l.media.type !== "missing" &&
+        (l.media.type === "image" || l.embedMedia === true),
+    )
+    .map((l) => l.mediaId as string);
+}
+
+/** Whether a placeholder should hydrate from stored bytes (videos only on opt-in). */
+export function shouldRestoreMedia(l: MediaRefShape): boolean {
+  return (
+    l.kind === "ref" &&
+    !!l.mediaId &&
+    l.media?.type === "missing" &&
+    (l.media.was !== "video" || l.embedMedia === true)
+  );
 }
 
 export interface ProjectJson {
@@ -155,6 +196,9 @@ export function projectToJson(project: Project): ProjectJson {
         offsetFrames: l.offsetFrames,
         speed: l.speed,
         audioEnabled: l.audioEnabled,
+        mediaId: l.mediaId,
+        mediaMime: l.mediaMime,
+        embedMedia: l.embedMedia,
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
@@ -281,6 +325,9 @@ export async function loadProjectBlob(blob: Blob, dpr: number): Promise<Project>
       offsetFrames: rj.offsetFrames,
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
+      mediaId: rj.mediaId,
+      mediaMime: rj.mediaMime,
+      embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
       media: { type: "missing", was: rj.was, name: rj.name },
