@@ -14,7 +14,8 @@
   } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
-  import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
+  import { saveProjectBlob, loadProjectBlob, referencedMediaIds } from "../persist/project-file";
+  import { pruneMedia } from "../persist/media-store";
   import { downloadBlob } from "../export/download";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
@@ -63,6 +64,7 @@
           () => (appState.statusHint = "Storage full — references won't survive a reload"),
         ),
       );
+      void pruneMedia(referencedMediaIds(appState.project.layers));
       return;
     }
     if (pendingKind === "audio") {
