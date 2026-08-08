@@ -6,6 +6,9 @@
 A browser-based, low-framerate, frame-by-frame **bitmap animation** app with a monochrome
 ink-outline aesthetic. Designed **iPad-first for Apple Pencil** (mouse/desktop also works).
 
+**▶ Try it: [slop-animator.meigo.workers.dev](https://slop-animator.meigo.workers.dev)** — on an
+iPad, use Share → Add to Home Screen for a full-screen app.
+
 Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vitest.
 
 ## Features (current state)
