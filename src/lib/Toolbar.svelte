@@ -55,7 +55,14 @@
     const file = fileInput.files?.[0];
     if (!file) return;
     if (pendingKind === "project") {
-      replaceProject(await loadProjectBlob(file, DPR));
+      replaceProject(
+        await loadProjectBlob(
+          file,
+          DPR,
+          () => bump(),
+          () => (appState.statusHint = "Storage full — references won't survive a reload"),
+        ),
+      );
       return;
     }
     if (pendingKind === "audio") {
@@ -95,7 +102,7 @@
   }
 
   async function saveProject() {
-    downloadBlob(await saveProjectBlob(appState.project), "project.zip");
+    downloadBlob(await saveProjectBlob(appState.project, true), "project.zip");
   }
 
   function toggleTheme() {

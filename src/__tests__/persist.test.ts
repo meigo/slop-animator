@@ -303,6 +303,20 @@ describe("reference media persistence fields", () => {
   });
 });
 
+describe("zip media entries", () => {
+  it("includeMedia=true writes no media/ entry for missing media; =false never writes any", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" });
+    ref.mediaId = "gone-1";
+    project.layers.push(ref);
+    for (const include of [true, false]) {
+      const blob = await saveProjectBlob(project, include);
+      const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+      expect(Object.keys(zip).filter((k) => k.startsWith("media/"))).toEqual([]);
+    }
+  });
+});
+
 describe("media selection helpers", () => {
   const img = { kind: "ref", mediaId: "i1", media: { type: "image" } };
   const vidOn = { kind: "ref", mediaId: "v1", embedMedia: true, media: { type: "video" } };
