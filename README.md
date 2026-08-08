@@ -1,8 +1,5 @@
 # slop-animator
 
-> ⚠️ **Work in progress.** This is an actively developed personal project — expect rough edges,
-> missing features, and breaking changes to the project file format.
-
 A browser-based, low-framerate, frame-by-frame **bitmap animation** app with a monochrome
 ink-outline aesthetic. Designed **iPad-first for Apple Pencil** (mouse/desktop also works).
 
