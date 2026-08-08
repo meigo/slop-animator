@@ -618,6 +618,20 @@ export function relinkReference(id: number, media: ReferenceMedia, blob?: Blob) 
   }
 }
 
+/** Video-only opt-in to persist/embed the media bytes. Toggle-on stores the bytes now (from the
+ *  live element's blob URL); toggle-off just clears the flag — the record is pruned at the next
+ *  load boundary (never mid-session: undo snapshots may still reference it). */
+export async function toggleEmbedMedia(id: number): Promise<void> {
+  const layer = state.project.layers.find((l) => l.id === id);
+  if (!layer || layer.kind !== "ref") return;
+  layer.embedMedia = !layer.embedMedia;
+  if (layer.embedMedia && layer.media.type === "video" && !layer.mediaId) {
+    const blob = await fetch(layer.media.el.src).then((r) => r.blob());
+    persistReferenceMedia(layer, blob);
+  }
+  bump(); // repaint + mark autosave dirty
+}
+
 /** Set/replace the project audio track (not undoable; persisted with the project). */
 export function setAudioTrack(track: AudioTrack) {
   state.project.audio = track;
