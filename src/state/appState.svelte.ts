@@ -662,6 +662,27 @@ export function setAudioTrack(track: AudioTrack) {
   audioEngine.setTrack(track);
   bump();
 }
+/** Move the playhead (clamped); when paused, plays a short audio scrub window at the new frame.
+ *  All paused playhead-move UI routes through this (ruler, prev/next, keyboard stepping). */
+export function seekPlayhead(f: number): void {
+  const clamped = Math.max(0, Math.min(state.project.frameCount - 1, f));
+  if (clamped === state.playhead) return; // unchanged → no re-scrub spam from pointer jitter
+  state.playhead = clamped;
+  if (!state.playback.isPlaying) audioEngine.scrub(clamped, state.project.fps);
+}
+
+/** Mute/unmute the audio track (not undoable — matches set/removeAudioTrack). */
+export function toggleAudioMute(): void {
+  const t = state.project.audio;
+  if (!t) return;
+  t.muted = !t.muted;
+  if (state.playback.isPlaying) {
+    if (t.muted) audioEngine.stop();
+    else audioEngine.play(state.playhead, state.project.fps); // rejoin in sync mid-playback
+  }
+  bump();
+}
+
 /** Remove the audio track. */
 export function removeAudioTrack() {
   state.project.audio = null;

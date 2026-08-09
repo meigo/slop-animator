@@ -2,6 +2,7 @@
   import {
     state as appState,
     bump,
+    seekPlayhead,
     playbackController,
     setAnimationLength,
     setPlayRangeIn,
@@ -26,7 +27,7 @@
   let settingsOpen = $state(false);
 
   function go(f: number) {
-    appState.playhead = Math.max(0, Math.min(appState.project.frameCount - 1, f));
+    seekPlayhead(f);
   }
   function setFps(v: number) {
     appState.project.fps = Math.max(1, Math.min(60, Math.round(v)));

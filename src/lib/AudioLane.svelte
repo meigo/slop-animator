@@ -1,10 +1,35 @@
 <script lang="ts">
-  import { Music, X } from "@lucide/svelte";
-  import { state, removeAudioTrack } from "../state/appState.svelte";
+  import { Music, X, Volume2, VolumeX } from "@lucide/svelte";
+  import { state, bump, removeAudioTrack, toggleAudioMute } from "../state/appState.svelte";
+  import { audioEngine } from "../audio/engine";
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
   let { cellW, labelW }: { cellW: number; labelW: number } = $props();
+
+  // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
+  // the clip may start before frame 0). Not undoable: audio is outside StructSnapshot (P2 spec).
+  let dragStart: { x: number; offset: number } | null = null;
+  function laneDown(e: PointerEvent) {
+    if (!state.project.audio) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragStart = { x: e.clientX, offset: state.project.audio.offsetFrames };
+  }
+  function laneMove(e: PointerEvent) {
+    const audio = state.project.audio;
+    if (!dragStart || !audio) return;
+    const next = dragStart.offset + Math.round((e.clientX - dragStart.x) / cellW);
+    if (next !== audio.offsetFrames) {
+      audio.offsetFrames = next;
+      bump();
+    }
+  }
+  function laneUp() {
+    // Re-align a running playback to the new offset once, at release.
+    if (dragStart && state.playback.isPlaying)
+      audioEngine.syncTo(state.playhead, state.project.fps);
+    dragStart = null;
+  }
 
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
@@ -53,10 +78,27 @@
       >
       <button
         class="text-text-muted hover:text-text-secondary"
+        title={state.project.audio.muted ? "Muted — click to unmute" : "Click to mute audio"}
+        onclick={toggleAudioMute}
+        >{#if state.project.audio.muted}<VolumeX size={13} />{:else}<Volume2
+            size={13}
+          />{/if}</button
+      >
+      <button
+        class="text-text-muted hover:text-text-secondary"
         title="Remove audio"
         onclick={removeAudioTrack}><X size={13} /></button
       >
     </div>
-    <canvas class="h-7" use:waveform={{ audioVersion: state.version }}></canvas>
+    <canvas
+      class="h-7 cursor-grab"
+      style="touch-action: none; margin-left: {state.project.audio.offsetFrames * cellW}px"
+      use:waveform={{ audioVersion: state.version }}
+      onpointerdown={laneDown}
+      onpointermove={laneMove}
+      onpointerup={laneUp}
+      onpointercancel={laneUp}
+      title="Drag to offset the audio clip"
+    ></canvas>
   </div>
 {/if}

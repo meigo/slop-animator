@@ -17,6 +17,7 @@
     bump,
     history,
     commitStructural,
+    seekPlayhead,
     beginStructuralEdit,
     commitStructuralEdit,
     setActiveLayer,
@@ -75,7 +76,7 @@
   }
 
   function go(f: number) {
-    appState.playhead = Math.max(0, Math.min(appState.project.frameCount - 1, f));
+    seekPlayhead(f);
   }
 
   // Draggable playhead: pointer-drag anywhere on the ruler scrubs the current frame.
