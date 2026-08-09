@@ -232,8 +232,8 @@ function restoreStructure(s: StructSnapshot) {
       live.groupId = snap.groupId; // group membership is structural (reorder/regroup), undoable — not a view-prop
       if (live.kind === "draw" && snap.kind === "draw") {
         live.cells = snap.cells.slice();
-        live.transform = { ...snap.transform }; // transform is undoable (Apply/Reset change it with cells)
       }
+      live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
       return live;
     }
     // Layer was removed, OR its kind changed since the snapshot (e.g. rasterize ref→draw, same id) →
@@ -454,7 +454,7 @@ export function applyLayerTransform(layerId: number): void {
 
 export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
-  if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
+  if (!layer || isIdentityTransform(layer.transform)) return;
   commitStructural(() => {
     layer.transform = { ...IDENTITY_TRANSFORM };
   });

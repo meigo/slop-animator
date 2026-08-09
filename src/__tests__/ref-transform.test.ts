@@ -12,6 +12,7 @@ import {
   inverseChain,
   type Rect,
 } from "../core/ref-transform";
+import { isSameTransform } from "../anim/document";
 
 const base: Rect = { x: 100, y: 100, w: 200, h: 100 }; // center (200,150)
 const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
@@ -201,5 +202,14 @@ describe("forwardChain / inverseChain", () => {
     const p = { x: 7, y: 9 };
     expect(forwardChain(steps, p)).toEqual(p);
     expect(inverseChain(steps, p)).toEqual(p);
+  });
+});
+
+describe("isSameTransform", () => {
+  const t = { dx: 3, dy: -1, scale: 1.5, rotation: 0.2 };
+  it("exact field equality", () => {
+    expect(isSameTransform(t, { ...t })).toBe(true);
+    expect(isSameTransform(t, { ...t, dx: 3.0000001 })).toBe(false);
+    expect(isSameTransform(t, { ...t, rotation: 0 })).toBe(false);
   });
 });

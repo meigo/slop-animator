@@ -79,6 +79,12 @@ export function isIdentityTransform(t: RefTransform): boolean {
   return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
 }
 
+/** Exact equality — drag deltas recompute from the grab-time transform, so an untouched drag
+ *  ends bit-identical; no epsilon. Used to skip history pushes for no-op drags. */
+export function isSameTransform(a: RefTransform, b: RefTransform): boolean {
+  return a.dx === b.dx && a.dy === b.dy && a.scale === b.scale && a.rotation === b.rotation;
+}
+
 /** Logical base rect for a layer's transform: the full document for a draw layer; the media
  *  contain-fit rect for a ref (null when the ref's media isn't loaded). */
 export function transformBaseRect(
