@@ -676,9 +676,10 @@ export function toggleAudioMute(): void {
   const t = state.project.audio;
   if (!t) return;
   t.muted = !t.muted;
-  if (state.playback.isPlaying) {
-    if (t.muted) audioEngine.stop();
-    else audioEngine.play(state.playhead, state.project.fps); // rejoin in sync mid-playback
+  if (t.muted) {
+    audioEngine.stop(); // also kills an in-flight scrub window — muted must mean silent NOW
+  } else if (state.playback.isPlaying) {
+    audioEngine.play(state.playhead, state.project.fps); // rejoin in sync mid-playback
   }
   bump();
 }

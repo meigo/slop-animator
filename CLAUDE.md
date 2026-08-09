@@ -453,6 +453,6 @@ and `,`/`.` stepping. **Offset:** drag the waveform canvas (touch-action none, p
 clamp on the offset range (accepted). **Mute:** 🔊/🔇 beside Remove; toggling mid-playback
 stops/rejoins the engine; `play()` also refuses muted as defense. Offset/mute are NOT undoable
 (audio is outside `StructSnapshot`, like set/remove-track). **Owed a browser pass:** scrub audible
-on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload; iPad drag
+on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
 (touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
 muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.
