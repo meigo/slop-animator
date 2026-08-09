@@ -43,6 +43,7 @@ function drawLayer(id: number, cells: Cell[]): DrawingLayer {
 }
 function proj(layers: (DrawingLayer | ReferenceLayer)[], frameCount: number): Project {
   return {
+    name: "t",
     width: 100,
     height: 100,
     fps: 12,

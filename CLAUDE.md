@@ -405,3 +405,13 @@ drag → undo; redo for all of the above; mid-drag `pointercancel` (iPad palm re
 frame-scope drag _while playback runs_ (drag settles on the first playhead-crossing); ⌘Z during a held
 drag (drag settles as its own undo entry, then the undo applies); iPad overall. Spec/plan:
 `…/2026-08-09-undoable-transform-drags*.md`.
+
+**Project name (2026-08-09, on branch):** `Project.name` (default `"untitled"`, editable at the top of
+the Project Settings dialog, not undoable — matches fps/bg) is now the save and export filename via
+`sanitizeFilename` (`project-file.ts`, unit-tested): save → `<name>.zip`, exports → `<name>.zip`/
+`.mp4`/`.webm`. Fixes the iPad `project (n).zip` pile-up — Files still auto-increments on an exact
+name collision, but the stem is now meaningful. Persisted as optional `ProjectJson.name` (version
+stays 1); an old file opens with the picked file's basename as its name, an old autosave falls back
+to `"untitled"`. **Owed a browser pass:** the settings-dialog text input on iPad (keyboard focus);
+save lands in Files under the chosen name; old-zip open adopts the basename; export filenames.
+Spec: `…/2026-08-09-project-name-design.md`.

@@ -101,8 +101,17 @@ export function shouldRestoreMedia(l: MediaRefShape): boolean {
   );
 }
 
+/** Project name → safe download filename stem: drop filesystem-hostile and control characters,
+ *  trim, fall back to "untitled" when nothing survives. */
+export function sanitizeFilename(name: string): string {
+  // eslint-disable-next-line no-control-regex -- stripping control chars is the point
+  const cleaned = name.replace(/[/\\:*?"<>|\u0000-\u001f]/g, "").trim();
+  return cleaned || "untitled";
+}
+
 export interface ProjectJson {
   version: 1;
+  name?: string; // absent in pre-2026-08-09 saves; loader yields "" and the caller fills a fallback
   width: number;
   height: number;
   fps: number;
@@ -143,6 +152,7 @@ export function migrateBoil(raw: unknown): BoilConfig {
 export function projectToJson(project: Project): ProjectJson {
   return {
     version: 1,
+    name: project.name,
     width: project.width,
     height: project.height,
     fps: project.fps,
@@ -395,6 +405,7 @@ export async function loadProjectBlob(
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
   const project: Project = {
+    name: json.name ?? "",
     width: json.width,
     height: json.height,
     fps: json.fps,

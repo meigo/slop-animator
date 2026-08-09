@@ -47,6 +47,7 @@ describe("renderFrame", () => {
     const c1 = keyCanvas();
     const c2 = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -73,6 +74,7 @@ describe("renderFrame", () => {
 
   it("omits the background fill when drawBg is false", () => {
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -94,6 +96,7 @@ describe("compositeFrameLayers", () => {
     const c1 = keyCanvas();
     const c2 = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -131,6 +134,7 @@ describe("compositeFrameLayers with reference layers", () => {
     ref.id = 1; // deterministic for the assertion
     const drawC = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -155,6 +159,7 @@ describe("compositeFrameLayers with reference layers", () => {
     ref.id = 1;
     const drawC = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -223,6 +228,7 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
   it("identity transform uses the plain (non-sized) blit", () => {
     const c = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -243,6 +249,7 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
   it("non-identity transform draws through the affine (composed path, natural size)", () => {
     const c = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -272,6 +279,7 @@ describe("compositeFrameLayers with a per-cell transform", () => {
     const cellT = { dx: 4, dy: 0, scale: 1.3, rotation: 0 };
     const box = { x: 0, y: 0, w: 100, h: 100 };
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -291,6 +299,7 @@ describe("compositeFrameLayers with a per-cell transform", () => {
   it("identity cell + identity layer stays a plain blit", () => {
     const c = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -321,6 +330,7 @@ describe("renderFrame includeReference", () => {
     ref.id = 1;
     const drawC = keyCanvas();
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -363,6 +373,7 @@ describe("drawReferenceMedia — group-aware wrap", () => {
       transformBox: { x: 0, y: 0, w: 100, h: 100 },
     };
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -396,6 +407,7 @@ describe("compositeFrameLayers with a group transform", () => {
       transformBox: { x: 0, y: 0, w: 100, h: 100 },
     };
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
@@ -421,6 +433,7 @@ describe("compositeFrameLayers with a group transform", () => {
     const c = keyCanvas();
     const group = { id: 9, name: "G", collapsed: false, visible: true };
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,
