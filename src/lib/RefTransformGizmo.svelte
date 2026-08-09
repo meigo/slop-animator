@@ -10,6 +10,7 @@
     resetLayerTransform,
     resetCellTransform,
     resetGroupTransform,
+    transformDragGuard,
   } from "../state/appState.svelte";
   import {
     transformBaseRect,
@@ -162,6 +163,7 @@
       /* capture is best-effort */
     }
     dragUndo = beginStructuralEdit(); // FIRST (gotcha #8: snapshot the old shared cell)
+    transformDragGuard.settle = () => endDragFromGuard();
     if (tgt.scope === "frame" && tgt.cell) {
       const l = activeTransformLayer();
       if (l?.kind === "draw") {
@@ -215,6 +217,12 @@
     bump();
   }
 
+  function removeDragListeners() {
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", endHandleDrag);
+    window.removeEventListener("pointercancel", endHandleDrag);
+  }
+
   function endHandleDrag(e: PointerEvent) {
     if (drag) {
       try {
@@ -225,9 +233,15 @@
     }
     settleDragUndo();
     drag = null;
-    window.removeEventListener("pointermove", onDragMove);
-    window.removeEventListener("pointerup", endHandleDrag);
-    window.removeEventListener("pointercancel", endHandleDrag);
+    removeDragListeners();
+  }
+
+  /** transformDragGuard settle hook: undo/redo mid-drag has no PointerEvent to release capture
+   *  with, so it settles the bracket and tears down listeners without that step. */
+  function endDragFromGuard() {
+    settleDragUndo();
+    drag = null;
+    removeDragListeners();
   }
 
   function settleDragUndo() {
@@ -241,6 +255,7 @@
     }
     dragUndo = null;
     dragFreeze = null;
+    transformDragGuard.settle = null;
   }
 
   function tick() {

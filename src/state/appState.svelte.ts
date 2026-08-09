@@ -475,6 +475,8 @@ export function resetCellTransform(layerId: number, frame: number): void {
   if (!layer || layer.kind !== "draw") return;
   const rk = resolvedKeyCell(layer, frame);
   if (!rk) return;
+  const t = rk.cell.transform;
+  if ((!t || isIdentityTransform(t)) && !rk.cell.transformBox) return;
   commitStructural(() => {
     // Replace the cell (don't mutate it in place): snapshots share cell object refs, so an in-place
     // edit would corrupt the before-snapshot and make undo a no-op. Drop the transform, keep the canvas.
@@ -484,7 +486,8 @@ export function resetCellTransform(layerId: number, frame: number): void {
 
 export function resetGroupTransform(groupId: number): void {
   const g = state.project.groups.find((x) => x.id === groupId);
-  if (!g || !g.transform || isIdentityTransform(g.transform)) return;
+  if (!g) return;
+  if ((!g.transform || isIdentityTransform(g.transform)) && !g.transformBox) return;
   commitStructural(() => {
     g.transform = { ...IDENTITY_TRANSFORM };
     g.transformBox = null;
@@ -888,13 +891,19 @@ export const poseActions: { active: () => boolean; apply: () => void; cancel: ()
  *  would commit to a detached canvas or corrupt the undo baseline. */
 export const liftGuard: { discard: (() => void) | null } = { discard: null };
 
+/** In-flight transform-drag settle hook: undo/redo must not run while a drag bracket is open —
+ *  the registered settle commits (or discards) the bracket first. Set at grab, cleared at settle. */
+export const transformDragGuard: { settle: (() => void) | null } = { settle: null };
+
 /** Undo/redo, discarding any in-progress lift first (its captured context/baseline would be stale). */
 export function undo(): void {
+  transformDragGuard.settle?.();
   liftGuard.discard?.();
   history.undo();
   state.timelineSelection = null; // a structural restore can invalidate stored endpoints
 }
 export function redo(): void {
+  transformDragGuard.settle?.();
   liftGuard.discard?.();
   history.redo();
   state.timelineSelection = null;

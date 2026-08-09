@@ -105,8 +105,14 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
    undoable `resetCellTransform`/`resetGroupTransform`/`resetLayerTransform` actions rather than a
    direct mutation. Known gap, not fixed by this feature: `input.ts` still has no `pointercancel`
    listener, so an OS-cancelled pointer stream (e.g. iPad palm rejection) on the Canvas on-canvas drag
-   path leaks `refDragUndo`/`refDragFreeze` until the next gesture overwrites it — the gizmo's own
-   handle-drag path is unaffected, since it binds `pointercancel` itself on `window`.
+   path can leave `refDrag`/`refDragUndo`/`refDragFreeze` set. If that happens, the _next_ gesture's
+   grab block sees `refDrag` already non-null and skips re-snapshotting, so the stale snapshot from the
+   cancelled gesture gets committed at that next gesture's release — silently merging two separate
+   drags into one undo entry. In practice this is rarely reachable: `input.ts` binds
+   `pointerleave → onPointerUp`, and per the pointer-events spec a `pointercancel` is followed by
+   `pointerout`/`pointerleave` at the capturing element, so `done: true` usually still arrives even on
+   an OS cancel. The gizmo's own handle-drag path is unaffected either way, since it binds
+   `pointercancel` itself on `window`.
 7. Mouse strokes report no pressure (`hasPressure:false`) → drawn at constant nominal width
    (`sizeRange` collapses to 1); only pen pressure widens.
 8. **Undo snapshots SHARE cell/canvas object refs** (`cloneLayers` only `slice()`s the array). A
@@ -396,4 +402,6 @@ so an OS-cancelled captured stream (iPad palm rejection) on the Canvas on-canvas
 undo; frame-scope drag → undo restores the cell transform; drag then undo an _earlier_ structural op
 (the drag must not revert with it); click-without-move pushes nothing; Reset-to-fit → undo; ref-layer
 drag → undo; redo for all of the above; mid-drag `pointercancel` (iPad palm rejection) still commits;
-iPad overall. Spec/plan: `…/2026-08-09-undoable-transform-drags*.md`.
+frame-scope drag _while playback runs_ (drag settles on the first playhead-crossing); ⌘Z during a held
+drag (drag settles as its own undo entry, then the undo applies); iPad overall. Spec/plan:
+`…/2026-08-09-undoable-transform-drags*.md`.
