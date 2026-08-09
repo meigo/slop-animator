@@ -691,8 +691,15 @@
           {@const r = appState.playback.range
             ? effectiveRange(appState.playback.range, appState.project.frameCount)
             : null}
+          <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
+               text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
           <div
-            class="box-border h-4 border-r border-border text-[10px] leading-4 text-center text-text-secondary"
+            class="box-border h-4 border-r text-[10px] leading-4 text-center text-text-secondary {(f +
+              1) %
+              5 ===
+            0
+              ? 'border-text-muted'
+              : 'border-text-muted/35'}"
             class:bg-selection={r && f >= r.start && f <= r.end}
             style="width: {CELL_W}px"
           >
