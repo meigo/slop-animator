@@ -415,3 +415,10 @@ stays 1); an old file opens with the picked file's basename as its name, an old 
 to `"untitled"`. **Owed a browser pass:** the settings-dialog text input on iPad (keyboard focus);
 save lands in Files under the chosen name; old-zip open adopts the basename; export filenames.
 Spec: `…/2026-08-09-project-name-design.md`.
+
+**Layer lock toggle (2026-08-09):** the `locked` flag was fully enforced (draw/fill/lift/transform/
+timeline all refuse locked layers; lock-mid-lift discards via the 2026-06-29 review work) but had NO
+UI writer — `duplicateLayer` was the only code that ever set it. Added the missing Lock/LockOpen
+button on draw-layer rows in `LayerList`, beside the eye (same in-place-mutate + `bump()` pattern as
+visibility/audio/embed; not undoable, matching visibility). 15-line diff, no new enforcement.
+**Owed:** an iPad tap check + confirming a locked layer visibly refuses strokes.

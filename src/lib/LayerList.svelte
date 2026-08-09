@@ -24,6 +24,8 @@
     VolumeX,
     Save,
     SaveOff,
+    Lock,
+    LockOpen,
   } from "@lucide/svelte";
   import {
     state as appState,
@@ -246,6 +248,19 @@
       >
         {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
       </button>
+      {#if layer.kind === "draw"}
+        <button
+          class="text-text-secondary"
+          onclick={(e) => {
+            e.stopPropagation();
+            layer.locked = !layer.locked;
+            bump();
+          }}
+          title={layer.locked ? "Locked — click to unlock" : "Unlocked — click to lock drawing"}
+        >
+          {#if layer.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
+        </button>
+      {/if}
       {#if layer.kind === "ref" && layer.media.type === "video"}
         <button
           class="text-text-secondary"
