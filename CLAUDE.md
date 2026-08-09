@@ -439,3 +439,20 @@ allowed — locks protect content, not organization. Copy from a locked layer is
 **Owed a browser pass:** transform drag refused on locked layer (all 3 scopes + ref-sibling group);
 gizmo hidden when locked; paste/move across a locked row leaves it intact; hold-span resize refused;
 lock mid-drag settles cleanly; iPad.
+
+**Audio Phase 2 — scrub, drag-offset, mute (2026-08-09, on branch):** the P1-deferred trio, UI/engine
+only (P1 pre-landed `offsetFrames`/`muted` in model + save format — zero migration). **Scrub:**
+`AudioEngine.scrub(frame, fps)` plays a ~100 ms window (`src.stop(now + 0.1)`), replace-per-call so
+fast drags self-coalesce; no-op when muted / while playback owns the output / past clip end; a
+separate `scrubSource` keeps `syncTo`'s "only if playing" check honest. Routed via the new
+`seekPlayhead(f)` action (clamps; scrubs only when paused AND the frame actually changed — no
+pointer-jitter spam), now the single path for ruler drag/keys (`Timeline.go`), Playbar prev/next,
+and `,`/`.` stepping. **Offset:** drag the waveform canvas (touch-action none, pointer capture);
+`round(dx / cellW)` frames applied live + `bump()`; rendered as `margin-left` so negative offsets
+(clip before frame 0) tuck under the sticky label; release re-`syncTo`s a running playback. No
+clamp on the offset range (accepted). **Mute:** 🔊/🔇 beside Remove; toggling mid-playback
+stops/rejoins the engine; `play()` also refuses muted as defense. Offset/mute are NOT undoable
+(audio is outside `StructSnapshot`, like set/remove-track). **Owed a browser pass:** scrub audible
+on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
+(touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
+muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.

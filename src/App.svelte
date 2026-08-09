@@ -11,6 +11,7 @@
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import { onMount } from "svelte";
   import {
+    seekPlayhead,
     state,
     undo,
     redo,
@@ -134,9 +135,8 @@
     } else if (e.key === "o") {
       state.onion.enabled = !state.onion.enabled;
       bump();
-    } else if (e.key === ",") state.playhead = Math.max(0, state.playhead - 1);
-    else if (e.key === ".")
-      state.playhead = Math.min(state.project.frameCount - 1, state.playhead + 1);
+    } else if (e.key === ",") seekPlayhead(state.playhead - 1);
+    else if (e.key === ".") seekPlayhead(state.playhead + 1);
     else if (e.key === "[" || e.key === "]") {
       const s = state.tool === "eraser" ? state.eraser : state.brush;
       s.size = e.key === "[" ? Math.max(0.5, s.size - 1) : Math.min(60, s.size + 1);
