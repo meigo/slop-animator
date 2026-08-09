@@ -42,6 +42,8 @@
     groupOf,
     groupTransform,
     type Layer,
+    type Cell,
+    type LayerGroup,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
@@ -351,7 +353,13 @@
   // One undo step per completed transform drag: snapshot at grab, commit at release iff the
   // transform changed; on a no-op, revert the grab-time transformBox freeze instead (spec 2026-08-09).
   let refDragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
-  let refDragFreeze: { kind: "cell" | "group"; prevBox: Rect | null } | null = null;
+  // Direct object refs captured at grab (not re-resolved via activeLayerId/playhead at release —
+  // those can change mid-gesture, e.g. arrow-key frame nav while a mouse-drag is still captured).
+  let refDragFreeze: {
+    cell: Extract<Cell, { kind: "key" }> | null;
+    group: LayerGroup | null;
+    prevBox: Rect | null;
+  } | null = null;
 
   // endT is a thunk: at the early-return sites the target is gone and there is no getT — pass null
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
@@ -360,18 +368,8 @@
     if (refDragUndo) {
       if (refDrag?.handle && endT && isSameTransform(refDrag.startT, endT())) {
         // No-op drag: push nothing, revert the freeze we did at grab.
-        if (refDragFreeze?.kind === "cell") {
-          // frameRk isn't in scope here; the frozen cell is the active layer's resolved key cell.
-          const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
-          if (l?.kind === "draw") {
-            const rk = resolvedKeyCell(l, appState.playhead);
-            if (rk) rk.cell.transformBox = refDragFreeze.prevBox;
-          }
-        } else if (refDragFreeze?.kind === "group") {
-          const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
-          const grp = l ? groupOf(l, appState.project.groups) : null;
-          if (grp) grp.transformBox = refDragFreeze.prevBox;
-        }
+        if (refDragFreeze?.cell) refDragFreeze.cell.transformBox = refDragFreeze.prevBox;
+        else if (refDragFreeze?.group) refDragFreeze.group.transformBox = refDragFreeze.prevBox;
       } else if (refDrag?.handle) {
         commitStructuralEdit(refDragUndo);
       }
@@ -463,10 +461,14 @@
         // Freeze the box on grab for a frame/group transform currently at identity.
         if (isIdentityTransform(getT())) {
           if (isDraw && scope === "frame" && frameRk) {
-            refDragFreeze = { kind: "cell", prevBox: frameRk.cell.transformBox ?? null };
+            refDragFreeze = {
+              cell: frameRk.cell,
+              group: null,
+              prevBox: frameRk.cell.transformBox ?? null,
+            };
             frameRk.cell.transformBox = base;
           } else if (isDraw && scope === "group" && g) {
-            refDragFreeze = { kind: "group", prevBox: g.transformBox ?? null };
+            refDragFreeze = { cell: null, group: g, prevBox: g.transformBox ?? null };
             g.transformBox = base;
           }
         }
