@@ -21,7 +21,7 @@ download time, so every save lands in Files as `project (n).zip` — anonymous a
 3. **UI:** one text input at the top of the existing Project Settings dialog. No other surface.
 4. **Filenames:** save → `<name>.zip`; PNG-sequence export → `<name>.zip`; video export →
    `<name>.mp4`/`.webm`. A pure `sanitizeFilename(name)` (in `project-file.ts`, unit-tested) strips
-   `/ \ : * ? " < > |` and control chars, collapses the result, trims, and falls back to
+   `/ \ : * ? " < > |` and control chars, trims, and falls back to
    `"untitled"` when empty.
 
 ## Out of scope
