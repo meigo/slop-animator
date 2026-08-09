@@ -417,9 +417,25 @@ to `"untitled"`. **Owed a browser pass:** the settings-dialog text input on iPad
 save lands in Files under the chosen name; old-zip open adopts the basename; export filenames.
 Spec: `…/2026-08-09-project-name-design.md`.
 
-**Layer lock toggle (2026-08-09):** the `locked` flag was fully enforced (draw/fill/lift/transform/
-timeline all refuse locked layers; lock-mid-lift discards via the 2026-06-29 review work) but had NO
+**Layer lock toggle (2026-08-09):** the `locked` flag was enforced for draw/fill/lifts (lock-mid-lift
+discards via the 2026-06-29 review work) — but NOT for transforms/timeline ops (closed same day, see
+the next entry) — and had NO
 UI writer — `duplicateLayer` was the only code that ever set it. Added the missing Lock/LockOpen
 button on draw-layer rows in `LayerList`, beside the eye (same in-place-mutate + `bump()` pattern as
 visibility/audio/embed; not undoable, matching visibility). 15-line diff, no new enforcement.
 **Owed:** an iPad tap check + confirming a locked layer visibly refuses strokes.
+
+**Lock enforcement completion (2026-08-09):** the lock toggle shipped with four holes — transform
+drags (Canvas dispatch + gizmo `activeTransformLayer` never checked `locked`), Apply/Reset actions,
+and timeline cell ops (only `clearFrame` checked). All closed: locked draw layers now refuse
+transform drags on both surfaces (a mid-gesture lock settles the open undo bracket), Apply/Reset
+(silent no-op, matching the drawing-refusal convention), the five frame tools + hold-span resize,
+and **block ops treat locked rows as inert** — paste/delete/move skip them while consuming their
+column so alignment holds (`timeline-block.ts`, unit-tested, incl. the moveBlockFrames
+column-counter subtlety). **Group transforms are blocked when the group contains a locked member**
+(`groupHasLockedLayer`, unit-tested) — drag, gizmo, and reset; Photoshop-style "locked member pins
+the group". Layer _management_ (rename/reorder/visibility/opacity/boil/duplicate/delete) stays
+allowed — locks protect content, not organization. Copy from a locked layer is allowed (read-only).
+**Owed a browser pass:** transform drag refused on locked layer (all 3 scopes + ref-sibling group);
+gizmo hidden when locked; paste/move across a locked row leaves it intact; hold-span resize refused;
+lock mid-drag settles cleanly; iPad.

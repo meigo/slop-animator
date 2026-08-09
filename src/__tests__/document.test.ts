@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  groupHasLockedLayer,
   resolveKeyframeIndex,
   buildFrameDrawList,
   containRect,
@@ -479,5 +480,16 @@ describe("layer transform helpers", () => {
       el: { naturalWidth: 0, naturalHeight: 0 } as unknown as HTMLImageElement,
     });
     expect(transformBaseRect(unloaded, 100, 100)).toBeNull();
+  });
+});
+
+describe("groupHasLockedLayer", () => {
+  it("true only when a draw member of the group is locked", () => {
+    const inGroup = { ...layer(1, [makeKey()]), groupId: 7, locked: true };
+    const outside = { ...layer(2, [makeKey()]), groupId: null, locked: true };
+    const unlockedMember = { ...layer(3, [makeKey()]), groupId: 7 };
+    const g = { id: 7, name: "G", collapsed: false, visible: true };
+    expect(groupHasLockedLayer(g, [unlockedMember, outside])).toBe(false);
+    expect(groupHasLockedLayer(g, [inGroup, unlockedMember])).toBe(true);
   });
 });

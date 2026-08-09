@@ -79,6 +79,15 @@ export function isIdentityTransform(t: RefTransform): boolean {
   return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
 }
 
+/** Whether any drawing-layer member of `group` is locked. Group transforms move every member's
+ *  rendered content, so a locked member blocks the whole group op (lock = content is immovable). */
+export function groupHasLockedLayer(
+  group: { id: number },
+  layers: { kind: string; groupId?: number | null; locked?: boolean }[],
+): boolean {
+  return layers.some((l) => l.kind === "draw" && l.groupId === group.id && l.locked === true);
+}
+
 /** Exact equality — drag deltas recompute from the grab-time transform, so an untouched drag
  *  ends bit-identical; no epsilon. Used to skip history pushes for no-op drags. */
 export function isSameTransform(a: RefTransform, b: RefTransform): boolean {
