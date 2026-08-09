@@ -14,7 +14,12 @@
   } from "../state/appState.svelte";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
-  import { saveProjectBlob, loadProjectBlob, referencedMediaIds } from "../persist/project-file";
+  import {
+    saveProjectBlob,
+    loadProjectBlob,
+    referencedMediaIds,
+    sanitizeFilename,
+  } from "../persist/project-file";
   import { pruneMedia } from "../persist/media-store";
   import { downloadBlob } from "../export/download";
   import ToolbarMenu from "./ToolbarMenu.svelte";
@@ -56,14 +61,15 @@
     const file = fileInput.files?.[0];
     if (!file) return;
     if (pendingKind === "project") {
-      replaceProject(
-        await loadProjectBlob(
-          file,
-          DPR,
-          () => bump(),
-          () => (appState.statusHint = "Storage full — references won't survive a reload"),
-        ),
+      const project = await loadProjectBlob(
+        file,
+        DPR,
+        () => bump(),
+        () => (appState.statusHint = "Storage full — references won't survive a reload"),
       );
+      // Pre-name-field saves carry no name — adopt the picked file's basename.
+      if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
+      replaceProject(project);
       void pruneMedia(referencedMediaIds(appState.project.layers));
       return;
     }
@@ -110,7 +116,7 @@
         true,
         () => (appState.statusHint = "Couldn't embed a reference — saved without it"),
       ),
-      "project.zip",
+      `${sanitizeFilename(appState.project.name)}.zip`,
     );
   }
 

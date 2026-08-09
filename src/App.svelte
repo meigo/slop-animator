@@ -184,7 +184,10 @@
     document.documentElement.classList.toggle("dark", state.theme === "dark");
     try {
       const restored = await loadAutosave(DPR);
-      if (restored) replaceProject(restored);
+      if (restored) {
+        if (!restored.name) restored.name = "untitled"; // pre-name-field autosave
+        replaceProject(restored);
+      }
       if (await hydrateFromStore(state.project, () => bump())) bump();
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
       void pruneMedia(referencedMediaIds(state.project.layers));

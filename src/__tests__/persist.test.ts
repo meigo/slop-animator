@@ -17,6 +17,7 @@ import {
   referencedMediaIds,
   mediaIdsToEmbed,
   shouldRestoreMedia,
+  sanitizeFilename,
 } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
@@ -59,6 +60,7 @@ function rlayer(id: number): ReferenceLayer {
 describe("projectToJson", () => {
   it("serializes settings (incl. boil) and drawing layers, excluding reference layers", () => {
     const p: Project = {
+      name: "t",
       width: 800,
       height: 600,
       fps: 8,
@@ -71,6 +73,7 @@ describe("projectToJson", () => {
     };
     expect(projectToJson(p)).toEqual({
       version: 1,
+      name: "t",
       width: 800,
       height: 600,
       fps: 8,
@@ -114,6 +117,7 @@ describe("projectToJson", () => {
 
   it("serializes transparentBg when set", () => {
     const p: Project = {
+      name: "t",
       width: 800,
       height: 600,
       fps: 8,
@@ -351,5 +355,42 @@ describe("media selection helpers", () => {
     expect(shouldRestoreMedia({ kind: "ref", media: { type: "missing", was: "image" } })).toBe(
       false,
     ); // no id
+  });
+});
+
+describe("project name", () => {
+  it("round-trips through save/load", async () => {
+    const project = createProject();
+    project.name = "walk cycle v2";
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.name).toBe("walk cycle v2");
+  });
+
+  it("absent name (old saves) loads as empty string for the caller's fallback", async () => {
+    const project = createProject();
+    const blob = await saveProjectBlob(project);
+    // Simulate an old save: strip the name from project.json before reloading.
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.name).toBe("untitled"); // new saves carry the default
+    delete json.name;
+    const { zipSync, strToU8 } = await import("fflate");
+    const rezipped = new Blob([zipSync({ ...zip, "project.json": strToU8(JSON.stringify(json)) })]);
+    const loaded = await loadProjectBlob(rezipped, 1);
+    expect(loaded.name).toBe("");
+  });
+});
+
+describe("sanitizeFilename", () => {
+  it("passes ordinary names through", () => {
+    expect(sanitizeFilename("walk cycle v2")).toBe("walk cycle v2");
+  });
+  it("strips filesystem-hostile characters", () => {
+    expect(sanitizeFilename('a/b\\c:d*e?f"g<h>i|j')).toBe("abcdefghij");
+  });
+  it("trims and falls back to untitled when empty", () => {
+    expect(sanitizeFilename("   ")).toBe("untitled");
+    expect(sanitizeFilename("")).toBe("untitled");
+    expect(sanitizeFilename('///"""')).toBe("untitled");
   });
 });

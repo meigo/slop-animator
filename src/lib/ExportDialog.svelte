@@ -3,6 +3,7 @@
   import { exportPngSequence } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { downloadBlob } from "../export/download";
+  import { sanitizeFilename } from "../persist/project-file";
 
   let status = $state("");
   let busy = $state(false);
@@ -13,12 +14,13 @@
     busy = true;
     status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
     try {
+      const stem = sanitizeFilename(appState.project.name);
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR);
-        downloadBlob(blob, "animation.zip");
+        downloadBlob(blob, `${stem}.zip`);
       } else {
         const blob = await exportVideo(appState.project, DPR, kind);
-        downloadBlob(blob, `animation.${kind}`);
+        downloadBlob(blob, `${stem}.${kind}`);
       }
       status = "Done.";
     } catch (e) {

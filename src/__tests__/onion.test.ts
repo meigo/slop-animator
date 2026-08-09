@@ -88,6 +88,7 @@ describe("renderFrameWithOnion", () => {
     const nextC = kc();
     const layerId = 1;
     const p: Project = {
+      name: "t",
       width: 100,
       height: 100,
       fps: 12,

@@ -278,6 +278,7 @@ describe("all-layers timeline operations", () => {
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
     const r = refLayerFixture(3);
     const p: Project = {
+      name: "t",
       width: 10,
       height: 10,
       fps: 12,
@@ -300,6 +301,7 @@ describe("all-layers timeline operations", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);
     const p: Project = {
+      name: "t",
       width: 10,
       height: 10,
       fps: 12,

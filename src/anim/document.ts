@@ -111,6 +111,9 @@ export function isDrawingLayer(l: Layer): l is DrawingLayer {
 }
 
 export interface Project {
+  /** User-visible project name; becomes the save/export filename (sanitized). "" = unknown
+   *  (old file being opened) — callers fill a fallback before the project goes live. */
+  name: string;
   width: number;
   height: number;
   fps: number;
@@ -354,6 +357,7 @@ export function createProject(
   const frameCount = 1;
   const layer = createDrawingLayer(frameCount, "Layer 1");
   return {
+    name: "untitled",
     width: opts?.width ?? 1280,
     height: opts?.height ?? 720,
     fps: opts?.fps ?? 12,

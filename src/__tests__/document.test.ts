@@ -74,6 +74,7 @@ function layer(id: number, cells: Cell[], over: Partial<DrawingLayer> = {}): Dra
 }
 function proj(layers: DrawingLayer[], frameCount: number): Project {
   return {
+    name: "t",
     width: 100,
     height: 100,
     fps: 12,
@@ -127,6 +128,7 @@ describe("buildFrameDrawList", () => {
 
   it("emits a ref op for visible reference layers, in z-order with drawing layers", () => {
     const p: Project = {
+      name: "t",
       width: 10,
       height: 10,
       fps: 12,
@@ -145,6 +147,7 @@ describe("buildFrameDrawList", () => {
 
   it("excludes reference layers when includeReference is false", () => {
     const p: Project = {
+      name: "t",
       width: 10,
       height: 10,
       fps: 12,
@@ -218,6 +221,7 @@ describe("documentLength / refreshLength", () => {
 
   it("documentLength is the longest drawing layer, ignoring reference layers", () => {
     const p: Project = {
+      name: "t",
       width: 1,
       height: 1,
       fps: 12,
@@ -233,6 +237,7 @@ describe("documentLength / refreshLength", () => {
 
   it("documentLength floors at 1", () => {
     const p: Project = {
+      name: "t",
       width: 1,
       height: 1,
       fps: 12,
@@ -248,6 +253,7 @@ describe("documentLength / refreshLength", () => {
 
   it("documentLength floors at 1 even for a zero-length draw layer", () => {
     const p: Project = {
+      name: "t",
       width: 1,
       height: 1,
       fps: 12,
@@ -263,6 +269,7 @@ describe("documentLength / refreshLength", () => {
 
   it("refreshLength writes documentLength into frameCount", () => {
     const p: Project = {
+      name: "t",
       width: 1,
       height: 1,
       fps: 12,

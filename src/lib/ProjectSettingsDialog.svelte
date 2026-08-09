@@ -4,6 +4,10 @@
   function close() {
     appState.settingsOpen = false;
   }
+  function setName(v: string) {
+    appState.project.name = v;
+    bump();
+  }
   function setBgColor(v: string) {
     appState.project.bgColor = v;
     bump();
@@ -35,6 +39,17 @@
       role="presentation"
     >
       <div class="font-semibold">Project settings</div>
+
+      <div class="flex flex-col gap-2">
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Name</span>
+        <input
+          type="text"
+          class="px-2 py-1 bg-surface border border-border rounded text-text"
+          value={appState.project.name}
+          oninput={(e) => setName(e.currentTarget.value)}
+          title="Project name — used as the save and export filename"
+        />
+      </div>
 
       <div class="flex flex-col gap-2">
         <span class="text-text-secondary text-xs uppercase tracking-wide">Background</span>
