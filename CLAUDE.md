@@ -89,7 +89,30 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 5. **`transformBox` is frozen on gizmo grab** (per cell/layer/group) to avoid the moving-pivot jump
    when you draw more on a transformed target. Group bbox = union of member draw-layer
    `contentBounds` at the current frame (refs excluded; empty group → full-doc).
-6. Gizmo _drags_ don't push undo (only Apply/Reset do) — matches existing behavior, intentional.
+6. **Transform drags push one undo step per completed gesture** (2026-08-09; supersedes the old "gizmo
+   drags don't push undo" note — that's no longer true). Both drag paths — `Canvas.svelte`'s on-canvas
+   frame/layer/group drag and `RefTransformGizmo.svelte`'s handle drag — snapshot via
+   `beginStructuralEdit()` at grab, **before** the frame-scope cell replacement (`dl.cells[i] =
+{...cell}`, per gotcha #8, so the snapshot captures the old shared cell), then commit via
+   `commitStructuralEdit()` at release **iff** `isSameTransform(startT, endT)` says the transform
+   actually changed — a click-without-move (or any no-op drag) pushes nothing. On a no-op, the
+   `transformBox` freeze taken at grab is reverted through **direct object refs held from grab time**
+   (`refDragFreeze`/`dragFreeze: { cell, group, prevBox }` in each file), never re-resolved via
+   `activeLayerId`/`playhead` at release — re-resolving was a real review-caught bug (a mid-gesture
+   layer/frame change could stomp an unrelated cell's box), fixed in `cde3b4a`. Ref-layer transforms
+   are now restored by `restoreStructure` (transform restore moved out of the draw-only branch), so
+   ref-layer drags are undoable too. The gizmo's "Reset to fit" button routes through the same
+   undoable `resetCellTransform`/`resetGroupTransform`/`resetLayerTransform` actions rather than a
+   direct mutation. Known gap, not fixed by this feature: `input.ts` still has no `pointercancel`
+   listener, so an OS-cancelled pointer stream (e.g. iPad palm rejection) on the Canvas on-canvas drag
+   path can leave `refDrag`/`refDragUndo`/`refDragFreeze` set. If that happens, the _next_ gesture's
+   grab block sees `refDrag` already non-null and skips re-snapshotting, so the stale snapshot from the
+   cancelled gesture gets committed at that next gesture's release — silently merging two separate
+   drags into one undo entry. In practice this is rarely reachable: `input.ts` binds
+   `pointerleave → onPointerUp`, and per the pointer-events spec a `pointercancel` is followed by
+   `pointerout`/`pointerleave` at the capturing element, so `done: true` usually still arrives even on
+   an OS cancel. The gizmo's own handle-drag path is unaffected either way, since it binds
+   `pointercancel` itself on `window`.
 7. Mouse strokes report no pressure (`hasPressure:false`) → drawn at constant nominal width
    (`sizeRange` collapses to 1); only pen pressure widens.
 8. **Undo snapshots SHARE cell/canvas object refs** (`cloneLayers` only `slice()`s the array). A
@@ -359,3 +382,26 @@ store; ⌘S save contains the media entries; iPad for all of it. The v1→v2 Ind
 also untested in a real browser — note a stale pre-upgrade tab left open across the deploy hits an
 IndexedDB `VersionError` on the bumped store and silently stops autosaving until the tab is reloaded.
 Spec/plan: `…/2026-08-08-reference-media-persistence*.md`.
+
+**Undoable transform drags (2026-08-09, on branch):** gizmo/canvas transform drags now push one undo
+step per completed gesture instead of zero (see gotcha #6, rewritten). `isSameTransform` (new,
+`document.ts`) does exact field equality to gate the commit; `restoreStructure` now restores
+`Layer.transform` for reference layers too (previously draw-layer-only), so ref-layer drags are
+undo-restorable; `resetLayerTransform` dropped its draw-only guard so Reset-to-fit works — and is
+undoable — on refs as well. Both drag call sites (`Canvas.svelte` on-canvas frame/layer/group drag,
+`RefTransformGizmo.svelte` handle drag) follow the same shape: `beginStructuralEdit()` at grab →
+frame-scope cell clone (gotcha #8 ordering preserved) → freeze `transformBox` with `prevBox` captured
+by **direct object ref** (`refDragFreeze`/`dragFreeze`, not re-resolved by `activeLayerId`/`playhead`
+at release — a review-caught bug, fixed in `cde3b4a`) → `commitStructuralEdit()` or revert-the-freeze
+at release depending on `isSameTransform`. Pure logic (`isSameTransform`) is unit-tested; the two
+drag-lifecycle integrations are build+review-verified only (Canvas/gizmo are DOM-only, no unit
+harness — project convention). Known gap, not fixed here: `input.ts` has no `pointercancel` listener,
+so an OS-cancelled captured stream (iPad palm rejection) on the Canvas on-canvas drag path leaks
+`refDragUndo`/`refDragFreeze` until the next gesture overwrites it; the gizmo's handle-drag path binds
+`pointercancel` itself and is unaffected. **Owed a browser pass:** move → undo → back; scale/rotate →
+undo; frame-scope drag → undo restores the cell transform; drag then undo an _earlier_ structural op
+(the drag must not revert with it); click-without-move pushes nothing; Reset-to-fit → undo; ref-layer
+drag → undo; redo for all of the above; mid-drag `pointercancel` (iPad palm rejection) still commits;
+frame-scope drag _while playback runs_ (drag settles on the first playhead-crossing); ⌘Z during a held
+drag (drag settles as its own undo entry, then the undo applies); iPad overall. Spec/plan:
+`…/2026-08-09-undoable-transform-drags*.md`.

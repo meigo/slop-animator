@@ -1,7 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Viewport } from "../core/viewport";
-  import { state as appState, bump, DPR } from "../state/appState.svelte";
+  import {
+    state as appState,
+    bump,
+    DPR,
+    beginStructuralEdit,
+    commitStructuralEdit,
+    resetLayerTransform,
+    resetCellTransform,
+    resetGroupTransform,
+    transformDragGuard,
+  } from "../state/appState.svelte";
   import {
     transformBaseRect,
     cellTransform,
@@ -9,6 +19,7 @@
     groupOf,
     groupTransform,
     isIdentityTransform,
+    isSameTransform,
     type Cell,
     type Layer,
     type LayerGroup,
@@ -26,8 +37,6 @@
     type ComposeStep,
     type Pt,
   } from "../core/ref-transform";
-
-  const IDENTITY: RefTransform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
 
   let {
     getViewport,
@@ -51,6 +60,13 @@
     center: Pt;
     outer: ComposeStep[];
     setT: (t: RefTransform) => void;
+    getT: () => RefTransform;
+  } | null = null;
+  let dragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
+  let dragFreeze: {
+    cell: Extract<Cell, { kind: "key" }> | null;
+    group: LayerGroup | null;
+    prevBox: Rect | null;
   } | null = null;
 
   function activeTransformLayer(): Layer | null {
@@ -137,11 +153,8 @@
 
   function startHandleDrag(handle: DragHandle, e: PointerEvent) {
     const vp = getViewport();
-    const tgt = transformTarget();
+    let tgt = transformTarget();
     if (!vp || !tgt || !tgt.base) return;
-    const base = tgt.base;
-    const t = tgt.getT();
-    // Keep this gesture out of the touch-pan/pinch path and the display canvas's drawing path.
     e.stopPropagation();
     e.preventDefault();
     try {
@@ -149,13 +162,35 @@
     } catch {
       /* capture is best-effort */
     }
+    dragUndo = beginStructuralEdit(); // FIRST (gotcha #8: snapshot the old shared cell)
+    transformDragGuard.settle = () => endDragFromGuard();
+    if (tgt.scope === "frame" && tgt.cell) {
+      const l = activeTransformLayer();
+      if (l?.kind === "draw") {
+        const idx = l.cells.indexOf(tgt.cell);
+        if (idx >= 0) {
+          l.cells[idx] = { ...tgt.cell };
+          tgt = transformTarget(); // re-resolve: closures must write the clone, not the snapshot's cell
+          if (!tgt || !tgt.base) {
+            dragUndo = null;
+            return;
+          }
+        }
+      }
+    }
+    const base = tgt.base;
+    const t = tgt.getT();
     // Freeze the content box on grab for a frame or group transform that's currently identity,
     // so the gizmo's box stays put as content moves under the new transform.
     if (isIdentityTransform(t)) {
-      if (tgt.scope === "frame" && tgt.cell) tgt.cell.transformBox = base;
-      else if (tgt.scope === "group" && tgt.group) tgt.group.transformBox = base;
+      if (tgt.scope === "frame" && tgt.cell) {
+        dragFreeze = { cell: tgt.cell, group: null, prevBox: tgt.cell.transformBox ?? null };
+        tgt.cell.transformBox = base;
+      } else if (tgt.scope === "group" && tgt.group) {
+        dragFreeze = { cell: null, group: tgt.group, prevBox: tgt.group.transformBox ?? null };
+        tgt.group.transformBox = base;
+      }
     }
-    // Map the grab point through the outer chain inverse into the target's local space.
     const start = inverseChain(tgt.outer, vp.screenToCanvas(e.clientX, e.clientY));
     drag = {
       handle,
@@ -164,6 +199,7 @@
       center: transformCenter(base, t),
       outer: tgt.outer,
       setT: tgt.setT,
+      getT: tgt.getT,
     };
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endHandleDrag);
@@ -181,6 +217,12 @@
     bump();
   }
 
+  function removeDragListeners() {
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", endHandleDrag);
+    window.removeEventListener("pointercancel", endHandleDrag);
+  }
+
   function endHandleDrag(e: PointerEvent) {
     if (drag) {
       try {
@@ -189,10 +231,31 @@
         /* may already be released */
       }
     }
+    settleDragUndo();
     drag = null;
-    window.removeEventListener("pointermove", onDragMove);
-    window.removeEventListener("pointerup", endHandleDrag);
-    window.removeEventListener("pointercancel", endHandleDrag);
+    removeDragListeners();
+  }
+
+  /** transformDragGuard settle hook: undo/redo mid-drag has no PointerEvent to release capture
+   *  with, so it settles the bracket and tears down listeners without that step. */
+  function endDragFromGuard() {
+    settleDragUndo();
+    drag = null;
+    removeDragListeners();
+  }
+
+  function settleDragUndo() {
+    if (dragUndo && drag) {
+      if (isSameTransform(drag.startT, drag.getT())) {
+        if (dragFreeze?.cell) dragFreeze.cell.transformBox = dragFreeze.prevBox;
+        else if (dragFreeze?.group) dragFreeze.group.transformBox = dragFreeze.prevBox;
+      } else {
+        commitStructuralEdit(dragUndo);
+      }
+    }
+    dragUndo = null;
+    dragFreeze = null;
+    transformDragGuard.settle = null;
   }
 
   function tick() {
@@ -218,18 +281,12 @@
   }
 
   function resetTransform() {
+    const l = activeTransformLayer();
     const tgt = transformTarget();
-    if (!tgt) return;
-    if (tgt.scope === "frame" && tgt.cell) {
-      tgt.cell.transform = { ...IDENTITY };
-      tgt.cell.transformBox = null;
-    } else if (tgt.scope === "group" && tgt.group) {
-      tgt.group.transform = { ...IDENTITY };
-      tgt.group.transformBox = null;
-    } else {
-      tgt.setT({ ...IDENTITY });
-    }
-    bump();
+    if (!l || !tgt) return;
+    if (tgt.scope === "frame") resetCellTransform(l.id, appState.playhead);
+    else if (tgt.scope === "group" && tgt.group) resetGroupTransform(tgt.group.id);
+    else resetLayerTransform(l.id); // draw layer-scope AND reference layers (Task 1 generalized it)
   }
 
   onMount(() => {
@@ -237,6 +294,7 @@
     return () => {
       cancelAnimationFrame(raf);
       // Drop any in-flight drag listeners if the component unmounts mid-drag.
+      settleDragUndo();
       window.removeEventListener("pointermove", onDragMove);
       window.removeEventListener("pointerup", endHandleDrag);
       window.removeEventListener("pointercancel", endHandleDrag);
