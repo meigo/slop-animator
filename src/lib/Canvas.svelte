@@ -21,6 +21,8 @@
     pressureCurve,
     toggleEraser,
     applyEyedropper,
+    beginStructuralEdit,
+    commitStructuralEdit,
   } from "../state/appState.svelte";
   import { selectionRef, selectionActions, poseActions, liftGuard } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
@@ -33,6 +35,7 @@
   import {
     transformBaseRect,
     isIdentityTransform,
+    isSameTransform,
     cellTransform,
     resolvedKeyCell,
     cloneCanvas,
@@ -54,6 +57,7 @@
     type Handle,
     type Pt,
     type ComposeStep,
+    type Rect,
   } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
@@ -344,6 +348,38 @@
   }
 
   let refDrag: { handle: Handle; start: Pt; startT: Layer["transform"]; center: Pt } | null = null;
+  // One undo step per completed transform drag: snapshot at grab, commit at release iff the
+  // transform changed; on a no-op, revert the grab-time transformBox freeze instead (spec 2026-08-09).
+  let refDragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
+  let refDragFreeze: { kind: "cell" | "group"; prevBox: Rect | null } | null = null;
+
+  // endT is a thunk: at the early-return sites the target is gone and there is no getT — pass null
+  // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
+  // this feature removes).
+  function finishTransformDragUndo(endT: (() => Layer["transform"]) | null) {
+    if (refDragUndo) {
+      if (refDrag?.handle && endT && isSameTransform(refDrag.startT, endT())) {
+        // No-op drag: push nothing, revert the freeze we did at grab.
+        if (refDragFreeze?.kind === "cell") {
+          // frameRk isn't in scope here; the frozen cell is the active layer's resolved key cell.
+          const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
+          if (l?.kind === "draw") {
+            const rk = resolvedKeyCell(l, appState.playhead);
+            if (rk) rk.cell.transformBox = refDragFreeze.prevBox;
+          }
+        } else if (refDragFreeze?.kind === "group") {
+          const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
+          const grp = l ? groupOf(l, appState.project.groups) : null;
+          if (grp) grp.transformBox = refDragFreeze.prevBox;
+        }
+      } else if (refDrag?.handle) {
+        commitStructuralEdit(refDragUndo);
+      }
+      // handle === null (grab missed every handle): nothing mutated, drop the snapshot silently.
+    }
+    refDragUndo = null;
+    refDragFreeze = null;
+  }
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
     const W = appState.project.width,
@@ -367,7 +403,10 @@
     } else if (isDraw && scope === "frame") {
       frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
-        if (done) refDrag = null;
+        if (done) {
+          finishTransformDragUndo(null);
+          refDrag = null;
+        }
         return;
       }
       base = contentBoxLogical(
@@ -400,7 +439,10 @@
         });
     }
     if (!base) {
-      if (done) refDrag = null;
+      if (done) {
+        finishTransformDragUndo(null);
+        refDrag = null;
+      }
       return;
     }
 
@@ -411,10 +453,23 @@
       const tol = 10 / viewport.zoom;
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
       const handle = hitTestHandle(base, getT(), pc, tol, gap);
-      // Freeze the box on grab for a frame/group transform currently at identity.
-      if (handle && isIdentityTransform(getT())) {
-        if (isDraw && scope === "frame" && frameRk) frameRk.cell.transformBox = base;
-        else if (isDraw && scope === "group" && g) g.transformBox = base;
+      if (handle) {
+        refDragUndo = beginStructuralEdit(); // FIRST: snapshot must capture the old shared cell (gotcha #8)
+        if (isDraw && scope === "frame" && frameRk) {
+          const dl = layer as Extract<Layer, { kind: "draw" }>;
+          dl.cells[frameRk.index] = { ...frameRk.cell }; // fresh object; in-drag writes can't corrupt the snapshot
+          frameRk = { index: frameRk.index, cell: dl.cells[frameRk.index] as typeof frameRk.cell };
+        }
+        // Freeze the box on grab for a frame/group transform currently at identity.
+        if (isIdentityTransform(getT())) {
+          if (isDraw && scope === "frame" && frameRk) {
+            refDragFreeze = { kind: "cell", prevBox: frameRk.cell.transformBox ?? null };
+            frameRk.cell.transformBox = base;
+          } else if (isDraw && scope === "group" && g) {
+            refDragFreeze = { kind: "group", prevBox: g.transformBox ?? null };
+            g.transformBox = base;
+          }
+        }
       }
       refDrag = { handle, start: pc, startT: { ...getT() }, center: transformCenter(base, getT()) };
     }
@@ -425,7 +480,10 @@
       else setT(applyScale(d.startT, d.center, d.start, pc));
       bump();
     }
-    if (done) refDrag = null;
+    if (done) {
+      finishTransformDragUndo(() => getT());
+      refDrag = null;
+    }
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
