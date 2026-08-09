@@ -23,7 +23,9 @@ export function audioFrameSpan(durationSec: number, fps: number): number {
   return Math.max(0, Math.ceil(durationSec * fps));
 }
 
-/** Buffer time (seconds) the audio should be at for animation `frame`; clamped >= 0. */
+/** Buffer time (seconds) the audio should be at for animation `frame`. SIGNED: negative means the
+ *  clip starts that many seconds in the future (playhead is before the dragged clip's start) — the
+ *  engine schedules a delayed start rather than clamping, which would play the clip early. */
 export function bufferOffsetForFrame(frame: number, offsetFrames: number, fps: number): number {
-  return Math.max(0, (frame - offsetFrames) / fps);
+  return (frame - offsetFrames) / fps;
 }

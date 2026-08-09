@@ -659,7 +659,10 @@ export async function toggleEmbedMedia(id: number): Promise<void> {
 /** Set/replace the project audio track (not undoable; persisted with the project). */
 export function setAudioTrack(track: AudioTrack) {
   state.project.audio = track;
-  audioEngine.setTrack(track);
+  // Hand the engine the $state PROXY (read back after assignment), never the raw object: UI writes
+  // (offset drag, mute) go through the proxy, and the raw target does not see them — a raw ref
+  // left the engine reading offsetFrames 0 forever. Same fix in replaceProject.
+  audioEngine.setTrack(state.project.audio);
   bump();
 }
 /** Move the playhead (clamped); when paused, plays a short audio scrub window at the new frame.
@@ -819,7 +822,7 @@ export function replaceProject(project: Project) {
   history.clear(); // undo history from the old document can't apply to the new one
   for (const l of state.project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
   state.project = project;
-  audioEngine.setTrack(project.audio);
+  audioEngine.setTrack(state.project.audio); // the PROXY, not raw project.audio — see setAudioTrack
   state.playhead = 0;
   const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
   setActiveLayer(firstDrawing.id);

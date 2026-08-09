@@ -56,10 +56,16 @@
       const peaks = computePeaks(audio.buffer.getChannelData(0), w);
       ctx.fillStyle = "#888";
       const mid = node.height / 2;
+      // The clip may outlast the document: past the last frame there is no ruler and nothing to
+      // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
+      // Boundary in backing-store px: CSS px scaled by the canvas-width clamp ratio.
+      const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
       for (let x = 0; x < peaks.length; x++) {
         const h = peaks[x] * (node.height - 2);
+        ctx.globalAlpha = x < docEndX ? 1 : 0.25;
         ctx.fillRect(x, mid - h / 2, 1, h);
       }
+      ctx.globalAlpha = 1;
     };
     draw();
     return { update: draw };

@@ -670,10 +670,15 @@
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->
-    <div class="flex items-stretch sticky top-0 z-20 bg-surface-active border-b border-border">
-      <span class="shrink-0 sticky left-0 z-20 bg-surface-active" style="width: {LABEL_W}px"></span>
+    <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
+         time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
+    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
+      <span
+        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border"
+        style="width: {LABEL_W}px"
+      ></span>
       <div
-        class="flex cursor-ew-resize select-none"
+        class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
         style="touch-action: none"
         role="slider"
         tabindex="0"

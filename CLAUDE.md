@@ -128,6 +128,12 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     nothing. Pointer events + `setPointerCapture` are NOT enough on their own. The canvas, timeline rows,
     ruler, resize grip all set it; the pressure-curve editor lacked it and didn't drag on iPad until fixed
     (`pressure-curve.ts`, `cvs.style.touchAction = "none"`). Add it to every new drag control.
+11. **$state proxy identity — never hand a RAW model object to a non-reactive reader.** Assigning
+    `state.project.audio = track` then `audioEngine.setTrack(track)` gave the engine the raw object;
+    every later UI write (`state.project.audio.offsetFrames = …`) goes through the $state proxy and
+    the raw target never sees it — the engine read offset 0 forever (audio P2 bug, 2026-08-09). Pass
+    the proxy read back AFTER assignment (`setTrack(state.project.audio)`). Applies to any
+    singleton/module that caches model objects outside the store.
 
 ## Current state (all shipped & merged to `main`)
 

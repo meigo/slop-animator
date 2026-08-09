@@ -37,7 +37,7 @@ describe("bufferOffsetForFrame", () => {
   it("subtracts the offset", () => {
     expect(bufferOffsetForFrame(18, 12, 12)).toBeCloseTo(0.5, 6);
   });
-  it("clamps to 0 before the offset", () => {
-    expect(bufferOffsetForFrame(6, 12, 12)).toBe(0);
+  it("is signed (negative) before the clip start", () => {
+    expect(bufferOffsetForFrame(6, 12, 12)).toBe(-0.5); // clip starts 0.5s in the future — SIGNED, not clamped (P2: the engine delays the start; clamping made a dragged-right clip play early)
   });
 });

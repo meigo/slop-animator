@@ -25,7 +25,11 @@ class AudioEngine {
     const src = ctx.createBufferSource();
     src.buffer = this.track.buffer;
     src.connect(ctx.destination);
-    src.start(0, bufferOffsetForFrame(frame, this.track.offsetFrames, fps));
+    const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
+    // Negative = the clip starts in the future (offset drag pushed it right of the playhead):
+    // schedule the start so the audio begins exactly when the frame clock reaches the clip.
+    if (at >= 0) src.start(0, at);
+    else src.start(ctx.currentTime - at, 0);
     this.source = src;
   }
 
@@ -39,7 +43,7 @@ class AudioEngine {
   scrub(frame: number, fps: number): void {
     if (!this.track || this.track.muted || this.source) return;
     const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
-    if (at >= this.track.buffer.duration) return; // playhead is past the clip → silence
+    if (at < 0 || at >= this.track.buffer.duration) return; // playhead outside the clip → silence
     const ctx = getAudioContext();
     void ctx.resume();
     this.stopScrub();
