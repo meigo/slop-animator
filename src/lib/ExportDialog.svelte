@@ -8,13 +8,13 @@
   let status = $state("");
   let busy = $state(false);
   const videoOk = isVideoExportSupported();
+  const stem = $derived(sanitizeFilename(appState.project.name));
 
   async function run(kind: "png" | VideoFormat) {
     if (busy) return;
     busy = true;
     status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
     try {
-      const stem = sanitizeFilename(appState.project.name);
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR);
         downloadBlob(blob, `${stem}.zip`);
@@ -57,17 +57,17 @@
         disabled={busy}
         onclick={() => run("png")}
       >
-        PNG sequence (.zip)
+        PNG sequence — {stem}.zip
       </button>
       <button
         class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
         disabled={busy || !videoOk}
-        onclick={() => run("mp4")}>MP4 video</button
+        onclick={() => run("mp4")}>MP4 video — {stem}.mp4</button
       >
       <button
         class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
         disabled={busy || !videoOk}
-        onclick={() => run("webm")}>WebM video</button
+        onclick={() => run("webm")}>WebM video — {stem}.webm</button
       >
       {#if !videoOk}
         <span class="text-xs text-text-secondary"
