@@ -172,8 +172,9 @@ affected-region tint; context-aware default reach); **transparent background** (
   non-breaking. Useful when animated rotations land.
 - **Audio Phase 2** (scrub, drag-offset clip, mute — fields exist in model/persistence) and **Phase 3**
   (mux audio into export). See `docs/.../2026-06-15-audio-track-phase1-design.md`.
-- **Per-layer boil-strength UI slider** — data path complete (`DrawingLayer.boilStrength` honored +
-  persisted), UI-only addition to the timeline layer row.
+- ~~Per-layer boil-strength UI slider~~ — SHIPPED 2026-08-09: a 0–1 (step 0.05) slider beside
+  opacity in the LayerList Row 2 (draw layers only, `bind` + `bump`, not undoable — matches
+  opacity). Data path was already complete. Owed the usual iPad eyeball.
 - **Noise-matte line weight (variable thickness / erosion)** — deferred 2026-07-28 as not worth the
   effort _yet_; the analysis is the part worth keeping. Two independent axes, don't conflate them:
   (1) **the matte** — what modulates the weight. Today `uWeight` is a global scalar. Making it

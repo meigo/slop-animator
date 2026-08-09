@@ -331,6 +331,22 @@
           title="Opacity"
         />
         <span class="text-[10px] tabular-nums w-6 text-text-muted">{layer.opacity}</span>
+        {#if layer.kind === "draw"}
+          <input
+            class="w-14"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            bind:value={layer.boilStrength}
+            oninput={bump}
+            onclick={(e) => e.stopPropagation()}
+            title="Line boil strength (this layer)"
+          />
+          <span class="text-[10px] tabular-nums w-6 text-text-muted"
+            >{layer.boilStrength.toFixed(2)}</span
+          >
+        {/if}
         <button
           class="text-text-muted hover:text-text-secondary"
           title="Rename layer"
