@@ -17,6 +17,7 @@
     cellTransform,
     resolvedKeyCell,
     groupOf,
+    groupHasLockedLayer,
     groupTransform,
     isIdentityTransform,
     isSameTransform,
@@ -73,7 +74,7 @@
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
     if (l.kind === "ref") return l; // refs: any tool (unchanged)
-    if (l.kind === "draw" && appState.tool === "transform") return l; // draw: only under the Transform tool
+    if (l.kind === "draw" && appState.tool === "transform" && !l.locked) return l; // draw: Transform tool, unlocked only
     return null;
   }
 
@@ -109,6 +110,7 @@
 
     if (l.kind === "draw" && appState.transformScope === "group") {
       if (!g) return null; // Group scope is disabled when ungrouped; safety fallback.
+      if (groupHasLockedLayer(g, appState.project.layers)) return null; // a locked member pins the group
       return {
         getT: () => groupTransform(g),
         setT: (t: RefTransform) => (g.transform = t),

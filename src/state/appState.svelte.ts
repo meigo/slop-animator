@@ -12,6 +12,7 @@ import {
   nonEmptyGroups,
   mediaIntrinsicSize,
   isIdentityTransform,
+  groupHasLockedLayer,
   IDENTITY_TRANSFORM,
   resolvedKeyCell,
   type RefTransform,
@@ -448,6 +449,7 @@ function bakeLayerTransform(layer: DrawingLayer): void {
 
 export function applyLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  if (layer?.kind === "draw" && layer.locked) return; // locked = content is immutable
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
   commitStructural(() => bakeLayerTransform(layer));
 }
@@ -455,6 +457,7 @@ export function applyLayerTransform(layerId: number): void {
 export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (!layer || isIdentityTransform(layer.transform)) return;
+  if (layer.kind === "draw" && layer.locked) return; // locked = content is immutable
   commitStructural(() => {
     layer.transform = { ...IDENTITY_TRANSFORM };
   });
@@ -462,6 +465,7 @@ export function resetLayerTransform(layerId: number): void {
 
 export function applyCellTransform(layerId: number, frame: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  if (layer?.kind === "draw" && layer.locked) return; // locked = content is immutable
   if (!layer || layer.kind !== "draw") return;
   const rk = resolvedKeyCell(layer, frame);
   if (!rk || !rk.cell.transform || isIdentityTransform(rk.cell.transform)) return;
@@ -472,7 +476,7 @@ export function applyCellTransform(layerId: number, frame: number): void {
 
 export function resetCellTransform(layerId: number, frame: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
-  if (!layer || layer.kind !== "draw") return;
+  if (!layer || layer.kind !== "draw" || layer.locked) return; // locked = content is immutable
   const rk = resolvedKeyCell(layer, frame);
   if (!rk) return;
   const t = rk.cell.transform;
@@ -487,6 +491,7 @@ export function resetCellTransform(layerId: number, frame: number): void {
 export function resetGroupTransform(groupId: number): void {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (!g) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group
   if ((!g.transform || isIdentityTransform(g.transform)) && !g.transformBox) return;
   commitStructural(() => {
     g.transform = { ...IDENTITY_TRANSFORM };

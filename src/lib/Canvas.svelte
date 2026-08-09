@@ -46,6 +46,7 @@
     resolvedKeyCell,
     cloneCanvas,
     groupOf,
+    groupHasLockedLayer,
     groupTransform,
     type Layer,
     type Cell,
@@ -409,6 +410,13 @@
     let frameRk: ReturnType<typeof resolvedKeyCell> = null;
 
     if (isDraw && scope === "group" && g) {
+      if (groupHasLockedLayer(g, appState.project.layers)) {
+        if (done) {
+          finishTransformDragUndo(null);
+          refDrag = null;
+        }
+        return;
+      }
       getT = () => groupTransform(g);
       setT = (nt) => (g.transform = nt);
       base = groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version);
@@ -536,7 +544,18 @@
       return;
     }
     const al = activeLayer();
-    if (al.kind === "ref" || (al.kind === "draw" && appState.tool === "transform")) {
+    if (al.kind === "ref") {
+      onTransformDrag(al, points, done);
+      return;
+    }
+    if (al.kind === "draw" && appState.tool === "transform") {
+      if (al.locked) {
+        // Locked = content is immovable. Also settle any drag that was in flight when the lock
+        // landed (mid-gesture lock), so its undo bracket can't leak into the next gesture.
+        finishTransformDragUndo(null);
+        refDrag = null;
+        return;
+      }
       onTransformDrag(al, points, done);
       return;
     }

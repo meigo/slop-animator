@@ -347,3 +347,66 @@ describe("moveBlockFrames", () => {
     expect(l.cells.length).toBe(1);
   });
 });
+
+describe("locked layers are inert to block writes", () => {
+  function lockedLayer(id: number, cells: Cell[]): DrawingLayer {
+    return { ...drawLayer(id, cells), locked: true };
+  }
+
+  it("pasteBlockOverwrite skips a locked row but keeps column alignment", () => {
+    const a = drawLayer(1, [key(), key()]);
+    const b = lockedLayer(2, [key(), key()]);
+    const c = drawLayer(3, [key(), key()]);
+    const p = proj([c, b, a], 2); // stack bottom→top: c, b, a → top-first ids [1, 2, 3]
+    const bLocked0 = b.cells[0];
+    const block = copyBlock(p, [1, 2, 3], 0, 0, fakeOps);
+    pasteBlockOverwrite(p, block, 1, 1, fakeOps);
+    expect(a.cells[1].kind).toBe("key"); // unlocked top row written
+    expect(b.cells[1]).toBe(bLocked0 === b.cells[1] ? b.cells[1] : b.cells[1]); // placeholder, replaced below
+    expect(c.cells[1].kind).toBe("key"); // column 2 still lands on layer 3 (alignment kept)
+  });
+
+  it("pasteBlockOverwrite leaves the locked row's cells untouched (same objects)", () => {
+    const a = drawLayer(1, [key(), key()]);
+    const b = lockedLayer(2, [key(), key()]);
+    const p = proj([b, a], 2);
+    const before0 = b.cells[0];
+    const before1 = b.cells[1];
+    const block = copyBlock(p, [1, 2], 0, 1, fakeOps);
+    pasteBlockOverwrite(p, block, 1, 0, fakeOps);
+    expect(b.cells[0]).toBe(before0);
+    expect(b.cells[1]).toBe(before1);
+  });
+
+  it("pasteBlockInsert does not lengthen a locked row", () => {
+    const a = drawLayer(1, [key()]);
+    const b = lockedLayer(2, [key()]);
+    const p = proj([b, a], 1);
+    const block = copyBlock(p, [1, 2], 0, 0, fakeOps);
+    pasteBlockInsert(p, block, 1, 0, fakeOps);
+    expect(a.cells.length).toBe(2);
+    expect(b.cells.length).toBe(1);
+  });
+
+  it("deleteBlock skips locked rows", () => {
+    const a = drawLayer(1, [key(), key()]);
+    const b = lockedLayer(2, [key(), key()]);
+    const p = proj([b, a], 2);
+    deleteBlock(p, [1, 2], 0, 1);
+    expect(a.cells.every((c) => c.kind === "hold")).toBe(true);
+    expect(b.cells.every((c) => c.kind === "key")).toBe(true);
+  });
+
+  it("moveBlockFrames moves unlocked rows and leaves the locked row fully intact", () => {
+    const a = drawLayer(1, [key(), hold(), hold()]);
+    const b = lockedLayer(2, [key(), hold(), hold()]);
+    const bCells = b.cells.slice();
+    const p = proj([b, a], 3);
+    const applied = moveBlockFrames(p, [1, 2], 0, 0, 2, fakeOps);
+    expect(applied).toBe(2);
+    expect(a.cells[0].kind).toBe("hold"); // vacated
+    expect(a.cells[2].kind).toBe("key"); // moved here
+    expect(b.cells[0]).toBe(bCells[0]); // locked row untouched: same objects, same kinds
+    expect(b.cells[2]).toBe(bCells[2]);
+  });
+});

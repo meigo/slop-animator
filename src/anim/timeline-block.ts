@@ -94,7 +94,8 @@ export function drawingLayerIdsDown(project: Project, topLayerId: number): numbe
 }
 
 /** Overwrite-paste: stamp `block` in place with column 0 at `targetTopLayerId`, filling downward.
- *  Lands past a layer's end → pad with holds then append. Overflow columns ignored. */
+ *  Lands past a layer's end → pad with holds then append. Overflow columns ignored. Locked layers
+ *  are inert: their column is consumed (alignment kept) but nothing is written. */
 export function pasteBlockOverwrite(
   project: Project,
   block: CellBlock,
@@ -106,7 +107,7 @@ export function pasteBlockOverwrite(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break; // overflow past bottom layer
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || layer.kind !== "draw") continue;
+    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert, column consumed
     overwriteColumn(layer, block.columns[c], startFrame, ops);
   }
 }
@@ -124,7 +125,7 @@ export function pasteBlockInsert(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break;
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || layer.kind !== "draw") continue;
+    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert, column consumed
     const at = startFrame;
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
@@ -142,7 +143,7 @@ export function deleteBlock(
 ): void {
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
-    if (!layer || layer.kind !== "draw") continue;
+    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert
     for (let f = startFrame; f <= endFrame && f < layer.cells.length; f++) {
       layer.cells[f] = { kind: "hold" };
     }
@@ -170,8 +171,8 @@ export function moveBlockFrames(
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
     if (!layer || layer.kind !== "draw") continue; // mirrors copyBlock's column filter → alignment
-    // copyBlock already cloned these cells; write them directly (no second clone).
-    writeColumn(layer, block.columns[c], startFrame + applied);
+    // Locked row: consume the column (deleteBlock skipped it too, so its cells are untouched).
+    if (!layer.locked) writeColumn(layer, block.columns[c], startFrame + applied);
     c++;
   }
   return applied;

@@ -327,6 +327,7 @@
       return;
     }
     if (dragMode === "resize") {
+      if (layer.locked) return; // locked row: hold-span is content, not selection
       dragLastBoundary = rowBoundary(e);
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
       bump();
@@ -412,7 +413,7 @@
   // mutation so commitStructural's trailing bump() refreshes the length and clamps it.
   function frameTool() {
     const l = activeLayer();
-    if (l.kind !== "draw") return;
+    if (l.kind !== "draw" || l.locked) return;
     commitStructural(() => {
       addFrame(l, appState.playhead);
       appState.playhead += 1;
@@ -420,7 +421,7 @@
   }
   function keyTool() {
     const l = activeLayer();
-    if (l.kind !== "draw") return;
+    if (l.kind !== "draw" || l.locked) return;
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -428,7 +429,7 @@
   }
   function dupTool() {
     const l = activeLayer();
-    if (l.kind !== "draw") return;
+    if (l.kind !== "draw" || l.locked) return;
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -436,14 +437,14 @@
   }
   function holdTool() {
     const l = activeLayer();
-    if (l.kind !== "draw") return;
+    if (l.kind !== "draw" || l.locked) return;
     if (l.cells[appState.playhead]?.kind !== "key") return; // already a hold → nothing to do
     liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
     commitStructural(() => setHold(l, appState.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
-    if (l.kind !== "draw") return;
+    if (l.kind !== "draw" || l.locked) return;
     if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
     liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
     commitStructural(() => deleteFrame(l, appState.playhead));
