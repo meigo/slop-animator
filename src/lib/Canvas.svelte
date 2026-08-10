@@ -995,6 +995,7 @@
       return;
     }
     meshPose = MeshPose.fromLift(lifted, rect, DPR, poseSpacing);
+    appState.poseActive = meshPose !== null;
     if (!meshPose) {
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
       selCtx = null;
@@ -1025,6 +1026,7 @@
       },
     });
     meshPose = null;
+    appState.poseActive = false;
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
@@ -1038,6 +1040,7 @@
   function cancelPose() {
     if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
     meshPose = null;
+    appState.poseActive = false;
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
@@ -1053,6 +1056,7 @@
     poseSpacing = Math.max(4, poseSpacing + delta * 4);
     // rebuild from the SAME lifted img (resets handles — vertex indices change)
     meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
+    appState.poseActive = meshPose !== null;
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
@@ -1166,6 +1170,7 @@
       selectionActions.deselect = null;
       appState.selectionActive = false;
       appState.selectionFloating = false;
+      appState.poseActive = false;
     };
   });
 

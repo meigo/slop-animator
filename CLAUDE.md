@@ -462,3 +462,22 @@ stops/rejoins the engine; `play()` also refuses muted as defense. Offset/mute ar
 on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
 (touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
 muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.
+
+**Deselect button + contextual status hints (2026-08-11):** two fixes for the same root problem —
+the app's most useful gestures are invisible, and `title=` tooltips never fire on touch. (1) A
+**Deselect** button in the Select/Lasso ToolOptions with **Escape semantics** (cancels, reverting an
+in-progress move — tap-outside keeps its commit behavior). Needed a new `appState.selectionFloating`
+flag because `selectionActive` deliberately excludes floats (Copy/Cut/Delete need a committed
+marquee), so the button would have been disabled exactly when most wanted. (2) **`contextHint()`**
+(`src/lib/status-hint.ts`, pure + unit-tested, 6 cases) fills the status bar's idle left half with
+the current tool's non-obvious gestures; `statusHint || contextHint(...)` so a real hover always
+wins. Precedence: locked layer > tool-blocked-by-layer-transform > tool/state hint — a hint for a
+gesture that currently does nothing is worse than none, and both of those states fail _silently_
+today. Content rule: no keyboard-shortcut lists, nothing restating a visible button. The
+**Deform/Pose hints say "leaving the tool bakes it"** — on iPad a tool switch is the ONLY commit path
+(Enter needs a keyboard) and nothing said so. New reactive `appState.poseActive` mirrors `meshPose`
+at all 4 assignment sites (a plain `poseActions.active()` function isn't reactive). The Transform
+tool's **on-canvas text label was deleted** (its Reset-to-fit button stays) — the bar carries it now
+without covering artwork. **Owed a browser pass:** each tool's idle line incl. both precedence
+overrides; hover still overrides; no Transform text on canvas; iPad.
+Spec: `…/2026-08-11-contextual-status-hints-design.md`.

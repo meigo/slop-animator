@@ -101,6 +101,7 @@ interface AnimState {
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
   selectionFloating: boolean; // pixels are lifted/moved (Copy/Cut are off, but Deselect still applies)
+  poseActive: boolean; // the pose mesh is built (drives the contextual status hint)
   hasPixelClipboard: boolean; // the pixel selection clipboard has content (drives ToolOptions Paste)
 }
 
@@ -158,6 +159,7 @@ export const state: AnimState = $state({
   cellClipboard: null,
   selectionActive: false,
   selectionFloating: false,
+  poseActive: false,
   hasPixelClipboard: false,
 });
 

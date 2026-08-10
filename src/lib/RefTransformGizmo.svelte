@@ -352,10 +352,11 @@
       onpointerdown={(e) => startHandleDrag("rotate", e)}
     />
   </svg>
+  <!-- The gesture text moved to the status bar (2026-08-11 contextual hints) so it stops painting
+       over the artwork; only the Reset action stays on canvas. -->
   <div
     class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto"
   >
-    <span>Transform: drag to move · corners scale · top handle rotates</span>
     <button class="underline hover:text-text" onclick={resetTransform}>Reset to fit</button>
   </div>
 {/if}
