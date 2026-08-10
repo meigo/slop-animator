@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   groupHasLockedLayer,
+  isLayerEditable,
   resolveKeyframeIndex,
   buildFrameDrawList,
   containRect,
@@ -480,6 +481,33 @@ describe("layer transform helpers", () => {
       el: { naturalWidth: 0, naturalHeight: 0 } as unknown as HTMLImageElement,
     });
     expect(transformBaseRect(unloaded, 100, 100)).toBeNull();
+  });
+});
+
+describe("isLayerEditable", () => {
+  it("requires a drawing layer that is unlocked AND visible", () => {
+    const base = layer(1, [makeKey()]);
+    expect(isLayerEditable(base)).toBe(true);
+    expect(isLayerEditable({ ...base, locked: true })).toBe(false);
+    expect(isLayerEditable({ ...base, visible: false })).toBe(false);
+    expect(isLayerEditable({ ...base, locked: true, visible: false })).toBe(false);
+  });
+
+  it("reference layers are never content-editable", () => {
+    const ref = {
+      kind: "ref" as const,
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "missing" as const, was: "image" as const, name: "x" },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    };
+    expect(isLayerEditable(ref)).toBe(false);
   });
 });
 

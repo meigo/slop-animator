@@ -8,6 +8,8 @@ export interface HintContext {
   tool: string;
   /** Active layer is a locked drawing layer → every content op silently refuses. */
   locked: boolean;
+  /** Active layer is hidden → content ops refuse too (you can't see what you'd be editing). */
+  hiddenLayer: boolean;
   /** Active draw layer carries a non-identity transform → select/lasso/deform/pose bail. */
   layerTransformed: boolean;
   /** A committed marquee exists (not lifted). */
@@ -23,6 +25,7 @@ const BLOCKED_BY_TRANSFORM = ["select", "lasso", "deform", "pose"];
 export function contextHint(c: HintContext): string {
   // A hint for a gesture that currently does nothing is worse than no hint: explain the block first.
   if (c.locked) return "Layer locked — unlock it in the layer list to edit";
+  if (c.hiddenLayer) return "Layer hidden — show it to edit";
   if (c.layerTransformed && BLOCKED_BY_TRANSFORM.includes(c.tool))
     return "Apply or reset the layer transform to use this tool";
 

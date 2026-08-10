@@ -4,6 +4,7 @@ import { contextHint, type HintContext } from "../lib/status-hint";
 const base: HintContext = {
   tool: "brush",
   locked: false,
+  hiddenLayer: false,
   layerTransformed: false,
   selectionActive: false,
   selectionFloating: false,
@@ -25,6 +26,17 @@ describe("contextHint precedence", () => {
       /corners scale/,
     );
     expect(contextHint(ctx({ tool: "brush", layerTransformed: true }))).toBe("");
+  });
+});
+
+describe("hidden layers", () => {
+  it("a hidden layer explains itself, and lock wins when both apply", () => {
+    expect(contextHint(ctx({ tool: "brush", hiddenLayer: true }))).toBe(
+      "Layer hidden — show it to edit",
+    );
+    expect(contextHint(ctx({ tool: "select", locked: true, hiddenLayer: true }))).toMatch(
+      /Layer locked/,
+    );
   });
 });
 

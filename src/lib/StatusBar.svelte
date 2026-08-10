@@ -22,6 +22,7 @@
     return contextHint({
       tool: appState.tool,
       locked: l.kind === "draw" && l.locked,
+      hiddenLayer: !l.visible,
       layerTransformed: l.kind === "draw" && !isIdentityTransform(l.transform),
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,

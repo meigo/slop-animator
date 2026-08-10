@@ -481,3 +481,27 @@ tool's **on-canvas text label was deleted** (its Reset-to-fit button stays) — 
 without covering artwork. **Owed a browser pass:** each tool's idle line incl. both precedence
 overrides; hover still overrides; no Transform text on canvas; iPad.
 Spec: `…/2026-08-11-contextual-status-hints-design.md`.
+
+**Hidden layers are read-only + the marquee is UI (2026-08-11):** reported as "you can select on a
+hidden layer but not see it; it appears when you activate a visible layer". Two causes. (1)
+`Canvas.svelte` set `selection.hidden = !activeLayer().visible` and `selection.ts` used that to blank
+the WHOLE overlay. The flag is right for **lifted content** (floating pixels / warp mesh must obey
+visibility) but wrong for the **marquee**, which is UI chrome and document-level (survives layer
+switches) — hence the invisible-then-reappearing selection. The `hidden` early-return now sits AFTER
+the `selected`/`isCreating` marquee block: outline always drawn, lifted pixels still hidden. (2) The
+bigger issue behind it: **nothing blocked editing a hidden layer at all** — strokes/fill/lift/deform/
+pose/timeline tools only checked `locked`, so a full stroke could land invisibly in a hidden layer
+(real pixels, undoable, saved, unseen). New `isLayerEditable(layer): layer is DrawingLayer`
+(`document.ts`, unit-tested) = draw + unlocked + visible, and it replaced every `kind !== "draw" ||
+locked` guard in Canvas/Timeline/appState/gizmo — it is a **type predicate** because those guards
+were also doing the `DrawingLayer` narrowing. Status hint "Layer hidden — show it to edit" (ranks
+just under locked; both are otherwise-silent refusals). Creating a marquee on a hidden layer is
+still allowed (harmless UI, and now visible); lifting/moving it is not. **Two deliberate
+non-changes:** a hidden member does NOT block a group transform (the visibility gate is
+SCOPE-AWARE in both `Canvas.onStroke` and the gizmo's `activeTransformLayer` — a first pass gated
+before the scope dispatch and silently killed group drags whose anchor layer was hidden; review
+caught it), and timeline BLOCK ops (paste/
+delete/move) still skip only _locked_ rows — hiding is a transient view state while lock is an
+explicit "don't touch", so bulk ops keep honoring lock only. **Owed a browser pass:** marquee visible
+on a hidden layer; strokes/fill/lift/deform/pose/frame-tools all refuse with the hint; unhide →
+editing resumes; a lift in progress when you hide stays alive and hidden; iPad.

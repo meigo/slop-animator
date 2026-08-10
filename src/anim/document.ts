@@ -79,6 +79,14 @@ export function isIdentityTransform(t: RefTransform): boolean {
   return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
 }
 
+/** Can this layer's CONTENT be edited right now? Drawing layer, unlocked, and visible. Hidden is
+ *  read-only for the same reason lock is: edits you cannot see are edits you silently lose (the
+ *  pre-2026-08-11 behavior let strokes land invisibly in a hidden layer). Reference layers have no
+ *  editable content, so they are never "editable" in this sense. */
+export function isLayerEditable(layer: Layer): layer is DrawingLayer {
+  return layer.kind === "draw" && !layer.locked && layer.visible;
+}
+
 /** Whether any drawing-layer member of `group` is locked. Group transforms move every member's
  *  rendered content, so a locked member blocks the whole group op (lock = content is immovable). */
 export function groupHasLockedLayer(
