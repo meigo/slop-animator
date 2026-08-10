@@ -5,7 +5,7 @@
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
-  let { cellW, labelW }: { cellW: number; labelW: number } = $props();
+  let { cellW, labelW, markerW }: { cellW: number; labelW: number; markerW: number } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
   // the clip may start before frame 0). Not undoable: audio is outside StructSnapshot (P2 spec).
@@ -78,18 +78,24 @@
       class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-xs text-text-secondary"
       style="width: {labelW}px"
     >
-      <Music size={13} />
+      <Music size={13} class="shrink-0" />
       <span class="truncate flex-1" title={state.project.audio.name}
         >{state.project.audio.name}</span
       >
       <button
-        class="text-text-secondary hover:text-text"
+        class="text-text-secondary hover:text-text shrink-0"
         title={state.project.audio.muted ? "Muted — click to unmute" : "Click to mute audio"}
         onclick={toggleAudioMute}
         >{#if state.project.audio.muted}<VolumeX size={13} />{:else}<Volume2
             size={13}
           />{/if}</button
       >
+    </div>
+    <!-- Remove sits in the layer rows' marker column, so it lines up with their lock/hidden icons. -->
+    <div
+      class="shrink-0 sticky z-20 bg-surface flex items-center justify-center h-7"
+      style="left: {labelW}px; width: {markerW}px"
+    >
       <button
         class="text-text-secondary hover:text-text"
         title="Remove audio"

@@ -50,7 +50,10 @@
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
 
   const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
-  const LABEL_W = 80; // px, layer-name gutter
+  const LABEL_W = 120; // px, layer-name column (80 truncated most names)
+  const MARKER_W = 22; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
+  //                      frame cells don't butt against the name
+  const GUTTER_W = LABEL_W + MARKER_W; // total sticky width before the first frame cell
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
   // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
@@ -661,7 +664,7 @@
          `f === appState.playhead` class (that re-evaluated frameCount×layers bindings on every scrub). -->
     <div
       class="absolute top-0 bottom-0 pointer-events-none z-0"
-      style="left: {LABEL_W +
+      style="left: {GUTTER_W +
         appState.playhead *
           CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"
     ></div>
@@ -670,7 +673,7 @@
          grabbing/moving it. -->
     <div
       class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
-      style="left: {LABEL_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+      style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
     ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
@@ -680,7 +683,7 @@
     <div class="flex items-stretch sticky top-0 z-20 bg-surface">
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border"
-        style="width: {LABEL_W}px"
+        style="width: {GUTTER_W}px"
       ></span>
       <div
         class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
@@ -720,7 +723,7 @@
     </div>
 
     <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
-    <AudioLane cellW={CELL_W} labelW={LABEL_W} />
+    <AudioLane cellW={CELL_W} labelW={LABEL_W} markerW={MARKER_W} />
 
     <!-- layer rows (top layer first) -->
     {#each [...appState.project.layers].reverse() as layer (layer.id)}
@@ -736,16 +739,23 @@
             title="Select layer"
             onclick={() => setActiveLayer(layer.id)}>{layer.name}</button
           >
-          <!-- Read-only marker: a locked/hidden row refuses edits, so say so where the edits happen. -->
-          {#if layer.kind === "draw" && (layer.locked || !layer.visible)}
-            <span
-              class="sticky z-20 shrink-0 flex items-center text-text-muted bg-surface"
-              style="left: {LABEL_W}px"
-              title={layer.locked ? "Layer locked — edits refused" : "Layer hidden — edits refused"}
-            >
-              {#if layer.locked}<Lock size={11} />{:else}<EyeOff size={11} />{/if}
-            </span>
-          {/if}
+          <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
+               column so every row aligns and the frame cells get a gap after the name. -->
+          <span
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted"
+            class:bg-surface={layer.id !== appState.activeLayerId}
+            class:bg-surface-active={layer.id === appState.activeLayerId}
+            style="left: {LABEL_W}px; width: {MARKER_W}px"
+            title={layer.kind === "draw" && layer.locked
+              ? "Layer locked — edits refused"
+              : !layer.visible
+                ? "Layer hidden — edits refused"
+                : ""}
+          >
+            {#if layer.kind === "draw" && layer.locked}<Lock
+                size={11}
+              />{:else if !layer.visible}<EyeOff size={11} />{/if}
+          </span>
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}
             <div
@@ -786,7 +796,7 @@
       container={gridWrapper}
       rect={dragMode === "moveblock" ? null : selRect}
       cellW={CELL_W}
-      labelW={LABEL_W}
+      labelW={GUTTER_W}
     />
   </div>
 </div>

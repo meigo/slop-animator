@@ -558,3 +558,16 @@ locked rows as before. The timeline gutter now shows a 🔒/EyeOff marker on rea
 layer panel had the only lock indicator, which is the wrong place when the refusal happens in the
 timeline. **Owed:** press-drag a locked row (nothing moves, no ghost), the disabled bar states, and
 the gutter marker's sticky position at `left: LABEL_W` while scrolling horizontally.
+
+**Timeline gutter geometry (2026-08-11):** the gutter was one 80px column that every row filled
+differently — layer rows put the read-only marker in a separate column AFTER it, while the audio
+lane crammed its mute + ✕ INSIDE it, so nothing aligned and names truncated to "R…". Now three
+constants in `Timeline.svelte`: `LABEL_W` (120, name), `MARKER_W` (22, read-only/hidden marker —
+**always rendered, blank when editable**, which both aligns the rows and gives the frame cells a gap
+after the name), and `GUTTER_W = LABEL_W + MARKER_W`, which is what the ruler spacer, both playhead
+offsets and `TimelineSelectionBar`'s `labelW` now use. `AudioLane` takes `labelW` + `markerW` and
+puts its ✕ in the marker column, so it lines up with the layer rows' lock/hidden icons. Anything new
+in the gutter must pick a column rather than inventing its own offset. The gutter stays FIXED-width
+(a drag-resizable one was considered and deferred: `LABEL_W` would have to become reactive state
+threaded through four consumers plus prefs persistence). **Owed:** horizontal-scroll check that all
+three sticky columns hold together, and the audio ✕ alignment on iPad.
