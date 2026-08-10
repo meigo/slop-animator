@@ -74,9 +74,14 @@
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
-    if (!l.visible) return null; // hidden: nothing to see, nothing to transform
-    if (l.kind === "ref") return l; // refs: any tool (unchanged)
-    if (l.kind === "draw" && appState.tool === "transform" && isLayerEditable(l)) return l; // draw: Transform tool, editable only
+    if (l.kind === "ref") return l.visible ? l : null; // hidden ref: nothing to see or move
+    if (l.kind === "draw" && appState.tool === "transform") {
+      // GROUP scope moves the whole group, so a hidden/locked ANCHOR must not veto it — other
+      // members may be visible, and transformTarget's groupHasLockedLayer is the real gate there.
+      // Frame/layer scope edits THIS layer's content → editable (draw + unlocked + visible) only.
+      if (appState.transformScope === "group") return l;
+      return isLayerEditable(l) ? l : null;
+    }
     return null;
   }
 

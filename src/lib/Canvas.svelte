@@ -550,7 +550,9 @@
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {
-      if (!isLayerEditable(al)) {
+      // GROUP scope moves the whole group: a hidden/locked anchor must not veto it (onTransformDrag's
+      // groupHasLockedLayer gates that scope). Frame/layer scope edits this layer → editable only.
+      if (appState.transformScope !== "group" && !isLayerEditable(al)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
         finishTransformDragUndo(null);
@@ -679,7 +681,7 @@
     }
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
-      // locked. Binding the layer here (rather than re-reading activeLayer() every
+      // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
       if (!isLayerEditable(layer)) return;
@@ -796,7 +798,7 @@
     return ctx;
   }
   // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
-  // active layer isn't an unlocked drawing layer.
+  // active layer isn't an editable (unlocked, visible) drawing layer.
   function activeDrawableCtx(): CanvasRenderingContext2D | null {
     const layer = activeLayer();
     if (!isLayerEditable(layer)) return null;

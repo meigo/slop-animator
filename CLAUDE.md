@@ -497,7 +497,10 @@ locked` guard in Canvas/Timeline/appState/gizmo — it is a **type predicate** b
 were also doing the `DrawingLayer` narrowing. Status hint "Layer hidden — show it to edit" (ranks
 just under locked; both are otherwise-silent refusals). Creating a marquee on a hidden layer is
 still allowed (harmless UI, and now visible); lifting/moving it is not. **Two deliberate
-non-changes:** a hidden member does NOT block a group transform, and timeline BLOCK ops (paste/
+non-changes:** a hidden member does NOT block a group transform (the visibility gate is
+SCOPE-AWARE in both `Canvas.onStroke` and the gizmo's `activeTransformLayer` — a first pass gated
+before the scope dispatch and silently killed group drags whose anchor layer was hidden; review
+caught it), and timeline BLOCK ops (paste/
 delete/move) still skip only _locked_ rows — hiding is a transient view state while lock is an
 explicit "don't touch", so bulk ops keep honoring lock only. **Owed a browser pass:** marquee visible
 on a hidden layer; strokes/fill/lift/deform/pose/frame-tools all refuse with the hint; unhide →
