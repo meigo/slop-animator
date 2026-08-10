@@ -9,6 +9,8 @@
     Layers,
     Waves,
     Settings,
+    Lock,
+    EyeOff,
   } from "@lucide/svelte";
   import {
     state as appState,
@@ -271,8 +273,11 @@
       setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
     }, LONG_PRESS_MS);
 
+    // Locked/hidden rows accept SELECTION (copy is a read) but no mutating gesture: without this
+    // the drag ran and the write was refused downstream, so keys visibly moved and snapped back.
+    const editable = isLayerEditable(layer);
     const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
-    if (plan.kind === "resize") {
+    if (plan.kind === "resize" && editable) {
       dragMode = "resize";
       dragKey = plan.keyIndex;
       dragStartBoundary = rowBoundary(e);
@@ -284,7 +289,7 @@
     // Press anywhere INSIDE the current selection (key or empty) → move the whole block; a plain tap
     // collapses to that cell (handled in rowUp). The whole selection rect is the drag handle, not
     // just its ◆ cells. (A new marquee from within the bounds is still available via long-press.)
-    if (inSelection(layer.id, frame)) {
+    if (inSelection(layer.id, frame) && editable) {
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
@@ -731,6 +736,16 @@
             title="Select layer"
             onclick={() => setActiveLayer(layer.id)}>{layer.name}</button
           >
+          <!-- Read-only marker: a locked/hidden row refuses edits, so say so where the edits happen. -->
+          {#if layer.kind === "draw" && (layer.locked || !layer.visible)}
+            <span
+              class="sticky z-20 shrink-0 flex items-center text-text-muted bg-surface"
+              style="left: {LABEL_W}px"
+              title={layer.locked ? "Layer locked — edits refused" : "Layer hidden — edits refused"}
+            >
+              {#if layer.locked}<Lock size={11} />{:else}<EyeOff size={11} />{/if}
+            </span>
+          {/if}
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}
             <div

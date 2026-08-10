@@ -545,3 +545,16 @@ as barely visible. The layer detail row also went **all-12px** (`text-xs`): its 
 the offset/speed labels were 10px sitting next to 12px inputs, which read as faint rather than small;
 readout spans widened `w-5` → `w-6` so "100" / "1.0" don't clip. A draw layer still fits one line
 (~189px of ~196).
+
+**Timeline lock enforcement, round 2 (2026-08-11):** the 2026-08-09 lock pass stopped locked rows
+from being WRITTEN, but not from being _gestured at_: pressing a locked row still started a
+move-block or hold-resize drag, the write was refused downstream, and the keys visibly snapped back —
+which reads as a broken timeline, not a protected layer. `rowDown` now refuses to enter
+`moveblock`/`resize` on a non-editable row (`isLayerEditable`, so hidden counts too); SELECTION is
+still allowed because copying a locked row is a read. Correspondingly `TimelineSelectionBar` disables
+Cut/Paste/Paste-insert/Delete when NO row in the selection is editable (they would silently skip
+every row), keeping Copy and Clear; a mixed selection keeps them enabled and the block ops skip the
+locked rows as before. The timeline gutter now shows a 🔒/EyeOff marker on read-only rows — the
+layer panel had the only lock indicator, which is the wrong place when the refusal happens in the
+timeline. **Owed:** press-drag a locked row (nothing moves, no ghost), the disabled bar states, and
+the gutter marker's sticky position at `left: LABEL_W` while scrolling horizontally.

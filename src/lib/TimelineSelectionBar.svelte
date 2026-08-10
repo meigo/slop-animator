@@ -9,6 +9,7 @@
     clearTimelineSelection,
   } from "../state/appState.svelte";
   import type { SelectionRect } from "../anim/timeline-selection";
+  import { isLayerEditable } from "../anim/document";
 
   // The bar anchors to the top-left selected cell. `container` is the timeline's positioned
   // (relative) scroll wrapper; `rect` is the derived selection. `cellW`/`labelW` size the grid.
@@ -23,6 +24,17 @@
     cellW: number;
     labelW: number;
   } = $props();
+
+  // Every mutating action skips locked/hidden rows, so on an all-read-only selection they would
+  // silently do nothing. Disable them instead — Copy stays (reading a locked row is fine).
+  const anyEditable = $derived(
+    !!rect &&
+      rect.layerIds.some((id) => {
+        const l = appState.project.layers.find((x) => x.id === id);
+        return !!l && isLayerEditable(l);
+      }),
+  );
+  const readOnlyTitle = " — selection is on locked/hidden layers";
 
   let x = $state(0);
   let y = $state(0);
@@ -81,21 +93,29 @@
     aria-label="Selection actions"
   >
     <button class={btn} title="Copy" onclick={copyTimelineSelection}><Copy size={14} /></button>
-    <button class={btn} title="Cut" onclick={cutTimelineSelection}><Scissors size={14} /></button>
     <button
       class={btn}
-      title="Paste (overwrite)"
-      disabled={!appState.cellClipboard}
+      title={anyEditable ? "Cut" : "Cut" + readOnlyTitle}
+      disabled={!anyEditable}
+      onclick={cutTimelineSelection}><Scissors size={14} /></button
+    >
+    <button
+      class={btn}
+      title={anyEditable ? "Paste (overwrite)" : "Paste" + readOnlyTitle}
+      disabled={!appState.cellClipboard || !anyEditable}
       onclick={() => pasteCells(false)}><ClipboardPaste size={14} /></button
     >
     <button
       class={btn}
-      title="Paste insert"
-      disabled={!appState.cellClipboard}
+      title={anyEditable ? "Paste insert" : "Paste insert" + readOnlyTitle}
+      disabled={!appState.cellClipboard || !anyEditable}
       onclick={() => pasteCells(true)}><Rows3 size={14} /></button
     >
-    <button class={btn} title="Delete" onclick={deleteTimelineSelection}
-      ><Trash2 size={14} /></button
+    <button
+      class={btn}
+      title={anyEditable ? "Delete" : "Delete" + readOnlyTitle}
+      disabled={!anyEditable}
+      onclick={deleteTimelineSelection}><Trash2 size={14} /></button
     >
     <button class={btn} title="Clear selection" onclick={clearTimelineSelection}
       ><X size={14} /></button
