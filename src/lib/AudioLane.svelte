@@ -75,7 +75,7 @@
 {#if state.project.audio}
   <div class="flex items-center">
     <div
-      class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-xs text-text-secondary"
+      class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-text-secondary"
       style="width: {labelW}px"
     >
       <Music size={13} class="shrink-0" />
