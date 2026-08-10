@@ -741,6 +741,7 @@
     selection.onStateChange = () => {
       recomposite();
       appState.selectionActive = !!selection && selection.active && !selection.hasFloating;
+      appState.selectionFloating = !!selection && selection.hasFloating;
     };
 
     selection.onCommit = () => {
@@ -1136,6 +1137,10 @@
     selectionActions.cut = cutSelection;
     selectionActions.del = deleteSelection;
     selectionActions.paste = pasteSelection;
+    // Escape's behavior exactly: cancel (revert a move), never commit. Tap-outside still commits.
+    selectionActions.deselect = () => {
+      if (selection?.active) selection.cancel();
+    };
 
     return () => {
       cleanup();
@@ -1158,7 +1163,9 @@
       selectionActions.cut = null;
       selectionActions.del = null;
       selectionActions.paste = null;
+      selectionActions.deselect = null;
       appState.selectionActive = false;
+      appState.selectionFloating = false;
     };
   });
 

@@ -10,7 +10,7 @@
   import { isIdentityTransform } from "../anim/document";
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
-  import { Spline, Copy, Scissors, ClipboardPaste, Trash2 } from "@lucide/svelte";
+  import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
@@ -178,6 +178,12 @@
       title="Delete (Del)"
       disabled={!appState.selectionActive}
       onclick={() => selectionActions.del?.()}><Trash2 size={16} /></button
+    >
+    <button
+      class={btn}
+      title="Deselect (Esc) — drops the selection; reverts an in-progress move"
+      disabled={!appState.selectionActive && !appState.selectionFloating}
+      onclick={() => selectionActions.deselect?.()}><MousePointerBan size={16} /></button
     >
     {#if activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
       <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer"

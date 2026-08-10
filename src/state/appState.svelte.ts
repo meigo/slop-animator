@@ -100,6 +100,7 @@ interface AnimState {
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
+  selectionFloating: boolean; // pixels are lifted/moved (Copy/Cut are off, but Deselect still applies)
   hasPixelClipboard: boolean; // the pixel selection clipboard has content (drives ToolOptions Paste)
 }
 
@@ -156,6 +157,7 @@ export const state: AnimState = $state({
   timelineSelection: null,
   cellClipboard: null,
   selectionActive: false,
+  selectionFloating: false,
   hasPixelClipboard: false,
 });
 
@@ -906,7 +908,9 @@ export const selectionActions: {
   cut: (() => void) | null;
   del: (() => void) | null;
   paste: (() => boolean) | null;
-} = { enterWarp: null, copy: null, cut: null, del: null, paste: null };
+  /** Drop the selection, reverting an in-progress move — same as the Escape key (never commits). */
+  deselect: (() => void) | null;
+} = { enterWarp: null, copy: null, cut: null, del: null, paste: null, deselect: null };
 
 /** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
 export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
