@@ -304,7 +304,7 @@
           onclick={(e) => e.stopPropagation()}
           title="Opacity"
         />
-        <span class="text-[10px] tabular-nums w-5 text-text-muted">{layer.opacity}</span>
+        <span class="text-xs tabular-nums w-6 text-text-muted">{layer.opacity}</span>
         <!-- Video-only toggles live here, not in Row 1: they are per-clip settings you adjust on the
              layer you're working on, and four icons before the name left no room for it (2026-08-11).
              Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->
@@ -348,7 +348,7 @@
             onclick={(e) => e.stopPropagation()}
             title="Line boil strength (this layer)"
           />
-          <span class="text-[10px] tabular-nums w-5 text-text-muted"
+          <span class="text-xs tabular-nums w-6 text-text-muted"
             >{layer.boilStrength.toFixed(1)}</span
           >
         {/if}
@@ -365,7 +365,7 @@
                two bare number boxes explained only by title= are invisible on touch. -->
           <div class="flex items-center gap-2">
             <label
-              class="flex items-center gap-1 text-[10px] text-text-muted"
+              class="flex items-center gap-1 text-xs text-text-muted"
               title="Video time offset (frames)"
             >
               offset
@@ -379,7 +379,7 @@
               />
             </label>
             <label
-              class="flex items-center gap-1 text-[10px] text-text-muted"
+              class="flex items-center gap-1 text-xs text-text-muted"
               title="Playback speed (× real time)"
             >
               speed

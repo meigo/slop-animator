@@ -541,4 +541,7 @@ are now **`text-text-secondary hover:text-text`**; use that for any new icon but
 #666 on #1e1e1e ≈ 2.8:1) — raised to **#6b6b6b / #8a8a8a** (≈5.3:1 / 4.7:1). That token is used in
 ~25 places (timeline glyphs, ruler ticks, layer readouts), so the whole app gets slightly more
 legible secondary text; the ruler ticks in particular benefit, since they were separately reported
-as barely visible.
+as barely visible. The layer detail row also went **all-12px** (`text-xs`): its slider readouts and
+the offset/speed labels were 10px sitting next to 12px inputs, which read as faint rather than small;
+readout spans widened `w-5` → `w-6` so "100" / "1.0" don't clip. A draw layer still fits one line
+(~189px of ~196).
