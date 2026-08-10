@@ -552,7 +552,12 @@
     if (al.kind === "draw" && appState.tool === "transform") {
       // GROUP scope moves the whole group: a hidden/locked anchor must not veto it (onTransformDrag's
       // groupHasLockedLayer gates that scope). Frame/layer scope edits this layer → editable only.
-      if (appState.transformScope !== "group" && !isLayerEditable(al)) {
+      // The group must really exist: with scope stuck on "group" after the layer was dragged OUT of
+      // its group, onTransformDrag falls through to the LAYER branch, which has no editable check —
+      // so a bare scope check would let a hidden/locked layer be dragged by the whole canvas.
+      const groupScope =
+        appState.transformScope === "group" && groupOf(al, appState.project.groups) != null;
+      if (!groupScope && !isLayerEditable(al)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
         finishTransformDragUndo(null);
