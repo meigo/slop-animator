@@ -518,3 +518,12 @@ selection · ✕ on the selection bar deselects". Auto-clearing the selection on
 rejected for the same reason (painting inside a selection is a real technique). **Owed:** the ✕ on
 iPad, and that it doesn't bleed a tap through to the canvas (it uses the bar's existing
 `tap()` stopPropagation wrapper).
+
+**Layer row de-crowding (2026-08-11):** a video reference row had FOUR icons before the name (grip,
+eye, audio, embed, + type glyph), truncating the name to uselessness. The two video-only toggles
+(audio 🔊, embed 💾) moved from Row 1 to **Row 2** — the detail strip that renders only for the
+ACTIVE layer, where the other video-only controls (offset, speed, re-link) already live. The rule
+this establishes: **Row 1 = state you scan ACROSS layers (visibility, lock, type); Row 2 = controls
+for the layer you're working on.** Apply it to any future per-layer control. Row 1 is now at most
+eye + lock + type before the name. **Owed:** an eyeball that Row 2 doesn't wrap on a narrow iPad
+layer panel now that it carries opacity + boil + two toggles + rename + the ref inputs.

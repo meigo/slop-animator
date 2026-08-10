@@ -261,34 +261,6 @@
           {#if layer.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
         </button>
       {/if}
-      {#if layer.kind === "ref" && layer.media.type === "video"}
-        <button
-          class="text-text-secondary"
-          onclick={(e) => {
-            e.stopPropagation();
-            layer.audioEnabled = !layer.audioEnabled;
-            if (layer.media.type === "video") layer.media.el.muted = !layer.audioEnabled;
-            bump();
-          }}
-          title={layer.audioEnabled
-            ? "Audio on — click to mute"
-            : "Audio off — click to play video sound"}
-        >
-          {#if layer.audioEnabled}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
-        </button>
-        <button
-          class="text-text-secondary"
-          onclick={(e) => {
-            e.stopPropagation();
-            void toggleEmbedMedia(layer.id);
-          }}
-          title={layer.embedMedia
-            ? "Video stored in project — survives reload & save"
-            : "Video not stored — re-link after reload (tap to keep it)"}
-        >
-          {#if layer.embedMedia}<Save size={15} />{:else}<SaveOff size={15} />{/if}
-        </button>
-      {/if}
       {#if layer.kind === "ref"}
         {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
         <span
@@ -331,6 +303,37 @@
           title="Opacity"
         />
         <span class="text-[10px] tabular-nums w-6 text-text-muted">{layer.opacity}</span>
+        <!-- Video-only toggles live here, not in Row 1: they are per-clip settings you adjust on the
+             layer you're working on, and four icons before the name left no room for it (2026-08-11).
+             Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->
+        {#if layer.kind === "ref" && layer.media.type === "video"}
+          <button
+            class="text-text-secondary"
+            onclick={(e) => {
+              e.stopPropagation();
+              layer.audioEnabled = !layer.audioEnabled;
+              if (layer.media.type === "video") layer.media.el.muted = !layer.audioEnabled;
+              bump();
+            }}
+            title={layer.audioEnabled
+              ? "Audio on — click to mute"
+              : "Audio off — click to play video sound"}
+          >
+            {#if layer.audioEnabled}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
+          </button>
+          <button
+            class="text-text-secondary"
+            onclick={(e) => {
+              e.stopPropagation();
+              void toggleEmbedMedia(layer.id);
+            }}
+            title={layer.embedMedia
+              ? "Video stored in project — survives reload & save"
+              : "Video not stored — re-link after reload (tap to keep it)"}
+          >
+            {#if layer.embedMedia}<Save size={15} />{:else}<SaveOff size={15} />{/if}
+          </button>
+        {/if}
         {#if layer.kind === "draw"}
           <input
             class="w-14"
