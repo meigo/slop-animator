@@ -47,6 +47,7 @@
     cloneCanvas,
     groupOf,
     groupHasLockedLayer,
+    isLayerEditable,
     groupTransform,
     type Layer,
     type Cell,
@@ -230,7 +231,7 @@
 
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
-    if (layer.kind !== "draw" || layer.locked) return;
+    if (!isLayerEditable(layer)) return;
     const W = appState.project.width,
       H = appState.project.height;
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -549,9 +550,9 @@
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {
-      if (al.locked) {
-        // Locked = content is immovable. Also settle any drag that was in flight when the lock
-        // landed (mid-gesture lock), so its undo bracket can't leak into the next gesture.
+      if (!isLayerEditable(al)) {
+        // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
+        // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
         finishTransformDragUndo(null);
         refDrag = null;
         return;
@@ -631,7 +632,7 @@
         if (selection.state === "selected" && handle === "move") {
           // First grab inside a fresh marquee: lift the pixels and enter transform mode.
           const layer = activeLayer();
-          if (layer.kind !== "draw" || layer.locked) return;
+          if (!isLayerEditable(layer)) return;
           const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -681,7 +682,7 @@
       // locked. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
-      if (layer.kind !== "draw" || layer.locked) return;
+      if (!isLayerEditable(layer)) return;
       strokeCanvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
@@ -798,7 +799,7 @@
   // active layer isn't an unlocked drawing layer.
   function activeDrawableCtx(): CanvasRenderingContext2D | null {
     const layer = activeLayer();
-    if (layer.kind !== "draw" || layer.locked) return null;
+    if (!isLayerEditable(layer)) return null;
     const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -864,7 +865,7 @@
   function enterTransform() {
     if (!selection || selection.state !== "selected") return;
     const layer = activeLayer();
-    if (layer.kind !== "draw" || layer.locked) return;
+    if (!isLayerEditable(layer)) return;
     const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -878,7 +879,7 @@
 
   function enterDeform() {
     const al = activeLayer();
-    if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al) || !isIdentityTransform(al.transform)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return; // empty cell → nothing to deform
@@ -979,7 +980,7 @@
 
   function enterPose() {
     const al = activeLayer();
-    if (al.kind !== "draw" || al.locked || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al) || !isIdentityTransform(al.transform)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return;

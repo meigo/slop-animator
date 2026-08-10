@@ -759,9 +759,10 @@ export class Selection {
     cancelAnimationFrame(this.animFrame);
     this.animFrame = requestAnimationFrame(() => this.drawOverlay());
 
-    if (this.hidden) return; // edited layer hidden → keep looping but draw nothing
-
     // 'selected' state OR mid-creation: draw the actual selection shape with marching ants.
+    // NOTE: drawn even when `hidden` — the marquee is UI chrome, not layer content, and a marquee
+    // is document-level (survives layer switches). Suppressing it made selections on a hidden layer
+    // invisible until you activated a visible one (2026-08-11 report).
     if (this.state === "selected" || this.isCreating) {
       if (this.mode === "lasso" && (this.lassoPath || this.lassoPoints.length > 1)) {
         ctx.beginPath();
@@ -778,6 +779,10 @@ export class Selection {
       }
       return;
     }
+
+    // Past this point the overlay renders LIFTED PIXELS — the layer's own content — so it must obey
+    // the layer's visibility.
+    if (this.hidden) return;
 
     // 'warping' state: tessellated render + grid lines + handles + outer perimeter.
     if (this.state === "warping" && this.warpGrid.length === this.warpRows) {

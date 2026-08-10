@@ -38,7 +38,7 @@
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { clampTimelineHeight } from "../anim/timeline-layout";
-  import { groupOf, type DrawingLayer } from "../anim/document";
+  import { groupOf, isLayerEditable, type DrawingLayer } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -328,7 +328,7 @@
       return;
     }
     if (dragMode === "resize") {
-      if (layer.locked) return; // locked row: hold-span is content, not selection
+      if (!isLayerEditable(layer)) return; // locked/hidden row: hold-span is content, not selection
       dragLastBoundary = rowBoundary(e);
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
       bump();
@@ -414,7 +414,7 @@
   // mutation so commitStructural's trailing bump() refreshes the length and clamps it.
   function frameTool() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     commitStructural(() => {
       addFrame(l, appState.playhead);
       appState.playhead += 1;
@@ -422,7 +422,7 @@
   }
   function keyTool() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -430,7 +430,7 @@
   }
   function dupTool() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -438,14 +438,14 @@
   }
   function holdTool() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     if (l.cells[appState.playhead]?.kind !== "key") return; // already a hold → nothing to do
     liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
     commitStructural(() => setHold(l, appState.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
     liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
     commitStructural(() => deleteFrame(l, appState.playhead));
@@ -454,7 +454,7 @@
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
   function clearFrame() {
     const l = activeLayer();
-    if (l.kind !== "draw" || l.locked) return;
+    if (!isLayerEditable(l)) return;
     const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);

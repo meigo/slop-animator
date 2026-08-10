@@ -18,6 +18,7 @@
     resolvedKeyCell,
     groupOf,
     groupHasLockedLayer,
+    isLayerEditable,
     groupTransform,
     isIdentityTransform,
     isSameTransform,
@@ -73,8 +74,9 @@
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
+    if (!l.visible) return null; // hidden: nothing to see, nothing to transform
     if (l.kind === "ref") return l; // refs: any tool (unchanged)
-    if (l.kind === "draw" && appState.tool === "transform" && !l.locked) return l; // draw: Transform tool, unlocked only
+    if (l.kind === "draw" && appState.tool === "transform" && isLayerEditable(l)) return l; // draw: Transform tool, editable only
     return null;
   }
 
