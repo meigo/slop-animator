@@ -525,5 +525,9 @@ eye, audio, embed, + type glyph), truncating the name to uselessness. The two vi
 ACTIVE layer, where the other video-only controls (offset, speed, re-link) already live. The rule
 this establishes: **Row 1 = state you scan ACROSS layers (visibility, lock, type); Row 2 = controls
 for the layer you're working on.** Apply it to any future per-layer control. Row 1 is now at most
-eye + lock + type before the name. **Owed:** an eyeball that Row 2 doesn't wrap on a narrow iPad
-layer panel now that it carries opacity + boil + two toggles + rename + the ref inputs.
+eye + lock + type before the name. Row 2 then **wraps** (`flex-wrap` + `gap-y-1`) rather than getting
+a hand-partitioned third row: the panel is a fixed `w-56` (224px) and this row keeps gaining controls
+(two were added on 2026-08-09 alone), so a fixed partition would need re-cutting each time while wrap
+can never clip. Sliders slimmed to `w-12` / readouts `w-5` so a DRAW layer still fits one line and
+only video refs flow onto a second; the offset+speed inputs sit in a nested flex so they stay
+adjacent across the wrap. **Owed:** eyeball the wrap on iPad.

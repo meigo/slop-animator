@@ -291,9 +291,11 @@
     </div>
     <!-- Row 2: detail controls (active layer only) -->
     {#if active}
-      <div class="flex items-center gap-2 pl-6 pr-1 pb-1 text-text-secondary">
+      <!-- Wraps rather than clipping: the panel is a fixed w-56 and this row keeps gaining controls.
+           Sizes are tuned so a DRAW layer stays on one line; a video ref flows onto a second. -->
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 pr-1 pb-1 text-text-secondary">
         <input
-          class="w-14"
+          class="w-12"
           type="range"
           min="0"
           max="100"
@@ -302,7 +304,7 @@
           onclick={(e) => e.stopPropagation()}
           title="Opacity"
         />
-        <span class="text-[10px] tabular-nums w-6 text-text-muted">{layer.opacity}</span>
+        <span class="text-[10px] tabular-nums w-5 text-text-muted">{layer.opacity}</span>
         <!-- Video-only toggles live here, not in Row 1: they are per-clip settings you adjust on the
              layer you're working on, and four icons before the name left no room for it (2026-08-11).
              Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->
@@ -336,7 +338,7 @@
         {/if}
         {#if layer.kind === "draw"}
           <input
-            class="w-14"
+            class="w-12"
             type="range"
             min="0"
             max="1"
@@ -346,8 +348,8 @@
             onclick={(e) => e.stopPropagation()}
             title="Line boil strength (this layer)"
           />
-          <span class="text-[10px] tabular-nums w-6 text-text-muted"
-            >{layer.boilStrength.toFixed(2)}</span
+          <span class="text-[10px] tabular-nums w-5 text-text-muted"
+            >{layer.boilStrength.toFixed(1)}</span
           >
         {/if}
         <button
@@ -359,26 +361,29 @@
           }}><Pencil size={13} /></button
         >
         {#if layer.kind === "ref" && layer.media.type === "video"}
-          <input
-            class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
-            type="number"
-            step="1"
-            bind:value={layer.offsetFrames}
-            oninput={bump}
-            onclick={(e) => e.stopPropagation()}
-            title="Video time offset (frames)"
-          />
-          <input
-            class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
-            type="number"
-            step="0.1"
-            min="0.1"
-            max="8"
-            bind:value={layer.speed}
-            oninput={bump}
-            onclick={(e) => e.stopPropagation()}
-            title="Playback speed (×)"
-          />
+          <!-- Offset + speed stay adjacent across a wrap (one nested flex item). -->
+          <div class="flex items-center gap-1">
+            <input
+              class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
+              type="number"
+              step="1"
+              bind:value={layer.offsetFrames}
+              oninput={bump}
+              onclick={(e) => e.stopPropagation()}
+              title="Video time offset (frames)"
+            />
+            <input
+              class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
+              type="number"
+              step="0.1"
+              min="0.1"
+              max="8"
+              bind:value={layer.speed}
+              oninput={bump}
+              onclick={(e) => e.stopPropagation()}
+              title="Playback speed (×)"
+            />
+          </div>
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button
