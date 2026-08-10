@@ -361,28 +361,39 @@
           }}><Pencil size={13} /></button
         >
         {#if layer.kind === "ref" && layer.media.type === "video"}
-          <!-- Offset + speed stay adjacent across a wrap (one nested flex item). -->
-          <div class="flex items-center gap-1">
-            <input
-              class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
-              type="number"
-              step="1"
-              bind:value={layer.offsetFrames}
-              oninput={bump}
-              onclick={(e) => e.stopPropagation()}
+          <!-- Offset + speed stay adjacent across a wrap (one nested flex item). Labelled because
+               two bare number boxes explained only by title= are invisible on touch. -->
+          <div class="flex items-center gap-2">
+            <label
+              class="flex items-center gap-1 text-[10px] text-text-muted"
               title="Video time offset (frames)"
-            />
-            <input
-              class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
-              type="number"
-              step="0.1"
-              min="0.1"
-              max="8"
-              bind:value={layer.speed}
-              oninput={bump}
-              onclick={(e) => e.stopPropagation()}
-              title="Playback speed (×)"
-            />
+            >
+              offset
+              <input
+                class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
+                type="number"
+                step="1"
+                bind:value={layer.offsetFrames}
+                oninput={bump}
+                onclick={(e) => e.stopPropagation()}
+              />
+            </label>
+            <label
+              class="flex items-center gap-1 text-[10px] text-text-muted"
+              title="Playback speed (× real time)"
+            >
+              speed
+              <input
+                class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="8"
+                bind:value={layer.speed}
+                oninput={bump}
+                onclick={(e) => e.stopPropagation()}
+              />×
+            </label>
           </div>
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
