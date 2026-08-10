@@ -167,6 +167,19 @@
       >
     {/if}
   {/if}
+  {#if mode === "selected"}
+    <!-- Deselect: the bar is the ONLY reachable deselect while a paint tool is active (the
+         ToolOptions Deselect shows for select/lasso, tap-outside draws instead, Esc needs a
+         keyboard) — and a selection clips brush/eraser/fill, so a forgotten one is confusing. -->
+    <div class="w-px h-6 bg-border mx-0.5"></div>
+    <button
+      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+      onpointerdown={tap(onCancel)}
+      title="Deselect (Esc)"
+    >
+      <X size={18} />
+    </button>
+  {/if}
   {#if mode !== "selected"}
     <div class="w-px h-6 bg-border mx-0.5"></div>
     <button

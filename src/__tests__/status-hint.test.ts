@@ -69,9 +69,18 @@ describe("contextHint per tool state", () => {
     );
   });
 
-  it("plain drawing tools stay silent", () => {
+  it("plain drawing tools stay silent with no selection", () => {
     for (const tool of ["brush", "eraser", "fill", "eyedropper"]) {
       expect(contextHint(ctx({ tool }))).toBe("");
     }
+  });
+
+  it("paint tools explain the clip (and where the deselect is) when a selection exists", () => {
+    for (const tool of ["brush", "eraser", "fill"]) {
+      expect(contextHint(ctx({ tool, selectionActive: true }))).toMatch(/clipped to the selection/);
+      expect(contextHint(ctx({ tool, selectionFloating: true }))).toMatch(/deselects/);
+    }
+    // The eyedropper doesn't paint, so a selection changes nothing for it.
+    expect(contextHint(ctx({ tool: "eyedropper", selectionActive: true }))).toBe("");
   });
 });

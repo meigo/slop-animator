@@ -45,7 +45,15 @@ export function contextHint(c: HintContext): string {
       return c.poseActive
         ? "Tap to add a handle · drag a handle to pose · drag its nub to rotate and set reach · leaving the tool bakes it"
         : "Tap the drawing to build the pose mesh";
+    case "brush":
+    case "eraser":
+    case "fill":
+      // A selection clips these tools, and with a paint tool active the on-canvas bar's ✕ is the
+      // only reachable deselect — worth saying, since a forgotten marquee looks like a broken brush.
+      return c.selectionActive || c.selectionFloating
+        ? "Painting is clipped to the selection · ✕ on the selection bar deselects"
+        : "";
     default:
-      return ""; // brush/eraser/fill/eyedropper: drag-to-draw needs no teaching
+      return ""; // eyedropper etc.: drag-to-draw needs no teaching
   }
 }

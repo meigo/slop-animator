@@ -505,3 +505,16 @@ delete/move) still skip only _locked_ rows — hiding is a transient view state 
 explicit "don't touch", so bulk ops keep honoring lock only. **Owed a browser pass:** marquee visible
 on a hidden layer; strokes/fill/lift/deform/pose/frame-tools all refuse with the hint; unhide →
 editing resumes; a lift in progress when you hide stays alive and hidden; iPad.
+
+**Deselect from the on-canvas bar + the clipping hint (2026-08-11):** with a paint tool active there
+was NO reachable way to drop a selection — ToolOptions' Deselect only renders for select/lasso,
+tap-outside draws instead, and Esc needs a keyboard. `SelectionActions` (the near-selection floating
+bar) is already visible for **any** tool whenever a selection exists, but rendered its ✕ only in
+`transforming`/`warping` mode; it now also renders in `selected` mode, wired to the same
+`selection.cancel()` (Escape semantics). This matters more than it looks: **a selection clips
+brush/eraser/fill** (`Canvas.svelte` `applyClip` in the stroke + fill paths), so a forgotten marquee
+reads as a broken brush — hence also a status hint for those three tools: "Painting is clipped to the
+selection · ✕ on the selection bar deselects". Auto-clearing the selection on tool switch was
+rejected for the same reason (painting inside a selection is a real technique). **Owed:** the ✕ on
+iPad, and that it doesn't bleed a tap through to the canvas (it uses the bar's existing
+`tap()` stopPropagation wrapper).
