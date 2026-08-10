@@ -83,7 +83,7 @@
         >{state.project.audio.name}</span
       >
       <button
-        class="text-text-muted hover:text-text-secondary"
+        class="text-text-secondary hover:text-text"
         title={state.project.audio.muted ? "Muted — click to unmute" : "Click to mute audio"}
         onclick={toggleAudioMute}
         >{#if state.project.audio.muted}<VolumeX size={13} />{:else}<Volume2
@@ -91,7 +91,7 @@
           />{/if}</button
       >
       <button
-        class="text-text-muted hover:text-text-secondary"
+        class="text-text-secondary hover:text-text"
         title="Remove audio"
         onclick={removeAudioTrack}><X size={13} /></button
       >

@@ -238,7 +238,7 @@
         ><GripVertical size={14} /></span
       >
       <button
-        class="text-text-secondary"
+        class="text-text-secondary hover:text-text"
         title="Toggle visibility"
         onclick={(e) => {
           e.stopPropagation();
@@ -250,7 +250,7 @@
       </button>
       {#if layer.kind === "draw"}
         <button
-          class="text-text-secondary"
+          class="text-text-secondary hover:text-text"
           onclick={(e) => {
             e.stopPropagation();
             layer.locked = !layer.locked;
@@ -310,7 +310,7 @@
              Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->
         {#if layer.kind === "ref" && layer.media.type === "video"}
           <button
-            class="text-text-secondary"
+            class="text-text-secondary hover:text-text"
             onclick={(e) => {
               e.stopPropagation();
               layer.audioEnabled = !layer.audioEnabled;
@@ -324,7 +324,7 @@
             {#if layer.audioEnabled}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
           </button>
           <button
-            class="text-text-secondary"
+            class="text-text-secondary hover:text-text"
             onclick={(e) => {
               e.stopPropagation();
               void toggleEmbedMedia(layer.id);
@@ -353,7 +353,7 @@
           >
         {/if}
         <button
-          class="text-text-muted hover:text-text-secondary"
+          class="text-text-secondary hover:text-text"
           title="Rename layer"
           onclick={(e) => {
             e.stopPropagation();
@@ -398,7 +398,7 @@
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button
-            class="text-text-muted hover:text-text-secondary"
+            class="text-text-secondary hover:text-text"
             title="Re-link media"
             onclick={(e) => {
               e.stopPropagation();
@@ -408,7 +408,7 @@
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "image"}
           <button
-            class="text-text-muted hover:text-text-secondary"
+            class="text-text-secondary hover:text-text"
             title="Rasterize to drawing layer"
             onclick={(e) => {
               e.stopPropagation();
@@ -419,7 +419,7 @@
         {#if hasTransform(layer)}
           {#if activeTransformScope(layer) !== "group"}
             <button
-              class="text-text-muted hover:text-text-secondary"
+              class="text-text-secondary hover:text-text"
               title="Apply transform (bake to pixels)"
               onclick={(e) => {
                 e.stopPropagation();
@@ -430,7 +430,7 @@
             >
           {/if}
           <button
-            class="text-text-muted hover:text-text-secondary"
+            class="text-text-secondary hover:text-text"
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
@@ -497,7 +497,7 @@
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div class="flex items-center gap-1 px-1 py-1 bg-surface-hover" role="presentation">
               <button
-                class="text-text-secondary"
+                class="text-text-secondary hover:text-text"
                 title="Collapse group"
                 onclick={() => toggleGroupCollapsed(seg.group.id)}
               >
@@ -506,7 +506,7 @@
                   />{/if}
               </button>
               <button
-                class="text-text-secondary"
+                class="text-text-secondary hover:text-text"
                 title="Toggle group visibility"
                 onclick={() => toggleGroupVisible(seg.group.id)}
               >
@@ -526,7 +526,7 @@
               {:else}
                 <span class="flex-1 text-xs font-semibold truncate">{seg.group.name}</span>
                 <button
-                  class="text-text-muted hover:text-text-secondary"
+                  class="text-text-secondary hover:text-text"
                   title="Rename group"
                   onclick={() => startGroupEdit(seg.group)}
                 >
@@ -534,7 +534,7 @@
                 </button>
               {/if}
               <button
-                class="text-text-muted hover:text-text-secondary"
+                class="text-text-secondary hover:text-text"
                 title="Ungroup"
                 onclick={() => ungroup(seg.group.id)}
               >

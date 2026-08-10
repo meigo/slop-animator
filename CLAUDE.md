@@ -531,3 +531,14 @@ a hand-partitioned third row: the panel is a fixed `w-56` (224px) and this row k
 can never clip. Sliders slimmed to `w-12` / readouts `w-5` so a DRAW layer still fits one line and
 only video refs flow onto a second; the offset+speed inputs sit in a nested flex so they stay
 adjacent across the wrap. **Owed:** eyeball the wrap on iPad.
+
+**Icon-button + contrast pass (2026-08-11):** the layer panel had TWO icon-button treatments —
+`text-text-secondary` with no hover (6 buttons: eye, lock, audio, embed…) and
+`text-text-muted hover:text-text-secondary` (7: rename, re-link, rasterize, transform…) — so icons
+differed in both resting brightness and whether they responded at all. All 13 (+2 in `AudioLane`)
+are now **`text-text-secondary hover:text-text`**; use that for any new icon button. Separately,
+`--color-text-muted` failed WCAG's 3:1 minimum for UI text in BOTH themes (#999 on white ≈ 2.85:1,
+#666 on #1e1e1e ≈ 2.8:1) — raised to **#6b6b6b / #8a8a8a** (≈5.3:1 / 4.7:1). That token is used in
+~25 places (timeline glyphs, ruler ticks, layer readouts), so the whole app gets slightly more
+legible secondary text; the ruler ticks in particular benefit, since they were separately reported
+as barely visible.
