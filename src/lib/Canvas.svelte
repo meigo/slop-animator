@@ -560,7 +560,9 @@
     }
     const al = activeLayer();
     if (al.kind === "ref") {
-      onTransformDrag(al, points, done);
+      // A locked reference is pinned: its gizmo is live under EVERY tool, so this is the one guard
+      // that stops a stray canvas drag from nudging an aligned reference.
+      if (!al.locked) onTransformDrag(al, points, done);
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {

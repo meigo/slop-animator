@@ -22,7 +22,7 @@
     const l = activeLayer();
     return contextHint({
       tool: appState.tool,
-      locked: l.kind === "draw" && l.locked,
+      locked: !!l.locked, // refs can be locked too (pins their transform)
       hiddenLayer: !l.visible,
       layerTransformed: l.kind === "draw" && !isIdentityTransform(l.transform),
       selectionActive: appState.selectionActive,

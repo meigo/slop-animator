@@ -663,3 +663,15 @@ status hint gives ("Layer locked/hidden — …"), so a layer that silently refu
 three places. NOTE these two buttons deviate from the standard
 `text-text-secondary hover:text-text` icon-button class ON PURPOSE — they convey state, not just
 affordance.
+
+**Reference layers can be locked (2026-08-11):** `locked` was `DrawingLayer`-only; refs now have
+`locked?: boolean` (persisted, defaults false, old saves load unlocked — 2 round-trip tests). It is
+arguably MORE needed here than on draw layers: the ref gizmo is live under **every** tool (unlike
+draw layers, which need the Transform tool), so any stray canvas drag could nudge an aligned
+reference. Scope mirrors what lock means for drawing layers — it protects CONTENT, not management:
+blocked = the transform (gizmo hidden via `activeTransformLayer`, drag refused in `Canvas.onStroke`'s
+ref branch); still allowed = visibility, opacity, rename, reorder, delete, re-link, and the video
+offset/speed/audio toggles (deliberate panel acts, not accidental canvas ones). NOTE
+`isLayerEditable` stays draw-only — it is a `layer is DrawingLayer` type predicate gating pixel ops;
+the ref lock is checked directly at those two transform sites. The amber icon, timeline gutter marker
+and status hint all had `kind === "draw"` guards that were widened to plain `layer.locked`.

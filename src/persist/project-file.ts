@@ -46,6 +46,7 @@ export interface ReferenceJson {
   offsetFrames: number;
   speed?: number;
   audioEnabled?: boolean;
+  locked?: boolean;
   mediaId?: string;
   mediaMime?: string;
   embedMedia?: boolean;
@@ -208,6 +209,7 @@ export function projectToJson(project: Project): ProjectJson {
         offsetFrames: l.offsetFrames,
         speed: l.speed,
         audioEnabled: l.audioEnabled,
+        locked: l.locked,
         mediaId: l.mediaId,
         mediaMime: l.mediaMime,
         embedMedia: l.embedMedia,
@@ -370,6 +372,7 @@ export async function loadProjectBlob(
       offsetFrames: rj.offsetFrames,
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
+      locked: rj.locked ?? false,
       mediaId: rj.mediaId,
       mediaMime: rj.mediaMime,
       embedMedia: rj.embedMedia,

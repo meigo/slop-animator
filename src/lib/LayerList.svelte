@@ -248,19 +248,21 @@
       >
         {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
       </button>
-      {#if layer.kind === "draw"}
-        <button
-          class={layer.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
-          onclick={(e) => {
-            e.stopPropagation();
-            layer.locked = !layer.locked;
-            bump();
-          }}
-          title={layer.locked ? "Locked — click to unlock" : "Unlocked — click to lock drawing"}
-        >
-          {#if layer.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
-        </button>
-      {/if}
+      <button
+        class={layer.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
+        onclick={(e) => {
+          e.stopPropagation();
+          layer.locked = !layer.locked;
+          bump();
+        }}
+        title={layer.locked
+          ? "Locked — click to unlock"
+          : layer.kind === "ref"
+            ? "Unlocked — click to pin this reference in place"
+            : "Unlocked — click to lock drawing"}
+      >
+        {#if layer.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
+      </button>
       {#if layer.kind === "ref"}
         {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
         <span

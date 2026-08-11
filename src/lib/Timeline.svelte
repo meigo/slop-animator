@@ -821,15 +821,13 @@
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             style="left: {LABEL_W}px; width: {MARKER_W}px"
-            title={layer.kind === "draw" && layer.locked
+            title={layer.locked
               ? "Layer locked — edits refused"
               : !layer.visible
                 ? "Layer hidden — edits refused"
                 : ""}
           >
-            {#if layer.kind === "draw" && layer.locked}<Lock
-                size={11}
-              />{:else if !layer.visible}<EyeOff size={11} />{/if}
+            {#if layer.locked}<Lock size={11} />{:else if !layer.visible}<EyeOff size={11} />{/if}
           </span>
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}

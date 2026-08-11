@@ -74,7 +74,7 @@
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
-    if (l.kind === "ref") return l.visible ? l : null; // hidden ref: nothing to see or move
+    if (l.kind === "ref") return l.visible && !l.locked ? l : null; // hidden/locked ref: not movable
     if (l.kind === "draw" && appState.tool === "transform") {
       // GROUP scope moves the whole group, so a hidden/locked ANCHOR must not veto it — other
       // members may be visible, and transformTarget's groupHasLockedLayer is the real gate there.

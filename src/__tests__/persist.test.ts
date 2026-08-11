@@ -394,3 +394,29 @@ describe("sanitizeFilename", () => {
     expect(sanitizeFilename('///"""')).toBe("untitled");
   });
 });
+
+describe("reference layer lock", () => {
+  it("round-trips the locked flag", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "ref");
+    ref.locked = true;
+    project.layers.push(ref);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.locked).toBe(true);
+  });
+
+  it("old saves (no locked field) load unlocked", async () => {
+    const project = createProject();
+    project.layers.push(createReferenceLayer({ type: "missing", was: "image", name: "a.png" }));
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    delete json.references[0].locked;
+    const { zipSync, strToU8 } = await import("fflate");
+    const rezipped = new Blob([zipSync({ ...zip, "project.json": strToU8(JSON.stringify(json)) })]);
+    const loaded = await loadProjectBlob(rezipped, 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.locked).toBe(false);
+  });
+});

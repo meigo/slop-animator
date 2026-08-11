@@ -63,6 +63,8 @@ export interface ReferenceLayer {
   offsetFrames: number; // video time offset in frames; ignored for images
   speed: number; // video playback speed multiplier (1 = real-time; 2 = 2× faster, 0.5 = half); video-only
   audioEnabled: boolean; // video plays its own soundtrack when true (unmuted during playback); video-only, ignored for images
+  locked?: boolean; // pins the TRANSFORM (the ref gizmo is live under any tool, so a stray canvas
+  //                   drag can nudge an aligned reference); management ops stay allowed
   mediaId?: string; // key into the ref-media IndexedDB store / media/<id> zip entry; absent = not persisted
   mediaMime?: string; // original file MIME (rebuilds the Blob type on restore)
   embedMedia?: boolean; // video-only opt-in: persist/embed the (potentially huge) video bytes
@@ -357,6 +359,7 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
     offsetFrames: 0,
     speed: 1,
     audioEnabled: false,
+    locked: false,
     groupId: null,
     media,
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
