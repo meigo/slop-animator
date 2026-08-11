@@ -93,7 +93,7 @@
     </div>
     <!-- Remove sits in the layer rows' marker column, so it lines up with their lock/hidden icons. -->
     <div
-      class="shrink-0 sticky z-20 bg-surface flex items-center justify-center h-7 border-r border-border"
+      class="shrink-0 sticky z-20 bg-surface flex items-center justify-center h-7 border-r border-text-muted"
       style="left: {labelW}px; width: {markerW}px"
     >
       <button

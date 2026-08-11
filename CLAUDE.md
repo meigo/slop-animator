@@ -614,8 +614,9 @@ config is still not persisted (pre-existing roadmap item), so this resets on rel
 browser default — including on pointer clicks, which is why scrubbing the timeline ruler left a blue
 ring around it (it is a `div[role="slider"][tabindex="0"]`, so a click focuses it). Now in
 `app.css`: `:focus:not(:focus-visible) { outline: none }` plus one themed `:focus-visible` ring
-(2px `--color-selection`). Rationale for keeping it keyboard-only rather than removing the ruler's
-focusability: the ruler's `role="slider"` + arrow/Home/End keys are a real a11y contract (it also
-carries `aria-valuenow`), so it should still ring when TABBED to; only the click ring was noise. The
+(2px `--color-selection`). The ruler itself then went `tabindex="0"` → **`-1`**: once ←/→/Home/End became global
+(App.svelte), focusing it granted no capability, so it was only a stray tab stop plus a click ring.
+`role="slider"` + `aria-valuenow` stay so AT can read it in browse mode (a role with pointer
+handlers also keeps Svelte's a11y lint quiet, which stripping the ARIA would not). The
 gizmo handles (`tabindex="-1"`) aren't tab-reachable at all, so their ring was always noise. Don't
 add per-component `outline: none` — the global rule already scopes rings to keyboard use.

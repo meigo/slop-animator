@@ -714,7 +714,7 @@
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
     <div class="relative flex items-stretch sticky top-0 z-20 bg-surface">
       <span
-        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-r border-border"
+        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border border-r border-text-muted"
         style="width: {GUTTER_W}px"
       ></span>
       {#if playRange}
@@ -759,11 +759,14 @@
           CELL_W /
             2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
       ></div>
+      <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
+           no capability — it only added a stray stop and a click focus ring. role/aria stay so
+           assistive tech can still read the ruler in browse mode. -->
       <div
         class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
         style="touch-action: none"
         role="slider"
-        tabindex="0"
+        tabindex="-1"
         aria-label="Scrub frames"
         aria-valuemin={1}
         aria-valuemax={appState.project.frameCount}
@@ -815,7 +818,7 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted border-r border-border"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted border-r border-text-muted"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             style="left: {LABEL_W}px; width: {MARKER_W}px"
