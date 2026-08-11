@@ -299,7 +299,7 @@
     {#if active}
       <!-- Wraps rather than clipping: the panel is a fixed w-56 and this row keeps gaining controls.
            Sizes are tuned so a DRAW layer stays on one line; a video ref flows onto a second. -->
-      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 pr-1 pb-1 text-text-secondary">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary">
         <input
           class="w-12"
           type="range"
