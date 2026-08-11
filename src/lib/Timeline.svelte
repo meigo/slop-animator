@@ -714,7 +714,7 @@
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
     <div class="relative flex items-stretch sticky top-0 z-20 bg-surface">
       <span
-        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border border-r border-text-muted"
+        class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
       ></span>
       {#if playRange}
@@ -763,7 +763,7 @@
            no capability — it only added a stray stop and a click focus ring. role/aria stay so
            assistive tech can still read the ruler in browse mode. -->
       <div
-        class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
+        class="flex cursor-ew-resize select-none bg-surface-active"
         style="touch-action: none"
         role="slider"
         tabindex="-1"
