@@ -783,12 +783,19 @@ The pan is checked BEFORE the marquee branch so a scroll can never turn into a s
 clears `armedOutside` so the release isn't treated as a tap.
 
 **Eyedropper commits on RELEASE (2026-08-11):** it used to apply on pointer-DOWN
-(`points.length === 1`), so you got whatever pixel you happened to land on — unusable on touch, where
-your fingertip covers the target. Now the pick is taken from the LAST point when `done`, so you can
-drag to slide the sample point and lift to take it. This also removed the `pickingGesture` latch:
-that existed only because `applyEyedropper` switches the tool back MID-gesture, letting the rest of
-the gesture fall through and draw a stray dab — committing on release closes that window entirely.
-**Known gap:** `BrushCursor` skips finger input (`pointerType !== "mouse" && !== "pen"`), so the
-preview swatch shows for mouse/Pencil but NOT a finger; a finger pick is still adjustable but blind.
-Fixing that needs a loupe OFFSET above the touch point (drawing it at the pointer would sit under the
-finger) — not built.
+(`points.length === 1`), so you got whatever pixel you happened to land on. Now the pick is taken
+from the LAST point when `done`, so you can drag to slide the sample point and lift to take it —
+the `BrushCursor` swatch previews the colour under the pointer throughout the drag. This also
+removed the `pickingGesture` latch: that existed only because `applyEyedropper` switches the tool
+back MID-gesture, letting the rest of the gesture fall through and draw a stray dab — committing on
+release closes that window entirely.
+**The eyedropper is Pencil/mouse-only, by design (corrected 2026-08-11).** An earlier note here
+claimed a finger pick worked but was "blind" (no preview swatch) and wanted a loupe above the touch
+point. That was wrong: a finger never picks at all. `input.ts`'s `shouldDraw` admits only
+`mouse`/`pen`, so a touch never reaches `onStroke`, and `touch-gestures.ts` claims a one-finger drag
+as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edits** convention. The
+`BrushCursor` finger skip is therefore consistent, not a gap. Making the eyedropper an exception
+(finger-drag picks + offset loupe, pan via two fingers) was considered on 2026-08-11 and
+**declined** — the convention is worth more than a tool that is transient anyway. Don't "fix" the
+`pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
+nothing.
