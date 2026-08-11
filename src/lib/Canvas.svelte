@@ -49,6 +49,7 @@
     groupOf,
     groupHasLockedLayer,
     isLayerEditable,
+    isLayerVisible,
     groupTransform,
     type Layer,
     type Cell,
@@ -949,7 +950,7 @@
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlay.width, overlay.height);
-    if (meshPose && activeLayer().visible) {
+    if (meshPose && isLayerVisible(activeLayer(), appState.project.groups)) {
       meshPose.render(octx);
       meshPose.drawWireframe(octx);
       if (activeHandle !== null) {
@@ -1245,7 +1246,7 @@
   // hides the in-progress edit too (non-destructively — the lift stays alive).
   $effect(() => {
     const al = activeLayer();
-    if (selection) selection.hidden = !al.visible;
+    if (selection) selection.hidden = !isLayerVisible(al, appState.project.groups);
     if (meshPose) posePaint();
     // Can't keep editing a layer that just got locked → discard the in-progress lift.
     if (al.kind === "draw" && al.locked && (meshPose || selection?.hasFloating))

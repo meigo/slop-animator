@@ -40,7 +40,13 @@
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { clampTimelineHeight } from "../anim/timeline-layout";
-  import { groupOf, isLayerEditable, isLayerLocked, type DrawingLayer } from "../anim/document";
+  import {
+    groupOf,
+    isLayerEditable,
+    isLayerLocked,
+    isLayerVisible,
+    type DrawingLayer,
+  } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -823,11 +829,13 @@
             style="left: {LABEL_W}px; width: {MARKER_W}px"
             title={isLayerLocked(layer, appState.project.groups)
               ? "Layer locked — edits refused"
-              : !layer.visible
+              : !isLayerVisible(layer, appState.project.groups)
                 ? "Layer hidden — edits refused"
                 : ""}
           >
-            {#if layer.locked}<Lock size={11} />{:else if !layer.visible}<EyeOff size={11} />{/if}
+            {#if layer.locked}<Lock
+                size={11}
+              />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
           </span>
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}

@@ -1,4 +1,10 @@
-import { resolvedKeyCell, type Cell, type DrawingLayer, type Project } from "./document";
+import {
+  isLayerLocked,
+  resolvedKeyCell,
+  type Cell,
+  type DrawingLayer,
+  type Project,
+} from "./document";
 import type { CanvasOps } from "./timeline";
 
 /** A rectangular block of cells copied from the timeline. cols = layers (top-first),
@@ -107,7 +113,7 @@ export function pasteBlockOverwrite(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break; // overflow past bottom layer
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert, column consumed
+    if (!layer || layer.kind !== "draw" || isLayerLocked(layer, project.groups)) continue; // locked row: inert, column consumed
     overwriteColumn(layer, block.columns[c], startFrame, ops);
   }
 }
@@ -125,7 +131,7 @@ export function pasteBlockInsert(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break;
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert, column consumed
+    if (!layer || layer.kind !== "draw" || isLayerLocked(layer, project.groups)) continue; // locked row: inert, column consumed
     const at = startFrame;
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
@@ -143,7 +149,7 @@ export function deleteBlock(
 ): void {
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
-    if (!layer || layer.kind !== "draw" || layer.locked) continue; // locked row: inert
+    if (!layer || layer.kind !== "draw" || isLayerLocked(layer, project.groups)) continue; // locked row: inert
     for (let f = startFrame; f <= endFrame && f < layer.cells.length; f++) {
       layer.cells[f] = { kind: "hold" };
     }
@@ -172,7 +178,8 @@ export function moveBlockFrames(
     const layer = project.layers.find((l) => l.id === id);
     if (!layer || layer.kind !== "draw") continue; // mirrors copyBlock's column filter → alignment
     // Locked row: consume the column (deleteBlock skipped it too, so its cells are untouched).
-    if (!layer.locked) writeColumn(layer, block.columns[c], startFrame + applied);
+    if (!isLayerLocked(layer, project.groups))
+      writeColumn(layer, block.columns[c], startFrame + applied);
     c++;
   }
   return applied;

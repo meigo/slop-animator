@@ -348,6 +348,22 @@ describe("moveBlockFrames", () => {
   });
 });
 
+describe("group-locked layers are inert to block writes", () => {
+  it("a row locked by its GROUP is skipped, exactly like an own-locked row", () => {
+    const a = drawLayer(1, [key(), key()]);
+    const b = { ...drawLayer(2, [key(), key()]), groupId: 5 }; // own lock false, group locked
+    const p = proj([b, a], 2);
+    p.groups = [{ id: 5, name: "G", collapsed: false, visible: true, locked: true }];
+    const before0 = b.cells[0];
+    const before1 = b.cells[1];
+    deleteBlock(p, [1, 2], 0, 1);
+    expect(a.cells.every((c) => c.kind === "hold")).toBe(true);
+    expect(b.cells[0]).toBe(before0); // untouched
+    expect(b.cells[1]).toBe(before1);
+    expect(b.locked).toBe(false); // and its own flag was never involved
+  });
+});
+
 describe("locked layers are inert to block writes", () => {
   function lockedLayer(id: number, cells: Cell[]): DrawingLayer {
     return { ...drawLayer(id, cells), locked: true };

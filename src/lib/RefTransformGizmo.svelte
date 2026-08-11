@@ -19,6 +19,8 @@
     groupOf,
     groupHasLockedLayer,
     isLayerEditable,
+    isLayerLocked,
+    isLayerVisible,
     groupTransform,
     isIdentityTransform,
     isSameTransform,
@@ -74,7 +76,12 @@
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
-    if (l.kind === "ref") return l.visible && !l.locked ? l : null; // hidden/locked ref: not movable
+    // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too.
+    if (l.kind === "ref")
+      return isLayerVisible(l, appState.project.groups) &&
+        !isLayerLocked(l, appState.project.groups)
+        ? l
+        : null;
     if (l.kind === "draw" && appState.tool === "transform") {
       // GROUP scope moves the whole group, so a hidden/locked ANCHOR must not veto it — other
       // members may be visible, and transformTarget's groupHasLockedLayer is the real gate there.

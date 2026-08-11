@@ -690,3 +690,15 @@ also returns true for a locked group itself, pinning its own transform. UI: a pa
 header beside the eye; a member row shows amber and "Locked by its group" when locked that way;
 timeline gutter marker and status hint use the effective state too. Persisted (optional, old saves
 load unlocked).
+
+**Group-derived state audit (2026-08-11):** after group lock shipped, a grep for RAW `.locked` /
+`.visible` checks (i.e. ones bypassing `isLayerLocked`/`isLayerVisible`) found four more of the same
+bug family, one of them data-integrity: **`timeline-block.ts` paste/delete/move skipped only
+OWN-locked rows, so a group-locked layer could still be written to** (now group-aware + unit-tested);
+the ref gizmo let a ref inside a hidden/locked GROUP stay draggable; `Canvas`'s pose overlay and
+`selection.hidden` used raw visibility, so a group-hidden layer kept painting its lift; the timeline
+gutter's hidden marker ignored group visibility. **The lesson: any new group-level state creates a
+whole class of "checked the raw flag" bugs, and the grep `\.locked|\.visible` minus the helpers finds
+them in seconds.** Re-run that audit whenever group state is extended. Legitimate raw uses that stay:
+the toggle buttons themselves (they set/report a layer's OWN flag) and `duplicateLayer`/`rasterize`
+copying flags.
