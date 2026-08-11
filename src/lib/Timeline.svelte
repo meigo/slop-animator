@@ -80,6 +80,13 @@
     return f === 0 || (f + 1) % 5 === 0 ? String(f + 1) : "";
   }
 
+  // Effective play range (null when unset). Used by the ruler wash AND the edge markers below.
+  const playRange = $derived(
+    appState.playback.range
+      ? effectiveRange(appState.playback.range, appState.project.frameCount)
+      : null,
+  );
+
   function go(f: number) {
     seekPlayhead(f);
   }
@@ -689,6 +696,30 @@
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border"
         style="width: {GUTTER_W}px"
       ></span>
+      {#if playRange}
+        <!-- Play-range edges: accent line + a triangle pointing INTO the range (slop-compositor /
+             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected. -->
+        <div
+          class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
+          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-selection)"
+        >
+          <div
+            class="absolute top-0 left-0.5"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-right: 5px solid transparent"
+          ></div>
+        </div>
+        <div
+          class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
+          style="left: {GUTTER_W +
+            (playRange.end + 1) * CELL_W -
+            2}px; background: var(--color-selection)"
+        >
+          <div
+            class="absolute top-0 right-0.5"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-left: 5px solid transparent"
+          ></div>
+        </div>
+      {/if}
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
       <div
@@ -715,9 +746,7 @@
         onkeydown={rulerKey}
       >
         {#each Array(appState.project.frameCount) as _, f (f)}
-          {@const r = appState.playback.range
-            ? effectiveRange(appState.playback.range, appState.project.frameCount)
-            : null}
+          {@const r = playRange}
           <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
                text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
           <div
