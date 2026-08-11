@@ -684,11 +684,21 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
+    <div class="relative flex items-stretch sticky top-0 z-20 bg-surface">
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border"
         style="width: {GUTTER_W}px"
       ></span>
+      <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
+           the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
+      <div
+        class="absolute top-0 z-10 h-6 px-1 flex items-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        style="left: {GUTTER_W +
+          appState.playhead * CELL_W +
+          CELL_W / 2}px; transform: translateX(-50%)"
+      >
+        {appState.playhead + 1}
+      </div>
       <div
         class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
         style="touch-action: none"
@@ -711,14 +721,15 @@
           <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
                text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
           <div
-            class="box-border h-4 border-r text-[10px] leading-4 text-center text-text-secondary {(f +
+            class="box-border h-6 border-r text-xs leading-6 text-center text-text-secondary {(f +
               1) %
               5 ===
             0
               ? 'border-text-muted'
               : 'border-text-muted/35'}"
-            class:bg-selection={r && f >= r.start && f <= r.end}
-            style="width: {CELL_W}px"
+            style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
+              ? 'background: color-mix(in srgb, var(--color-selection) 28%, transparent);'
+              : ''}"
           >
             {rulerLabel(f)}
           </div>

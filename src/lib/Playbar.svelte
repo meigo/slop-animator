@@ -106,7 +106,7 @@
     >
     {#if appState.playback.range}
       {@const er = effectiveRange(appState.playback.range, appState.project.frameCount)}
-      <span class="text-xs">{er.start + 1}–{er.end + 1}</span>
+      <span class="tabular-nums">{er.start + 1}–{er.end + 1}</span>
       <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
   </div>
