@@ -123,7 +123,7 @@
         </div>
         <div class="flex items-center gap-2">
           <span class="text-text-secondary w-14">Anchor</span>
-          <div class="grid grid-cols-3 gap-px w-[3.25rem]">
+          <div class="grid grid-cols-3 gap-px w-13">
             {#each ANCHORS as a (a)}
               <button
                 class="h-4 border border-border hover:bg-surface-hover"

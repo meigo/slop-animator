@@ -73,6 +73,9 @@ export default tseslint.config(
     rules: {
       "better-tailwindcss/no-conflicting-classes": "error",
       "better-tailwindcss/no-duplicate-classes": "warn",
+      "better-tailwindcss/enforce-canonical-classes": "warn",
+      // canonical-classes leaves double spaces behind when it collapses pairs — this tidies them.
+      "better-tailwindcss/no-unnecessary-whitespace": "warn",
     },
   },
   {

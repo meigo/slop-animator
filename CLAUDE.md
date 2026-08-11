@@ -626,9 +626,13 @@ CSS property) were only visible in the IDE's Tailwind IntelliSense — `npm run 
 so `relative sticky` shipped on the ruler. Added **`eslint-plugin-better-tailwindcss`** with exactly
 two rules: `no-conflicting-classes` (error) and `no-duplicate-classes` (warn). Tailwind 4 is
 CSS-first, so the plugin needs `settings["better-tailwindcss"].entryPoint = "src/app.css"` to resolve
-the theme — without it the rules silently pass. Deliberately NOT enabled: class-ORDER rules
-(`prettier-plugin-tailwindcss` already sorts, they would fight) and `no-unregistered-classes` (this
-codebase has real custom classes — `layer-drag-handle`, `selection-actions-panel`, `curve-popup`).
+the theme — without it the rules silently pass. Also on: `enforce-canonical-classes`
+(warn, AUTO-FIXABLE — it caught 59 spots: `w-8 h-8`→`size-8`, `px-1 py-1`→`p-1`, `top-0 bottom-0`→
+`inset-y-0`, `text-xs leading-6`→`text-xs/6`, `w-[3.25rem]`→`w-13`) plus `no-unnecessary-whitespace`,
+which is REQUIRED alongside it — collapsing a pair leaves a double space that nothing else cleans up.
+Deliberately NOT enabled: class-ORDER rules (`prettier-plugin-tailwindcss` already sorts, they would
+fight) and `no-unregistered-classes` (this codebase has real custom classes — `layer-drag-handle`,
+`selection-actions-panel`, `curve-popup`).
 Since the pre-commit hook runs `eslint --fix`, conflicts now fail before they can be committed.
 Verify a rule actually fires after config changes (re-introduce a conflict and see it error) — a
 misconfigured plugin passes silently and looks exactly like a clean codebase.

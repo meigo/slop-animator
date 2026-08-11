@@ -508,7 +508,7 @@
 >
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
-    class="absolute top-0 left-0 right-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
+    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -704,7 +704,7 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none z-10"
+      class="absolute inset-y-0 w-0.5 bg-accent pointer-events-none z-10"
       style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
     ></div>
 
@@ -782,8 +782,7 @@
           <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
                text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
           <div
-            class="box-border h-6 border-r text-xs leading-6 text-center text-text-secondary {(f +
-              1) %
+            class="box-border h-6 border-r text-xs/6 text-center text-text-secondary {(f + 1) %
               5 ===
             0
               ? 'border-text-muted'

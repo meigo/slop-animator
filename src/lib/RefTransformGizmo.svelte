@@ -312,7 +312,7 @@
 </script>
 
 {#if visible && corners.length === 4}
-  <svg class="absolute inset-0 w-full h-full pointer-events-none" style="overflow: visible">
+  <svg class="absolute inset-0 size-full pointer-events-none" style="overflow: visible">
     <polygon
       points={corners.map((c) => `${c.x},${c.y}`).join(" ")}
       fill="none"

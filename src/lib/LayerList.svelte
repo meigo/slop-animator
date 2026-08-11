@@ -233,7 +233,7 @@
     role="presentation"
   >
     <!-- Row 1: compact (every layer) -->
-    <div class="flex items-center gap-1 px-1 py-1">
+    <div class="flex items-center gap-1 p-1">
       <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
         ><GripVertical size={14} /></span
       >
@@ -462,27 +462,27 @@
   <div class="flex items-center gap-1 p-1 border-b border-border">
     <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
     <button
-      class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="Add layer"
       onclick={addLayer}><Plus size={16} /></button
     >
     <button
-      class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="Duplicate layer"
       onclick={() => duplicateLayer(appState.activeLayerId)}><Copy size={16} /></button
     >
     <button
-      class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="Merge down"
       onclick={() => mergeDown(appState.activeLayerId)}><ArrowDownToLine size={16} /></button
     >
     <button
-      class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="New group"
       onclick={groupActiveLayer}><FolderPlus size={16} /></button
     >
     <button
-      class="w-7 h-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="Delete layer"
       onclick={() => removeLayer(appState.activeLayerId)}><Trash2 size={16} /></button
     >
@@ -495,7 +495,7 @@
           {@render layerRow(seg.layer)}
         {:else}
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
-            <div class="flex items-center gap-1 px-1 py-1 bg-surface-hover" role="presentation">
+            <div class="flex items-center gap-1 p-1 bg-surface-hover" role="presentation">
               <button
                 class="text-text-secondary hover:text-text"
                 title="Collapse group"

@@ -128,66 +128,66 @@
 
 <div class="flex items-center gap-1 p-2 border-b border-border bg-surface text-text">
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "brush"}
     title="Brush"
     onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "eraser"}
     title="Eraser"
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "fill"}
     title="Fill"
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "eyedropper"}
     title="Eyedropper (sample color)"
     onclick={selectEyedropper}><Pipette size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "select"}
     title="Select"
     onclick={() => (appState.tool = "select")}><BoxSelect size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "lasso"}
     title="Lasso"
     onclick={() => (appState.tool = "lasso")}><Lasso size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "transform"}
     title="Transform layer (move/scale/rotate)"
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "deform"}
     title="Deform (warp the drawing)"
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "pose"}
     title="Pose (mesh deform)"
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Undo"
     onclick={() => undo()}><Undo2 size={18} /></button
   >
   <button
-    class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     title="Redo"
     onclick={() => redo()}><Redo2 size={18} /></button
   >

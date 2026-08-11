@@ -102,7 +102,7 @@
 >
   {#if mode === "selected"}
     <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
       onpointerdown={tap(onTransform)}
       title="Free transform"
     >
@@ -110,7 +110,7 @@
     </button>
   {/if}
   <button
-    class="w-10 h-10 rounded-md border flex items-center justify-center"
+    class="size-10 rounded-md border flex items-center justify-center"
     class:bg-accent={distortActive}
     class:text-accent-text={distortActive}
     class:border-accent={distortActive}
@@ -123,7 +123,7 @@
     <SquareDashed size={18} />
   </button>
   <button
-    class="w-10 h-10 rounded-md border flex items-center justify-center"
+    class="size-10 rounded-md border flex items-center justify-center"
     class:bg-accent={meshActive}
     class:text-accent-text={meshActive}
     class:border-accent={meshActive}
@@ -173,7 +173,7 @@
          keyboard) — and a selection clips brush/eraser/fill, so a forgotten one is confusing. -->
     <div class="w-px h-6 bg-border mx-0.5"></div>
     <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
       onpointerdown={tap(onCancel)}
       title="Deselect (Esc)"
     >
@@ -183,14 +183,14 @@
   {#if mode !== "selected"}
     <div class="w-px h-6 bg-border mx-0.5"></div>
     <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
       onpointerdown={tap(onCommit)}
       title="Commit"
     >
       <Check size={18} />
     </button>
     <button
-      class="w-10 h-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
       onpointerdown={tap(onCancel)}
       title="Cancel"
     >

@@ -128,7 +128,7 @@
     {/if}
     <div class="relative" use:clickOutside={() => (curveOpen = false)}>
       <button
-        class="w-8 h-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+        class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:bg-surface-active={curveOpen}
         title="Pressure curve"
         onclick={() => (curveOpen = !curveOpen)}
