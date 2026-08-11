@@ -92,9 +92,11 @@ export async function exportVideo(
   if (audioSource && audioBuffer) {
     try {
       await audioSource.add(audioBuffer);
-      // Closing here flushes the encoder now, so an out-of-band encoder error throws here —
-      // before the frame loop — instead of surfacing later from output.finalize(), which would
-      // otherwise cost the whole render to a failure that happened in the first couple seconds.
+      // Closing here starts the encoder flush now, so it runs alongside the frame loop instead of
+      // only at output.finalize(). close() returns void — it does NOT surface the flush error at
+      // this line, and an out-of-band encoder error still throws from finalize() and still costs
+      // the render. What this buys is time-to-failure, not the file. See CLAUDE.md's Audio Phase 3
+      // entry for the two real outcomes.
       await audioSource.close();
     } catch {
       warning = "the audio failed to encode";
