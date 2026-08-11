@@ -636,3 +636,12 @@ fight) and `no-unregistered-classes` (this codebase has real custom classes — 
 Since the pre-commit hook runs `eslint --fix`, conflicts now fail before they can be committed.
 Verify a rule actually fires after config changes (re-introduce a conflict and see it error) — a
 misconfigured plugin passes silently and looks exactly like a clean codebase.
+
+**Native control theming (2026-08-11):** the app styles range sliders heavily (~40 lines of
+per-engine pseudo-elements in `app.css`) but left checkboxes, number spinners, the color swatch and
+scrollbars completely vanilla — and with no `color-scheme` declared, the browser drew all of them in
+its LIGHT palette even in dark mode (that bright blue system checkbox in the onion bar). Fixed with
+two properties on `:root`/`.dark`, not new markup: `color-scheme: light|dark` (every native control
+follows the theme) and `accent-color: var(--color-selection)` (tints checkboxes/radios). Note these
+belong on `:root`/`.dark`, NOT in `@theme` — that block only declares tokens. Reach for these before
+hand-building a custom checkbox.

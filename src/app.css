@@ -15,7 +15,16 @@
   --color-selection: #6688cc;
 }
 
+/* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
+   BROWSER, not by our CSS — without color-scheme they stay in the light palette even in dark mode.
+   accent-color tints checkboxes/radios to the app's selection blue instead of the OS default. */
+:root {
+  color-scheme: light;
+  accent-color: var(--color-selection);
+}
+
 .dark {
+  color-scheme: dark;
   --color-surface: #1e1e1e;
   --color-surface-hover: #282828;
   --color-surface-active: #333333;
