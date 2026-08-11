@@ -19,9 +19,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Animation**
 
 - Frame-by-frame timeline with keyframes and holds, scrubbing, and playback
-- Onion skins
+- Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
-- Layers with visual groups (collapse, visibility, lock, drag-reorder)
+- Layers with visual groups (collapse, visibility, lock, drag-reorder); locked and hidden layers are read-only everywhere
 
 **Transform & deform**
 
@@ -31,14 +31,22 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 **Reference & audio**
 
-- Reference layers (image/video) with a transform gizmo
-- Audio track (phase 1): import, waveform display, synced playback
+- Reference layers (image/video) with a transform gizmo — images persist with the project; video is opt-in per clip and can play its own soundtrack
+- Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset and mute
 - Clipboard image paste + rasterize to a drawing layer
 
 **Files & export**
 
-- Project files as zip (JSON + PNG per key cell), autosave to IndexedDB, global preferences
+- Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB, global preferences
+- A project name drives the save and export filenames
 - MP4/WebM export via [mediabunny](https://github.com/Vanilagy/mediabunny)
+
+**Keyboard**
+
+- `Space` tap = play/pause, `Space` hold = pan the canvas · `←/→` step a frame (`Shift` = 10) ·
+  `Home`/`End` first/last · `↑/↓` change layer · `0` fit view
+- `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `[`/`]` brush size · `o` onion ·
+  `⌘Z`/`⌘⇧Z` undo/redo
 
 ## Running it
 
@@ -52,8 +60,9 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (~280); canvas/DOM code isn't node-testable
-npm run lint       # ESLint (runes-aware) — Prettier runs via pre-commit hook
+npm test           # Vitest — pure-logic unit tests (~380); canvas/DOM code isn't node-testable
+npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
+npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
 
 ## Code layout
@@ -67,6 +76,6 @@ npm run lint       # ESLint (runes-aware) — Prettier runs via pre-commit hook
 
 ## Roadmap (rough)
 
-Animated/keyframed transforms, audio scrubbing + export muxing, group-transform apply
-(pixel flatten), per-layer boil-strength UI, tiled copy-on-write cell storage for an
-expandable canvas. See `CLAUDE.md` for the detailed state and deferred-work list.
+Animated/keyframed transforms, audio in exported video (muxing), group-transform apply
+(pixel flatten), tiled copy-on-write cell storage for an expandable canvas. See `CLAUDE.md`
+for the detailed state and deferred-work list.
