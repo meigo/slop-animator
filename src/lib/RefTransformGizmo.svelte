@@ -80,7 +80,7 @@
       // members may be visible, and transformTarget's groupHasLockedLayer is the real gate there.
       // Frame/layer scope edits THIS layer's content → editable (draw + unlocked + visible) only.
       if (appState.transformScope === "group") return l;
-      return isLayerEditable(l) ? l : null;
+      return isLayerEditable(l, appState.project.groups) ? l : null;
     }
     return null;
   }

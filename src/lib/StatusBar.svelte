@@ -1,6 +1,6 @@
 <script lang="ts">
   import { state as appState, activeLayer } from "../state/appState.svelte";
-  import { isIdentityTransform } from "../anim/document";
+  import { isIdentityTransform, isLayerLocked, isLayerVisible } from "../anim/document";
   import { contextHint } from "./status-hint";
 
   // Ambient readout: frame, tool (brush/eraser show their stroke type), and the active layer.
@@ -22,8 +22,8 @@
     const l = activeLayer();
     return contextHint({
       tool: appState.tool,
-      locked: !!l.locked, // refs can be locked too (pins their transform)
-      hiddenLayer: !l.visible,
+      locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's
+      hiddenLayer: !isLayerVisible(l, appState.project.groups), // hidden by itself or by its group
       layerTransformed: l.kind === "draw" && !isIdentityTransform(l.transform),
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,

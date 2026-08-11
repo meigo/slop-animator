@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   groupHasLockedLayer,
   isLayerEditable,
+  isLayerLocked,
   resolveKeyframeIndex,
   buildFrameDrawList,
   containRect,
@@ -487,10 +488,10 @@ describe("layer transform helpers", () => {
 describe("isLayerEditable", () => {
   it("requires a drawing layer that is unlocked AND visible", () => {
     const base = layer(1, [makeKey()]);
-    expect(isLayerEditable(base)).toBe(true);
-    expect(isLayerEditable({ ...base, locked: true })).toBe(false);
-    expect(isLayerEditable({ ...base, visible: false })).toBe(false);
-    expect(isLayerEditable({ ...base, locked: true, visible: false })).toBe(false);
+    expect(isLayerEditable(base, [])).toBe(true);
+    expect(isLayerEditable({ ...base, locked: true }, [])).toBe(false);
+    expect(isLayerEditable({ ...base, visible: false }, [])).toBe(false);
+    expect(isLayerEditable({ ...base, locked: true, visible: false }, [])).toBe(false);
   });
 
   it("reference layers are never content-editable", () => {
@@ -507,7 +508,34 @@ describe("isLayerEditable", () => {
       media: { type: "missing" as const, was: "image" as const, name: "x" },
       transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
     };
-    expect(isLayerEditable(ref)).toBe(false);
+    expect(isLayerEditable(ref, [])).toBe(false);
+  });
+});
+
+describe("group lock/visibility are DERIVED onto members", () => {
+  const g = (over = {}) => ({ id: 7, name: "G", collapsed: false, visible: true, ...over });
+
+  it("a locked group locks its members without touching their own flags", () => {
+    const child = { ...layer(1, [makeKey()]), groupId: 7 };
+    expect(isLayerEditable(child, [g()])).toBe(true);
+    expect(isLayerEditable(child, [g({ locked: true })])).toBe(false);
+    expect(child.locked).toBe(false); // nothing cascaded — unlocking the group restores it for free
+    expect(isLayerLocked(child, [g({ locked: true })])).toBe(true);
+  });
+
+  it("a HIDDEN group makes members uneditable too (was editable-but-invisible)", () => {
+    const child = { ...layer(2, [makeKey()]), groupId: 7 };
+    expect(isLayerEditable(child, [g({ visible: false })])).toBe(false);
+  });
+
+  it("a member's own lock still applies inside an unlocked group", () => {
+    const child = { ...layer(3, [makeKey()]), groupId: 7, locked: true };
+    expect(isLayerEditable(child, [g()])).toBe(false);
+  });
+
+  it("layers outside the group are unaffected", () => {
+    const outside = { ...layer(4, [makeKey()]), groupId: null };
+    expect(isLayerEditable(outside, [g({ locked: true, visible: false })])).toBe(true);
   });
 });
 

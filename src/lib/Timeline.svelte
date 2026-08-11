@@ -40,7 +40,7 @@
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { clampTimelineHeight } from "../anim/timeline-layout";
-  import { groupOf, isLayerEditable, type DrawingLayer } from "../anim/document";
+  import { groupOf, isLayerEditable, isLayerLocked, type DrawingLayer } from "../anim/document";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -290,7 +290,7 @@
 
     // Locked/hidden rows accept SELECTION (copy is a read) but no mutating gesture: without this
     // the drag ran and the write was refused downstream, so keys visibly moved and snapped back.
-    const editable = isLayerEditable(layer);
+    const editable = isLayerEditable(layer, appState.project.groups);
     const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
     if (plan.kind === "resize" && editable) {
       dragMode = "resize";
@@ -348,7 +348,7 @@
       return;
     }
     if (dragMode === "resize") {
-      if (!isLayerEditable(layer)) return; // locked/hidden row: hold-span is content, not selection
+      if (!isLayerEditable(layer, appState.project.groups)) return; // locked/hidden row: hold-span is content, not selection
       dragLastBoundary = rowBoundary(e);
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
       bump();
@@ -434,7 +434,7 @@
   // mutation so commitStructural's trailing bump() refreshes the length and clamps it.
   function frameTool() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     commitStructural(() => {
       addFrame(l, appState.playhead);
       appState.playhead += 1;
@@ -442,7 +442,7 @@
   }
   function keyTool() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -450,7 +450,7 @@
   }
   function dupTool() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -458,14 +458,14 @@
   }
   function holdTool() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     if (l.cells[appState.playhead]?.kind !== "key") return; // already a hold → nothing to do
     liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
     commitStructural(() => setHold(l, appState.playhead));
   }
   function deleteTool() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
     liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
     commitStructural(() => deleteFrame(l, appState.playhead));
@@ -474,7 +474,7 @@
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
   function clearFrame() {
     const l = activeLayer();
-    if (!isLayerEditable(l)) return;
+    if (!isLayerEditable(l, appState.project.groups)) return;
     const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -821,7 +821,7 @@
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             style="left: {LABEL_W}px; width: {MARKER_W}px"
-            title={layer.locked
+            title={isLayerLocked(layer, appState.project.groups)
               ? "Layer locked — edits refused"
               : !layer.visible
                 ? "Layer hidden — edits refused"

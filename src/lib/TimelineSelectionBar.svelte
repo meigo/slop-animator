@@ -31,7 +31,7 @@
     !!rect &&
       rect.layerIds.some((id) => {
         const l = appState.project.layers.find((x) => x.id === id);
-        return !!l && isLayerEditable(l);
+        return !!l && isLayerEditable(l, appState.project.groups);
       }),
   );
   const readOnlyTitle = " — selection is on locked/hidden layers";

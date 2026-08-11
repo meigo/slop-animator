@@ -21,7 +21,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Frame-by-frame timeline with keyframes and holds, scrubbing, and playback
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
-- Layers with visual groups (collapse, visibility, lock, drag-reorder); locked and hidden layers are read-only everywhere
+- Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
 
 **Transform & deform**
 

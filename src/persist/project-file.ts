@@ -125,6 +125,7 @@ export interface ProjectJson {
     name: string;
     collapsed: boolean;
     visible: boolean;
+    locked?: boolean;
     transform?: RefTransform;
     transformBox?: { x: number; y: number; w: number; h: number } | null;
   }[];
@@ -169,6 +170,7 @@ export function projectToJson(project: Project): ProjectJson {
         name: g.name,
         collapsed: g.collapsed,
         visible: g.visible,
+        locked: g.locked,
         ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
       };
     }),
@@ -402,6 +404,7 @@ export async function loadProjectBlob(
     name: g.name,
     collapsed: g.collapsed,
     visible: g.visible,
+    locked: g.locked ?? false,
     transform: g.transform ? { ...g.transform } : undefined,
     transformBox: g.transformBox ? { ...g.transformBox } : null,
   }));

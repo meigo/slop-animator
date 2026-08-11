@@ -245,7 +245,7 @@
 
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
-    if (!isLayerEditable(layer)) return;
+    if (!isLayerEditable(layer, appState.project.groups)) return;
     const W = appState.project.width,
       H = appState.project.height;
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -573,7 +573,7 @@
       // so a bare scope check would let a hidden/locked layer be dragged by the whole canvas.
       const groupScope =
         appState.transformScope === "group" && groupOf(al, appState.project.groups) != null;
-      if (!groupScope && !isLayerEditable(al)) {
+      if (!groupScope && !isLayerEditable(al, appState.project.groups)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
         finishTransformDragUndo(null);
@@ -655,7 +655,7 @@
         if (selection.state === "selected" && handle === "move") {
           // First grab inside a fresh marquee: lift the pixels and enter transform mode.
           const layer = activeLayer();
-          if (!isLayerEditable(layer)) return;
+          if (!isLayerEditable(layer, appState.project.groups)) return;
           const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
           selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
           selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -705,7 +705,7 @@
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
-      if (!isLayerEditable(layer)) return;
+      if (!isLayerEditable(layer, appState.project.groups)) return;
       strokeCanvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
@@ -822,7 +822,7 @@
   // active layer isn't an editable (unlocked, visible) drawing layer.
   function activeDrawableCtx(): CanvasRenderingContext2D | null {
     const layer = activeLayer();
-    if (!isLayerEditable(layer)) return null;
+    if (!isLayerEditable(layer, appState.project.groups)) return null;
     const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -888,7 +888,7 @@
   function enterTransform() {
     if (!selection || selection.state !== "selected") return;
     const layer = activeLayer();
-    if (!isLayerEditable(layer)) return;
+    if (!isLayerEditable(layer, appState.project.groups)) return;
     const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -902,7 +902,7 @@
 
   function enterDeform() {
     const al = activeLayer();
-    if (!isLayerEditable(al) || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al, appState.project.groups) || !isIdentityTransform(al.transform)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return; // empty cell → nothing to deform
@@ -1003,7 +1003,7 @@
 
   function enterPose() {
     const al = activeLayer();
-    if (!isLayerEditable(al) || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al, appState.project.groups) || !isIdentityTransform(al.transform)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return;

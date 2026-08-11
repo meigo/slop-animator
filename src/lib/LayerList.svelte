@@ -41,6 +41,7 @@
     ungroup,
     toggleGroupCollapsed,
     toggleGroupVisible,
+    toggleGroupLocked,
     renameGroup,
     reorderLayersWithGroups,
     applyLayerTransform,
@@ -54,6 +55,7 @@
   import {
     createDrawingLayer,
     groupOf,
+    isLayerLocked,
     groupTransform,
     isIdentityTransform,
     cellTransform,
@@ -249,7 +251,9 @@
         {#if layer.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
       </button>
       <button
-        class={layer.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
+        class={isLayerLocked(layer, appState.project.groups)
+          ? "text-amber-500"
+          : "text-text-muted hover:text-text"}
         onclick={(e) => {
           e.stopPropagation();
           layer.locked = !layer.locked;
@@ -508,11 +512,22 @@
                   />{/if}
               </button>
               <button
-                class="text-text-secondary hover:text-text"
-                title="Toggle group visibility"
+                class={seg.group.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+                title={seg.group.visible
+                  ? "Group visible — click to hide"
+                  : "Group hidden — members' edits refused; click to show"}
                 onclick={() => toggleGroupVisible(seg.group.id)}
               >
                 {#if seg.group.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
+              </button>
+              <button
+                class={seg.group.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
+                title={seg.group.locked
+                  ? "Group locked — click to unlock (members keep their own locks)"
+                  : "Unlocked — click to lock every layer in this group"}
+                onclick={() => toggleGroupLocked(seg.group.id)}
+              >
+                {#if seg.group.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
               </button>
               {#if editingGroupId === seg.group.id}
                 <input

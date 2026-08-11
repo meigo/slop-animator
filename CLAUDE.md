@@ -675,3 +675,18 @@ offset/speed/audio toggles (deliberate panel acts, not accidental canvas ones). 
 `isLayerEditable` stays draw-only — it is a `layer is DrawingLayer` type predicate gating pixel ops;
 the ref lock is checked directly at those two transform sites. The amber icon, timeline gutter marker
 and status hint all had `kind === "draw"` guards that were widened to plain `layer.locked`.
+
+**Group lock — DERIVED, never cascaded (2026-08-11):** `LayerGroup.locked` locks every member, but
+the members' own `locked` flags are NEVER touched: the effective state is computed at read time by
+`isLayerLocked(layer, groups)`, mirroring the `isLayerVisible(layer, groups)` contract that group
+visibility has always used. This is the answer to "should we save and restore the children's state?"
+— there is nothing to save: unlocking the group reveals each member's own lock automatically, and the
+stale-state cases (child unlocked while the group is locked, layer dragged out of a locked group,
+undo across a toggle) simply cannot arise. `isLayerEditable(layer, groups)` now takes the groups list
+— the signature change surfaced all 27 call sites through the compiler, which is how it caught a
+LATENT BUG: it previously checked `layer.visible` only, so a layer inside a HIDDEN GROUP was still
+editable (the "editing what you can't see" problem, still reachable via groups). `groupHasLockedLayer`
+also returns true for a locked group itself, pinning its own transform. UI: a padlock on the group
+header beside the eye; a member row shows amber and "Locked by its group" when locked that way;
+timeline gutter marker and status hint use the effective state too. Persisted (optional, old saves
+load unlocked).

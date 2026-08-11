@@ -25,6 +25,9 @@ export interface LayerGroup {
   name: string;
   collapsed: boolean;
   visible: boolean;
+  /** Locks every member. DERIVED like `visible` — children's own flags are never touched, so
+   *  unlocking the group restores each member's individual state with nothing to snapshot. */
+  locked?: boolean;
   transform?: RefTransform;
   transformBox?: { x: number; y: number; w: number; h: number } | null;
 }
@@ -85,16 +88,25 @@ export function isIdentityTransform(t: RefTransform): boolean {
  *  read-only for the same reason lock is: edits you cannot see are edits you silently lose (the
  *  pre-2026-08-11 behavior let strokes land invisibly in a hidden layer). Reference layers have no
  *  editable content, so they are never "editable" in this sense. */
-export function isLayerEditable(layer: Layer): layer is DrawingLayer {
-  return layer.kind === "draw" && !layer.locked && layer.visible;
+export function isLayerEditable(layer: Layer, groups: LayerGroup[]): layer is DrawingLayer {
+  return layer.kind === "draw" && !isLayerLocked(layer, groups) && isLayerVisible(layer, groups);
+}
+
+/** Effective lock: the layer's own flag OR its group's. Derived (never cascaded) — same contract as
+ *  `isLayerVisible`, so toggling a group's lock needs no per-child state to save and restore. */
+export function isLayerLocked(layer: Layer, groups: LayerGroup[]): boolean {
+  if (layer.locked) return true;
+  const g = groupOf(layer, groups);
+  return !!g?.locked;
 }
 
 /** Whether any drawing-layer member of `group` is locked. Group transforms move every member's
  *  rendered content, so a locked member blocks the whole group op (lock = content is immovable). */
 export function groupHasLockedLayer(
-  group: { id: number },
+  group: { id: number; locked?: boolean },
   layers: { kind: string; groupId?: number | null; locked?: boolean }[],
 ): boolean {
+  if (group.locked) return true; // the group itself is pinned
   return layers.some((l) => l.kind === "draw" && l.groupId === group.id && l.locked === true);
 }
 

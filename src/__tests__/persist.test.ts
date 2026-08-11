@@ -420,3 +420,19 @@ describe("reference layer lock", () => {
     expect(lref.kind === "ref" && lref.locked).toBe(false);
   });
 });
+
+describe("group lock persistence", () => {
+  it("round-trips a locked group, and old saves load unlocked", async () => {
+    const project = createProject();
+    project.groups = [{ id: 3, name: "G", collapsed: false, visible: true, locked: true }];
+    project.layers[0].groupId = 3;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.groups[0].locked).toBe(true);
+
+    const legacy = createProject();
+    legacy.groups = [{ id: 4, name: "L", collapsed: false, visible: true }]; // no locked field
+    legacy.layers[0].groupId = 4;
+    const loaded2 = await loadProjectBlob(await saveProjectBlob(legacy), 1);
+    expect(loaded2.groups[0].locked).toBe(false);
+  });
+});
