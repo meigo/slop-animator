@@ -30,6 +30,7 @@
     poseActions,
     liftGuard,
     transformDragGuard,
+    playbackController,
   } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
@@ -96,6 +97,12 @@
   let stage: HTMLDivElement;
   let spaceHeld = $state(false);
   let panning = $state(false);
+  // Space is shared: HOLD pans (Photoshop habit), a quick TAP toggles playback (animation habit).
+  // A tap counts only if the key was down briefly AND no pan drag happened, so abandoning a pan
+  // (hold, don't drag, release) doesn't start playback.
+  const SPACE_TAP_MS = 300;
+  let spaceDownAt = 0;
+  let spacePanned = false;
 
   // Desktop pan: middle-mouse drag, or space + left-drag. Capture-phase on `stage` so it preempts the
   // bubble-phase drawing handler on `display` — a pan never starts a stroke.
@@ -107,6 +114,7 @@
     e.stopPropagation();
     viewport.startPan(e.clientX, e.clientY);
     panning = true;
+    if (spaceHeld) spacePanned = true; // this Space press became a pan → its release isn't a tap
     stage.setPointerCapture(e.pointerId);
   }
   function stagePanMove(e: PointerEvent) {
@@ -134,6 +142,10 @@
       // Space always holds grab-to-pan (Photoshop-style), even when a toolbar button is focused —
       // preventDefault stops both page scroll and the focused button's space-activation. Reliable
       // panning matters more here than space-clicking a button (Enter still activates buttons).
+      if (!spaceHeld) {
+        spaceDownAt = e.timeStamp;
+        spacePanned = false;
+      }
       spaceHeld = true;
       e.preventDefault();
     } else if (e.key === "0") {
@@ -142,7 +154,9 @@
     }
   }
   function onViewKeyUp(e: KeyboardEvent) {
-    if (e.key === " ") spaceHeld = false;
+    if (e.key !== " ") return;
+    spaceHeld = false;
+    if (!spacePanned && e.timeStamp - spaceDownAt < SPACE_TAP_MS) playbackController.toggle();
   }
   // Space/pan can get stuck if focus leaves the window mid-press (no keyup fires) — reset on blur.
   function onViewBlur() {

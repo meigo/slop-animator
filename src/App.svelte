@@ -12,6 +12,7 @@
   import { onMount } from "svelte";
   import {
     seekPlayhead,
+    setActiveLayer,
     state,
     undo,
     redo,
@@ -137,7 +138,27 @@
       bump();
     } else if (e.key === ",") seekPlayhead(state.playhead - 1);
     else if (e.key === ".") seekPlayhead(state.playhead + 1);
-    else if (e.key === "[" || e.key === "]") {
+    // Playback/navigation keys. Arrows are free globally (the timeline ruler handles its own only
+    // while focused); Shift jumps 10 frames. preventDefault stops the page/panel from scrolling.
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const step = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
+      seekPlayhead(state.playhead + step);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seekPlayhead(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seekPlayhead(state.project.frameCount - 1);
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      // Move the ACTIVE LAYER selection up/down the visual stack (layers[] is bottom-first, so the
+      // display order is reversed): Up = toward the top of the layer list.
+      e.preventDefault();
+      const stack = state.project.layers;
+      const i = stack.findIndex((l) => l.id === state.activeLayerId);
+      const next = i + (e.key === "ArrowUp" ? 1 : -1);
+      if (i >= 0 && next >= 0 && next < stack.length) setActiveLayer(stack[next].id);
+    } else if (e.key === "[" || e.key === "]") {
       const s = state.tool === "eraser" ? state.eraser : state.brush;
       s.size = e.key === "[" ? Math.max(0.5, s.size - 1) : Math.min(60, s.size + 1);
     }

@@ -579,3 +579,15 @@ step). (2) **Reserved width** for the changing number (`inline-block text-right`
 `min-width: {digits}ch`, digits = `String(frameCount).length`) — tabular figures equalize digit
 WIDTH, not digit COUNT, so 9 → 10 still shifted. The status bar's ambient readout and the Playbar
 both do both now; apply the pair to any new live counter.
+
+**Playback / navigation shortcuts (2026-08-11):** **Space** is now shared — a quick TAP (<300ms with
+no pan drag) toggles playback, HOLDING it still grab-pans as before. Implemented in `Canvas.svelte`
+(it owns `spaceHeld`/`panning`): keydown stamps the time, `startPan` sets `spacePanned`, keyup
+toggles only if neither disqualifies it — so abandoning a pan (hold, don't drag, release) doesn't
+start playback. Also global in `App.svelte`, after its INPUT/TEXTAREA guard so typing is unaffected:
+**←/→** step a frame (**Shift** = 10), **Home/End** first/last frame, **↑/↓** move the ACTIVE LAYER
+up/down the stack (note `project.layers` is bottom-first, so Up = +1 index). `k`/`Enter` and `,`/`.`
+still work. Gotcha found while wiring this: the ruler's own `rulerKey` handles the same arrows for
+its `role="slider"` contract, and window-level handlers fire on bubble too — it now
+`stopPropagation()`s, or a focused ruler stepped TWO frames per press. **Owed:** the Space tap/hold
+split by feel (is 300ms right?), and that arrows don't fight any iPad external-keyboard behavior.

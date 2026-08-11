@@ -110,12 +110,16 @@
     }
   }
   function rulerKey(e: KeyboardEvent) {
+    // Same keys are handled globally in App.svelte; this element-level handler stays for the
+    // role="slider" keyboard contract, so it must STOP PROPAGATION or both fire and the playhead
+    // jumps two frames per press.
     if (e.key === "ArrowLeft") go(appState.playhead - 1);
     else if (e.key === "ArrowRight") go(appState.playhead + 1);
     else if (e.key === "Home") go(0);
     else if (e.key === "End") go(appState.project.frameCount - 1);
     else return;
     e.preventDefault();
+    e.stopPropagation();
   }
 
   // Resize the panel by dragging the top grip. Drag UP → taller (shrinks the canvas above);
