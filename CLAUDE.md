@@ -17,7 +17,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **345 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **400 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -803,19 +803,37 @@ nothing.
 **Audio Phase 3 — export muxing (2026-08-11):** the project audio track is now muxed into the
 MP4/WebM export, closing the audio roadmap (P1 import/playback, P2 scrub/offset/mute, P3 export).
 Alignment reuses the PLAYBACK rule rather than restating it: `audioExportPlan`
-(`src/export/audio-mix.ts`, pure + unit-tested, 9 cases) calls the same `bufferOffsetForFrame` that
+(`src/export/audio-mix.ts`, pure + unit-tested, 11 cases) calls the same `bufferOffsetForFrame` that
 `AudioEngine.play` does, so the two cannot drift apart; it returns null — meaning **no audio track
 in the file at all**, never a silent one — for no track, a **muted** track (mute means silent
-export, WYSIWYG), or a clip dragged entirely outside the export window. `buildExportAudio` applies
-the plan with ONE `OfflineAudioContext` render, which does placement, truncation at the window end
-and **resampling to 48 kHz** (accepted by both AAC and Opus, so a 44.1 kHz import needs no special
-case) in a single step. `exportVideo` now returns `{ blob, warning? }` instead of a bare Blob:
-audio is decided before `output.start()` (mediabunny cannot add a track later) and **any audio
-failure drops the audio, never the render** — a multi-minute encode must not be lost to a missing
-encoder. `@mediabunny/aac-encoder` was deliberately NOT added: every browser with the WebCodecs
-VideoEncoder this export already requires also encodes AAC natively. No UI control — a track that
-exists and is not muted is included, and mute is already the control for excluding it. Residual
-risk, accepted: a track cannot be un-added, so an `AudioBufferSource.add()` failure after start
-leaves an empty audio track in the file. Reference-video soundtracks (`audioEnabled`) are still
-preview-only. **Owed a browser pass:** see the list below. Spec/plan:
+export, WYSIWYG), or a clip dragged entirely outside the export window (including the two
+deliberate `>=` boundaries: a clip starting exactly at the window end, or exactly at its own end).
+`buildExportAudio` applies the plan with ONE `OfflineAudioContext` render, which does placement,
+truncation at the window end and **resampling to 48 kHz** (accepted by both AAC and Opus, so a
+44.1 kHz import needs no special case) in a single step. `exportVideo` now returns
+`{ blob, warning? }` instead of a bare Blob: audio is decided before `output.start()` (mediabunny
+cannot add a track later) and **any audio failure drops the audio, never the render** — a
+multi-minute encode must not be lost to a missing encoder. The codec probe passes
+`getFirstEncodableAudioCodec` only the ONE codec the container actually needs (`aac` for MP4,
+`opus` for WebM), not `outputFormat.getSupportedAudioCodecs()`'s full list — that list also
+contains PCM, which mediabunny's `canEncodeAudio` reports as always encodable, so probing it can
+never return null and would silently mask a missing AAC/Opus encoder. `@mediabunny/aac-encoder`
+was deliberately NOT added: every browser with the WebCodecs VideoEncoder this export already
+requires also encodes AAC natively. No UI control — a track that exists and is not muted is
+included, and mute is already the control for excluding it. Two real failure outcomes, not one: a
+**synchronous** `add()` failure (before any packet is encoded) leaves the track with no data at
+all, so `finalize()` — which only iterates tracks that received a packet — skips it, and the
+export **succeeds** with a warning and no audio track; an **asynchronous** encoder failure instead
+throws from `output.finalize()` and produces **no file**. `audioSource.close()` is now called
+immediately after `add()` (same try block) so that flush starts before the frame loop rather than
+only at `finalize()` — this doesn't save the file on an async failure, but shrinks the time to
+finding out from "after a multi-minute render" towards "within seconds". Reference-video
+soundtracks (`audioEnabled`) are still preview-only. **Owed a browser pass:** MP4 and WebM both
+carry audio and stay in sync; a positive offset starts the audio late by that amount; a negative
+offset starts partway into the clip; a muted track exports silent; audio longer than the animation
+is cut at the video's end; a clip dragged entirely past the last frame exports with no audio track
+and still succeeds; PNG-sequence export unaffected; a mono import (channel-count path); a 44.1 kHz
+source (exercises the resample — iPad/Safari is the one to watch); a long project (the whole
+window is materialised as one 48 kHz buffer, ~23 MB/minute stereo, so memory is the risk and it
+degrades to a warning rather than a crash); and iPad for at least the MP4 path. Spec/plan:
 `…/2026-08-11-audio-phase3-export-muxing*.md`.
