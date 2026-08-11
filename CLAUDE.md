@@ -571,3 +571,11 @@ in the gutter must pick a column rather than inventing its own offset. The gutte
 (a drag-resizable one was considered and deferred: `LABEL_W` would have to become reactive state
 threaded through four consumers plus prefs persistence). **Owed:** horizontal-scroll check that all
 three sticky columns hold together, and the audio ✕ alignment on iPad.
+
+**Live-counter jitter (2026-08-11):** any readout that updates while scrubbing needs BOTH fixes or
+it shifts its neighbours. (1) `tabular-nums` — without it "1" is narrower than "2", so even
+11 → 12 changes width (this was the Playbar's "Frame n/n", which pushed Length/In/Out sideways every
+step). (2) **Reserved width** for the changing number (`inline-block text-right` +
+`min-width: {digits}ch`, digits = `String(frameCount).length`) — tabular figures equalize digit
+WIDTH, not digit COUNT, so 9 → 10 still shifted. The status bar's ambient readout and the Playbar
+both do both now; apply the pair to any new live counter.

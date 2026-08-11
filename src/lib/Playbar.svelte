@@ -26,6 +26,8 @@
   const FPS_PRESETS = [6, 8, 12, 24];
   let settingsOpen = $state(false);
 
+  const frameDigits = $derived(String(appState.project.frameCount).length);
+
   function go(f: number) {
     seekPlayhead(f);
   }
@@ -78,8 +80,10 @@
     >
   </div>
 
-  <span class="text-text-secondary"
-    >Frame {appState.playhead + 1}/{appState.project.frameCount}</span
+  <span class="text-text-secondary tabular-nums"
+    >Frame <span class="inline-block text-right" style="min-width: {frameDigits}ch"
+      >{appState.playhead + 1}</span
+    >/{appState.project.frameCount}</span
   >
   <label class="flex items-center gap-1 text-text-secondary"
     >Length
