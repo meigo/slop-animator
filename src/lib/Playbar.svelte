@@ -63,7 +63,7 @@
   <div class="flex items-center gap-1">
     <button class={btn} title="First frame" onclick={() => go(0)}><SkipBack size={16} /></button>
     <button class={btn} title="Previous frame" onclick={() => go(appState.playhead - 1)}
-      ><ChevronLeft size={20} strokeWidth={2.25} /></button
+      ><ChevronLeft size={20} strokeWidth={1.6} /></button
     >
     <button
       class="{btn} font-semibold"
@@ -73,7 +73,7 @@
       {#if appState.playback.isPlaying}<Pause size={16} />{:else}<Play size={16} />{/if}
     </button>
     <button class={btn} title="Next frame" onclick={() => go(appState.playhead + 1)}
-      ><ChevronRight size={20} strokeWidth={2.25} /></button
+      ><ChevronRight size={20} strokeWidth={1.6} /></button
     >
     <button class={btn} title="Last frame" onclick={() => go(appState.project.frameCount - 1)}
       ><SkipForward size={16} /></button
