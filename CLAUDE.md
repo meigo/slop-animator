@@ -620,3 +620,15 @@ ring around it (it is a `div[role="slider"][tabindex="0"]`, so a click focuses i
 handlers also keeps Svelte's a11y lint quiet, which stripping the ARIA would not). The
 gizmo handles (`tabindex="-1"`) aren't tab-reachable at all, so their ring was always noise. Don't
 add per-component `outline: none` — the global rule already scopes rings to keyboard use.
+
+**Tailwind class linting (2026-08-11):** conflicting utility classes (two classes setting the same
+CSS property) were only visible in the IDE's Tailwind IntelliSense — `npm run lint` never saw them,
+so `relative sticky` shipped on the ruler. Added **`eslint-plugin-better-tailwindcss`** with exactly
+two rules: `no-conflicting-classes` (error) and `no-duplicate-classes` (warn). Tailwind 4 is
+CSS-first, so the plugin needs `settings["better-tailwindcss"].entryPoint = "src/app.css"` to resolve
+the theme — without it the rules silently pass. Deliberately NOT enabled: class-ORDER rules
+(`prettier-plugin-tailwindcss` already sorts, they would fight) and `no-unregistered-classes` (this
+codebase has real custom classes — `layer-drag-handle`, `selection-actions-panel`, `curve-popup`).
+Since the pre-commit hook runs `eslint --fix`, conflicts now fail before they can be committed.
+Verify a rule actually fires after config changes (re-introduce a conflict and see it error) — a
+misconfigured plugin passes silently and looks exactly like a clean codebase.

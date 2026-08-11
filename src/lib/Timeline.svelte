@@ -712,7 +712,7 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <div class="relative flex items-stretch sticky top-0 z-20 bg-surface">
+    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"

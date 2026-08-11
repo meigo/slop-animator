@@ -4,6 +4,7 @@ import svelte from "eslint-plugin-svelte";
 import svelteConfig from "./svelte.config.js";
 import globals from "globals";
 import prettier from "eslint-config-prettier";
+import betterTailwind from "eslint-plugin-better-tailwindcss";
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -56,6 +57,23 @@ export default tseslint.config(
     // Build-time Node scripts (icon generation) — Node globals, not browser ones.
     files: ["tools/**/*.mjs"],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // Tailwind class-level lint. ONLY the conflict/duplicate rules: they catch real bugs (e.g.
+    // `relative sticky` — two classes fighting over `position`, which the IDE flagged but nothing
+    // in CI did). Deliberately NOT enabling class-ORDER (prettier-plugin-tailwindcss already sorts)
+    // or `no-unregistered-classes` (this codebase has legitimate custom classes like
+    // `layer-drag-handle` and `selection-actions-panel` that it would flag as unknown).
+    // Tailwind 4 is CSS-first, so the plugin needs the entry stylesheet to resolve the theme.
+    files: ["**/*.svelte", "**/*.html"],
+    plugins: { "better-tailwindcss": betterTailwind },
+    settings: {
+      "better-tailwindcss": { entryPoint: "src/app.css" },
+    },
+    rules: {
+      "better-tailwindcss/no-conflicting-classes": "error",
+      "better-tailwindcss/no-duplicate-classes": "warn",
+    },
   },
   {
     ignores: ["dist/"],
