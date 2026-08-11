@@ -207,10 +207,6 @@
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
 
-  // A successful eyedropper pick fires on pointer-down and switches the tool back mid-gesture;
-  // this latch swallows the rest of that same gesture so it can't fall through and draw a stray dab.
-  let pickingGesture = false;
-
   function sizeDisplay() {
     display.width = appState.project.width * DPR;
     display.height = appState.project.height * DPR;
@@ -568,18 +564,14 @@
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
-    if (pickingGesture) {
-      // A pick already consumed this gesture (the tool has since switched); ignore its move/up.
-      if (done) pickingGesture = false;
-      return;
-    }
     if (appState.tool === "eyedropper") {
-      if (points.length === 1) {
-        const hex = sampleAt(points[0]);
-        if (hex) {
-          applyEyedropper(hex); // sets color + switches the tool back
-          if (!done) pickingGesture = true; // swallow the rest of this gesture
-        }
+      // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
+      // pick has to be adjustable — drag to slide the sample point, lift to take it. (The pointer-down
+      // version took whatever you happened to land on.) The BrushCursor swatch previews the colour
+      // under the pointer throughout, for mouse and Pencil.
+      if (done) {
+        const hex = sampleAt(points[points.length - 1]);
+        if (hex) applyEyedropper(hex); // sets colour + switches the tool back
       }
       return;
     }

@@ -781,3 +781,14 @@ untouched, and with a finger the tap-to-select, long-press-marquee, hold-span re
 gestures all still work; only the "outside the selection" drag (most of a row's area) becomes a pan.
 The pan is checked BEFORE the marquee branch so a scroll can never turn into a selection, and it
 clears `armedOutside` so the release isn't treated as a tap.
+
+**Eyedropper commits on RELEASE (2026-08-11):** it used to apply on pointer-DOWN
+(`points.length === 1`), so you got whatever pixel you happened to land on — unusable on touch, where
+your fingertip covers the target. Now the pick is taken from the LAST point when `done`, so you can
+drag to slide the sample point and lift to take it. This also removed the `pickingGesture` latch:
+that existed only because `applyEyedropper` switches the tool back MID-gesture, letting the rest of
+the gesture fall through and draw a stray dab — committing on release closes that window entirely.
+**Known gap:** `BrushCursor` skips finger input (`pointerType !== "mouse" && !== "pen"`), so the
+preview swatch shows for mouse/Pencil but NOT a finger; a finger pick is still adjustable but blind.
+Fixing that needs a loupe OFFSET above the touch point (drawing it at the pointer would sit under the
+finger) — not built.
