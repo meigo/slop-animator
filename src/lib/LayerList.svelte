@@ -238,8 +238,8 @@
         ><GripVertical size={14} /></span
       >
       <button
-        class="text-text-secondary hover:text-text"
-        title="Toggle visibility"
+        class={layer.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+        title={layer.visible ? "Visible — click to hide" : "Hidden — edits refused; click to show"}
         onclick={(e) => {
           e.stopPropagation();
           layer.visible = !layer.visible;

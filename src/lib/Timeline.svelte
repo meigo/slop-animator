@@ -817,7 +817,7 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 border-r border-text-muted"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             style="left: {LABEL_W}px; width: {MARKER_W}px"

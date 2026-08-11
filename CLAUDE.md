@@ -645,3 +645,14 @@ two properties on `:root`/`.dark`, not new markup: `color-scheme: light|dark` (e
 follows the theme) and `accent-color: var(--color-selection)` (tints checkboxes/radios). Note these
 belong on `:root`/`.dark`, NOT in `@theme` — that block only declares tokens. Reach for these before
 hand-building a custom checkbox.
+
+**Read-only state signalling (2026-08-11):** locked and hidden layers now render their icon in
+**amber** (`text-amber-500`) in BOTH the layer list and the timeline gutter marker; normal states sit
+at `text-text-muted`. Rationale: `Lock`/`LockOpen` differ only by a shackle offset — identical weight,
+unreadable at 15px — so state must be carried by colour, not glyph shape. Amber, not red: these are
+deliberate states, not errors, and it matches the existing `text-amber-500` "Apply layer transform to
+select" note in ToolOptions; red stays reserved for destructive/error. This is the same signal the
+status hint gives ("Layer locked/hidden — …"), so a layer that silently refuses edits now says so in
+three places. NOTE these two buttons deviate from the standard
+`text-text-secondary hover:text-text` icon-button class ON PURPOSE — they convey state, not just
+affordance.
