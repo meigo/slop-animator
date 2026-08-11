@@ -64,12 +64,17 @@ export async function exportVideo(
   }
   let audioSource: AudioBufferSource | null = null;
   if (audioBuffer) {
-    const codec = await getFirstEncodableAudioCodec(outputFormat.getSupportedAudioCodecs());
-    if (codec) {
-      audioSource = new AudioBufferSource({ codec, bitrate: QUALITY_HIGH });
-      output.addAudioTrack(audioSource);
-    } else {
-      warning = `this browser has no audio encoder for ${format.toUpperCase()}`;
+    try {
+      const codec = await getFirstEncodableAudioCodec(outputFormat.getSupportedAudioCodecs());
+      if (codec) {
+        const s = new AudioBufferSource({ codec, bitrate: QUALITY_HIGH });
+        output.addAudioTrack(s);
+        audioSource = s;
+      } else {
+        warning = `this browser has no audio encoder for ${format.toUpperCase()}`;
+      }
+    } catch {
+      warning = `this browser could not set up audio for ${format.toUpperCase()}`;
     }
   }
 
