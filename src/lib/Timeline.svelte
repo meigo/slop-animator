@@ -714,7 +714,7 @@
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
     <div class="relative flex items-stretch sticky top-0 z-20 bg-surface">
       <span
-        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-border"
+        class="shrink-0 sticky left-0 z-20 bg-surface-active border-b border-r border-border"
         style="width: {GUTTER_W}px"
       ></span>
       {#if playRange}
@@ -815,7 +815,7 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-text-muted border-r border-border"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             style="left: {LABEL_W}px; width: {MARKER_W}px"
