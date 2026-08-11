@@ -770,3 +770,14 @@ below are SUPERSEDED for these items — do not re-litigate them:
    overwrite-vs-insert), toolbar menu reachability, transparent-bg/paint-behind, pose gizmo detail,
    status-hint-on-tap for every control.
 3. Anything added AFTER this date.
+
+**Finger-pan the timeline (2026-08-11):** on iPad a long timeline could only be scrolled by dragging
+REF rows or empty space — drawing rows set `touch-action: none` for their own gestures, which also
+disables the browser's scrolling, and every other row area consumed the drag for selection. Fixed by
+panning `gridWrapper` ourselves when a FINGER drags outside the current selection (`touchPan` in
+`Timeline.svelte`), which matches the canvas convention already documented at `Canvas.svelte`'s
+`setupTouchGestures`: **finger navigates, Pencil edits.** Deliberately narrow — pen/mouse behaviour is
+untouched, and with a finger the tap-to-select, long-press-marquee, hold-span resize and move-block
+gestures all still work; only the "outside the selection" drag (most of a row's area) becomes a pan.
+The pan is checked BEFORE the marquee branch so a scroll can never turn into a selection, and it
+clears `armedOutside` so the release isn't treated as a tap.

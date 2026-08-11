@@ -183,6 +183,12 @@
   let moveDelta = $state(0);
   let moved = false; // did a moveblock drag actually change frame? (a net-zero drag ≠ a tap)
   // empty-press arming: might become a marquee (on drag) or a deselect (on tap).
+  // Finger drag OUTSIDE the selection pans the timeline instead of marqueeing — the rows set
+  // `touch-action: none` for their gestures, which also kills the browser's own scrolling, so only
+  // ref rows and empty space could scroll. Matches the canvas convention (Canvas.svelte: finger
+  // navigates, Pencil edits). Pen/mouse are untouched; tap, long-press-marquee, resize and
+  // move-block still work with a finger.
+  let touchPan: { x: number; y: number; left: number; top: number; panning: boolean } | null = null;
   let armedOutside = false; // pressed OUTSIDE the selection: tap selects/deselects, drag → marquee
   let armedOnKey = false; // …and the pressed cell was a key (tap selects it) vs empty (tap deselects)
   let pressFrame = -1;
@@ -323,6 +329,15 @@
     armedOutside = true;
     armedOnKey = plan.kind === "move";
     pressFrame = frame;
+    if (e.pointerType === "touch" && gridWrapper) {
+      touchPan = {
+        x: e.clientX,
+        y: e.clientY,
+        left: gridWrapper.scrollLeft,
+        top: gridWrapper.scrollTop,
+        panning: false,
+      };
+    }
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
     // A real drag cancels a pending long-press.
@@ -359,6 +374,22 @@
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
       bump();
       return;
+    }
+    // Finger drag outside the selection → pan the timeline (see touchPan). Checked BEFORE the
+    // marquee branch so a scroll never turns into a selection.
+    if (touchPan && gridWrapper) {
+      const dx = e.clientX - touchPan.x;
+      const dy = e.clientY - touchPan.y;
+      if (!touchPan.panning && Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        touchPan.panning = true;
+        armedOutside = false; // this gesture is a scroll, not a tap or marquee
+        cancelLongPress();
+      }
+      if (touchPan.panning) {
+        gridWrapper.scrollLeft = touchPan.left - dx;
+        gridWrapper.scrollTop = touchPan.top - dy;
+        return;
+      }
     }
     // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
     if (
@@ -429,6 +460,7 @@
     armedOutside = false;
     armedOnKey = false;
     pressFrame = -1;
+    touchPan = null;
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";
