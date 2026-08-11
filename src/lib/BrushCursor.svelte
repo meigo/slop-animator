@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Viewport } from "../core/viewport";
-  import { state as appState, activeStroke } from "../state/appState.svelte";
+  import { state as appState, activeStroke, activeLayer } from "../state/appState.svelte";
+  import { isLayerEditable } from "../anim/document";
 
   let {
     getViewport,
@@ -22,6 +23,9 @@
   let raf = 0;
 
   const isStrokeTool = () => appState.tool === "brush" || appState.tool === "eraser";
+  // A locked/hidden layer refuses strokes, and Canvas swaps in a not-allowed cursor — keep the brush
+  // ring out of the way there, or it would still promise a stroke that cannot happen.
+  const canDraw = () => isLayerEditable(activeLayer(), appState.project.groups);
 
   function onMove(e: PointerEvent) {
     // Mouse/pen only; finger touches (which pan/draw via gestures) get no cursor.
@@ -80,7 +84,7 @@
   });
 </script>
 
-{#if visible && isStrokeTool() && diameter > 0}
+{#if visible && isStrokeTool() && canDraw() && diameter > 0}
   <div
     class="brush-cursor"
     class:dashed

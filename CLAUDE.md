@@ -721,3 +721,13 @@ kept transforming the pinned layer; and settling with no readable end transform 
 undo entry that the same undo popped (undo appeared dead) — brackets now track a `dirty` flag and
 commit only if the gesture actually wrote. **Standing lesson: a new global keyboard shortcut widens
 what "mid-gesture" means for every pointer gesture in the app.**
+
+**Not-allowed cursor on a read-only layer (2026-08-11):** a locked/hidden active layer silently
+swallowed strokes — the guards refused the write but the UI still showed a brush ring, i.e. it
+promised a stroke it would not make. `Canvas` now derives `toolBlocked` (a WRITING tool +
+`!isLayerEditable`) and swaps in `cursor-not-allowed`, and `BrushCursor` hides its ring in the same
+condition. WRITING_TOOLS is deliberately brush/eraser/fill/deform/pose/transform only: the
+**eyedropper samples the composite** and **select/lasso can still COPY** from a locked layer, so
+flagging those would be a worse lie than showing nothing. Pan (space/middle-drag) keeps its grab
+cursor, since panning works regardless. Together with the amber icons and the status hint, a
+read-only layer now announces itself in four places.

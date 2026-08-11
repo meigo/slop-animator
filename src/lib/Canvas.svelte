@@ -1293,12 +1293,24 @@
     if (e.ctrlKey || e.metaKey) viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
     else viewport?.panBy(-e.deltaX, -e.deltaY); // content follows the scroll
   }
+
+  // Tools that WRITE to the active layer. The eyedropper samples the composite and select/lasso can
+  // still copy from a locked layer, so they are deliberately excluded — showing "not allowed" for a
+  // gesture that does work would be a worse lie than showing nothing.
+  const WRITING_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "transform"];
+  // A locked/hidden active layer refuses every writing tool; say so in the cursor instead of just
+  // silently swallowing the stroke.
+  const toolBlocked = $derived(
+    WRITING_TOOLS.includes(appState.tool) &&
+      !isLayerEditable(activeLayer(), appState.project.groups),
+  );
 </script>
 
 <div
   bind:this={stage}
   class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
-  class:cursor-none={appState.tool === "brush" || appState.tool === "eraser"}
+  class:cursor-not-allowed={toolBlocked && !panning && !spaceHeld}
+  class:cursor-none={!toolBlocked && (appState.tool === "brush" || appState.tool === "eraser")}
   class:cursor-crosshair={appState.tool === "eyedropper"}
   style:cursor={panning ? "grabbing" : spaceHeld ? "grab" : null}
   onwheel={onWheel}
