@@ -419,18 +419,18 @@
         {#if hasTransform(layer)}
           {#if activeTransformScope(layer) !== "group"}
             <button
-              class="text-text-secondary hover:text-text"
+              class="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover"
               title="Apply transform (bake to pixels)"
               onclick={(e) => {
                 e.stopPropagation();
                 const scope = activeTransformScope(layer);
                 if (scope === "frame") applyCellTransform(layer.id, appState.playhead);
                 else applyLayerTransform(layer.id);
-              }}><Stamp size={13} /></button
+              }}><Stamp size={13} /> Apply</button
             >
           {/if}
           <button
-            class="text-text-secondary hover:text-text"
+            class="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover"
             title="Reset transform"
             onclick={(e) => {
               e.stopPropagation();
@@ -443,7 +443,7 @@
               } else {
                 resetLayerTransform(layer.id);
               }
-            }}><RotateCcw size={13} /></button
+            }}><RotateCcw size={13} /> Reset</button
           >
         {/if}
       </div>
