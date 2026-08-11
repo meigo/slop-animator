@@ -51,7 +51,7 @@
         : kind === "video"
           ? "video/*"
           : kind === "audio"
-            ? "audio/*"
+            ? "audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.caf,.flac,.opus,.ogg"
             : ".zip,application/zip";
     fileInput.value = "";
     fileInput.click();

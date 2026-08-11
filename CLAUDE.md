@@ -731,3 +731,12 @@ condition. WRITING_TOOLS is deliberately brush/eraser/fill/deform/pose/transform
 flagging those would be a worse lie than showing nothing. Pan (space/middle-drag) keeps its grab
 cursor, since panning works regardless. Together with the amber icons and the status hint, a
 read-only layer now announces itself in four places.
+
+**iOS file-picker `accept` quirk (2026-08-11):** "Import audio…" set `accept="audio/*"` — correct per
+spec, but on iPad the audio files sat GREYED OUT in the picker while video looked selectable. iOS
+resolves `accept` MIME globs to UTIs and does it badly for `audio/*`; explicit EXTENSIONS are matched
+reliably, so the audio accept is now
+`audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.caf,.flac,.opus,.ogg`. This affects **every browser on
+iPad** — Chrome/Firefox there are WebKit wrappers using the same system document picker — so don't
+dismiss it as Safari-only. `image/*` and `video/*` map fine and are left alone. If a future picker
+misbehaves on iPad, widen it with extensions before suspecting app logic.
