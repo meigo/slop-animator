@@ -671,14 +671,6 @@
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
   <div class="relative flex-1 min-h-0 overflow-auto" bind:this={gridWrapper}>
-    <!-- current-frame column highlight: an absolute overlay so scrubbing is O(1) — NOT a per-cell
-         `f === appState.playhead` class (that re-evaluated frameCount×layers bindings on every scrub). -->
-    <div
-      class="absolute top-0 bottom-0 pointer-events-none z-0"
-      style="left: {GUTTER_W +
-        appState.playhead *
-          CELL_W}px; width: {CELL_W}px; background: var(--color-selection); opacity: 0.25"
-    ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
@@ -730,6 +722,14 @@
       >
         {appState.playhead + 1}
       </div>
+      <!-- …and its downward tip, continuing into the playhead line below. -->
+      <div
+        class="absolute z-10 pointer-events-none"
+        style="left: {GUTTER_W +
+          appState.playhead * CELL_W +
+          CELL_W /
+            2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
+      ></div>
       <div
         class="flex cursor-ew-resize select-none bg-surface-active border-b border-border"
         style="touch-action: none"
