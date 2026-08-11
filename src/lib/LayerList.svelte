@@ -250,7 +250,7 @@
       </button>
       {#if layer.kind === "draw"}
         <button
-          class="text-text-secondary hover:text-text"
+          class={layer.locked ? "text-text hover:text-text" : "text-text-muted hover:text-text"}
           onclick={(e) => {
             e.stopPropagation();
             layer.locked = !layer.locked;
