@@ -60,6 +60,17 @@ The per-frame video loop is unchanged.
 warning carries the degrade case: codec unsupported, or the audio encode threw. **Audio never aborts
 a video export** — a multi-minute render must not be lost to a missing encoder.
 
+Two distinct failure outcomes, not one, depending on when the failure happens: a **synchronous**
+`AudioBufferSource.add()` failure (before any packet is encoded) leaves the audio track with no
+data at all — `Output.finalize()` only iterates tracks that received a packet — so the export
+**succeeds**, with the warning and no audio track in the file. An **asynchronous** encoder failure
+(the encoder accepts the buffer but fails during flush) instead throws from `output.finalize()`
+and produces **no file** at all. `audioSource.close()` is called immediately after `add()`, inside
+the same try block, so that flush is triggered before the frame loop rather than only implicitly at
+`finalize()` — this does not turn the async case into a warning (the file is still not produced),
+but it shrinks the time to discovering the failure from "after the whole render" toward "within
+seconds".
+
 **No `@mediabunny/aac-encoder` dependency.** Every browser that has the WebCodecs `VideoEncoder` this
 export already requires also encodes AAC natively, so the polyfill would be dead weight; the warning
 path covers the theoretical gap.

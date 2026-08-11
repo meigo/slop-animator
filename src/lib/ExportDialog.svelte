@@ -18,11 +18,12 @@
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR);
         downloadBlob(blob, `${stem}.zip`);
+        status = "Done.";
       } else {
-        const blob = await exportVideo(appState.project, DPR, kind);
+        const { blob, warning } = await exportVideo(appState.project, DPR, kind);
         downloadBlob(blob, `${stem}.${kind}`);
+        status = warning ? `Done — exported without audio: ${warning}.` : "Done.";
       }
-      status = "Done.";
     } catch (e) {
       status = `Failed: ${e instanceof Error ? e.message : String(e)}`;
     } finally {

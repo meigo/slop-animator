@@ -4,13 +4,22 @@ import {
   WebMOutputFormat,
   BufferTarget,
   CanvasSource,
+  AudioBufferSource,
   QUALITY_HIGH,
+  getFirstEncodableAudioCodec,
 } from "mediabunny";
 import { renderFrame } from "../anim/render";
 import { evenDimensions } from "./frames";
+import { buildExportAudio } from "./audio-mix";
 import type { Project } from "../anim/document";
 
 export type VideoFormat = "mp4" | "webm";
+
+export interface VideoExportResult {
+  blob: Blob;
+  /** Set when the video was produced but its audio had to be dropped. */
+  warning?: string;
+}
 
 /** Video export needs the WebCodecs VideoEncoder (Chromium/Edge, Safari 16.4+). */
 export function isVideoExportSupported(): boolean {
@@ -19,13 +28,14 @@ export function isVideoExportSupported(): boolean {
 
 /**
  * Encode every frame (drawing layers over the paper background, reference layers excluded)
- * to an MP4 (H.264) or WebM (VP9) Blob via mediabunny + WebCodecs.
+ * to an MP4 (H.264) or WebM (VP9) Blob via mediabunny + WebCodecs, with the project audio
+ * track muxed in when there is one.
  */
 export async function exportVideo(
   project: Project,
   dpr: number,
   format: VideoFormat,
-): Promise<Blob> {
+): Promise<VideoExportResult> {
   if (!isVideoExportSupported())
     throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
 
@@ -35,16 +45,63 @@ export async function exportVideo(
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
 
-  const output = new Output({
-    format: format === "mp4" ? new Mp4OutputFormat() : new WebMOutputFormat(),
-    target: new BufferTarget(),
-  });
+  const outputFormat = format === "mp4" ? new Mp4OutputFormat() : new WebMOutputFormat();
+  const output = new Output({ format: outputFormat, target: new BufferTarget() });
   const source = new CanvasSource(canvas, {
     codec: format === "mp4" ? "avc" : "vp9",
     bitrate: QUALITY_HIGH,
   });
   output.addVideoTrack(source);
+
+  // Audio is decided BEFORE start() — tracks cannot be added afterwards. Every failure here
+  // drops the audio and reports it; none of them may cost the caller the whole render.
+  let warning: string | undefined;
+  let audioBuffer: AudioBuffer | null = null;
+  try {
+    audioBuffer = await buildExportAudio(project.audio, project.fps, project.frameCount);
+  } catch {
+    warning = "the audio could not be prepared";
+  }
+  let audioSource: AudioBufferSource | null = null;
+  if (audioBuffer) {
+    try {
+      // Probe only the one codec this container actually needs (aac/mp4, opus/webm), not
+      // outputFormat.getSupportedAudioCodecs() — that list also includes PCM, and mediabunny's
+      // canEncodeAudio reports PCM as always encodable ("we encode these ourselves"), so probing
+      // the full list can never return null. That would mask a missing AAC/Opus encoder instead
+      // of warning about it.
+      const codec = await getFirstEncodableAudioCodec([format === "mp4" ? "aac" : "opus"], {
+        numberOfChannels: audioBuffer.numberOfChannels,
+        sampleRate: audioBuffer.sampleRate,
+        bitrate: QUALITY_HIGH,
+      });
+      if (codec) {
+        const s = new AudioBufferSource({ codec, bitrate: QUALITY_HIGH });
+        output.addAudioTrack(s);
+        audioSource = s;
+      } else {
+        warning = `this browser has no audio encoder for ${format.toUpperCase()}`;
+      }
+    } catch {
+      warning = `this browser could not set up audio for ${format.toUpperCase()}`;
+    }
+  }
+
   await output.start();
+
+  if (audioSource && audioBuffer) {
+    try {
+      await audioSource.add(audioBuffer);
+      // Closing here starts the encoder flush now, so it runs alongside the frame loop instead of
+      // only at output.finalize(). close() returns void — it does NOT surface the flush error at
+      // this line, and an out-of-band encoder error still throws from finalize() and still costs
+      // the render. What this buys is time-to-failure, not the file. See CLAUDE.md's Audio Phase 3
+      // entry for the two real outcomes.
+      await audioSource.close();
+    } catch {
+      warning = "the audio failed to encode";
+    }
+  }
 
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
@@ -60,5 +117,8 @@ export async function exportVideo(
 
   await output.finalize();
   const buffer = output.target.buffer!;
-  return new Blob([buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" });
+  return {
+    blob: new Blob([buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" }),
+    warning,
+  };
 }

@@ -32,7 +32,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Reference & audio**
 
 - Reference layers (image/video) with a transform gizmo, lockable to pin them in place — images persist with the project; video is opt-in per clip and can play its own soundtrack
-- Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset and mute
+- Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset, mute, and muxed into the MP4/WebM export
 - Clipboard image paste + rasterize to a drawing layer
 
 **Files & export**
@@ -60,7 +60,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (~380); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (~400); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
@@ -76,6 +76,6 @@ npm run deploy     # build, then wrangler deploy (Cloudflare Workers static asse
 
 ## Roadmap (rough)
 
-Animated/keyframed transforms, audio in exported video (muxing), group-transform apply
+Animated/keyframed transforms, group-transform apply
 (pixel flatten), tiled copy-on-write cell storage for an expandable canvas. See `CLAUDE.md`
 for the detailed state and deferred-work list.
