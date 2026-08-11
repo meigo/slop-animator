@@ -799,3 +799,23 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 **declined** — the convention is worth more than a tool that is transient anyway. Don't "fix" the
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
+
+**Audio Phase 3 — export muxing (2026-08-11):** the project audio track is now muxed into the
+MP4/WebM export, closing the audio roadmap (P1 import/playback, P2 scrub/offset/mute, P3 export).
+Alignment reuses the PLAYBACK rule rather than restating it: `audioExportPlan`
+(`src/export/audio-mix.ts`, pure + unit-tested, 9 cases) calls the same `bufferOffsetForFrame` that
+`AudioEngine.play` does, so the two cannot drift apart; it returns null — meaning **no audio track
+in the file at all**, never a silent one — for no track, a **muted** track (mute means silent
+export, WYSIWYG), or a clip dragged entirely outside the export window. `buildExportAudio` applies
+the plan with ONE `OfflineAudioContext` render, which does placement, truncation at the window end
+and **resampling to 48 kHz** (accepted by both AAC and Opus, so a 44.1 kHz import needs no special
+case) in a single step. `exportVideo` now returns `{ blob, warning? }` instead of a bare Blob:
+audio is decided before `output.start()` (mediabunny cannot add a track later) and **any audio
+failure drops the audio, never the render** — a multi-minute encode must not be lost to a missing
+encoder. `@mediabunny/aac-encoder` was deliberately NOT added: every browser with the WebCodecs
+VideoEncoder this export already requires also encodes AAC natively. No UI control — a track that
+exists and is not muted is included, and mute is already the control for excluding it. Residual
+risk, accepted: a track cannot be un-added, so an `AudioBufferSource.add()` failure after start
+leaves an empty audio track in the file. Reference-video soundtracks (`audioEnabled`) are still
+preview-only. **Owed a browser pass:** see the list below. Spec/plan:
+`…/2026-08-11-audio-phase3-export-muxing*.md`.
