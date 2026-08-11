@@ -21,8 +21,28 @@ export function computeOnionFrames(
   frameCount: number,
   prevCount: number,
   nextCount: number,
+  keyframes?: number[],
 ): OnionFrame[] {
   const result: OnionFrame[] = [];
+
+  if (keyframes) {
+    // Keyframe mode: step to the neighbouring DRAWINGS instead of neighbouring frames, so holds
+    // don't burn an onion slot. A key exactly at `current` is not its own neighbour; from a hold,
+    // the nearest "prev" is the key it holds (the last key strictly before `current`).
+    const before = keyframes.filter((f) => f < current).sort((a, b) => a - b);
+    const after = keyframes.filter((f) => f > current).sort((a, b) => a - b);
+    for (let d = prevCount; d >= 1; d--) {
+      const frame = before[before.length - d];
+      if (frame === undefined) continue;
+      result.push({ frame, kind: "prev", opacity: ghostOpacity(d, prevCount) });
+    }
+    for (let d = nextCount; d >= 1; d--) {
+      const frame = after[d - 1];
+      if (frame === undefined) continue;
+      result.push({ frame, kind: "next", opacity: ghostOpacity(d, nextCount) });
+    }
+    return result;
+  }
 
   for (let d = prevCount; d >= 1; d--) {
     const frame = current - d;
@@ -54,6 +74,8 @@ export interface OnionConfig {
   prev: number;
   next: number;
   allLayers: boolean;
+  /** Step to neighbouring KEYFRAMES instead of neighbouring frames (holds don't consume a slot). */
+  byKeyframes?: boolean;
   tintPrev: string;
   tintNext: string;
 }
@@ -164,7 +186,24 @@ export function renderFrameWithOnion(
     display.fillRect(0, 0, w, h);
   }
 
-  for (const g of computeOnionFrames(frame, project.frameCount, onion.prev, onion.next)) {
+  // Keyframe mode reads the ACTIVE layer's keys — they are the drawings being worked on — even
+  // when allLayers is on (that flag only controls what gets drawn at the chosen frames).
+  let keyframes: number[] | undefined;
+  if (onion.byKeyframes) {
+    const layer = project.layers.find((l) => l.id === activeLayerId);
+    keyframes =
+      layer && layer.kind === "draw"
+        ? layer.cells.flatMap((c, i) => (c.kind === "key" ? [i] : []))
+        : [];
+  }
+
+  for (const g of computeOnionFrames(
+    frame,
+    project.frameCount,
+    onion.prev,
+    onion.next,
+    keyframes,
+  )) {
     const tint = g.kind === "prev" ? onion.tintPrev : onion.tintNext;
     drawGhost(
       display,

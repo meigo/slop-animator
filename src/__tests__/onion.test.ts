@@ -127,3 +127,41 @@ describe("renderFrameWithOnion", () => {
     expect(draws[2]).toBe(`draw:${(curC as unknown as { __id: number }).__id}@1`);
   });
 });
+
+describe("computeOnionFrames — keyframe mode", () => {
+  // Keyframes at 0, 4, 5, 9 (a typical hold-heavy track).
+  const keys = [0, 4, 5, 9];
+
+  it("ghosts the nearest keyframes, not frame offsets", () => {
+    const g = computeOnionFrames(5, 10, 1, 1, keys);
+    expect(g.map((x) => x.frame).sort((a, b) => a - b)).toEqual([4, 9]);
+  });
+
+  it("walks outward N keyframes, farthest first (draw order)", () => {
+    const g = computeOnionFrames(5, 10, 2, 1, keys);
+    expect(g.map((x) => x.frame)).toEqual([0, 4, 9]); // prev farthest→nearest, then next
+    expect(g[0].kind).toBe("prev");
+    expect(g[2].kind).toBe("next");
+  });
+
+  it("drops missing neighbours at the ends", () => {
+    expect(computeOnionFrames(0, 10, 2, 0, keys).map((x) => x.frame)).toEqual([]);
+    expect(computeOnionFrames(9, 10, 0, 2, keys).map((x) => x.frame)).toEqual([]);
+  });
+
+  it("ignores a keyframe exactly at the current frame", () => {
+    const g = computeOnionFrames(4, 10, 1, 1, keys);
+    expect(g.map((x) => x.frame).sort((a, b) => a - b)).toEqual([0, 5]);
+  });
+
+  it("from a HOLD frame, the nearest previous keyframe is the one it holds", () => {
+    const g = computeOnionFrames(7, 10, 1, 1, keys); // 7 is a hold over key 5
+    expect(g.map((x) => x.frame).sort((a, b) => a - b)).toEqual([5, 9]);
+  });
+
+  it("nearer ghosts are more opaque, as in frame mode", () => {
+    const g = computeOnionFrames(9, 10, 2, 0, keys); // prev keys 4 then 5
+    const byFrame = Object.fromEntries(g.map((x) => [x.frame, x.opacity]));
+    expect(byFrame[5]).toBeGreaterThan(byFrame[4]);
+  });
+});

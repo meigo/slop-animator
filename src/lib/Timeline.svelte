@@ -96,6 +96,7 @@
   // the browser from panning/zooming the page while scrubbing (needed on iPad).
   let scrubbing = $state(false);
   let boilSettingsOpen = $state(false);
+  let onionSettingsOpen = $state(false);
   function scrubTo(e: PointerEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     go(columnAtX(e.clientX - rect.left, CELL_W, appState.project.frameCount));
@@ -550,36 +551,64 @@
         bump();
       }}><Layers size={16} /></button
     >
-    <label
-      class="flex items-center gap-1 text-xs text-text-secondary"
-      title="Onion: previous frames"
-      >prev
-      <input
-        class="w-9 bg-surface border border-border text-text px-1"
-        type="number"
-        min="0"
-        max="3"
-        bind:value={appState.onion.prev}
-        onchange={bump}
-      />
-    </label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Onion: next frames"
-      >next
-      <input
-        class="w-9 bg-surface border border-border text-text px-1"
-        type="number"
-        min="0"
-        max="3"
-        bind:value={appState.onion.next}
-        onchange={bump}
-      />
-    </label>
-    <label
-      class="flex items-center gap-1 text-xs text-text-secondary"
-      title="Onion: ghost all layers"
-    >
-      <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={bump} /> all layers
-    </label>
+    <!-- Onion params live in a popover, mirroring line boil next door: three inline labels made
+         the bar wide and were the only text-xs labels in a text-sm bar. -->
+    <div class="relative" use:clickOutside={() => (onionSettingsOpen = false)}>
+      <button
+        class={toolBtn}
+        class:bg-surface-active={onionSettingsOpen}
+        title="Onion skin settings"
+        onclick={() => (onionSettingsOpen = !onionSettingsOpen)}><Settings size={16} /></button
+      >
+      {#if onionSettingsOpen}
+        <div
+          class="absolute left-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
+        >
+          <label class="flex items-center gap-2" title="Onion: previous ghosts"
+            ><span class="w-10 text-text-secondary">prev</span>
+            <input
+              type="range"
+              class="flex-1"
+              min="0"
+              max="3"
+              bind:value={appState.onion.prev}
+              onchange={bump}
+            />
+            <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.prev}</span
+            ></label
+          >
+          <label class="flex items-center gap-2" title="Onion: next ghosts"
+            ><span class="w-10 text-text-secondary">next</span>
+            <input
+              type="range"
+              class="flex-1"
+              min="0"
+              max="3"
+              bind:value={appState.onion.next}
+              onchange={bump}
+            />
+            <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.next}</span
+            ></label
+          >
+          <label class="flex items-center gap-2" title="Onion: ghost all layers, not just this one">
+            <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={bump} />
+            all layers
+          </label>
+          <label
+            class="flex items-center gap-2"
+            title="Onion: step to neighbouring keyframes instead of frames — holds don't use up a ghost"
+          >
+            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={bump} />
+            step by keyframes
+          </label>
+          <span class="text-text-muted"
+            >Keyframes come from the active layer{appState.onion.allLayers
+              ? "; all layers are drawn at those frames"
+              : ""}.</span
+          >
+        </div>
+      {/if}
+    </div>
 
     <span class="w-px h-5 bg-border mx-1"></span>
 

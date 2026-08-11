@@ -598,3 +598,14 @@ like different design systems — the timeline's `toolBtn` was literally the pla
 button, a `textBtn` variant (`h-7 px-2`) for text labels like In/Out (a fixed `w-7` clips "Out"), and
 the timeline's separator (`w-px h-5 bg-border mx-1`) between groups: transport | frame+length |
 range | settings. Keep new bars on this language rather than inventing a third.
+
+**Onion controls → popover + keyframe stepping (2026-08-11):** the onion params were three inline
+labels and the only `text-xs` text in a `text-sm` bar — wide and visually off. They now live in a
+settings popover mirroring **line boil** one divider away (toggle button + gear + popover); keep new
+per-feature params on that pattern instead of inlining them. New **`onion.byKeyframes`**: ghosts step
+to neighbouring KEYFRAMES rather than neighbouring frames, so holds don't burn an onion slot — on a
+hold, "prev" is the key it holds. Implemented as an optional `keyframes` argument to the pure
+`computeOnionFrames` (6 unit tests incl. hold-start and end-of-track). The keyframe list always comes
+from the **active layer** (those are the drawings being worked on) even when `allLayers` is on —
+that flag only decides WHAT is drawn at the chosen frames; the popover says so inline. Note onion
+config is still not persisted (pre-existing roadmap item), so this resets on reload like the rest.
