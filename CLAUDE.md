@@ -43,6 +43,13 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 - The user reviews/approves the spec before the plan, and the plan before implementation.
 - After a feature, the design rationale is preserved in its spec/plan — link to them.
 - Commit message trailer used here: `Co-Authored-By: Claude ...`.
+- **Keep `README.md` current as part of the change, not later.** It is the public face of a public
+  repo, so a feature that changes what the app DOES (not how it's built) is not finished until the
+  README says so. Check these specifically, since each has gone stale before: the **Features** bullets
+  (a shipped phase still described as "phase 1"), the **test count** in the scripts block (run
+  `npm test` — don't guess), the **Roadmap** paragraph (delete what shipped), and the **Keyboard**
+  section (any new shortcut). CLAUDE.md is the detailed internal log; the README is the short user-
+  facing summary — don't paste internal detail into it.
 
 ## Architecture map
 
