@@ -4,13 +4,22 @@ import {
   WebMOutputFormat,
   BufferTarget,
   CanvasSource,
+  AudioBufferSource,
   QUALITY_HIGH,
+  getFirstEncodableAudioCodec,
 } from "mediabunny";
 import { renderFrame } from "../anim/render";
 import { evenDimensions } from "./frames";
+import { buildExportAudio } from "./audio-mix";
 import type { Project } from "../anim/document";
 
 export type VideoFormat = "mp4" | "webm";
+
+export interface VideoExportResult {
+  blob: Blob;
+  /** Set when the video was produced but its audio had to be dropped. */
+  warning?: string;
+}
 
 /** Video export needs the WebCodecs VideoEncoder (Chromium/Edge, Safari 16.4+). */
 export function isVideoExportSupported(): boolean {
@@ -19,13 +28,14 @@ export function isVideoExportSupported(): boolean {
 
 /**
  * Encode every frame (drawing layers over the paper background, reference layers excluded)
- * to an MP4 (H.264) or WebM (VP9) Blob via mediabunny + WebCodecs.
+ * to an MP4 (H.264) or WebM (VP9) Blob via mediabunny + WebCodecs, with the project audio
+ * track muxed in when there is one.
  */
 export async function exportVideo(
   project: Project,
   dpr: number,
   format: VideoFormat,
-): Promise<Blob> {
+): Promise<VideoExportResult> {
   if (!isVideoExportSupported())
     throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
 
@@ -35,16 +45,43 @@ export async function exportVideo(
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
 
-  const output = new Output({
-    format: format === "mp4" ? new Mp4OutputFormat() : new WebMOutputFormat(),
-    target: new BufferTarget(),
-  });
+  const outputFormat = format === "mp4" ? new Mp4OutputFormat() : new WebMOutputFormat();
+  const output = new Output({ format: outputFormat, target: new BufferTarget() });
   const source = new CanvasSource(canvas, {
     codec: format === "mp4" ? "avc" : "vp9",
     bitrate: QUALITY_HIGH,
   });
   output.addVideoTrack(source);
+
+  // Audio is decided BEFORE start() — tracks cannot be added afterwards. Every failure here
+  // drops the audio and reports it; none of them may cost the caller the whole render.
+  let warning: string | undefined;
+  let audioBuffer: AudioBuffer | null = null;
+  try {
+    audioBuffer = await buildExportAudio(project.audio, project.fps, project.frameCount);
+  } catch {
+    warning = "the audio could not be prepared";
+  }
+  let audioSource: AudioBufferSource | null = null;
+  if (audioBuffer) {
+    const codec = await getFirstEncodableAudioCodec(outputFormat.getSupportedAudioCodecs());
+    if (codec) {
+      audioSource = new AudioBufferSource({ codec, bitrate: QUALITY_HIGH });
+      output.addAudioTrack(audioSource);
+    } else {
+      warning = `this browser has no audio encoder for ${format.toUpperCase()}`;
+    }
+  }
+
   await output.start();
+
+  if (audioSource && audioBuffer) {
+    try {
+      await audioSource.add(audioBuffer);
+    } catch {
+      warning = "the audio failed to encode";
+    }
+  }
 
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
@@ -60,5 +97,8 @@ export async function exportVideo(
 
   await output.finalize();
   const buffer = output.target.buffer!;
-  return new Blob([buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" });
+  return {
+    blob: new Blob([buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" }),
+    warning,
+  };
 }
