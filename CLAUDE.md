@@ -609,3 +609,13 @@ hold, "prev" is the key it holds. Implemented as an optional `keyframes` argumen
 from the **active layer** (those are the drawings being worked on) even when `allLayers` is on —
 that flag only decides WHAT is drawn at the chosen frames; the popover says so inline. Note onion
 config is still not persisted (pre-existing roadmap item), so this resets on reload like the rest.
+
+**Focus-ring policy (2026-08-11):** the app had NO focus CSS, so every focusable element painted the
+browser default — including on pointer clicks, which is why scrubbing the timeline ruler left a blue
+ring around it (it is a `div[role="slider"][tabindex="0"]`, so a click focuses it). Now in
+`app.css`: `:focus:not(:focus-visible) { outline: none }` plus one themed `:focus-visible` ring
+(2px `--color-selection`). Rationale for keeping it keyboard-only rather than removing the ruler's
+focusability: the ruler's `role="slider"` + arrow/Home/End keys are a real a11y contract (it also
+carries `aria-valuenow`), so it should still ring when TABBED to; only the click ring was noise. The
+gizmo handles (`tabindex="-1"`) aren't tab-reachable at all, so their ring was always noise. Don't
+add per-component `outline: none` — the global rule already scopes rings to keyboard use.

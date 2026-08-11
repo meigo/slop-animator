@@ -127,3 +127,17 @@ input[type="range"]::-moz-range-thumb {
 .curve-popup canvas {
   border-radius: 4px;
 }
+
+/* Focus rings are a KEYBOARD affordance. A ring painted after a mouse/pen click is noise — it was
+   appearing on the timeline ruler after every scrub (a div[role=slider][tabindex=0], which focuses
+   on click) and on the gizmo handles (tabindex=-1, not even reachable by Tab). :focus-visible is
+   the browser's own keyboard-vs-pointer signal, so tabbing still rings every control. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* One consistent, theme-aware keyboard ring instead of each browser's default. */
+:focus-visible {
+  outline: 2px solid var(--color-selection);
+  outline-offset: 1px;
+}
