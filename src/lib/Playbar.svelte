@@ -55,7 +55,11 @@
   }
 
   const btn =
-    "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
+    "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
+  // Text buttons need horizontal padding instead of a fixed square ("Out" doesn't fit w-7).
+  const textBtn =
+    "h-7 px-2 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
+  const divider = "w-px h-5 bg-border mx-1"; // same separator the timeline tool bar uses
 </script>
 
 <div class="flex items-center gap-2 p-2 border-t border-border bg-surface text-text text-sm">
@@ -80,6 +84,8 @@
     >
   </div>
 
+  <span class={divider}></span>
+
   <span class="text-text-secondary tabular-nums"
     >Frame <span class="inline-block text-right" style="min-width: {frameDigits}ch"
       >{appState.playhead + 1}</span
@@ -97,11 +103,13 @@
     />
   </label>
 
+  <span class={divider}></span>
+
   <div class="flex items-center gap-1 text-text-secondary">
-    <button class={btn} title="Set range in-point to current frame" onclick={setPlayRangeIn}
+    <button class={textBtn} title="Set range in-point to current frame" onclick={setPlayRangeIn}
       >In</button
     >
-    <button class={btn} title="Set range out-point to current frame" onclick={setPlayRangeOut}
+    <button class={textBtn} title="Set range out-point to current frame" onclick={setPlayRangeOut}
       >Out</button
     >
     {#if appState.playback.range}
@@ -112,6 +120,7 @@
   </div>
 
   <div class="ml-auto flex items-center gap-1">
+    <span class={divider}></span>
     <!-- playback settings -->
     <div class="relative" use:clickOutside={() => (settingsOpen = false)}>
       <button

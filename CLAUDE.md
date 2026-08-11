@@ -591,3 +591,10 @@ still work. Gotcha found while wiring this: the ruler's own `rulerKey` handles t
 its `role="slider"` contract, and window-level handlers fire on bubble too — it now
 `stopPropagation()`s, or a focused ruler stepped TWO frames per press. **Owed:** the Space tap/hold
 split by feel (is 300ms right?), and that arrows don't fight any iPad external-keyboard behavior.
+
+**Bar visual language (2026-08-11):** the playbar and the timeline tool bar sit stacked but looked
+like different design systems — the timeline's `toolBtn` was literally the playbar's `btn` plus
+`border border-border`, so only its controls read as buttons. The playbar now uses the same bordered
+button, a `textBtn` variant (`h-7 px-2`) for text labels like In/Out (a fixed `w-7` clips "Out"), and
+the timeline's separator (`w-px h-5 bg-border mx-1`) between groups: transport | frame+length |
+range | settings. Keep new bars on this language rather than inventing a third.
