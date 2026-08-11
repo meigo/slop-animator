@@ -43,6 +43,9 @@ export function audioExportPlan(
 /** Accepted by both AAC (MP4) and Opus (WebM), so a 44.1 kHz import needs no special case. */
 const EXPORT_SAMPLE_RATE = 48000;
 
+// Module scope above this point must stay DOM-free (no OfflineAudioContext/AudioBuffer at the
+// top level) — `audioExportPlan` is imported directly by node tests, and a DOM reference at
+// module scope would fail to import outside a browser.
 /**
  * The project's audio as ONE buffer exactly the export's length, with the clip at its
  * `offsetFrames` position: silence before it, cut off at the window end, resampled to 48 kHz.

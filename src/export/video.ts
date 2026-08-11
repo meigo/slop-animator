@@ -65,7 +65,16 @@ export async function exportVideo(
   let audioSource: AudioBufferSource | null = null;
   if (audioBuffer) {
     try {
-      const codec = await getFirstEncodableAudioCodec(outputFormat.getSupportedAudioCodecs());
+      // Probe only the one codec this container actually needs (aac/mp4, opus/webm), not
+      // outputFormat.getSupportedAudioCodecs() — that list also includes PCM, and mediabunny's
+      // canEncodeAudio reports PCM as always encodable ("we encode these ourselves"), so probing
+      // the full list can never return null. That would mask a missing AAC/Opus encoder instead
+      // of warning about it.
+      const codec = await getFirstEncodableAudioCodec([format === "mp4" ? "aac" : "opus"], {
+        numberOfChannels: audioBuffer.numberOfChannels,
+        sampleRate: audioBuffer.sampleRate,
+        bitrate: QUALITY_HIGH,
+      });
       if (codec) {
         const s = new AudioBufferSource({ codec, bitrate: QUALITY_HIGH });
         output.addAudioTrack(s);
@@ -83,6 +92,10 @@ export async function exportVideo(
   if (audioSource && audioBuffer) {
     try {
       await audioSource.add(audioBuffer);
+      // Closing here flushes the encoder now, so an out-of-band encoder error throws here —
+      // before the frame loop — instead of surfacing later from output.finalize(), which would
+      // otherwise cost the whole render to a failure that happened in the first couple seconds.
+      await audioSource.close();
     } catch {
       warning = "the audio failed to encode";
     }

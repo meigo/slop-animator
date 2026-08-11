@@ -29,6 +29,18 @@ describe("audioExportPlan — no audio track in the export", () => {
     // Offset -120 frames = the export starts 10s into a 5s clip.
     expect(audioExportPlan(clip({ offsetFrames: -120 }), FPS, FRAMES)).toBeNull();
   });
+
+  it("returns null when the clip starts exactly at the window end (>= boundary, not >)", () => {
+    // Offset 24 frames = 2s, which equals windowS (2s) exactly — startAt >= windowS is
+    // deliberately exclusive of any audio, not just past it.
+    expect(audioExportPlan(clip({ offsetFrames: 24 }), FPS, FRAMES)).toBeNull();
+  });
+
+  it("returns null when the clip starts exactly at its own end (>= boundary, not >)", () => {
+    // Offset -60 frames = 5s into a 5s clip: sourceOffset equals durationS exactly — deliberately
+    // treated as "nothing left to play", not just past it.
+    expect(audioExportPlan(clip({ offsetFrames: -60, durationS: 5 }), FPS, FRAMES)).toBeNull();
+  });
 });
 
 describe("audioExportPlan — placement", () => {
