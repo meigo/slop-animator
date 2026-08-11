@@ -744,10 +744,10 @@
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
       <div
-        class="absolute top-0 z-10 h-6 px-1 flex items-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
-          CELL_W / 2}px; transform: translateX(-50%)"
+          CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
       >
         {appState.playhead + 1}
       </div>
