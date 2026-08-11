@@ -549,3 +549,13 @@ describe("groupHasLockedLayer", () => {
     expect(groupHasLockedLayer(g, [inGroup, unlockedMember])).toBe(true);
   });
 });
+
+describe("groupHasLockedLayer covers reference members", () => {
+  it("a locked REF member pins the group (render applies group transforms to refs)", () => {
+    const g = { id: 9, name: "G", collapsed: false, visible: true };
+    const ref = { kind: "ref", id: 1, groupId: 9, locked: true };
+    const draw = { kind: "draw", id: 2, groupId: 9, locked: false };
+    expect(groupHasLockedLayer(g, [ref, draw])).toBe(true);
+    expect(groupHasLockedLayer(g, [{ ...ref, locked: false }, draw])).toBe(false);
+  });
+});

@@ -226,6 +226,13 @@
     const d = drag;
     const vp = getViewport();
     if (!d || !vp) return;
+    // The handles unmount when the target stops being transformable (lock/hide landing mid-drag,
+    // including via its group), but these listeners are on WINDOW and survive that teardown — so
+    // without this the pinned layer kept rotating under the pointer and the change was committed.
+    if (!activeTransformLayer()) {
+      endDragFromGuard();
+      return;
+    }
     e.preventDefault();
     const p = inverseChain(d.outer, vp.screenToCanvas(e.clientX, e.clientY));
     if (d.handle === "rotate") d.setT(applyRotate(d.startT, d.center, d.start, p));

@@ -49,6 +49,7 @@
     groupOf,
     groupHasLockedLayer,
     isLayerEditable,
+    isLayerLocked,
     isLayerVisible,
     groupTransform,
     type Layer,
@@ -379,6 +380,12 @@
     center: Pt;
     // Frame-scope grab-time clone target, so a mid-drag playhead move can be detected (else null).
     cell: Extract<Cell, { kind: "key" }> | null;
+    // Grab-time target identity: a mid-gesture active-layer/group switch must not retarget the drag.
+    layerId: number;
+    groupId: number | null;
+    // Did this gesture actually write a transform? Drives commit-vs-drop when we settle without a
+    // readable end transform (undo/tool-switch), instead of committing an empty entry.
+    dirty: boolean;
   } | null = null;
   // One undo step per completed transform drag: snapshot at grab, commit at release iff the
   // transform changed; on a no-op, revert the grab-time transformBox freeze instead (spec 2026-08-09).
@@ -396,14 +403,18 @@
   // this feature removes).
   function finishTransformDragUndo(endT: (() => Layer["transform"]) | null) {
     if (refDragUndo) {
-      if (refDrag?.handle && endT && isSameTransform(refDrag.startT, endT())) {
+      // Nothing was written (grab missed a handle, or settled from undo()/a tool switch before the
+      // pointer moved) → drop the snapshot. Committing here pushed a before==after entry that the
+      // caller's own undo then popped, so the user's undo silently did nothing.
+      const wrote = !!refDrag?.handle && refDrag.dirty;
+      const unchanged = wrote && endT && isSameTransform(refDrag!.startT, endT());
+      if (wrote && !unchanged) {
+        commitStructuralEdit(refDragUndo);
+      } else if (wrote || refDrag?.handle) {
         // No-op drag: push nothing, revert the freeze we did at grab.
         if (refDragFreeze?.cell) refDragFreeze.cell.transformBox = refDragFreeze.prevBox;
         else if (refDragFreeze?.group) refDragFreeze.group.transformBox = refDragFreeze.prevBox;
-      } else if (refDrag?.handle) {
-        commitStructuralEdit(refDragUndo);
       }
-      // handle === null (grab missed every handle): nothing mutated, drop the snapshot silently.
     }
     refDragUndo = null;
     refDragFreeze = null;
@@ -492,6 +503,15 @@
     // Pointer in target's local space: inverse-map through outer (outermost first → use inverseChain).
     const pc = inverseChain(outerSteps, p);
 
+    // Mid-gesture retarget guard for ALL scopes: the active layer (or its group) can change while
+    // the pointer is still down — the new global ↑/↓ layer keys make this easy. Frame scope had its
+    // own cell-identity bail; layer/group scope had none and would apply the grab-time transform to
+    // whatever layer became active. Settle the bracket and end the gesture instead.
+    if (refDrag && (refDrag.layerId !== layer.id || refDrag.groupId !== (g?.id ?? null))) {
+      finishTransformDragUndo(null);
+      refDrag = null;
+      return;
+    }
     if (!refDrag) {
       const tol = 10 / viewport.zoom;
       const gap = REF_ROTATE_GAP_PX / viewport.zoom;
@@ -528,10 +548,14 @@
         startT: { ...getT() },
         center: transformCenter(base, getT()),
         cell: isDraw && scope === "frame" ? (frameRk?.cell ?? null) : null,
+        layerId: layer.id,
+        groupId: g?.id ?? null,
+        dirty: false,
       };
     }
     const d = refDrag;
     if (d.handle) {
+      d.dirty = true; // this gesture wrote a transform → its bracket is worth committing
       if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
       else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
       else setT(applyScale(d.startT, d.center, d.start, pc));
@@ -561,9 +585,12 @@
     }
     const al = activeLayer();
     if (al.kind === "ref") {
-      // A locked reference is pinned: its gizmo is live under EVERY tool, so this is the one guard
-      // that stops a stray canvas drag from nudging an aligned reference.
-      if (!al.locked) onTransformDrag(al, points, done);
+      // A pinned reference: its gizmo is live under EVERY tool, so this is the one guard that stops
+      // a stray canvas drag from nudging an aligned reference. Derived, so a locked/hidden GROUP
+      // pins its refs too (the gizmo already used the derived form — these must agree).
+      const refPinned =
+        isLayerLocked(al, appState.project.groups) || !isLayerVisible(al, appState.project.groups);
+      if (!refPinned) onTransformDrag(al, points, done);
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {
@@ -1201,6 +1228,10 @@
 
   $effect(() => {
     const t = appState.tool;
+    // Reading the scope makes it a dependency: switching either mid-drag must settle the open
+    // transform bracket, or it leaks into the next gesture and one undo reverts both (gotcha #6).
+    void appState.transformScope;
+    transformDragGuard.settle?.();
     if (!selection) return;
     // Leaving the deform tool banks the floating warp (one undo step via onCommit).
     if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
@@ -1248,8 +1279,10 @@
     const al = activeLayer();
     if (selection) selection.hidden = !isLayerVisible(al, appState.project.groups);
     if (meshPose) posePaint();
-    // Can't keep editing a layer that just got locked → discard the in-progress lift.
-    if (al.kind === "draw" && al.locked && (meshPose || selection?.hasFloating))
+    // Can't keep editing a layer that just became read-only → discard the in-progress lift.
+    // DERIVED (isLayerLocked), so locking the layer's GROUP discards too — reading it here also makes
+    // the group's flag a tracked dependency, which a raw `al.locked` read never was.
+    if (isLayerLocked(al, appState.project.groups) && (meshPose || selection?.hasFloating))
       discardActiveEdits();
   });
 

@@ -512,6 +512,13 @@ export function mergeDown(id: number) {
   const upper = layers[idx];
   const below = layers[idx - 1];
   if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return;
+  // Merging REPLACES the lower layer's whole cell track, so it is a content edit on both layers —
+  // refuse if either is locked or hidden (every other content op on them already does).
+  if (
+    !isLayerEditable(upper, state.project.groups) ||
+    !isLayerEditable(below, state.project.groups)
+  )
+    return;
 
   commitStructural(() => {
     // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes

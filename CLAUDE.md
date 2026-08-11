@@ -702,3 +702,22 @@ whole class of "checked the raw flag" bugs, and the grep `\.locked|\.visible` mi
 them in seconds.** Re-run that audit whenever group state is extended. Legitimate raw uses that stay:
 the toggle buttons themselves (they set/report a layer's OWN flag) and `duplicateLayer`/`rasterize`
 copying flags.
+
+**High-effort review fixes (2026-08-11):** a 27-agent review of the session's 68 commits confirmed 10
+defects with two root causes; all fixed. **(a) Derived-vs-raw state** (the family the grep audit only
+partly caught): the lift-discard effect read raw `al.locked`, so locking a layer's GROUP left a
+pose/selection lift alive to bake into it later — reading `isLayerLocked` there also makes the group
+flag a tracked dependency, which the raw read never was; `mergeDown` had NO lock/hidden guard at all
+and replaced a locked layer's whole cell track; block ops skipped locked rows but still wrote HIDDEN
+ones (now `isLayerEditable`, i.e. draw+unlocked+visible, matching the row gestures and the selection
+bar); the canvas ref-drag path and `groupHasLockedLayer` ignored group/ref locks; the gutter marker
+drew its glyph from the raw flag while its tooltip used the derived one. **(b) Transform-drag bracket
+lifecycle:** only FRAME scope guarded against mid-gesture retargeting, so an active-layer switch
+(newly easy via the global ↑/↓ keys) applied layer A's grab-time transform to layer B — there is now
+a grab-time `layerId`/`groupId` identity check for all scopes; a tool OR scope switch mid-drag never
+settled the bracket (the tool `$effect` now calls `transformDragGuard.settle`, reading the scope so it
+is a dependency); the gizmo's WINDOW listeners survived its own SVG unmounting, so a mid-drag lock
+kept transforming the pinned layer; and settling with no readable end transform committed an EMPTY
+undo entry that the same undo popped (undo appeared dead) — brackets now track a `dirty` flag and
+commit only if the gesture actually wrote. **Standing lesson: a new global keyboard shortcut widens
+what "mid-gesture" means for every pointer gesture in the app.**

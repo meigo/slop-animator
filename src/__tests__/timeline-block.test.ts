@@ -426,3 +426,15 @@ describe("locked layers are inert to block writes", () => {
     expect(b.cells[2]).toBe(bCells[2]);
   });
 });
+
+describe("hidden rows are inert to block writes", () => {
+  it("a hidden (unlocked) row is skipped like a locked one", () => {
+    const a = drawLayer(1, [key(), key()]);
+    const b = { ...drawLayer(2, [key(), key()]), visible: false };
+    const p = proj([b, a], 2);
+    const before0 = b.cells[0];
+    deleteBlock(p, [1, 2], 0, 1);
+    expect(a.cells.every((c) => c.kind === "hold")).toBe(true);
+    expect(b.cells[0]).toBe(before0); // hidden content the user can't see is never destroyed
+  });
+});

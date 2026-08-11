@@ -107,7 +107,9 @@ export function groupHasLockedLayer(
   layers: { kind: string; groupId?: number | null; locked?: boolean }[],
 ): boolean {
   if (group.locked) return true; // the group itself is pinned
-  return layers.some((l) => l.kind === "draw" && l.groupId === group.id && l.locked === true);
+  // Any member, ref included: render.ts applies the group transform to reference layers too, so a
+  // locked ref would otherwise be dragged along by a group transform.
+  return layers.some((l) => l.groupId === group.id && l.locked === true);
 }
 
 /** Exact equality — drag deltas recompute from the grab-time transform, so an untouched drag
