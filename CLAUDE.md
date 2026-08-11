@@ -740,3 +740,33 @@ reliably, so the audio accept is now
 iPad** — Chrome/Firefox there are WebKit wrappers using the same system document picker — so don't
 dismiss it as Safari-only. `image/*` and `video/*` map fine and are left alone. If a future picker
 misbehaves on iPad, widen it with extensions before suspecting app logic.
+
+## iPad verification pass — 2026-08-11 (ALL PASSED)
+
+A full device pass on iPad (Chrome — note every iPad browser is a WebKit wrapper) against the
+deployed build. **Everything checked passed**, so the "owed a browser pass" notes in the entries
+below are SUPERSEDED for these items — do not re-litigate them:
+
+- **Lock/hidden enforcement:** locked layer refuses strokes; no gizmo under Transform; timeline keys
+  don't move (no snap-back); group lock shows amber + "Locked by its group" on member rows and the
+  timeline gutter; merge-down onto a locked layer refused; locked reference doesn't shift on drag.
+- **Undo around transform drags:** drag → undo restores; press-and-hold without moving → undo hits
+  the PREVIOUS action (no empty entry).
+- **Reference media persistence:** image restores after a full app restart with no re-pick; video
+  embed toggle restores; non-embedded video returns as a re-link placeholder.
+- **Audio Phase 2:** scrub audible on ruler drag; waveform drag-to-offset works on touch
+  (`touch-action`); a right-dragged clip stays silent until the playhead reaches it; mute works.
+- **Layout/UI:** layer detail-row wrap, offset/speed labels, timeline gutter + playhead badge +
+  range brackets, playbar has no counter jitter across 9→10→99, onion popover incl. step-by-keyframes,
+  project name → save filename.
+- **iOS picker fix** (`accept` + explicit audio extensions) confirmed working.
+
+**Still unverified — do NOT treat the above as blanket coverage:**
+
+1. **Desktop-only paths**, untested throughout: space-drag pan / middle-mouse autoscroll / ⌘Ctrl+scroll
+   zoom (2026-07-10 entry), and the keyboard-driven mid-gesture cases from the review fixes (⌘Z during
+   a grab, tool/scope switch mid-drag, ↑/↓ layer switch mid-drag).
+2. **Pre-2026-08 iPad debt** not on this pass: timeline block copy/paste gestures (long-press,
+   overwrite-vs-insert), toolbar menu reachability, transparent-bg/paint-behind, pose gizmo detail,
+   status-hint-on-tap for every control.
+3. Anything added AFTER this date.
