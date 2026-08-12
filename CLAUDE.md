@@ -828,7 +828,10 @@ throws from `output.finalize()` and produces **no file**. `audioSource.close()` 
 immediately after `add()` (same try block) so that flush starts before the frame loop rather than
 only at `finalize()` — this doesn't save the file on an async failure, but shrinks the time to
 finding out from "after a multi-minute render" towards "within seconds". Reference-video
-soundtracks (`audioEnabled`) are still preview-only. **Owed a browser pass:** MP4 and WebM both
+soundtracks (`audioEnabled`) are still preview-only. **Confirmed working in the browser on
+2026-08-12** — the user exported and got audio. That covers the main path (a track exports, plays,
+and is not silent); the enumerated edge cases below were NOT individually walked, so treat them as
+still owed rather than as covered by that confirmation. **Owed a browser pass:** MP4 and WebM both
 carry audio and stay in sync; a positive offset starts the audio late by that amount; a negative
 offset starts partway into the clip; a muted track exports silent; audio longer than the animation
 is cut at the video's end; a clip dragged entirely past the last frame exports with no audio track
