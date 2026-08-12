@@ -818,10 +818,11 @@ about). Styled as white-solid-under / black-dashed-over, the marquee's trick fro
 it stays legible over both ink and paper; the dashes never animate, since this is passive chrome and
 not a selection. It is a SEPARATE component rather than part of `RefTransformGizmo` on purpose: the
 gizmo's chain is SCOPE-dependent (what you are editing) while this one is always the full
-composition (what you can paint into), so they share only `forwardChain`. **Owed a browser pass:**
-scale a layer down and confirm the hairline sits exactly where strokes start being cut; a
-frame-scope (cell) transform alone; a layer inside a transformed group; the line staying 1px across
-zoom levels; no double outline when switching to the Transform tool; iPad.
+composition (what you can paint into), so they share only `forwardChain`. **Verified 2026-08-12:**
+the user manipulated all three transform levels (frame/cell, layer, group) and the paintable area
+was correctly indicated throughout — which is the compose-order risk, the one that mattered. Still
+unconfirmed: the line staying 1px across zoom levels, no double outline when switching to the
+Transform tool, and iPad.
 
 **A `disabled` button can never explain itself (2026-08-12):** reported as "with a hidden or locked
 layer selected, only Copy looks active in the timeline selection bar — is that right?" The
