@@ -39,6 +39,7 @@
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
+  import LayerBoundsHint from "./LayerBoundsHint.svelte";
   import {
     transformBaseRect,
     isIdentityTransform,
@@ -1344,6 +1345,7 @@
   />
 
   <RefTransformGizmo getViewport={() => viewport} getContainer={() => stage} />
+  <LayerBoundsHint getViewport={() => viewport} getContainer={() => stage} />
   <BrushCursor
     getViewport={() => viewport}
     getContainer={() => stage}

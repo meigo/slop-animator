@@ -800,6 +800,29 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
 
+**Transformed layers show their paintable edge (2026-08-12):** reported as "when I draw on a
+moved/scaled layer the drawing just cuts off suddenly, with no hint where the edge is". Cause, worth
+stating plainly because it is structural: **a cell canvas is exactly document-sized**, so a layer's
+paintable area is the DOC RECT pushed through `group ∘ layer ∘ cell` — scale a layer down and your
+strokes stop landing part way across the screen. The real cure is the deferred **tiled +
+copy-on-write cell storage** roadmap item (an expandable canvas); this is the honest cheap
+mitigation — it shows you the wall rather than removing it. New `LayerBoundsHint.svelte` traces that
+boundary as a hairline: doc-rect corners through `forwardChain` over the inner-to-outer step list
+(cell, layer, group — the same compose order the render uses, gotcha #4), mapped to SCREEN space
+like the gizmo, because a 1px line drawn on the document-space overlay canvas would thicken with
+zoom. Shown only for tools that write pixels (brush/eraser/fill/deform/pose) and **never for
+`transform`**, whose gizmo already draws that exact rect — two outlines on one rect read as a bug.
+Also skipped when every step is identity (the bound IS the document edge, already visible) and when
+the layer is locked/hidden (the stroke is refused outright and says so, so there is no edge to warn
+about). Styled as white-solid-under / black-dashed-over, the marquee's trick from `selection.ts`, so
+it stays legible over both ink and paper; the dashes never animate, since this is passive chrome and
+not a selection. It is a SEPARATE component rather than part of `RefTransformGizmo` on purpose: the
+gizmo's chain is SCOPE-dependent (what you are editing) while this one is always the full
+composition (what you can paint into), so they share only `forwardChain`. **Owed a browser pass:**
+scale a layer down and confirm the hairline sits exactly where strokes start being cut; a
+frame-scope (cell) transform alone; a layer inside a transformed group; the line staying 1px across
+zoom levels; no double outline when switching to the Transform tool; iPad.
+
 **A `disabled` button can never explain itself (2026-08-12):** reported as "with a hidden or locked
 layer selected, only Copy looks active in the timeline selection bar — is that right?" The
 enable-states were right and stay: writes (Cut/Paste/Paste-insert/Delete) are refused when NO row in
