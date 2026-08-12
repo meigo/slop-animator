@@ -153,37 +153,55 @@
     </label>
     <input type="color" bind:value={appState.brush.color} title="Fill color" />
   {:else if appState.tool === "select" || appState.tool === "lasso"}
+    <!-- aria-disabled, NOT disabled: a disabled button dispatches no pointer events, so the status
+         bar's delegated title= hint can never reach it — see CLAUDE.md's 2026-08-12 entry. Handlers
+         are guarded to match, since the button stays clickable and keyboard-activatable. -->
     {@const btn =
-      "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover disabled:opacity-40 disabled:cursor-default"}
+      "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
+    {@const noSel = appState.selectionActive ? "" : " — select an area first"}
+    {@const noClip = appState.hasPixelClipboard ? "" : " — nothing copied yet"}
+    {@const canDeselect = appState.selectionActive || appState.selectionFloating}
     <button
       class={btn}
-      title="Copy (Cmd/Ctrl+C)"
-      disabled={!appState.selectionActive}
-      onclick={() => selectionActions.copy?.()}><Copy size={16} /></button
+      title={"Copy (Cmd/Ctrl+C)" + noSel}
+      aria-disabled={!appState.selectionActive}
+      onclick={() => {
+        if (appState.selectionActive) selectionActions.copy?.();
+      }}><Copy size={16} /></button
     >
     <button
       class={btn}
-      title="Cut (Cmd/Ctrl+X)"
-      disabled={!appState.selectionActive}
-      onclick={() => selectionActions.cut?.()}><Scissors size={16} /></button
+      title={"Cut (Cmd/Ctrl+X)" + noSel}
+      aria-disabled={!appState.selectionActive}
+      onclick={() => {
+        if (appState.selectionActive) selectionActions.cut?.();
+      }}><Scissors size={16} /></button
     >
     <button
       class={btn}
-      title="Paste (Cmd/Ctrl+V)"
-      disabled={!appState.hasPixelClipboard}
-      onclick={() => selectionActions.paste?.()}><ClipboardPaste size={16} /></button
+      title={"Paste (Cmd/Ctrl+V)" + noClip}
+      aria-disabled={!appState.hasPixelClipboard}
+      onclick={() => {
+        if (appState.hasPixelClipboard) selectionActions.paste?.();
+      }}><ClipboardPaste size={16} /></button
     >
     <button
       class={btn}
-      title="Delete (Del)"
-      disabled={!appState.selectionActive}
-      onclick={() => selectionActions.del?.()}><Trash2 size={16} /></button
+      title={"Delete (Del)" + noSel}
+      aria-disabled={!appState.selectionActive}
+      onclick={() => {
+        if (appState.selectionActive) selectionActions.del?.();
+      }}><Trash2 size={16} /></button
     >
     <button
       class={btn}
-      title="Deselect (Esc) — drops the selection; reverts an in-progress move"
-      disabled={!appState.selectionActive && !appState.selectionFloating}
-      onclick={() => selectionActions.deselect?.()}><MousePointerBan size={16} /></button
+      title={canDeselect
+        ? "Deselect (Esc) — drops the selection; reverts an in-progress move"
+        : "Deselect (Esc) — nothing selected"}
+      aria-disabled={!canDeselect}
+      onclick={() => {
+        if (canDeselect) selectionActions.deselect?.();
+      }}><MousePointerBan size={16} /></button
     >
     {#if activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
       <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer"
@@ -209,9 +227,11 @@
         class:bg-surface-active={appState.transformScope === "group"}
         class:opacity-40={!_groupedActive}
         class:cursor-not-allowed={!_groupedActive}
-        disabled={!_groupedActive}
+        aria-disabled={!_groupedActive}
         title={_groupedActive ? "Transform the group" : "Active layer is not in a group"}
-        onclick={() => _groupedActive && (appState.transformScope = "group")}>Group</button
+        onclick={() => {
+          if (_groupedActive) appState.transformScope = "group";
+        }}>Group</button
       >
     </div>
   {:else if appState.tool === "deform"}
