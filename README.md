@@ -26,6 +26,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Transform & deform**
 
 - Free transform at four scopes: selection, current-frame cell, whole layer, and layer group (transforms compose `group ∘ layer ∘ cell` at render)
+- Painting on a transformed layer shows its paintable edge as a hairline, so a scaled-down layer no longer cuts strokes off without warning
 - **Deform tool** — FFD grid warp plus a rigid (MLS) mode
 - **Pose tool** — silhouette triangulation + geodesic-weighted MLS with per-handle rotation/reach gizmos, for posing a character drawing without redrawing it
 
