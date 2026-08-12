@@ -800,6 +800,31 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
 
+**A `disabled` button can never explain itself (2026-08-12):** reported as "with a hidden or locked
+layer selected, only Copy looks active in the timeline selection bar — is that right?" The
+enable-states were right and stay: writes (Cut/Paste/Paste-insert/Delete) are refused when NO row in
+the selection is editable, Copy and ✕ stay live because **reading** a locked row is fine. Three
+alternatives were considered and rejected: disable everything (blocks a harmless read and makes the
+bar look broken), enable everything (defeats the lock, and re-opens the "editing what you can't see"
+bug the 2026-08-11 review closed), and **hide hidden layers from the timeline entirely** — the
+tempting one, and the worst: visibility is a TRANSIENT VIEW STATE while the timeline is the
+document's STRUCTURAL view, so rows would shift under you on an eye-toggle, block selections
+spanning layers would destabilise, and the layer panel and timeline would disagree about what
+exists. The real defect was that nothing said WHY: the reason was already in each button's `title=`,
+but **a `disabled` button dispatches no pointer events, so `App.svelte`'s delegated
+`pointerover`/`pointerdown` status-hint listener can never read it** — the control most needing to
+explain its refusal was the only one structurally unable to. Fixed by using **`aria-disabled` +
+guarded handlers** instead of `disabled` (`TimelineSelectionBar.svelte`), with
+`aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent` keeping
+the identical dimmed, inert look; the button stays pointer- and keyboard-reachable, so it speaks on
+hover AND on an iPad tap. Paste also now distinguishes its two refusals ("nothing copied yet" vs the
+read-only reason, read-only first — the harder block, matching status-hint precedence). **The
+general rule: if a control's `title=`/hint explains why it is unavailable, it must be `aria-disabled`,
+not `disabled`.** Known remaining instances, not changed here: the six selection-op buttons in
+`ToolOptions.svelte:161-185` use `disabled` — their titles are shortcut hints rather than
+explanations, so nothing is lost today, but a reason added there would be unreachable. **Owed:** an
+iPad tap on a dimmed bar button showing the reason in the status bar.
+
 **Audio Phase 3 — export muxing (2026-08-11):** the project audio track is now muxed into the
 MP4/WebM export, closing the audio roadmap (P1 import/playback, P2 scrub/offset/mute, P3 export).
 Alignment reuses the PLAYBACK rule rather than restating it: `audioExportPlan`

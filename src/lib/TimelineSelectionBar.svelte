@@ -35,6 +35,16 @@
       }),
   );
   const readOnlyTitle = " — selection is on locked/hidden layers";
+  const canPaste = $derived(!!appState.cellClipboard && anyEditable);
+  /** Why a bar action is currently refused, appended to its title= so the status bar can say it.
+   *  Read-only outranks an empty clipboard: it is the harder block, and matches the status-hint
+   *  precedence elsewhere (a hint for the more fundamental refusal first). */
+  const why = (needsClipboard: boolean) =>
+    !anyEditable
+      ? readOnlyTitle
+      : needsClipboard && !appState.cellClipboard
+        ? " — nothing copied yet"
+        : "";
 
   let x = $state(0);
   let y = $state(0);
@@ -80,8 +90,13 @@
     void labelW; // labelW reserved for future absolute layouts; keep the prop stable
   });
 
+  // `aria-disabled`, NOT `disabled`: a disabled button dispatches no pointer events, so App.svelte's
+  // delegated pointerover/pointerdown hint can never read its title= — the control that most needs
+  // to explain its refusal would be the only one structurally unable to. aria-disabled keeps the
+  // dimmed, inert look while still speaking on hover and on an iPad tap. Every handler below is
+  // guarded to match, since the button stays clickable and keyboard-activatable.
   const btn =
-    "w-6 h-6 rounded flex items-center justify-center text-text hover:bg-surface-hover disabled:opacity-40 disabled:cursor-default";
+    "w-6 h-6 rounded flex items-center justify-center text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent";
 </script>
 
 {#if rect}
@@ -95,27 +110,35 @@
     <button class={btn} title="Copy" onclick={copyTimelineSelection}><Copy size={14} /></button>
     <button
       class={btn}
-      title={anyEditable ? "Cut" : "Cut" + readOnlyTitle}
-      disabled={!anyEditable}
-      onclick={cutTimelineSelection}><Scissors size={14} /></button
+      title={"Cut" + why(false)}
+      aria-disabled={!anyEditable}
+      onclick={() => {
+        if (anyEditable) cutTimelineSelection();
+      }}><Scissors size={14} /></button
     >
     <button
       class={btn}
-      title={anyEditable ? "Paste (overwrite)" : "Paste" + readOnlyTitle}
-      disabled={!appState.cellClipboard || !anyEditable}
-      onclick={() => pasteCells(false)}><ClipboardPaste size={14} /></button
+      title={"Paste (overwrite)" + why(true)}
+      aria-disabled={!canPaste}
+      onclick={() => {
+        if (canPaste) pasteCells(false);
+      }}><ClipboardPaste size={14} /></button
     >
     <button
       class={btn}
-      title={anyEditable ? "Paste insert" : "Paste insert" + readOnlyTitle}
-      disabled={!appState.cellClipboard || !anyEditable}
-      onclick={() => pasteCells(true)}><Rows3 size={14} /></button
+      title={"Paste insert" + why(true)}
+      aria-disabled={!canPaste}
+      onclick={() => {
+        if (canPaste) pasteCells(true);
+      }}><Rows3 size={14} /></button
     >
     <button
       class={btn}
-      title={anyEditable ? "Delete" : "Delete" + readOnlyTitle}
-      disabled={!anyEditable}
-      onclick={deleteTimelineSelection}><Trash2 size={14} /></button
+      title={"Delete" + why(false)}
+      aria-disabled={!anyEditable}
+      onclick={() => {
+        if (anyEditable) deleteTimelineSelection();
+      }}><Trash2 size={14} /></button
     >
     <button class={btn} title="Clear selection" onclick={clearTimelineSelection}
       ><X size={14} /></button
