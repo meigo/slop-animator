@@ -822,8 +822,9 @@ read-only reason, read-only first — the harder block, matching status-hint pre
 general rule: if a control's `title=`/hint explains why it is unavailable, it must be `aria-disabled`,
 not `disabled`.** Known remaining instances, not changed here: the six selection-op buttons in
 `ToolOptions.svelte:161-185` use `disabled` — their titles are shortcut hints rather than
-explanations, so nothing is lost today, but a reason added there would be unreachable. **Owed:** an
-iPad tap on a dimmed bar button showing the reason in the status bar.
+explanations, so nothing is lost today, but a reason added there would be unreachable.
+**Verified 2026-08-12 on BOTH iPad and desktop:** a dimmed bar button reports its reason in the
+status bar. Nothing owed.
 
 **Audio Phase 3 — export muxing (2026-08-11):** the project audio track is now muxed into the
 MP4/WebM export, closing the audio roadmap (P1 import/playback, P2 scrub/offset/mute, P3 export).
