@@ -8,3 +8,23 @@ export function clampTimelineHeight(px: number, viewportH: number): number {
   const max = Math.max(MIN_TIMELINE_HEIGHT, Math.round(viewportH * 0.6));
   return Math.max(MIN_TIMELINE_HEIGHT, Math.min(px, max));
 }
+
+/** Page-step scroll so the playhead stays in the visible cell strip (right of the gutter).
+ *  Returns the next `scrollLeft`, or null when the caller should leave the scroll alone.
+ *  Forward only while the playhead is advancing — if the user has scrolled ahead we do not
+ *  yank them back. A backward jump (loop wrap) that left the view does snap. */
+export function playheadFollowScroll(
+  playheadX: number,
+  scrollLeft: number,
+  clientWidth: number,
+  gutterW: number,
+  pad: number,
+  prevPlayheadX: number | null,
+): number | null {
+  const viewLeft = scrollLeft + gutterW + pad;
+  const viewRight = scrollLeft + clientWidth - pad;
+  if (playheadX > viewRight) return Math.max(0, playheadX - gutterW - pad);
+  const wrapped = prevPlayheadX !== null && playheadX < prevPlayheadX;
+  if (wrapped && playheadX < viewLeft) return Math.max(0, playheadX - gutterW - pad);
+  return null;
+}

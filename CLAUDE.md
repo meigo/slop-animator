@@ -986,3 +986,12 @@ document space under a cell/group transform (paint/fill inverse-map; these do no
 listeners are still on the document AABB so `LayerBoundsHint` can advertise a quad events never
 reach; hold-span resize has no settle hook; `state.version` is still both repaint and persist
 dirty; pixel history is still 50 full-frame ImageDatas.
+
+**Timeline iPad UX (2026-08-14):** three prod-test findings. (1) Sticky gutter: row
+containing-blocks were only as wide as the visible scroller, so `position: sticky` unstuck after
+~one viewport of horizontal scroll — `w-max` on ruler/audio/layer rows. (2) Playhead page-follow
+during play (`playheadFollowScroll`, unit-tested): jump when it leaves the right edge so it sits
+just after the gutter; snap back on loop wrap; do not yank if the user scrolled ahead. (3) Palm
+on the timeline while drawing: the whole grid now uses the canvas rule — `touch` pans only,
+`pen`/`mouse` edit. Layer _list_ stays finger-friendly. Spec:
+`docs/superpowers/specs/2026-08-14-timeline-ipad-ux-design.md`.
