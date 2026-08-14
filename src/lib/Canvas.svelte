@@ -145,6 +145,24 @@
     selection.screenScale = viewport.zoom * extra;
   }
 
+  /** Map document space onto the stage-sized overlay (same pan/rotate/zoom as the CSS wrapper). */
+  function applyViewTransform(ctx: CanvasRenderingContext2D) {
+    if (!viewport) return;
+    ctx.translate(viewport.panX, viewport.panY);
+    ctx.rotate(viewport.rotation);
+    ctx.scale(viewport.zoom, viewport.zoom);
+  }
+
+  function sizeOverlay() {
+    if (!overlay || !stage) return;
+    const w = Math.max(1, stage.clientWidth);
+    const h = Math.max(1, stage.clientHeight);
+    if (overlay.width !== w || overlay.height !== h) {
+      overlay.width = w;
+      overlay.height = h;
+    }
+  }
+
   let display: HTMLCanvasElement;
   let displayCtx: CanvasRenderingContext2D;
   let viewport: Viewport;
@@ -853,17 +871,16 @@
   }
 
   function setupSelection() {
-    overlay.width = appState.project.width;
-    overlay.height = appState.project.height;
-    overlay.style.width = `${appState.project.width}px`;
-    overlay.style.height = `${appState.project.height}px`;
+    sizeOverlay();
 
     selection = new Selection(overlay);
     selection.mode = "rect";
+    selection.applyView = applyViewTransform;
     selection.applyCompose = applyOverlayCompose;
     syncOverlayScale();
     let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
+      sizeOverlay();
       syncOverlayScale();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
@@ -1068,6 +1085,7 @@
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlay.width, overlay.height);
+    applyViewTransform(octx);
     applyOverlayCompose(octx);
     const al = activeLayer();
     const px =
@@ -1238,6 +1256,8 @@
     window.addEventListener("blur", onViewBlur);
     recomposite();
     setupSelection();
+    const overlayRo = new ResizeObserver(() => sizeOverlay());
+    overlayRo.observe(stage);
 
     // Finger gestures: 1-finger pan, 1-finger double-tap toggle eraser, 2-finger pinch zoom+rotate,
     // 2-finger tap undo, 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
@@ -1246,6 +1266,7 @@
       onRedo: () => redo(),
       onToggleEraser: () => toggleEraser(),
       onViewportChange: () => {
+        sizeOverlay();
         syncOverlayScale();
       },
     });
@@ -1265,10 +1286,7 @@
         lastW = appState.project.width;
         lastH = appState.project.height;
         sizeDisplay();
-        overlay.width = appState.project.width;
-        overlay.height = appState.project.height;
-        overlay.style.width = `${appState.project.width}px`;
-        overlay.style.height = `${appState.project.height}px`;
+        sizeOverlay();
       }
       if (dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead) {
         lastVersion = appState.version;
@@ -1300,6 +1318,7 @@
     viewActions.fitView = () => viewport?.fitView(appState.project.width, appState.project.height);
 
     return () => {
+      overlayRo.disconnect();
       cleanup();
       cleanupTouch();
       stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
@@ -1439,8 +1458,8 @@
       ></div>
     {/if}
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
-    <canvas bind:this={overlay} class="absolute left-0 top-0 pointer-events-none"></canvas>
   </div>
+  <canvas bind:this={overlay} class="pointer-events-none absolute inset-0"></canvas>
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}

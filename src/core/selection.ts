@@ -759,6 +759,10 @@ export class Selection {
     return inside;
   }
 
+  /** Optional: viewport pan/rotate/zoom, applied in screen space before compose.
+   *  The overlay canvas is stage-sized (not CSS-zoomed); zoom lives on the 2D context so a
+   *  1-screen-px stroke is rasterized after scale, not as a sub-pixel line blown up by CSS. */
+  applyView: ((ctx: CanvasRenderingContext2D) => void) | null = null;
   /** Optional: applied after the identity reset so the overlay matches `group ∘ layer ∘ cell`. */
   applyCompose: ((ctx: CanvasRenderingContext2D) => void) | null = null;
 
@@ -767,128 +771,133 @@ export class Selection {
     const cvs = this.overlayCanvas;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cvs.width, cvs.height);
-    this.applyCompose?.(ctx);
     if (!this.rect || this.state === "idle") return;
+    this.applyView?.(ctx);
+    this.applyCompose?.(ctx);
+    try {
+      // Animation re-trigger
+      this.marchOffset = (this.marchOffset + 0.3) % 8;
+      cancelAnimationFrame(this.animFrame);
+      this.animFrame = requestAnimationFrame(() => this.drawOverlay());
 
-    // Animation re-trigger
-    this.marchOffset = (this.marchOffset + 0.3) % 8;
-    cancelAnimationFrame(this.animFrame);
-    this.animFrame = requestAnimationFrame(() => this.drawOverlay());
-
-    // 'selected' state OR mid-creation: draw the actual selection shape with marching ants.
-    // NOTE: drawn even when `hidden` — the marquee is UI chrome, not layer content, and a marquee
-    // is document-level (survives layer switches). Suppressing it made selections on a hidden layer
-    // invisible until you activated a visible one (2026-08-11 report).
-    if (this.state === "selected" || this.isCreating) {
-      if (this.mode === "lasso" && (this.lassoPath || this.lassoPoints.length > 1)) {
-        ctx.beginPath();
-        ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
-        for (let i = 1; i < this.lassoPoints.length; i++) {
-          ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+      // 'selected' state OR mid-creation: draw the actual selection shape with marching ants.
+      // NOTE: drawn even when `hidden` — the marquee is UI chrome, not layer content, and a marquee
+      // is document-level (survives layer switches). Suppressing it made selections on a hidden layer
+      // invisible until you activated a visible one (2026-08-11 report).
+      if (this.state === "selected" || this.isCreating) {
+        if (this.mode === "lasso" && (this.lassoPath || this.lassoPoints.length > 1)) {
+          ctx.beginPath();
+          ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+          for (let i = 1; i < this.lassoPoints.length; i++) {
+            ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+          }
+          if (this.lassoPath) ctx.closePath();
+          this.strokeMarchingAnts(ctx);
+        } else {
+          ctx.beginPath();
+          ctx.rect(this.rect.x, this.rect.y, this.rect.w, this.rect.h);
+          this.strokeMarchingAnts(ctx);
         }
-        if (this.lassoPath) ctx.closePath();
-        this.strokeMarchingAnts(ctx);
-      } else {
-        ctx.beginPath();
-        ctx.rect(this.rect.x, this.rect.y, this.rect.w, this.rect.h);
-        this.strokeMarchingAnts(ctx);
+        return;
       }
-      return;
-    }
 
-    // Past this point the overlay renders LIFTED PIXELS — the layer's own content — so it must obey
-    // the layer's visibility.
-    if (this.hidden) return;
+      // Past this point the overlay renders LIFTED PIXELS — the layer's own content — so it must obey
+      // the layer's visibility.
+      if (this.hidden) return;
 
-    // 'warping' state: tessellated render + grid lines + handles + outer perimeter.
-    if (this.state === "warping" && this.warpGrid.length === this.warpRows) {
-      const grid = this.warpGrid;
+      // 'warping' state: tessellated render + grid lines + handles + outer perimeter.
+      if (this.state === "warping" && this.warpGrid.length === this.warpRows) {
+        const grid = this.warpGrid;
+        if (this.floatingPixels) {
+          drawWarpedMesh(ctx, this.floatingPixels, this.rect, grid, this.warpRows, this.warpCols);
+        }
+        // Internal grid lines (between adjacent control points).
+        ctx.save();
+        ctx.strokeStyle = "rgba(0,0,0,0.3)";
+        ctx.lineWidth = this.px;
+        ctx.beginPath();
+        for (let r = 0; r < this.warpRows; r++) {
+          for (let c = 0; c < this.warpCols - 1; c++) {
+            ctx.moveTo(grid[r][c].x, grid[r][c].y);
+            ctx.lineTo(grid[r][c + 1].x, grid[r][c + 1].y);
+          }
+        }
+        for (let c = 0; c < this.warpCols; c++) {
+          for (let r = 0; r < this.warpRows - 1; r++) {
+            ctx.moveTo(grid[r][c].x, grid[r][c].y);
+            ctx.lineTo(grid[r + 1][c].x, grid[r + 1][c].y);
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+        // Outer perimeter with marching ants.
+        const perim = outerPerimeter(grid, this.warpRows, this.warpCols);
+        ctx.beginPath();
+        ctx.moveTo(perim[0].x, perim[0].y);
+        for (let i = 1; i < perim.length; i++) ctx.lineTo(perim[i].x, perim[i].y);
+        ctx.closePath();
+        this.strokeMarchingAnts(ctx);
+        // Handles at every grid intersection.
+        for (let r = 0; r < this.warpRows; r++) {
+          for (let c = 0; c < this.warpCols; c++) {
+            const isPinned = this.deformMode === "rigid" && this.pinned.has(r * this.warpCols + c);
+            this.drawHandle(ctx, grid[r][c].x, grid[r][c].y, isPinned ? "pin" : "square");
+          }
+        }
+        return;
+      }
+
+      // 'transforming' state: floating pixels + transformed bounding box + handles.
+      const c = this.transformedCorners();
+      const sides = this.transformedSides(c);
+      const rotHandle = this.rotateHandlePos(c);
+
+      // Draw floating pixels under the matrix.
       if (this.floatingPixels) {
-        drawWarpedMesh(ctx, this.floatingPixels, this.rect, grid, this.warpRows, this.warpCols);
+        const m = this.matrix;
+        ctx.save();
+        // Multiply — do not replace. applyCompose may already have the layer/cell/group matrix.
+        ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+        ctx.drawImage(this.floatingPixels, this.rect.x, this.rect.y, this.rect.w, this.rect.h);
+        ctx.restore();
       }
-      // Internal grid lines (between adjacent control points).
-      ctx.save();
-      ctx.strokeStyle = "rgba(0,0,0,0.3)";
-      ctx.lineWidth = this.px;
+
+      // Bounding-box marching ants (transformed quad).
       ctx.beginPath();
-      for (let r = 0; r < this.warpRows; r++) {
-        for (let c = 0; c < this.warpCols - 1; c++) {
-          ctx.moveTo(grid[r][c].x, grid[r][c].y);
-          ctx.lineTo(grid[r][c + 1].x, grid[r][c + 1].y);
-        }
-      }
-      for (let c = 0; c < this.warpCols; c++) {
-        for (let r = 0; r < this.warpRows - 1; r++) {
-          ctx.moveTo(grid[r][c].x, grid[r][c].y);
-          ctx.lineTo(grid[r + 1][c].x, grid[r + 1][c].y);
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
-      // Outer perimeter with marching ants.
-      const perim = outerPerimeter(grid, this.warpRows, this.warpCols);
-      ctx.beginPath();
-      ctx.moveTo(perim[0].x, perim[0].y);
-      for (let i = 1; i < perim.length; i++) ctx.lineTo(perim[i].x, perim[i].y);
+      ctx.moveTo(c.tl.x, c.tl.y);
+      ctx.lineTo(c.tr.x, c.tr.y);
+      ctx.lineTo(c.br.x, c.br.y);
+      ctx.lineTo(c.bl.x, c.bl.y);
       ctx.closePath();
       this.strokeMarchingAnts(ctx);
-      // Handles at every grid intersection.
-      for (let r = 0; r < this.warpRows; r++) {
-        for (let c = 0; c < this.warpCols; c++) {
-          const isPinned = this.deformMode === "rigid" && this.pinned.has(r * this.warpCols + c);
-          this.drawHandle(ctx, grid[r][c].x, grid[r][c].y, isPinned ? "pin" : "square");
-        }
+
+      // Corner handles.
+      for (const p of [c.tl, c.tr, c.bl, c.br]) {
+        this.drawHandle(ctx, p.x, p.y, "square");
       }
-      return;
+
+      // Side handles (smaller squares).
+      for (const p of [sides.t, sides.b, sides.l, sides.r]) {
+        this.drawHandle(ctx, p.x, p.y, "square");
+      }
+
+      // Rotation tether + handle.
+      const top = { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 };
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(rotHandle.x, rotHandle.y);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = this.px;
+      ctx.stroke();
+      ctx.strokeStyle = "#000";
+      ctx.setLineDash([2 * this.px, 2 * this.px]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      this.drawHandle(ctx, rotHandle.x, rotHandle.y, "circle");
+    } finally {
+      // hitTest's isPointInPath stays in document/cell space.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
-
-    // 'transforming' state: floating pixels + transformed bounding box + handles.
-    const c = this.transformedCorners();
-    const sides = this.transformedSides(c);
-    const rotHandle = this.rotateHandlePos(c);
-
-    // Draw floating pixels under the matrix.
-    if (this.floatingPixels) {
-      const m = this.matrix;
-      ctx.save();
-      // Multiply — do not replace. applyCompose may already have the layer/cell/group matrix.
-      ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-      ctx.drawImage(this.floatingPixels, this.rect.x, this.rect.y, this.rect.w, this.rect.h);
-      ctx.restore();
-    }
-
-    // Bounding-box marching ants (transformed quad).
-    ctx.beginPath();
-    ctx.moveTo(c.tl.x, c.tl.y);
-    ctx.lineTo(c.tr.x, c.tr.y);
-    ctx.lineTo(c.br.x, c.br.y);
-    ctx.lineTo(c.bl.x, c.bl.y);
-    ctx.closePath();
-    this.strokeMarchingAnts(ctx);
-
-    // Corner handles.
-    for (const p of [c.tl, c.tr, c.bl, c.br]) {
-      this.drawHandle(ctx, p.x, p.y, "square");
-    }
-
-    // Side handles (smaller squares).
-    for (const p of [sides.t, sides.b, sides.l, sides.r]) {
-      this.drawHandle(ctx, p.x, p.y, "square");
-    }
-
-    // Rotation tether + handle.
-    const top = { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 };
-    ctx.beginPath();
-    ctx.moveTo(top.x, top.y);
-    ctx.lineTo(rotHandle.x, rotHandle.y);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = this.px;
-    ctx.stroke();
-    ctx.strokeStyle = "#000";
-    ctx.setLineDash([2 * this.px, 2 * this.px]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    this.drawHandle(ctx, rotHandle.x, rotHandle.y, "circle");
   }
 
   private strokeMarchingAnts(ctx: CanvasRenderingContext2D) {

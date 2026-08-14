@@ -850,6 +850,12 @@ size, constant crawl speed); handles the same size at every zoom; grabbing a cor
 zoom still feels right with the tighter tolerance; lasso outline; the warp/deform grid; iPad pinch
 zoom mid-selection.
 
+**Marquee crumbs at high zoom (2026-08-14):** `px` made the _intended_ size one screen pixel, but
+the overlay was still document-sized inside the CSS zoom — at 4×, `lineWidth = 0.25` canvas px
+rasterized to crumbs, then blown up. Overlay is now **stage-sized** (sibling of the zoomed wrapper);
+`applyView` puts pan/rotate/zoom on the 2D context so the stroke is rasterized after scale.
+Hit-testing resets the transform so `isPointInPath` stays in cell space.
+
 **Fit to view is reachable without a keyboard (2026-08-14):** `fitView` had exactly ONE caller —
 the `0` key in `Canvas.svelte` — and no UI route at all, which meant that on iPad (no keyboard) a
 canvas flung off-screen by a stray two-finger pan could only be recovered by RELOADING the page.
