@@ -17,6 +17,7 @@
     canvasOps,
     activeLayer,
     bump,
+    repaint,
     history,
     commitStructural,
     seekPlayhead,
@@ -24,6 +25,7 @@
     commitStructuralEdit,
     setActiveLayer,
     liftGuard,
+    transformDragGuard,
     setTimelineSelection,
     moveTimelineSelection,
     clearTimelineSelection,
@@ -39,7 +41,8 @@
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
-  import { clampTimelineHeight } from "../anim/timeline-layout";
+  import { clampTimelineHeight, playheadFollowScroll } from "../anim/timeline-layout";
+  import { pixelCommand } from "../anim/history";
   import {
     groupOf,
     isLayerEditable,
@@ -107,16 +110,63 @@
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     go(columnAtX(e.clientX - rect.left, CELL_W, appState.project.frameCount));
   }
+  function isFinePointer(e: PointerEvent): boolean {
+    return e.pointerType !== "touch"; // finger/palm navigate; Pencil/mouse edit
+  }
+
+  function touchPanDown(e: PointerEvent) {
+    if (!gridWrapper) return;
+    touchPan = {
+      x: e.clientX,
+      y: e.clientY,
+      left: gridWrapper.scrollLeft,
+      top: gridWrapper.scrollTop,
+      panning: false,
+    };
+  }
+  function touchPanMove(e: PointerEvent): boolean {
+    if (!touchPan || !gridWrapper) return false;
+    const dx = e.clientX - touchPan.x;
+    const dy = e.clientY - touchPan.y;
+    if (!touchPan.panning && Math.hypot(dx, dy) > MOVE_CANCEL_PX) touchPan.panning = true;
+    if (!touchPan.panning) return false;
+    gridWrapper.scrollLeft = touchPan.left - dx;
+    gridWrapper.scrollTop = touchPan.top - dy;
+    return true;
+  }
+  function touchPanUp() {
+    touchPan = null;
+  }
+
+  function nameDown(e: PointerEvent, layerId: number) {
+    if (!isFinePointer(e)) {
+      e.preventDefault(); // block the click so a palm does not switch layers
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      touchPanDown(e);
+      return;
+    }
+    setActiveLayer(layerId);
+  }
+
   function rulerDown(e: PointerEvent) {
-    scrubbing = true;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e);
+      return;
+    }
+    scrubbing = true;
     scrubTo(e);
   }
   function rulerMove(e: PointerEvent) {
+    if (touchPan) {
+      touchPanMove(e);
+      return;
+    }
     if (scrubbing) scrubTo(e);
   }
   function rulerUp(e: PointerEvent) {
     scrubbing = false;
+    touchPanUp();
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -178,6 +228,23 @@
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
 
+  // Page-step the timeline during play when the playhead walks off the right edge.
+  // Does not follow while paused/scrubbing, and does not yank back if the user scrolled ahead.
+  let followPrevX: number | null = null;
+  $effect(() => {
+    const playing = appState.playback.isPlaying;
+    const ph = appState.playhead;
+    const el = gridWrapper;
+    if (!playing || !el || scrubbing) {
+      if (!playing) followPrevX = null;
+      return;
+    }
+    const x = GUTTER_W + ph * CELL_W + CELL_W / 2;
+    const next = playheadFollowScroll(x, el.scrollLeft, el.clientWidth, GUTTER_W, 8, followPrevX);
+    followPrevX = x;
+    if (next !== null) el.scrollLeft = next;
+  });
+
   // moveblock: the grabbed key's frame and the live (clamped) frame offset for the ghost.
   let moveGrabFrame = -1;
   let moveDelta = $state(0);
@@ -218,9 +285,15 @@
       : null,
   );
 
+  function rowMovesWithBlock(layerId: number): boolean {
+    if (dragMode !== "moveblock" || !selRect || !selRect.layerIds.includes(layerId)) return false;
+    const layer = appState.project.layers.find((l) => l.id === layerId);
+    return !!layer && isLayerEditable(layer, appState.project.groups);
+  }
+
   function inSelection(layerId: number, f: number): boolean {
     if (!selRect) return false;
-    const shift = dragMode === "moveblock" ? moveDelta : 0; // slide the highlight to the drop target
+    const shift = rowMovesWithBlock(layerId) ? moveDelta : 0; // inert rows stay put (skip-and-consume)
     return (
       selRect.layerIds.includes(layerId) &&
       f >= selRect.startFrame + shift &&
@@ -230,11 +303,9 @@
 
   // During a moveblock drag, preview the keyframe glyphs sliding to the drop target: a cell in the
   // shifted range shows the glyph moving into it (from `f - moveDelta`); a vacated source cell
-  // clears. Cheap index math over the already-computed glyph array — no recompute. Otherwise the
-  // real glyph.
+  // clears. Locked/hidden rows do not write, so they keep their real glyphs.
   function displayGlyph(layerId: number, glyphs: string[], f: number): string {
-    if (dragMode !== "moveblock" || !selRect || !selRect.layerIds.includes(layerId))
-      return glyphs[f];
+    if (!rowMovesWithBlock(layerId) || !selRect) return glyphs[f];
     if (f >= selRect.startFrame + moveDelta && f <= selRect.endFrame + moveDelta)
       return glyphs[f - moveDelta] ?? ""; // key sliding into the target
     if (f >= selRect.startFrame && f <= selRect.endFrame) return ""; // vacated source
@@ -278,8 +349,12 @@
   }
 
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
-    setActiveLayer(layer.id);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e); // finger/palm: pan only — do not change layer or frame
+      return;
+    }
+    setActiveLayer(layer.id);
     dragLayerId = layer.id;
     const frame = rowColumn(e);
     pressStartX = e.clientX;
@@ -310,6 +385,7 @@
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
+      transformDragGuard.settle = () => settleRowDrag();
       return;
     }
 
@@ -320,6 +396,7 @@
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
+      transformDragGuard.settle = () => settleRowDrag();
       return;
     }
 
@@ -329,17 +406,12 @@
     armedOutside = true;
     armedOnKey = plan.kind === "move";
     pressFrame = frame;
-    if (e.pointerType === "touch" && gridWrapper) {
-      touchPan = {
-        x: e.clientX,
-        y: e.clientY,
-        left: gridWrapper.scrollLeft,
-        top: gridWrapper.scrollTop,
-        panning: false,
-      };
-    }
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
+    if (!isFinePointer(e)) {
+      touchPanMove(e);
+      return;
+    }
     // A real drag cancels a pending long-press.
     if (
       longPressTimer !== null &&
@@ -375,22 +447,6 @@
       bump();
       return;
     }
-    // Finger drag outside the selection → pan the timeline (see touchPan). Checked BEFORE the
-    // marquee branch so a scroll never turns into a selection.
-    if (touchPan && gridWrapper) {
-      const dx = e.clientX - touchPan.x;
-      const dy = e.clientY - touchPan.y;
-      if (!touchPan.panning && Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
-        touchPan.panning = true;
-        armedOutside = false; // this gesture is a scroll, not a tap or marquee
-        cancelLongPress();
-      }
-      if (touchPan.panning) {
-        gridWrapper.scrollLeft = touchPan.left - dx;
-        gridWrapper.scrollTop = touchPan.top - dy;
-        return;
-      }
-    }
     // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
     if (
       armedOutside &&
@@ -406,12 +462,48 @@
       );
       return;
     }
-    // Idle hover cursor.
+    // Idle hover cursor. Don't advertise resize/move on a row that rowDown will refuse.
     if (dragMode === "none") {
-      const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
-      rowCursor = plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
+      if (!isLayerEditable(layer, appState.project.groups)) {
+        rowCursor = "default";
+      } else {
+        const plan = planCellPointer(
+          layer.cells,
+          rowOffset(e),
+          CELL_W,
+          appState.project.frameCount,
+        );
+        rowCursor =
+          plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
+      }
     }
   }
+  /** undo()/tool-switch mid-gesture: commit a dirty hold-span so the following undo pops it;
+   *  drop an in-flight move-block (it has not written yet). rowUp applies then calls resetRowDrag. */
+  function settleRowDrag() {
+    if (dragMode === "resize" && dragUndo && dragLastBoundary !== dragStartBoundary) {
+      commitStructuralEdit(dragUndo);
+    }
+    resetRowDrag();
+  }
+
+  function resetRowDrag() {
+    dragMode = "none";
+    dragLayerId = -1;
+    dragKey = -1;
+    dragUndo = null;
+    dragStartBoundary = -1;
+    dragLastBoundary = -1;
+    moveGrabFrame = -1;
+    moveDelta = 0;
+    moved = false;
+    armedOutside = false;
+    armedOnKey = false;
+    pressFrame = -1;
+    touchPanUp();
+    transformDragGuard.settle = null;
+  }
+
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
     cancelLongPress();
     try {
@@ -448,19 +540,7 @@
       }
     }
 
-    dragMode = "none";
-    dragLayerId = -1;
-    dragKey = -1;
-    dragUndo = null;
-    dragStartBoundary = -1;
-    dragLastBoundary = -1;
-    moveGrabFrame = -1;
-    moveDelta = 0;
-    moved = false;
-    armedOutside = false;
-    armedOnKey = false;
-    pressFrame = -1;
-    touchPan = null;
+    resetRowDrag();
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";
@@ -513,6 +593,7 @@
   function clearFrame() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
     const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -521,16 +602,20 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        bump();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        bump();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          bump();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          bump();
+        },
+        before,
+        after,
+      ),
+    );
     bump();
   }
 
@@ -586,7 +671,7 @@
       title="Onion skin"
       onclick={() => {
         appState.onion.enabled = !appState.onion.enabled;
-        bump();
+        repaint();
       }}><Layers size={16} /></button
     >
     <!-- Onion params live in a popover, mirroring line boil next door: three inline labels made
@@ -610,7 +695,7 @@
               min="0"
               max="3"
               bind:value={appState.onion.prev}
-              onchange={bump}
+              onchange={repaint}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.prev}</span
             ></label
@@ -623,20 +708,20 @@
               min="0"
               max="3"
               bind:value={appState.onion.next}
-              onchange={bump}
+              onchange={repaint}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.next}</span
             ></label
           >
           <label class="flex items-center gap-2" title="Onion: ghost all layers, not just this one">
-            <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={bump} />
+            <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={repaint} />
             all layers
           </label>
           <label
             class="flex items-center gap-2"
             title="Onion: step to neighbouring keyframes instead of frames — holds don't use up a ghost"
           >
-            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={bump} />
+            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={repaint} />
             step by keyframes
           </label>
           <span class="text-text-muted"
@@ -750,7 +835,7 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <div class="flex items-stretch sticky top-0 z-20 bg-surface">
+    <div class="flex w-max items-stretch sticky top-0 z-20 bg-surface">
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
@@ -836,20 +921,33 @@
     </div>
 
     <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
-    <AudioLane cellW={CELL_W} labelW={LABEL_W} markerW={MARKER_W} />
+    <AudioLane
+      cellW={CELL_W}
+      labelW={LABEL_W}
+      markerW={MARKER_W}
+      onTouchDown={touchPanDown}
+      onTouchMove={touchPanMove}
+      onTouchUp={touchPanUp}
+    />
 
     <!-- layer rows (top layer first) -->
     {#each [...appState.project.layers].reverse() as layer (layer.id)}
       {#if !groupOf(layer, appState.project.groups)?.collapsed}
-        <div class="flex items-center">
+        <div class="flex w-max items-center">
           <button
             class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             class:text-text={layer.id === appState.activeLayerId}
             class:text-text-secondary={layer.id !== appState.activeLayerId}
-            style="width: {LABEL_W}px"
+            style="width: {LABEL_W}px; touch-action: none"
             title="Select layer"
+            onpointerdown={(e) => nameDown(e, layer.id)}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
             onclick={() => setActiveLayer(layer.id)}>{layer.name}</button
           >
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
@@ -858,14 +956,25 @@
             class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 border-r border-text-muted"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
-            style="left: {LABEL_W}px; width: {MARKER_W}px"
+            role="presentation"
+            style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
+            onpointerdown={(e) => {
+              if (isFinePointer(e)) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              touchPanDown(e);
+            }}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
             title={isLayerLocked(layer, appState.project.groups)
               ? "Layer locked — edits refused"
               : !isLayerVisible(layer, appState.project.groups)
                 ? "Layer hidden — edits refused"
                 : ""}
           >
-            {#if layer.locked}<Lock
+            {#if isLayerLocked(layer, appState.project.groups)}<Lock
                 size={11}
               />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
           </span>

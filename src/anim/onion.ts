@@ -173,11 +173,14 @@ export function renderFrameWithOnion(
   onion: OnionConfig,
   activeLayerId: number,
   version = 0,
+  outputScale = 1,
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
 
-  display.setTransform(1, 0, 0, 1, 0, 0);
+  display.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+  display.imageSmoothingEnabled = true;
+  display.imageSmoothingQuality = "high";
   display.globalAlpha = 1;
   display.globalCompositeOperation = "source-over";
   display.clearRect(0, 0, w, h);

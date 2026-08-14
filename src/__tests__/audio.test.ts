@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computePeaks, audioFrameSpan, bufferOffsetForFrame } from "../audio/peaks";
+import { computePeaks, audioFrameSpan, bufferOffsetForFrame, audioPlayPlan } from "../audio/peaks";
 
 describe("computePeaks", () => {
   it("returns exactly `columns` values", () => {
@@ -39,5 +39,21 @@ describe("bufferOffsetForFrame", () => {
   });
   it("is signed (negative) before the clip start", () => {
     expect(bufferOffsetForFrame(6, 12, 12)).toBe(-0.5); // clip starts 0.5s in the future — SIGNED, not clamped (P2: the engine delays the start; clamping made a dragged-right clip play early)
+  });
+});
+
+describe("audioPlayPlan", () => {
+  it("plays from the buffer offset when the playhead is inside the clip", () => {
+    expect(audioPlayPlan(0.5, 2)).toEqual({ kind: "offset", offsetS: 0.5 });
+  });
+  it("delays a start when the playhead is before the clip", () => {
+    expect(audioPlayPlan(-0.5, 2)).toEqual({ kind: "delay", delayS: 0.5 });
+  });
+  it("is silent at or past the clip end (AudioBufferSourceNode.start throws otherwise)", () => {
+    expect(audioPlayPlan(2, 2)).toEqual({ kind: "silence" });
+    expect(audioPlayPlan(2.1, 2)).toEqual({ kind: "silence" });
+  });
+  it("treats a zero-length buffer as silent", () => {
+    expect(audioPlayPlan(0, 0)).toEqual({ kind: "silence" });
   });
 });

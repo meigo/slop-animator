@@ -83,7 +83,15 @@ export function ensureDrawableKeyframe(
   const ki = resolveKeyframeIndex(layer.cells, frame);
   const held = ki === null ? null : layer.cells[ki];
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();
-  layer.cells[frame] = { kind: "key", canvas };
+  const neu: Cell = { kind: "key", canvas };
+  // Draw-on-hold must keep the placement the user is looking at (group ∘ layer ∘ heldCellT).
+  // New objects — snapshots share cell refs (gotcha #8).
+  if (held && held.kind === "key") {
+    if (held.transform) neu.transform = { ...held.transform };
+    if (held.transformBox !== undefined)
+      neu.transformBox = held.transformBox ? { ...held.transformBox } : held.transformBox;
+  }
+  layer.cells[frame] = neu;
   return canvas;
 }
 

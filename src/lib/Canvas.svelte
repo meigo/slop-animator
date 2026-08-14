@@ -24,6 +24,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
   } from "../state/appState.svelte";
+  import { pixelCommand } from "../anim/history";
   import {
     selectionRef,
     selectionActions,
@@ -93,6 +94,55 @@
       });
     }
     return steps;
+  }
+
+  /** Full paint compose [cell, layer, group] — same chain paintStroke / doFill invert. */
+  function cellComposeSteps(layer: Layer): ComposeStep[] {
+    if (layer.kind !== "draw") return layerComposeSteps(layer);
+    const W = appState.project.width,
+      H = appState.project.height;
+    const rk = resolvedKeyCell(layer, appState.playhead);
+    const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
+    const cellBox = rk
+      ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
+      : { x: 0, y: 0, w: W, h: H };
+    return [{ base: cellBox, t: cellT }, ...layerComposeSteps(layer)];
+  }
+
+  function composeScaleOf(steps: ComposeStep[]): number {
+    return steps.reduce((s, step) => s * step.t.scale, 1);
+  }
+
+  /** Document-space point → cell-local (inverse of group ∘ layer ∘ cell). */
+  function toCellSpace(p: { x: number; y: number }): { x: number; y: number } {
+    const al = activeLayer();
+    if (al.kind !== "draw") return p;
+    const steps = cellComposeSteps(al);
+    if (!steps.some((s) => !isIdentityTransform(s.t))) return p;
+    return inverseChain(steps, p);
+  }
+
+  /** Apply group ∘ layer ∘ cell to an overlay ctx (logical px, dpr = 1). Outer first. */
+  function applyOverlayCompose(ctx: CanvasRenderingContext2D) {
+    const al = activeLayer();
+    if (al.kind !== "draw") return;
+    const steps = cellComposeSteps(al);
+    if (!steps.some((s) => !isIdentityTransform(s.t))) return;
+    for (const s of [...steps].reverse()) {
+      const cx = s.base.x + s.base.w / 2;
+      const cy = s.base.y + s.base.h / 2;
+      ctx.translate(cx + s.t.dx, cy + s.t.dy);
+      ctx.rotate(s.t.rotation);
+      ctx.scale(s.t.scale, s.t.scale);
+      ctx.translate(-cx, -cy);
+    }
+  }
+
+  function syncOverlayScale() {
+    if (!selection || !viewport) return;
+    const al = activeLayer();
+    const extra = al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1;
+    selection.screenScale = viewport.zoom * extra;
   }
 
   let display: HTMLCanvasElement;
@@ -209,14 +259,32 @@
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
 
+  /** Backing-store scale so a CSS-zoomed view still has pixels for a scaled-down layer.
+   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows. */
+  function displayOutputScale(): number {
+    const z = viewport?.zoom ?? 1;
+    return Math.min(2, Math.max(1, z));
+  }
+
   function sizeDisplay() {
-    display.width = appState.project.width * DPR;
-    display.height = appState.project.height * DPR;
+    const ss = displayOutputScale();
+    const w = Math.round(appState.project.width * DPR * ss);
+    const h = Math.round(appState.project.height * DPR * ss);
+    if (display.width !== w || display.height !== h) {
+      display.width = w;
+      display.height = h;
+    }
     display.style.width = `${appState.project.width}px`;
     display.style.height = `${appState.project.height}px`;
+    if (scratch && (scratch.width !== w || scratch.height !== h)) {
+      scratch.width = w;
+      scratch.height = h;
+    }
   }
 
   function recomposite() {
+    sizeDisplay();
+    const ss = displayOutputScale();
     // Onion ghosts are hidden during playback (you want a clean preview while it runs).
     if (appState.onion.enabled && !appState.playback.isPlaying) {
       renderFrameWithOnion(
@@ -228,6 +296,7 @@
         appState.onion,
         appState.activeLayerId,
         appState.version,
+        ss,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
@@ -237,6 +306,7 @@
           : undefined;
       renderFrame(displayCtx, appState.project, appState.playhead, DPR, {
         drawBg: !appState.project.transparentBg,
+        outputScale: ss,
         boil,
         version: appState.version,
       });
@@ -284,16 +354,20 @@
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        recomposite();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        recomposite();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
     bump();
     recomposite();
   }
@@ -364,8 +438,9 @@
   }
 
   function sampleAt(p: { x: number; y: number }): string | null {
-    const px = Math.round(p.x * DPR),
-      py = Math.round(p.y * DPR);
+    const ss = display.width / Math.max(1, appState.project.width * DPR);
+    const px = Math.round(p.x * DPR * ss),
+      py = Math.round(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
     const [r, g, b] = displayCtx.getImageData(px, py, 1, 1).data;
     return rgbToHex(r, g, b);
@@ -553,10 +628,10 @@
     }
     const d = refDrag;
     if (d.handle) {
-      d.dirty = true; // this gesture wrote a transform → its bracket is worth committing
       if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
       else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
       else setT(applyScale(d.startT, d.center, d.start, pc));
+      d.dirty = !isSameTransform(d.startT, getT());
       bump();
     }
     if (done) {
@@ -605,18 +680,8 @@
       onTransformDrag(al, points, done);
       return;
     }
-    // Selection is disabled while the active draw layer is transformed (Apply first).
-    if (
-      (appState.tool === "select" ||
-        appState.tool === "lasso" ||
-        appState.tool === "deform" ||
-        appState.tool === "pose") &&
-      al.kind === "draw" &&
-      !isIdentityTransform(al.transform)
-    )
-      return;
     if (appState.tool === "pose") {
-      const p = points[points.length - 1];
+      const p = toCellSpace(points[points.length - 1]);
       if (!meshPose) {
         if (points.length === 1 && !done) enterPose();
         return;
@@ -624,10 +689,14 @@
       if (points.length === 1 && !done) {
         // Press: gizmo nub first, then handle body, then add a handle.
         const nub = poseNubPos();
-        if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 / viewport.zoom) {
+        const hitPx =
+          1 /
+          (viewport.zoom *
+            (activeLayer().kind === "draw" ? composeScaleOf(cellComposeSteps(activeLayer())) : 1));
+        if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 * hitPx) {
           poseAdjusting = true;
         } else {
-          const hit = meshPose.handleAt(p, 10 / viewport.zoom);
+          const hit = meshPose.handleAt(p, 10 * hitPx);
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
           poseDrag = activeHandle;
         }
@@ -651,7 +720,7 @@
       return;
     }
     if (appState.tool === "deform") {
-      const p = points[points.length - 1];
+      const p = toCellSpace(points[points.length - 1]);
       if (selection.state !== "warping") {
         if (points.length === 1 && !done) enterDeform(); // first press lifts + enters the grid
         return;
@@ -671,7 +740,7 @@
       return;
     }
     if (appState.tool === "select" || appState.tool === "lasso") {
-      const p = points[points.length - 1];
+      const p = toCellSpace(points[points.length - 1]);
       if (points.length === 1 && !done) {
         const handle = selection.hitTest(p.x, p.y);
         if (selection.state === "selected" && handle === "move") {
@@ -748,16 +817,20 @@
       const after = strokeCtx!.getImageData(0, 0, strokeCanvas!.width, strokeCanvas!.height);
       const target = strokeCtx!;
       const before = beforeSnapshot!;
-      history.push({
-        undo: () => {
-          target.putImageData(before, 0, 0);
-          recomposite();
-        },
-        redo: () => {
-          target.putImageData(after, 0, 0);
-          recomposite();
-        },
-      });
+      history.push(
+        pixelCommand(
+          () => {
+            target.putImageData(before, 0, 0);
+            recomposite();
+          },
+          () => {
+            target.putImageData(after, 0, 0);
+            recomposite();
+          },
+          before,
+          after,
+        ),
+      );
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
@@ -778,9 +851,16 @@
 
     selection = new Selection(overlay);
     selection.mode = "rect";
-    selection.screenScale = viewport.zoom;
+    selection.applyCompose = applyOverlayCompose;
+    syncOverlayScale();
+    let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
-      selection.screenScale = viewport.zoom;
+      syncOverlayScale();
+      const ss = displayOutputScale();
+      if (ss !== lastOutputScale) {
+        lastOutputScale = ss;
+        recomposite(); // zoom crossed a backing-store step
+      }
     };
 
     selection.onChange = () => recomposite();
@@ -798,16 +878,20 @@
       const ctx = selCtx;
       const before = selBefore;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-      history.push({
-        undo: () => {
-          ctx.putImageData(before, 0, 0);
-          recomposite();
-        },
-        redo: () => {
-          ctx.putImageData(after, 0, 0);
-          recomposite();
-        },
-      });
+      history.push(
+        pixelCommand(
+          () => {
+            ctx.putImageData(before, 0, 0);
+            recomposite();
+          },
+          () => {
+            ctx.putImageData(after, 0, 0);
+            recomposite();
+          },
+          before,
+          after,
+        ),
+      );
       selCtx = null;
       selBefore = null;
       bump();
@@ -869,16 +953,20 @@
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        bump();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        bump();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          bump();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          bump();
+        },
+        before,
+        after,
+      ),
+    );
     selection.cancel(); // clear the marquee (no float → onCancel no-ops)
     bump();
   }
@@ -924,7 +1012,7 @@
 
   function enterDeform() {
     const al = activeLayer();
-    if (!isLayerEditable(al, appState.project.groups) || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al, appState.project.groups)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return; // empty cell → nothing to deform
@@ -971,7 +1059,11 @@
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlay.width, overlay.height);
-    if (meshPose && isLayerVisible(activeLayer(), appState.project.groups)) {
+    applyOverlayCompose(octx);
+    const al = activeLayer();
+    const px =
+      1 / (viewport.zoom * (al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1));
+    if (meshPose && isLayerVisible(al, appState.project.groups)) {
       meshPose.render(octx);
       meshPose.drawWireframe(octx);
       if (activeHandle !== null) {
@@ -999,25 +1091,25 @@
         }
         // reach dial circle (faint/dashed when unlimited)
         octx.strokeStyle = h.reach == null ? "rgba(0,128,255,0.25)" : "rgba(0,128,255,0.6)";
-        octx.lineWidth = 1 / viewport.zoom;
-        octx.setLineDash(h.reach == null ? [6 / viewport.zoom, 4 / viewport.zoom] : []);
+        octx.lineWidth = px;
+        octx.setLineDash(h.reach == null ? [6 * px, 4 * px] : []);
         octx.beginPath();
         octx.arc(c.x, c.y, r, 0, Math.PI * 2);
         octx.stroke();
         octx.setLineDash([]);
         // hand line + nub (direction = rotation, distance = reach)
         octx.strokeStyle = "rgba(0,128,255,0.7)";
-        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.lineWidth = 1.5 * px;
         octx.beginPath();
         octx.moveTo(c.x, c.y);
         octx.lineTo(nub.x, nub.y);
         octx.stroke();
         octx.fillStyle = "#0080ff";
         octx.beginPath();
-        octx.arc(nub.x, nub.y, 5 / viewport.zoom, 0, Math.PI * 2);
+        octx.arc(nub.x, nub.y, 5 * px, 0, Math.PI * 2);
         octx.fill();
         octx.strokeStyle = "#fff";
-        octx.lineWidth = 1.5 / viewport.zoom;
+        octx.lineWidth = 1.5 * px;
         octx.stroke();
       }
     }
@@ -1025,7 +1117,7 @@
 
   function enterPose() {
     const al = activeLayer();
-    if (!isLayerEditable(al, appState.project.groups) || !isIdentityTransform(al.transform)) return;
+    if (!isLayerEditable(al, appState.project.groups)) return;
     const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
     if (!rect) return;
@@ -1061,16 +1153,20 @@
     const ctx = selCtx;
     const before = selBefore;
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        recomposite();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        recomposite();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
     meshPose = null;
     appState.poseActive = false;
     poseDrag = null;
@@ -1141,11 +1237,11 @@
       onRedo: () => redo(),
       onToggleEraser: () => toggleEraser(),
       onViewportChange: () => {
-        selection.screenScale = viewport.zoom;
+        syncOverlayScale();
       },
     });
 
-    const cleanup = setupInput(display, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
+    const cleanup = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
       streamline: () => activeStroke().streamline / 100,
     });
 
@@ -1160,8 +1256,6 @@
         lastW = appState.project.width;
         lastH = appState.project.height;
         sizeDisplay();
-        scratch.width = appState.project.width * DPR;
-        scratch.height = appState.project.height * DPR;
         overlay.width = appState.project.width;
         overlay.height = appState.project.height;
         overlay.style.width = `${appState.project.width}px`;
@@ -1176,6 +1270,7 @@
           appState.project.fps,
           appState.playback.isPlaying,
         );
+        syncOverlayScale();
         recomposite();
       }
       raf = requestAnimationFrame(tick);
@@ -1361,7 +1456,7 @@
   />
   {#if poseBarVisible()}
     <div
-      class="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
+      class="selection-actions-panel absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
     >
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"

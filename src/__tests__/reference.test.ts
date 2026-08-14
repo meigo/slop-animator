@@ -90,6 +90,15 @@ describe("syncReferenceVideos", () => {
     expect(v.paused).toBe(false);
   });
 
+  it("playing + playhead at/past clip end: freezes on last frame, does not play()", () => {
+    // HTML play() on an ended element seeks to 0 — so we must not call it once wanted >= duration.
+    const v = fakeVid({ currentTime: 2, paused: true, duration: 2 });
+    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true); // wanted 10s, clamped to 2
+    expect(v.currentTime).toBe(2);
+    expect(v.playCount).toBe(0);
+    expect(v.paused).toBe(true);
+  });
+
   it("skips non-video / missing layers without error", () => {
     const draw = { kind: "draw", id: 2, cells: [] } as unknown;
     const miss = {

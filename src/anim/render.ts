@@ -25,6 +25,8 @@ interface RenderOpts {
   boil?: BoilConfig;
   /** Content version (bumped on every draw mutation) — forwarded to bounds cache. Default 0. */
   version?: number;
+  /** Extra backing-store scale (viewport zoom, capped). Export leaves this at 1. */
+  outputScale?: number;
 }
 
 /** Draw `img` onto `ctx` (assumed at identity, DEVICE pixels) placed by `base` (device rect) + `t`. */
@@ -39,6 +41,8 @@ export function drawTransformed(
   ctx.translate(base.x + base.w / 2 + t.dx * dpr, base.y + base.h / 2 + t.dy * dpr);
   ctx.rotate(t.rotation);
   ctx.scale(t.scale, t.scale);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, -base.w / 2, -base.h / 2, base.w, base.h);
   ctx.restore();
 }
@@ -121,6 +125,8 @@ export function drawCellComposed(
   ctx.rotate(cellT.rotation);
   ctx.scale(cellT.scale, cellT.scale);
   ctx.translate(-ccx, -ccy);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(cell, 0, 0);
   ctx.restore();
 }
@@ -299,11 +305,13 @@ export function renderFrame(
   dpr: number,
   opts: RenderOpts = {},
 ): void {
-  const { drawBg = true, includeReference = true, boil, version = 0 } = opts;
+  const { drawBg = true, includeReference = true, boil, version = 0, outputScale = 1 } = opts;
 
-  // Reset to identity first so clearRect/fillRect/drawImage operate in raw device
-  // pixels regardless of any transform the context carried in.
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // outputScale supersamples the display so a CSS-zoomed, scaled-down layer still has
+  // enough backing pixels (cell pixels aren't thrown away before the viewport magnifies).
+  ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.clearRect(0, 0, project.width * dpr, project.height * dpr);
 
   if (drawBg) {

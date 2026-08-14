@@ -189,6 +189,7 @@
           tgt = transformTarget(); // re-resolve: closures must write the clone, not the snapshot's cell
           if (!tgt || !tgt.base) {
             dragUndo = null;
+            transformDragGuard.settle = null;
             return;
           }
         }
@@ -376,8 +377,14 @@
   <!-- The gesture text moved to the status bar (2026-08-11 contextual hints) so it stops painting
        over the artwork; only the Reset action stays on canvas. -->
   <div
-    class="absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto"
+    class="selection-actions-panel absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto"
   >
-    <button class="underline hover:text-text" onclick={resetTransform}>Reset to fit</button>
+    <button
+      class="underline hover:text-text"
+      onpointerdown={(e) => {
+        e.stopPropagation();
+        resetTransform();
+      }}>Reset to fit</button
+    >
   </div>
 {/if}

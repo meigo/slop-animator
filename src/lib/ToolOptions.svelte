@@ -7,7 +7,7 @@
     activeLayer,
     selectionActions,
   } from "../state/appState.svelte";
-  import { isIdentityTransform } from "../anim/document";
+
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
@@ -203,11 +203,6 @@
         if (canDeselect) selectionActions.deselect?.();
       }}><MousePointerBan size={16} /></button
     >
-    {#if activeLayer().kind === "draw" && !isIdentityTransform(activeLayer().transform)}
-      <span class="text-xs text-amber-500" title="Selection is disabled on a transformed layer"
-        >Apply layer transform to select</span
-      >
-    {/if}
   {:else if appState.tool === "transform"}
     {@const _activeLayer = activeLayer()}
     {@const _groupedActive = _activeLayer.groupId != null}

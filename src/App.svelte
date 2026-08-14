@@ -13,10 +13,10 @@
   import {
     seekPlayhead,
     setActiveLayer,
+    repaint,
     state,
     undo,
     redo,
-    bump,
     playbackController,
     selectionRef,
     selectionActions,
@@ -135,7 +135,7 @@
       playbackController.toggle();
     } else if (e.key === "o") {
       state.onion.enabled = !state.onion.enabled;
-      bump();
+      repaint();
     } else if (e.key === ",") seekPlayhead(state.playhead - 1);
     else if (e.key === ".") seekPlayhead(state.playhead + 1);
     // Playback/navigation keys. Arrows are free globally (the timeline ruler handles its own only
@@ -209,7 +209,7 @@
         if (!restored.name) restored.name = "untitled"; // pre-name-field autosave
         replaceProject(restored);
       }
-      if (await hydrateFromStore(state.project, () => bump())) bump();
+      if (await hydrateFromStore(state.project, () => repaint())) repaint();
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
       void pruneMedia(referencedMediaIds(state.project.layers));
     } finally {
@@ -220,7 +220,7 @@
   let autosaveTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- read to register the effect dependency
-    state.version; // re-run whenever the document changes
+    state.persistTick; // document edits only — play/onion/layer-switch must not encode every key PNG
     if (!autosaveReady) return; // restore still in flight — state.project is not the user's document yet
     autosaveDirty = true;
     clearTimeout(autosaveTimer);

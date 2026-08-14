@@ -956,3 +956,72 @@ source (exercises the resample — iPad/Safari is the one to watch); a long proj
 window is materialised as one 48 kHz buffer, ~23 MB/minute stereo, so memory is the risk and it
 degrades to a warning rather than a crash); and iPad for at least the MP4 path. Spec/plan:
 `…/2026-08-11-audio-phase3-export-muxing*.md`.
+
+**Review-fix batch (2026-08-14, on `fix/review-batch-1`):** second-opinion review of `main` found
+seam bugs (later features not threaded through older paths). Fixed, with tests where the logic is
+pure (~409):
+
+- `ensureDrawableKeyframe` copies the held key's `transform`/`transformBox` (draw-on-hold no longer
+  jumps a cell-transformed drawing to identity).
+- `audioPlayPlan` + `AudioEngine.play` stay silent at/past clip end (`start(0, at)` threw and could
+  freeze transport). `syncReferenceVideos` freezes an ended video instead of `play()`-restarting
+  from 0. Play-start no longer seeks/plays refs itself (one policy, the Canvas tick).
+- `undo()`/`redo()` `bump()` after a successful pop so pixel undo dirties autosave and invalidates
+  glyph/bounds caches (structural restore already bumped).
+- `groupActiveLayer`/`ungroup` go through `commitStructural` (`groupId` was snapshot-restored but
+  the actions never pushed).
+- Transform-drag `dirty` is `!isSameTransform(startT, getT())` after apply, not "handle was hit" —
+  ⌘Z on a no-move grab no longer pushes an empty entry.
+- `liftGuard.discard` before `mergeDown` / `applyLayerTransform` / `applyCellTransform` / `clearFrame`.
+- Timeline gutter padlock uses `isLayerLocked` (group lock was invisible). Keyboard Cut/Delete
+  no-op when `anyEditableLayer` is false (no empty undo). Move-ghost skips inert rows.
+- `seekPlayhead` `syncTo`s project audio while playing. Export pauses playback (shared boil GL).
+- `idbDo` resolves on `tx.oncomplete` / rejects on abort (and always closes). Persist generation
+  drops a stale autosave put and aborts a prune after New/Open.
+- Finger Reset-to-fit + pose bar reuse `.selection-actions-panel` so touch-pan does not steal them.
+- `input.ts` binds `pointercancel` (same path as up/leave). Not a full abort-restore.
+
+**Still open from that review:** none of the original high-severity items. (Follow-ups welcome.)
+
+**persistTick vs version + pixel-undo byte budget (2026-08-14):** `bump()` now increments
+`persistTick` as well as `version`; `repaint()` is version-only (play/stop, onion, layer
+switch, media hydrate). Autosave watches `persistTick`, so a play/stop no longer schedules
+a full PNG encode. Pixel undos carry a `bytes` cost (`pixelCommand`); History evicts the
+oldest commands past 256 MB (~15 full-frame 1920×1080 strokes) while still keeping at
+least one, and still caps at 50 commands.
+
+**Scaled-down layer looks pixelated (2026-08-14):** the display canvas was document-sized
+and the viewport zoomed it in CSS, so a layer at 0.3 then zoomed to work on it was a
+handful of display pixels blown up. `drawCellComposed`/`drawTransformed` now use
+`imageSmoothingQuality: high`, and the display backing store supersamples by
+`min(zoom, 2)` (export stays 1×). Cells stay DPR=1. Zoom past 2× can still soften;
+a full screen-space camera is the next step if that shows up.
+
+**Two-finger rotate is live again, snap window tightened (2026-08-14):** a 15° engage
+floor blocked small intentional rotates. Restored Procreate-style live twist during the
+pinch; on lift, snap to 90° only inside ~3° (`snappedRotation`, unit-tested) so a 2° pan
+tilt pops back and an 8° rotate stays. Snap still runs only after a two-finger pinch. Snap now rotates about
+the last pinch midpoint (`panKeepingScreenPoint`) so it does not jump around the CSS
+top-left origin.
+
+**Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
+inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
+and the overlay applies that compose so chrome sits on the visual ink. The layer-transform
+"Apply first" gate and status hint are gone. `setupInput` listens on `stage` (not the
+document-sized display) and no longer treats `pointerleave` as stroke-end — capture +
+`pointercancel` end the gesture, so a translated/scaled layer is paintable outside the paper.
+
+**Timeline iPad UX (2026-08-14):** three prod-test findings. (1) Sticky gutter: row
+containing-blocks were only as wide as the visible scroller, so `position: sticky` unstuck after
+~one viewport of horizontal scroll — `w-max` on ruler/audio/layer rows. (2) Playhead page-follow
+during play (`playheadFollowScroll`, unit-tested): jump when it leaves the right edge so it sits
+just after the gutter; snap back on loop wrap; do not yank if the user scrolled ahead. (3) Palm
+on the timeline while drawing: the whole grid now uses the canvas rule — `touch` pans only,
+`pen`/`mouse` edit. Layer _list_ stays finger-friendly. Spec:
+`docs/superpowers/specs/2026-08-14-timeline-ipad-ux-design.md`.
+
+**Timeline hold-span / move-block settle (2026-08-14):** hold-span resize opens a structural
+bracket at grab and used to leave it dangling — ⌘Z mid-resize undid the _previous_ command, then
+`rowUp` committed the pre-resize snapshot and re-did it. Registers `transformDragGuard.settle` at
+grab (same hook undo/tool-switch already call). A dirty resize commits so the following undo pops
+it; a no-op drops. An in-flight move-block has not written yet, so settle just cancels the ghost.

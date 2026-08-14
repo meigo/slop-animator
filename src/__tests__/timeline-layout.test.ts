@@ -3,6 +3,7 @@ import {
   clampTimelineHeight,
   MIN_TIMELINE_HEIGHT,
   DEFAULT_TIMELINE_HEIGHT,
+  playheadFollowScroll,
 } from "../anim/timeline-layout";
 
 describe("clampTimelineHeight", () => {
@@ -28,5 +29,39 @@ describe("clampTimelineHeight", () => {
 
   it("DEFAULT is within the sane range", () => {
     expect(DEFAULT_TIMELINE_HEIGHT).toBeGreaterThanOrEqual(MIN_TIMELINE_HEIGHT);
+  });
+});
+
+describe("playheadFollowScroll", () => {
+  const gutter = 142;
+  const pad = 8;
+  const viewW = 400;
+  // visible cell strip is [scroll+gutter+pad, scroll+viewW-pad]
+
+  it("returns null when the playhead is already in the visible cell strip", () => {
+    const scroll = 0;
+    const playheadX = gutter + 50; // well inside
+    expect(playheadFollowScroll(playheadX, scroll, viewW, gutter, pad, playheadX - 24)).toBeNull();
+  });
+
+  it("page-steps forward when the playhead leaves the right edge", () => {
+    const scroll = 0;
+    const playheadX = viewW + 10; // past the right
+    const next = playheadFollowScroll(playheadX, scroll, viewW, gutter, pad, playheadX - 24);
+    expect(next).toBe(playheadX - gutter - pad); // snap so playhead sits just after the gutter
+  });
+
+  it("does not jump back when the user has scrolled ahead of a still-advancing playhead", () => {
+    const scroll = 2000; // looking at later frames
+    const playheadX = gutter + 50; // playhead still on the left, off-screen
+    expect(playheadFollowScroll(playheadX, scroll, viewW, gutter, pad, playheadX - 24)).toBeNull();
+  });
+
+  it("snaps back when the playhead wraps backward (loop) and leaves the view", () => {
+    const scroll = 2000;
+    const playheadX = gutter + 12; // back at frame 0
+    const prevX = 2500; // was at the end
+    const next = playheadFollowScroll(playheadX, scroll, viewW, gutter, pad, prevX);
+    expect(next).toBe(Math.max(0, playheadX - gutter - pad));
   });
 });

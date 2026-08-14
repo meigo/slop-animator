@@ -3,7 +3,7 @@
  *
  * - One finger touch: pan canvas
  * - One-finger double-tap: toggle eraser
- * - Two-finger pinch: zoom + pan + rotate
+ * - Two-finger pinch: zoom + pan + rotate; snap to 90° on lift if within ~3°
  * - Two-finger tap: undo
  * - Three-finger tap: redo
  *
@@ -31,8 +31,21 @@ export interface TouchGestureCallbacks {
 const TAP_MAX_DURATION = 300; // ms
 const TAP_MAX_DISTANCE = 15; // px
 const DOUBLE_TAP_WINDOW = 300; // ms between two 1-finger taps to count as a double-tap
-/** Snap to nearest 90° when within this threshold (radians, ~5°) */
-const SNAP_ANGLE = 5 * (Math.PI / 180);
+/** Snap to nearest 90° when within this window on lift. ~3° (Procreate-like):
+ *  accidental pan tilt pops back; a deliberate 8° rotate stays. Was 5°. */
+export const SNAP_ANGLE = 3 * (Math.PI / 180);
+
+/** Nearest 90° if `rotation` is inside the snap window; otherwise unchanged. */
+export function snappedRotation(rotation: number, snap = SNAP_ANGLE): number {
+  const half = Math.PI;
+  const quarter = Math.PI / 2;
+  let r = rotation % (2 * Math.PI);
+  if (r > half) r -= 2 * Math.PI;
+  if (r < -half) r += 2 * Math.PI;
+  const nearest = Math.round(r / quarter) * quarter;
+  if (Math.abs(r - nearest) >= snap) return rotation;
+  return nearest === 0 ? 0 : nearest;
+}
 
 export function setupTouchGestures(
   /** The stable workspace container (not the transformed element) */
@@ -51,6 +64,9 @@ export function setupTouchGestures(
   let pinchStartMidY = 0;
   let pinchStartPanX = 0;
   let pinchStartPanY = 0;
+  let pinchActive = false;
+  let lastPinchMidX = 0;
+  let lastPinchMidY = 0;
 
   // Single-finger pan state
   let singlePanActive = false;
@@ -148,9 +164,9 @@ export function setupTouchGestures(
       }
     }
 
-    // Snap rotation on gesture end
     if (touches.size === 0) {
-      snapRotation();
+      if (pinchActive) snapRotation();
+      pinchActive = false;
     }
 
     singlePanActive = false;
@@ -189,8 +205,11 @@ export function setupTouchGestures(
     pinchStartRotation = viewport.rotation;
     pinchStartMidX = (a.x + b.x) / 2;
     pinchStartMidY = (a.y + b.y) / 2;
+    lastPinchMidX = pinchStartMidX;
+    lastPinchMidY = pinchStartMidY;
     pinchStartPanX = viewport.panX;
     pinchStartPanY = viewport.panY;
+    pinchActive = true;
   }
 
   function updatePinch() {
@@ -202,6 +221,8 @@ export function setupTouchGestures(
     const currentAngle = angleBetween(a.x, a.y, b.x, b.y);
     const currentMidX = (a.x + b.x) / 2;
     const currentMidY = (a.y + b.y) / 2;
+    lastPinchMidX = currentMidX;
+    lastPinchMidY = currentMidY;
 
     // New zoom & rotation
     const scale = currentDist / pinchStartDist;
@@ -242,23 +263,13 @@ export function setupTouchGestures(
     callbacks.onViewportChange();
   }
 
-  /** Snap rotation to nearest 90° if within threshold */
   function snapRotation() {
-    const HALF_TURN = Math.PI;
-    const QUARTER_TURN = Math.PI / 2;
-
-    // Normalize to [-PI, PI]
-    let r = viewport.rotation % (2 * Math.PI);
-    if (r > HALF_TURN) r -= 2 * Math.PI;
-    if (r < -HALF_TURN) r += 2 * Math.PI;
-
-    // Find nearest 90° step
-    const nearest = Math.round(r / QUARTER_TURN) * QUARTER_TURN;
-    if (Math.abs(r - nearest) < SNAP_ANGLE) {
-      viewport.rotation = nearest;
-      viewport.applyTransformPublic();
-      callbacks.onViewportChange();
-    }
+    const next = snappedRotation(viewport.rotation);
+    if (next === viewport.rotation) return;
+    // Rotate about the last pinch midpoint — same pivot as the live twist.
+    // Setting rotation alone uses the CSS origin (top-left) and the canvas jumps.
+    viewport.setRotationAroundScreenPoint(lastPinchMidX, lastPinchMidY, next);
+    callbacks.onViewportChange();
   }
 
   // --- Tap detection ---

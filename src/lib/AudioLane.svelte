@@ -5,17 +5,43 @@
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
-  let { cellW, labelW, markerW }: { cellW: number; labelW: number; markerW: number } = $props();
+  let {
+    cellW,
+    labelW,
+    markerW,
+    onTouchDown,
+    onTouchMove,
+    onTouchUp,
+  }: {
+    cellW: number;
+    labelW: number;
+    markerW: number;
+    onTouchDown: (e: PointerEvent) => void;
+    onTouchMove: (e: PointerEvent) => boolean;
+    onTouchUp: () => void;
+  } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
   // the clip may start before frame 0). Not undoable: audio is outside StructSnapshot (P2 spec).
   let dragStart: { x: number; offset: number } | null = null;
+  function ignoreTouchClick(e: PointerEvent) {
+    if (e.pointerType === "touch") e.preventDefault();
+  }
+
   function laneDown(e: PointerEvent) {
     if (!state.project.audio) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (e.pointerType === "touch") {
+      onTouchDown(e);
+      return;
+    }
     dragStart = { x: e.clientX, offset: state.project.audio.offsetFrames };
   }
   function laneMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      onTouchMove(e);
+      return;
+    }
     const audio = state.project.audio;
     if (!dragStart || !audio) return;
     const next = dragStart.offset + Math.round((e.clientX - dragStart.x) / cellW);
@@ -25,10 +51,10 @@
     }
   }
   function laneUp() {
-    // Re-align a running playback to the new offset once, at release.
     if (dragStart && state.playback.isPlaying)
       audioEngine.syncTo(state.playhead, state.project.fps);
     dragStart = null;
+    onTouchUp();
   }
 
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
@@ -73,10 +99,21 @@
 </script>
 
 {#if state.project.audio}
-  <div class="flex items-center">
+  <div class="flex w-max items-center">
     <div
       class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-text-secondary"
-      style="width: {labelW}px"
+      role="presentation"
+      style="width: {labelW}px; touch-action: none"
+      onpointerdown={(e) => {
+        if (e.pointerType !== "touch") return;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        onTouchDown(e);
+      }}
+      onpointermove={(e) => {
+        if (e.pointerType === "touch") onTouchMove(e);
+      }}
+      onpointerup={onTouchUp}
+      onpointercancel={onTouchUp}
     >
       <Music size={13} class="shrink-0" />
       <span class="truncate flex-1" title={state.project.audio.name}
@@ -85,6 +122,7 @@
       <button
         class="text-text-secondary hover:text-text shrink-0"
         title={state.project.audio.muted ? "Muted — click to unmute" : "Click to mute audio"}
+        onpointerdown={ignoreTouchClick}
         onclick={toggleAudioMute}
         >{#if state.project.audio.muted}<VolumeX size={13} />{:else}<Volume2
             size={13}
@@ -99,6 +137,7 @@
       <button
         class="text-text-secondary hover:text-text"
         title="Remove audio"
+        onpointerdown={ignoreTouchClick}
         onclick={removeAudioTrack}><X size={13} /></button
       >
     </div>

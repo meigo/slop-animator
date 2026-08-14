@@ -5,7 +5,6 @@ const base: HintContext = {
   tool: "brush",
   locked: false,
   hiddenLayer: false,
-  layerTransformed: false,
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
@@ -16,16 +15,6 @@ describe("contextHint precedence", () => {
   it("a locked layer outranks every tool hint", () => {
     expect(contextHint(ctx({ tool: "transform", locked: true }))).toMatch(/Layer locked/);
     expect(contextHint(ctx({ tool: "pose", locked: true, poseActive: true }))).toMatch(/unlock/);
-  });
-
-  it("a transformed layer blocks select/lasso/deform/pose, but not transform or brush", () => {
-    for (const tool of ["select", "lasso", "deform", "pose"]) {
-      expect(contextHint(ctx({ tool, layerTransformed: true }))).toMatch(/Apply or reset/);
-    }
-    expect(contextHint(ctx({ tool: "transform", layerTransformed: true }))).toMatch(
-      /corners scale/,
-    );
-    expect(contextHint(ctx({ tool: "brush", layerTransformed: true }))).toBe("");
   });
 });
 

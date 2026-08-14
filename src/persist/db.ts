@@ -23,11 +23,25 @@ export function idbDo<T>(
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(store, mode);
-        const req = fn(tx.objectStore(store));
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-        tx.oncomplete = () => db.close();
+        let req: IDBRequest<T>;
+        try {
+          const tx = db.transaction(store, mode);
+          req = fn(tx.objectStore(store));
+          // Request success is not commit: Safari can abort after onsuccess on quota.
+          // Resolve/reject on the transaction, and close in both paths so a leak
+          // cannot pile up connections until WebKit refuses new opens.
+          tx.oncomplete = () => {
+            db.close();
+            resolve(req.result);
+          };
+          tx.onabort = () => {
+            db.close();
+            reject(tx.error ?? req.error ?? new Error("IndexedDB transaction aborted"));
+          };
+        } catch (e) {
+          db.close();
+          reject(e);
+        }
       }),
   );
 }

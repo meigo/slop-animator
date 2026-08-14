@@ -32,6 +32,7 @@ import {
   pasteBlockInsert,
   deleteBlock,
   moveBlockFrames,
+  anyEditableLayer,
   type CellBlock,
 } from "../anim/timeline-block";
 import {
@@ -41,6 +42,7 @@ import {
 } from "../anim/timeline-selection";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
+import { bumpPersistGeneration } from "../persist/generation";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
@@ -86,8 +88,10 @@ interface AnimState {
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number };
-  /** Bumped whenever the document changes so the canvas recomposites. */
+  /** Bumped whenever the display must recomposite (document edits AND view-only ticks). */
   version: number;
+  /** Bumped only when the saved project would change. Autosave keys off this, not version. */
+  persistTick: number;
   /** Bumped when the pressure curve is edited (it's an imperative widget, not reactive state). */
   curveVersion: number;
   exportOpen: boolean;
@@ -140,6 +144,7 @@ export const state: AnimState = $state({
   },
   fill: { tolerance: 32, expand: 2 },
   version: 0,
+  persistTick: 0,
   curveVersion: 0,
   exportOpen: false,
   settingsOpen: false,
@@ -209,8 +214,13 @@ export interface StructSnapshot {
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
-  // in-place mutations (splice/replace) can't corrupt a stored snapshot.
-  return layers.map((l) => (l.kind === "draw" ? { ...l, cells: l.cells.slice() } : { ...l }));
+  // in-place mutations (splice/replace) can't corrupt a stored snapshot. Deep-copy transform
+  // so a future in-place field write cannot corrupt in-flight snapshots (groups already do this).
+  return layers.map((l) =>
+    l.kind === "draw"
+      ? { ...l, cells: l.cells.slice(), transform: { ...l.transform } }
+      : { ...l, transform: { ...l.transform } },
+  );
 }
 function snapshotStructure(): StructSnapshot {
   return {
@@ -456,6 +466,7 @@ export function applyLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (layer?.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
+  liftGuard.discard?.(); // bake replaces every key canvas
   commitStructural(() => bakeLayerTransform(layer));
 }
 
@@ -474,6 +485,7 @@ export function applyCellTransform(layerId: number, frame: number): void {
   if (!layer || layer.kind !== "draw") return;
   const rk = resolvedKeyCell(layer, frame);
   if (!rk || !rk.cell.transform || isIdentityTransform(rk.cell.transform)) return;
+  liftGuard.discard?.(); // bake replaces the cell canvas — a live lift would write to the detached one
   commitStructural(() => {
     layer.cells[rk.index] = bakeCell(rk.cell, { ...IDENTITY_TRANSFORM });
   });
@@ -520,6 +532,7 @@ export function mergeDown(id: number) {
   )
     return;
 
+  liftGuard.discard?.(); // merge replaces both cell tracks; a live lift would bake into a detached canvas
   commitStructural(() => {
     // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
     // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
@@ -555,27 +568,29 @@ export function renameLayer(id: number, input: string) {
 export function groupActiveLayer() {
   const layer = state.project.layers.find((l) => l.id === state.activeLayerId);
   if (!layer) return;
-  const g: LayerGroup = {
-    id: nextId(),
-    name: `Group ${state.project.groups.length + 1}`,
-    collapsed: false,
-    visible: true,
-  };
-  state.project.groups.push(g);
-  layer.groupId = g.id;
-  state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers); // drop the layer's prior group if now empty
-  bump();
+  commitStructural(() => {
+    const g: LayerGroup = {
+      id: nextId(),
+      name: `Group ${state.project.groups.length + 1}`,
+      collapsed: false,
+      visible: true,
+    };
+    state.project.groups.push(g);
+    layer.groupId = g.id;
+    state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers); // drop the layer's prior group if now empty
+  });
 }
 /** Ungroup: clear members' groupId, remove the group. */
 export function ungroup(groupId: number) {
-  for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
-  state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
-  // Don't leave the Transform tool in Group scope with no group (mirror setActiveLayer's guard).
-  const al = state.project.layers.find((l) => l.id === state.activeLayerId);
-  if (state.transformScope === "group" && (!al || al.groupId == null)) {
-    state.transformScope = "frame";
-  }
-  bump();
+  commitStructural(() => {
+    for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
+    state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
+    // Don't leave the Transform tool in Group scope with no group (mirror setActiveLayer's guard).
+    const al = state.project.layers.find((l) => l.id === state.activeLayerId);
+    if (state.transformScope === "group" && (!al || al.groupId == null)) {
+      state.transformScope = "frame";
+    }
+  });
 }
 export function toggleGroupCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
@@ -693,7 +708,8 @@ export function seekPlayhead(f: number): void {
   const clamped = Math.max(0, Math.min(state.project.frameCount - 1, f));
   if (clamped === state.playhead) return; // unchanged → no re-scrub spam from pointer jitter
   state.playhead = clamped;
-  if (!state.playback.isPlaying) audioEngine.scrub(clamped, state.project.fps);
+  if (state.playback.isPlaying) audioEngine.syncTo(clamped, state.project.fps);
+  else audioEngine.scrub(clamped, state.project.fps);
 }
 
 /** Mute/unmute the audio track (not undoable — matches set/removeAudioTrack). */
@@ -837,6 +853,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  bumpPersistGeneration(); // drop in-flight autosave/prune of the outgoing document
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
@@ -851,12 +868,18 @@ export function replaceProject(project: Project) {
   bump();
 }
 
+/** View-only recomposite (play/stop, onion, layer switch). Does not mark the project dirty. */
+export function repaint() {
+  state.version++;
+}
+
 export function bump() {
   refreshLength(state.project);
   const last = state.project.frameCount - 1;
   if (state.playhead > last) state.playhead = last;
   if (state.playhead < 0) state.playhead = 0;
   state.version++;
+  state.persistTick++;
 }
 
 /** Video ref elements in the current project. */
@@ -886,19 +909,13 @@ export const playbackController = new Playback({
     state.playback.isPlaying = p;
     if (p) {
       audioEngine.play(state.playhead, state.project.fps);
-      for (const l of state.project.layers) {
-        if (l.kind !== "ref" || l.media.type !== "video") continue;
-        const el = l.media.el;
-        const spd = Number.isFinite(l.speed) && l.speed > 0 ? l.speed : 1;
-        el.playbackRate = Math.max(0.0625, Math.min(16, spd));
-        el.currentTime = (l.offsetFrames + state.playhead * spd) / state.project.fps;
-        void el.play().catch(() => {});
-      }
+      // Video refs start via the next Canvas tick's syncReferenceVideos (one policy: clamp, mute,
+      // ended-freeze). Starting them here duplicated that and play()'d past-end clips from 0.
     } else {
       audioEngine.pause();
       for (const el of videoRefEls()) el.pause(); // next tick exact-seeks onto the paused frame
     }
-    state.version++;
+    repaint();
   },
 });
 
@@ -957,14 +974,18 @@ export const transformDragGuard: { settle: (() => void) | null } = { settle: nul
 export function undo(): void {
   transformDragGuard.settle?.();
   liftGuard.discard?.();
+  if (!history.canUndo) return;
   history.undo();
   state.timelineSelection = null; // a structural restore can invalidate stored endpoints
+  bump(); // pixel commands only recomposite — glyphs, contentBounds, and autosave key off version
 }
 export function redo(): void {
   transformDragGuard.settle?.();
   liftGuard.discard?.();
+  if (!history.canRedo) return;
   history.redo();
   state.timelineSelection = null;
+  bump();
 }
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
@@ -981,7 +1002,7 @@ export function setActiveLayer(id: number): void {
     state.transformScope = "frame";
   }
   // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
-  if (state.onion.enabled && !state.onion.allLayers) state.version++;
+  if (state.onion.enabled && !state.onion.allLayers) repaint();
 }
 
 export function setTimelineSelection(anchor: SelectionEndpoint, focus: SelectionEndpoint): void {
@@ -1014,6 +1035,7 @@ export function copyTimelineSelection(): void {
 export function deleteTimelineSelection(): void {
   const rect = currentSelectionRect();
   if (!rect) return;
+  if (!anyEditableLayer(state.project, rect.layerIds)) return; // all locked/hidden → no empty undo
   liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
   commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
 }
@@ -1031,6 +1053,7 @@ export function moveTimelineSelection(delta: number): void {
   if (!rect) return;
   const applied = Math.max(delta, -rect.startFrame); // clamp before committing so a no-op doesn't push undo
   if (applied === 0) return;
+  if (!anyEditableLayer(state.project, rect.layerIds)) return;
   liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
   commitStructural(() =>
     moveBlockFrames(

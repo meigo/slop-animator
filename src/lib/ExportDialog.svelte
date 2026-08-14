@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { state as appState, DPR } from "../state/appState.svelte";
+  import { state as appState, DPR, playbackController } from "../state/appState.svelte";
   import { exportPngSequence } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { downloadBlob } from "../export/download";
@@ -13,6 +13,7 @@
   async function run(kind: "png" | VideoFormat) {
     if (busy) return;
     busy = true;
+    playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
     status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
     try {
       if (kind === "png") {

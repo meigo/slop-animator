@@ -7,6 +7,33 @@
 
 import { computeFitTransform } from "./viewport-fit";
 
+/** After changing rotation about the CSS origin (0,0), the pan that keeps
+ *  parent-relative screen point `(rx, ry)` over the same canvas point. */
+export function panKeepingScreenPoint(
+  rx: number,
+  ry: number,
+  panX: number,
+  panY: number,
+  zoom: number,
+  oldRotation: number,
+  newRotation: number,
+): { panX: number; panY: number } {
+  const dx = rx - panX;
+  const dy = ry - panY;
+  const cos0 = Math.cos(-oldRotation);
+  const sin0 = Math.sin(-oldRotation);
+  const cx = (dx * cos0 - dy * sin0) / zoom;
+  const cy = (dx * sin0 + dy * cos0) / zoom;
+  const cosN = Math.cos(newRotation);
+  const sinN = Math.sin(newRotation);
+  const sx = cx * zoom;
+  const sy = cy * zoom;
+  return {
+    panX: rx - (sx * cosN - sy * sinN),
+    panY: ry - (sx * sinN + sy * cosN),
+  };
+}
+
 export class Viewport {
   zoom = 1;
   // Pan in screen pixels (how far the canvas origin has moved on screen)
@@ -110,6 +137,25 @@ export class Viewport {
     this.panX = rx - (sx * cos - sy * sin);
     this.panY = ry - (sx * sin + sy * cos);
 
+    this.applyTransform();
+    this.onChange?.();
+  }
+
+  /** Set rotation, keeping the given screen (client) point fixed — same pivot as a two-finger twist. */
+  setRotationAroundScreenPoint(screenX: number, screenY: number, newRotation: number) {
+    const rect = this.parent.getBoundingClientRect();
+    const next = panKeepingScreenPoint(
+      screenX - rect.left,
+      screenY - rect.top,
+      this.panX,
+      this.panY,
+      this.zoom,
+      this.rotation,
+      newRotation,
+    );
+    this.rotation = newRotation;
+    this.panX = next.panX;
+    this.panY = next.panY;
     this.applyTransform();
     this.onChange?.();
   }

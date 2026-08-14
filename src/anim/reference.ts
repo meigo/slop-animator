@@ -111,6 +111,10 @@ export function syncReferenceVideos(
     if (vid.muted !== wantMuted) vid.muted = wantMuted;
     if (!playing) {
       if (Math.abs(vid.currentTime - clamped) > SEEK_EPSILON) vid.currentTime = clamped;
+    } else if (wanted >= dur) {
+      // Past the clip: freeze on the last frame. play() on an ended element seeks to 0.
+      if (Math.abs(vid.currentTime - dur) > SEEK_EPSILON) vid.currentTime = dur;
+      if (!vid.paused) vid.pause();
     } else if (vid.paused) {
       vid.currentTime = clamped;
       void vid.play().catch(() => {});

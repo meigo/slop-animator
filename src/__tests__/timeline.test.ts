@@ -145,6 +145,24 @@ describe("timeline operations", () => {
     expect((canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
   });
 
+  it("ensureDrawableKeyframe copies the held key's transform onto the new key", () => {
+    const src = fakeOps.create();
+    const t = { dx: 12, dy: -4, scale: 1.5, rotation: 0.3 };
+    const box = { x: 10, y: 20, w: 100, h: 80 };
+    const l = layer([
+      { kind: "key", canvas: src, transform: t, transformBox: box },
+      { kind: "hold" },
+    ]);
+    ensureDrawableKeyframe(l, 1, fakeOps);
+    const neu = l.cells[1];
+    expect(neu.kind).toBe("key");
+    if (neu.kind !== "key") return;
+    expect(neu.transform).toEqual(t);
+    expect(neu.transform).not.toBe(t); // new object — gotcha #8
+    expect(neu.transformBox).toEqual(box);
+    expect(neu.transformBox).not.toBe(box);
+  });
+
   it("ensureDrawableKeyframe creates a blank keyframe when nothing is held", () => {
     const l = layer([{ kind: "hold" }]);
     const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
