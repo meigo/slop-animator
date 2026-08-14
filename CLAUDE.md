@@ -800,6 +800,19 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
 
+**Fit to view is reachable without a keyboard (2026-08-14):** `fitView` had exactly ONE caller —
+the `0` key in `Canvas.svelte` — and no UI route at all, which meant that on iPad (no keyboard) a
+canvas flung off-screen by a stray two-finger pan could only be recovered by RELOADING the page.
+The viewport is not persisted, which is the only reason that escape hatch existed. Added
+"Fit to view (0)" as the first item of the **View** menu, reaching the Canvas-owned `Viewport`
+through a new `viewActions.fitView` registry in `appState` — the same register-on-mount /
+null-on-teardown pattern as `selectionActions`/`poseActions`/`liftGuard`, because `Viewport` is a
+Canvas-local object and nothing outside Canvas can hold it directly. The label carries the shortcut
+so desktop users learn the key. Placement was chosen over a permanent status-bar button (rejected
+for now as chrome for a rare action, though it is the better answer if getting lost turns out to be
+common — the menu is three taps deep exactly when you are lost). **Owed:** confirm on iPad that the
+menu item recentres a lost canvas.
+
 **Transformed layers show their paintable edge (2026-08-12):** reported as "when I draw on a
 moved/scaled layer the drawing just cuts off suddenly, with no hint where the edge is". Cause, worth
 stating plainly because it is structural: **a cell canvas is exactly document-sized**, so a layer's

@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     state as appState,
+    viewActions,
     undo,
     redo,
     bump,
@@ -267,6 +268,14 @@
   </ToolbarMenu>
   <ToolbarMenu label="View">
     {#snippet children(close)}
+      <button
+        class={menuItem}
+        title="Fit the canvas to the window and re-centre it"
+        onclick={() => {
+          viewActions.fitView?.();
+          close();
+        }}>Fit to view (0)</button
+      >
       <button
         class={menuItem}
         onclick={() => {

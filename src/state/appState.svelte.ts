@@ -932,6 +932,10 @@ export const selectionActions: {
   deselect: (() => void) | null;
 } = { enterWarp: null, copy: null, cut: null, del: null, paste: null, deselect: null };
 
+/** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
+ *  menu) reaches zoom/pan through here. */
+export const viewActions: { fitView: (() => void) | null } = { fitView: null };
+
 /** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
 export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
   active: () => false,

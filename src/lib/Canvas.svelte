@@ -27,6 +27,7 @@
   import {
     selectionRef,
     selectionActions,
+    viewActions,
     poseActions,
     liftGuard,
     transformDragGuard,
@@ -1190,6 +1191,9 @@
     selectionActions.deselect = () => {
       if (selection?.active) selection.cancel();
     };
+    // Same as the `0` key. Exposed because iPad has no keyboard: without a UI route, a canvas
+    // flung off-screen by a stray two-finger drag can only be recovered by reloading the page.
+    viewActions.fitView = () => viewport?.fitView(appState.project.width, appState.project.height);
 
     return () => {
       cleanup();
@@ -1213,6 +1217,7 @@
       selectionActions.del = null;
       selectionActions.paste = null;
       selectionActions.deselect = null;
+      viewActions.fitView = null;
       appState.selectionActive = false;
       appState.selectionFloating = false;
       appState.poseActive = false;
