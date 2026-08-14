@@ -759,11 +759,15 @@ export class Selection {
     return inside;
   }
 
+  /** Optional: applied after the identity reset so the overlay matches `group ∘ layer ∘ cell`. */
+  applyCompose: ((ctx: CanvasRenderingContext2D) => void) | null = null;
+
   drawOverlay() {
     const ctx = this.overlayCtx;
     const cvs = this.overlayCanvas;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cvs.width, cvs.height);
+    this.applyCompose?.(ctx);
     if (!this.rect || this.state === "idle") return;
 
     // Animation re-trigger
@@ -847,7 +851,8 @@ export class Selection {
     if (this.floatingPixels) {
       const m = this.matrix;
       ctx.save();
-      ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      // Multiply — do not replace. applyCompose may already have the layer/cell/group matrix.
+      ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
       ctx.drawImage(this.floatingPixels, this.rect.x, this.rect.y, this.rect.w, this.rect.h);
       ctx.restore();
     }

@@ -981,11 +981,15 @@ pure (~409):
 - Finger Reset-to-fit + pose bar reuse `.selection-actions-panel` so touch-pan does not steal them.
 - `input.ts` binds `pointercancel` (same path as up/leave). Not a full abort-restore.
 
-**Still open from that review (not this batch):** select/lasso/deform/pose still live in raw
-document space under a cell/group transform (paint/fill inverse-map; these do not); stroke
-listeners are still on the document AABB so `LayerBoundsHint` can advertise a quad events never
-reach; `state.version` is still both repaint and persist dirty; pixel history is still 50
-full-frame ImageDatas.
+**Still open from that review (not this batch):** `state.version` is still both repaint and
+persist dirty; pixel history is still 50 full-frame ImageDatas.
+
+**Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
+inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
+and the overlay applies that compose so chrome sits on the visual ink. The layer-transform
+"Apply first" gate and status hint are gone. `setupInput` listens on `stage` (not the
+document-sized display) and no longer treats `pointerleave` as stroke-end — capture +
+`pointercancel` end the gesture, so a translated/scaled layer is paintable outside the paper.
 
 **Timeline iPad UX (2026-08-14):** three prod-test findings. (1) Sticky gutter: row
 containing-blocks were only as wide as the visible scroller, so `position: sticky` unstuck after
