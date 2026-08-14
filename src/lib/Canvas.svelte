@@ -251,6 +251,10 @@
   let strokeCanvas: HTMLCanvasElement | null = null;
   let strokeCtx: CanvasRenderingContext2D | null = null;
   let beforeSnapshot: ImageData | null = null;
+  // Compose captured at stroke start — paintStroke must not re-read activeLayer/playhead.
+  let strokeSteps: ComposeStep[] | null = null;
+  // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
+  let dropStrokeUntilUp = false;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
   // above the display refresh, so painting every event re-runs the full stroke wastefully.
   let drawRaf = 0;
@@ -376,25 +380,13 @@
   // from the pre-stroke snapshot; stamp = incremental. Both clip to the active selection.
   function paintStroke(pts: InputPoint[], done: boolean) {
     if (!strokeCtx) return;
-    const al = activeLayer();
     let inPts = pts;
-    if (al.kind === "draw") {
-      const W = appState.project.width,
-        H = appState.project.height;
-      const rk = resolvedKeyCell(al, appState.playhead);
-      const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
-      const cellBox = rk
-        ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
-        : { x: 0, y: 0, w: W, h: H };
-      const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(al)];
-      // Skip the map when nothing maps (all identity).
-      const anyNonId = steps.some((s) => !isIdentityTransform(s.t));
-      if (anyNonId) {
-        inPts = pts.map((p) => {
-          const q = inverseChain(steps, { x: p.x, y: p.y });
-          return { ...p, x: q.x, y: q.y };
-        });
-      }
+    const steps = strokeSteps;
+    if (steps?.some((s) => !isIdentityTransform(s.t))) {
+      inPts = pts.map((p) => {
+        const q = inverseChain(steps, { x: p.x, y: p.y });
+        return { ...p, x: q.x, y: q.y };
+      });
     }
     const curved = inPts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
@@ -640,7 +632,48 @@
     }
   }
 
+  function commitOpenStroke(pts: InputPoint[]) {
+    if (!strokeCanvas || !strokeCtx || !beforeSnapshot) {
+      strokeCanvas = null;
+      strokeCtx = null;
+      beforeSnapshot = null;
+      strokeSteps = null;
+      return;
+    }
+    if (drawRaf) {
+      cancelAnimationFrame(drawRaf);
+      drawRaf = 0;
+    }
+    paintStroke(pts, true);
+    const after = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
+    const target = strokeCtx;
+    const before = beforeSnapshot;
+    history.push(
+      pixelCommand(
+        () => {
+          target.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          target.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
+    strokeCanvas = null;
+    strokeCtx = null;
+    beforeSnapshot = null;
+    strokeSteps = null;
+    bump(); // refresh the timeline (e.g. an empty cell that just gained ink flips ·→◆)
+  }
+
   function onStroke(points: InputPoint[], done: boolean) {
+    if (dropStrokeUntilUp) {
+      if (done) dropStrokeUntilUp = false;
+      return;
+    }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
       // pick has to be adjustable — drag to slide the sample point, lift to take it. (The pointer-down
@@ -800,6 +833,7 @@
       strokeCanvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
+      strokeSteps = cellComposeSteps(layer);
       if (activeStroke().brushType === "ink") resetInkState();
       else if (activeStroke().brushType !== "smooth") resetStampState();
       bump();
@@ -809,32 +843,7 @@
     // finalize synchronously on stroke end so the undo snapshot captures the exact result.
     lastPoints = points;
     if (done) {
-      if (drawRaf) {
-        cancelAnimationFrame(drawRaf);
-        drawRaf = 0;
-      }
-      paintStroke(points, true);
-      const after = strokeCtx!.getImageData(0, 0, strokeCanvas!.width, strokeCanvas!.height);
-      const target = strokeCtx!;
-      const before = beforeSnapshot!;
-      history.push(
-        pixelCommand(
-          () => {
-            target.putImageData(before, 0, 0);
-            recomposite();
-          },
-          () => {
-            target.putImageData(after, 0, 0);
-            recomposite();
-          },
-          before,
-          after,
-        ),
-      );
-      strokeCanvas = null;
-      strokeCtx = null;
-      beforeSnapshot = null;
-      bump(); // refresh the timeline (e.g. an empty cell that just gained ink flips ·→◆)
+      commitOpenStroke(points);
     } else if (!drawRaf) {
       drawRaf = requestAnimationFrame(() => {
         drawRaf = 0;
@@ -1347,6 +1356,12 @@
   function bankActiveEdits() {
     if (meshPose) applyPose();
     if (selection?.hasFloating) selection.commit();
+    // Mid-stroke ↑/↓ or ←/→ would keep writing the old cell while inverse-mapping the new
+    // compose. Commit what we have and drop the rest of this pointer stream.
+    if (strokeCanvas) {
+      commitOpenStroke(lastPoints);
+      dropStrokeUntilUp = true;
+    }
   }
   // Discard (don't bank) an in-progress lift — for ops that destroy/replace the target canvas or replay
   // history (resize / replaceProject / undo / redo), where banking has no valid target. Restores the

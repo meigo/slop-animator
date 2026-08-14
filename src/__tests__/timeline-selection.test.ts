@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Cell, DrawingLayer, Layer, ReferenceLayer } from "../anim/document";
+import type { Cell, DrawingLayer, Layer, LayerGroup, ReferenceLayer } from "../anim/document";
 import { resolveSelectionRect } from "../anim/timeline-selection";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as unknown as HTMLCanvasElement });
@@ -57,6 +57,28 @@ describe("resolveSelectionRect", () => {
     const layers: Layer[] = [refLayer(1), refLayer(2)];
     expect(
       resolveSelectionRect(layers, { layerId: 1, frame: 0 }, { layerId: 2, frame: 0 }),
+    ).toBeNull();
+  });
+
+  it("skips drawing layers whose group is collapsed (no timeline row)", () => {
+    const mid = { ...drawLayer(2), groupId: 9 };
+    const layers: Layer[] = [drawLayer(1), mid, drawLayer(3)];
+    const groups: LayerGroup[] = [{ id: 9, name: "G", collapsed: true, visible: true }];
+    const rect = resolveSelectionRect(
+      layers,
+      { layerId: 3, frame: 0 },
+      { layerId: 1, frame: 0 },
+      groups,
+    );
+    expect(rect?.layerIds).toEqual([3, 1]);
+  });
+
+  it("returns null when every drawing layer in the span is in a collapsed group", () => {
+    const a = { ...drawLayer(1), groupId: 9 };
+    const b = { ...drawLayer(2), groupId: 9 };
+    const groups: LayerGroup[] = [{ id: 9, name: "G", collapsed: true, visible: true }];
+    expect(
+      resolveSelectionRect([a, b], { layerId: 1, frame: 0 }, { layerId: 2, frame: 0 }, groups),
     ).toBeNull();
   });
 });

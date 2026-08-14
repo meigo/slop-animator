@@ -11,6 +11,7 @@ import {
   deleteBlock,
   moveBlockFrames,
   anyEditableLayer,
+  anyEditablePasteTarget,
 } from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
@@ -347,6 +348,18 @@ describe("moveBlockFrames", () => {
     expect(moveBlockFrames(proj([l], 1), [1], 0, 0, 0, fakeOps)).toBe(0);
     expect(l.cells.length).toBe(1);
   });
+
+  it("moves a mid-span hold as a hold — does not duplicate the resolved key", () => {
+    const a = fakeOps.create();
+    const l = drawLayer(1, [key(a), hold(), hold(), hold()]); // [A][·][·][·]
+    moveBlockFrames(proj([l], 4), [1], 1, 2, 1, fakeOps); // move holds at 1–2 → 2–3
+    const c0 = l.cells[0];
+    expect(c0.kind).toBe("key");
+    if (c0.kind === "key") expect(idOf(c0.canvas)).toBe(idOf(a)); // original key stays
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3]).toEqual({ kind: "hold" });
+  });
 });
 
 describe("group-locked layers are inert to block writes", () => {
@@ -457,5 +470,42 @@ describe("anyEditableLayer", () => {
     const p = proj([a], 1);
     p.groups = [{ id: 5, name: "G", collapsed: false, visible: true, locked: true }];
     expect(anyEditableLayer(p, [1])).toBe(false);
+  });
+});
+
+describe("anyEditablePasteTarget", () => {
+  it("is true when the active draw layer is writable", () => {
+    const p = proj([drawLayer(1, [key()]), drawLayer(2, [key()])], 1);
+    expect(anyEditablePasteTarget(p, 2)).toBe(true);
+  });
+
+  it("is true when the active layer is locked but a draw layer below it is writable", () => {
+    const below = drawLayer(1, [key()]);
+    const active = { ...drawLayer(2, [key()]), locked: true };
+    expect(anyEditablePasteTarget(proj([below, active], 1), 2)).toBe(true);
+  });
+
+  it("is false when every draw layer at or below the active one is locked or hidden", () => {
+    const below = { ...drawLayer(1, [key()]), visible: false };
+    const active = { ...drawLayer(2, [key()]), locked: true };
+    expect(anyEditablePasteTarget(proj([below, active], 1), 2)).toBe(false);
+  });
+
+  it("is false when the active layer is a reference", () => {
+    const draw = drawLayer(1, [key()]);
+    const ref: ReferenceLayer = {
+      kind: "ref",
+      id: 2,
+      name: "R",
+      visible: true,
+      opacity: 100,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "missing", was: "image", name: "x" },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    };
+    expect(anyEditablePasteTarget(proj([draw, ref], 1), 2)).toBe(false);
   });
 });
