@@ -41,7 +41,12 @@
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
-  import { clampTimelineHeight, playheadFollowScroll } from "../anim/timeline-layout";
+  import {
+    clampTimelineHeight,
+    playheadFollowScroll,
+    timelineStripFrames,
+  } from "../anim/timeline-layout";
+  import { audioFrameSpan } from "../audio/peaks";
   import { pixelCommand } from "../anim/history";
   import {
     groupOf,
@@ -65,6 +70,25 @@
   const MARKER_W = 22; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
   //                      frame cells don't butt against the name
   const GUTTER_W = LABEL_W + MARKER_W; // total sticky width before the first frame cell
+
+  // Sticky gutters live inside each row's box. A video/audio clip past the last frame
+  // widens THAT row only; shorter rows unstick when you scroll to the tail. Share one
+  // strip length so every gutter stays pinned for the full scroll.
+  const stripFrames = $derived.by(() => {
+    const ends: number[] = [];
+    const fps = appState.project.fps;
+    const audio = appState.project.audio;
+    if (audio) ends.push(audio.offsetFrames + audioFrameSpan(audio.buffer.duration, fps));
+    for (const l of appState.project.layers) {
+      if (l.kind !== "ref" || l.media.type !== "video") continue;
+      const dur = l.media.el.duration;
+      if (!Number.isFinite(dur) || dur <= 0) continue;
+      const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
+      ends.push(startFrame + spanFrames);
+    }
+    return timelineStripFrames(appState.project.frameCount, ends);
+  });
+  const stripMinW = $derived(GUTTER_W + stripFrames * CELL_W);
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
   // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
@@ -882,7 +906,10 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <div class="flex w-max items-stretch sticky top-0 z-20 bg-surface">
+    <div
+      class="sticky top-0 z-20 flex w-max items-stretch bg-surface"
+      style="min-width: {stripMinW}px"
+    >
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
@@ -972,6 +999,7 @@
       cellW={CELL_W}
       labelW={LABEL_W}
       markerW={MARKER_W}
+      minWidth={stripMinW}
       onTouchDown={touchPanDown}
       onTouchMove={touchPanMove}
       onTouchUp={touchPanUp}
@@ -980,7 +1008,7 @@
     <!-- layer rows (top layer first) -->
     {#each [...appState.project.layers].reverse() as layer (layer.id)}
       {#if !groupOf(layer, appState.project.groups)?.collapsed}
-        <div class="flex w-max items-center">
+        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
             class:bg-surface={layer.id !== appState.activeLayerId}

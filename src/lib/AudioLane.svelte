@@ -9,6 +9,7 @@
     cellW,
     labelW,
     markerW,
+    minWidth = 0,
     onTouchDown,
     onTouchMove,
     onTouchUp,
@@ -16,6 +17,7 @@
     cellW: number;
     labelW: number;
     markerW: number;
+    minWidth?: number;
     onTouchDown: (e: PointerEvent) => void;
     onTouchMove: (e: PointerEvent) => boolean;
     onTouchUp: () => void;
@@ -108,7 +110,7 @@
 </script>
 
 {#if state.project.audio}
-  <div class="flex w-max items-center">
+  <div class="flex w-max items-center" style="min-width: {minWidth}px">
     <div
       class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-text-secondary"
       role="presentation"

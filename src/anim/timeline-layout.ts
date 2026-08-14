@@ -28,3 +28,12 @@ export function playheadFollowScroll(
   if (wrapped && playheadX < viewLeft) return Math.max(0, playheadX - gutterW - pad);
   return null;
 }
+
+/** Horizontal strip length in frames: the document, or the furthest clip tail if a video/audio
+ *  clip hangs past the last frame. Every timeline row must be at least this wide so
+ *  `position: sticky` gutters stay pinned — sticky is trapped in the row's own box. */
+export function timelineStripFrames(frameCount: number, clipEndFrames: number[]): number {
+  let max = Math.max(0, frameCount);
+  for (const end of clipEndFrames) if (end > max) max = end;
+  return max;
+}
