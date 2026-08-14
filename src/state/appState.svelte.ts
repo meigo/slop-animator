@@ -88,8 +88,10 @@ interface AnimState {
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number };
-  /** Bumped whenever the document changes so the canvas recomposites. */
+  /** Bumped whenever the display must recomposite (document edits AND view-only ticks). */
   version: number;
+  /** Bumped only when the saved project would change. Autosave keys off this, not version. */
+  persistTick: number;
   /** Bumped when the pressure curve is edited (it's an imperative widget, not reactive state). */
   curveVersion: number;
   exportOpen: boolean;
@@ -142,6 +144,7 @@ export const state: AnimState = $state({
   },
   fill: { tolerance: 32, expand: 2 },
   version: 0,
+  persistTick: 0,
   curveVersion: 0,
   exportOpen: false,
   settingsOpen: false,
@@ -865,12 +868,18 @@ export function replaceProject(project: Project) {
   bump();
 }
 
+/** View-only recomposite (play/stop, onion, layer switch). Does not mark the project dirty. */
+export function repaint() {
+  state.version++;
+}
+
 export function bump() {
   refreshLength(state.project);
   const last = state.project.frameCount - 1;
   if (state.playhead > last) state.playhead = last;
   if (state.playhead < 0) state.playhead = 0;
   state.version++;
+  state.persistTick++;
 }
 
 /** Video ref elements in the current project. */
@@ -906,7 +915,7 @@ export const playbackController = new Playback({
       audioEngine.pause();
       for (const el of videoRefEls()) el.pause(); // next tick exact-seeks onto the paused frame
     }
-    state.version++;
+    repaint();
   },
 });
 
@@ -993,7 +1002,7 @@ export function setActiveLayer(id: number): void {
     state.transformScope = "frame";
   }
   // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
-  if (state.onion.enabled && !state.onion.allLayers) state.version++;
+  if (state.onion.enabled && !state.onion.allLayers) repaint();
 }
 
 export function setTimelineSelection(anchor: SelectionEndpoint, focus: SelectionEndpoint): void {

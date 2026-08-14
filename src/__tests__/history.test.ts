@@ -60,4 +60,28 @@ describe("History", () => {
     }
     expect(undone).toBe(3); // only the last 3 are retained
   });
+
+  it("drops the oldest commands when the byte budget is exceeded", () => {
+    const s = { n: 0 };
+    const h = new History(50, 25);
+    for (let i = 0; i < 3; i++) {
+      s.n += 1;
+      h.push({ ...counterCmd(s, 1), bytes: 10 });
+    }
+    // 30 bytes > 25 → drop the oldest; 20 bytes / 2 commands remain
+    let undone = 0;
+    while (h.canUndo) {
+      h.undo();
+      undone++;
+    }
+    expect(undone).toBe(2);
+  });
+
+  it("keeps a single command even if it is over the byte budget", () => {
+    const h = new History(50, 10);
+    h.push({ ...counterCmd({ n: 0 }, 1), bytes: 99 });
+    expect(h.canUndo).toBe(true);
+    h.undo();
+    expect(h.canUndo).toBe(false);
+  });
 });

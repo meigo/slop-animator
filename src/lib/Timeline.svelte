@@ -17,6 +17,7 @@
     canvasOps,
     activeLayer,
     bump,
+    repaint,
     history,
     commitStructural,
     seekPlayhead,
@@ -41,6 +42,7 @@
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { clampTimelineHeight, playheadFollowScroll } from "../anim/timeline-layout";
+  import { pixelCommand } from "../anim/history";
   import {
     groupOf,
     isLayerEditable,
@@ -600,16 +602,20 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        bump();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        bump();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          bump();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          bump();
+        },
+        before,
+        after,
+      ),
+    );
     bump();
   }
 
@@ -665,7 +671,7 @@
       title="Onion skin"
       onclick={() => {
         appState.onion.enabled = !appState.onion.enabled;
-        bump();
+        repaint();
       }}><Layers size={16} /></button
     >
     <!-- Onion params live in a popover, mirroring line boil next door: three inline labels made
@@ -689,7 +695,7 @@
               min="0"
               max="3"
               bind:value={appState.onion.prev}
-              onchange={bump}
+              onchange={repaint}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.prev}</span
             ></label
@@ -702,20 +708,20 @@
               min="0"
               max="3"
               bind:value={appState.onion.next}
-              onchange={bump}
+              onchange={repaint}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.next}</span
             ></label
           >
           <label class="flex items-center gap-2" title="Onion: ghost all layers, not just this one">
-            <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={bump} />
+            <input type="checkbox" bind:checked={appState.onion.allLayers} onchange={repaint} />
             all layers
           </label>
           <label
             class="flex items-center gap-2"
             title="Onion: step to neighbouring keyframes instead of frames — holds don't use up a ghost"
           >
-            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={bump} />
+            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={repaint} />
             step by keyframes
           </label>
           <span class="text-text-muted"

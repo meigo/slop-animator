@@ -981,8 +981,14 @@ pure (~409):
 - Finger Reset-to-fit + pose bar reuse `.selection-actions-panel` so touch-pan does not steal them.
 - `input.ts` binds `pointercancel` (same path as up/leave). Not a full abort-restore.
 
-**Still open from that review (not this batch):** `state.version` is still both repaint and
-persist dirty; pixel history is still 50 full-frame ImageDatas.
+**Still open from that review:** none of the original high-severity items. (Follow-ups welcome.)
+
+**persistTick vs version + pixel-undo byte budget (2026-08-14):** `bump()` now increments
+`persistTick` as well as `version`; `repaint()` is version-only (play/stop, onion, layer
+switch, media hydrate). Autosave watches `persistTick`, so a play/stop no longer schedules
+a full PNG encode. Pixel undos carry a `bytes` cost (`pixelCommand`); History evicts the
+oldest commands past 256 MB (~15 full-frame 1920×1080 strokes) while still keeping at
+least one, and still caps at 50 commands.
 
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)

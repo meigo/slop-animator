@@ -24,6 +24,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
   } from "../state/appState.svelte";
+  import { pixelCommand } from "../anim/history";
   import {
     selectionRef,
     selectionActions,
@@ -333,16 +334,20 @@
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        recomposite();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        recomposite();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
     bump();
     recomposite();
   }
@@ -791,16 +796,20 @@
       const after = strokeCtx!.getImageData(0, 0, strokeCanvas!.width, strokeCanvas!.height);
       const target = strokeCtx!;
       const before = beforeSnapshot!;
-      history.push({
-        undo: () => {
-          target.putImageData(before, 0, 0);
-          recomposite();
-        },
-        redo: () => {
-          target.putImageData(after, 0, 0);
-          recomposite();
-        },
-      });
+      history.push(
+        pixelCommand(
+          () => {
+            target.putImageData(before, 0, 0);
+            recomposite();
+          },
+          () => {
+            target.putImageData(after, 0, 0);
+            recomposite();
+          },
+          before,
+          after,
+        ),
+      );
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
@@ -842,16 +851,20 @@
       const ctx = selCtx;
       const before = selBefore;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-      history.push({
-        undo: () => {
-          ctx.putImageData(before, 0, 0);
-          recomposite();
-        },
-        redo: () => {
-          ctx.putImageData(after, 0, 0);
-          recomposite();
-        },
-      });
+      history.push(
+        pixelCommand(
+          () => {
+            ctx.putImageData(before, 0, 0);
+            recomposite();
+          },
+          () => {
+            ctx.putImageData(after, 0, 0);
+            recomposite();
+          },
+          before,
+          after,
+        ),
+      );
       selCtx = null;
       selBefore = null;
       bump();
@@ -913,16 +926,20 @@
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        bump();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        bump();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          bump();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          bump();
+        },
+        before,
+        after,
+      ),
+    );
     selection.cancel(); // clear the marquee (no float → onCancel no-ops)
     bump();
   }
@@ -1109,16 +1126,20 @@
     const ctx = selCtx;
     const before = selBefore;
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-    history.push({
-      undo: () => {
-        ctx.putImageData(before, 0, 0);
-        recomposite();
-      },
-      redo: () => {
-        ctx.putImageData(after, 0, 0);
-        recomposite();
-      },
-    });
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
     meshPose = null;
     appState.poseActive = false;
     poseDrag = null;
