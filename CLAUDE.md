@@ -800,6 +800,26 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
 
+**Real favicon + icons from the "slop" artwork (2026-08-14):** the app had NO `<link rel="icon">` at
+all — only a manifest and an apple-touch-icon — so every browser tab showed the default globe, and
+the PWA icons were a placeholder squiggle drawn analytically. Both replaced with the real hand-drawn
+mark. **Two sources on purpose, and they must stay in sync:** `public/icon.svg` is the full "slop"
+logotype (four letters of hand lettering — reads beautifully at 180px+, turns to an indistinct blob
+at 32), and `public/favicon.svg` is the **star glyph alone**, which is what the browser tab gets.
+Declaring BOTH `rel="icon"` forms (SVG + a 32px PNG) means no browser ever falls back to requesting
+`/favicon.ico`, so no `.ico` is needed. White plate, black ink (`#fff`/`#000`) — chosen over the old
+dark-plate icons because a white square reads on any tab bar; note `manifest.webmanifest` still
+declares a dark `background_color`/`theme_color`, which is right for the app's dark UI but does mean
+the PWA splash is dark behind a white icon. `tools/make-icons.mjs` was rewritten to RASTERIZE those
+SVGs rather than draw its own mark: it stays dependency-free (the project installs no SVG
+rasterizer), parsing the path, flattening cubics, and scanline-filling with the **even-odd** rule at
+4× supersampling — even-odd matters, it is what keeps the counters of "o" and "p" hollow. Only `M`,
+`c` and `z` are supported, and an unknown command THROWS rather than silently dropping part of the
+mark; widen it if the art ever needs more. The fit is computed from the flattened path's own ink
+bounds, so new artwork centres itself with no hand-tuned numbers (an earlier hand-guessed bounding
+box put the star wildly off-canvas — let the code measure it). Regenerate with
+`node tools/make-icons.mjs`; outputs are committed and not wired into the build.
+
 **The selection marquee is screen-constant (2026-08-14):** asked as "the marquee scales with zoom —
 is that intended?" It wasn't; it was half-done. `Selection.screenScale` was maintained on every
 viewport change (`Canvas.svelte`'s `viewport.onChange`) but consumed at exactly ONE place —
