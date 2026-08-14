@@ -800,6 +800,32 @@ as a canvas pan under EVERY tool — the app-wide **finger navigates, Pencil edi
 `pointerType` filter in `BrushCursor` without changing `shouldDraw` too; on its own it would do
 nothing.
 
+**The selection marquee is screen-constant (2026-08-14):** asked as "the marquee scales with zoom —
+is that intended?" It wasn't; it was half-done. `Selection.screenScale` was maintained on every
+viewport change (`Canvas.svelte`'s `viewport.onChange`) but consumed at exactly ONE place —
+hit-testing — so the GRAB TARGET was zoom-independent while the DRAWING was not. The overlay canvas
+is document-sized and sits inside the zoom-transformed wrapper, so `lineWidth = 1`,
+`setLineDash([4,4])` and the 8px handles all scaled: at 400% the ants were 4 screen px thick with
+16px dashes, at 25% a sub-pixel line and 2px handles that were still grabbable within 12 screen px —
+**you could grab a handle you could barely see**. That mismatch, not the aesthetics, was the actual
+defect. Fixed with a private `get px() { return 1 / this.screenScale }` — one SCREEN pixel in
+document units — applied to every cosmetic size: marquee width/dashes, the `lineDashOffset`
+(so the ants' crawl SPEED is screen-constant too — `marchOffset` cycles 0..8 in screen px), the
+rotate tether, the warp grid lines, and `HANDLE_SIZE`. Selection GEOMETRY stays document-space;
+only chrome is compensated, which is why no selection math or test changed. **One deliberate
+behaviour change beyond cosmetics:** `hitTolerance` lost its `Math.max(HANDLE_SIZE + 2, …)` floor.
+That floor was a DOCUMENT-space number that matched the old document-space handle; with handles now
+drawn at a constant 8 screen px it would have grabbed from 5× the handle's width at 4× zoom. It is
+now plainly `MIN_HIT_PX * px` = 12 screen px at every zoom, i.e. a constant 4px of forgiveness
+around the 8px handle. Net effect: grabbing is TIGHTER at high zoom than before (12 screen px where
+it used to be 40) and identical at 100% and below. **The rule this sets:** the overlay canvas is
+document-space, so anything cosmetic drawn on it must be multiplied by `px`; every other overlay in
+the app (transform gizmo, brush cursor, the paintable-edge hairline) is already screen-space by
+construction. **Owed a browser pass:** marquee at 25% / 100% / 400% (constant weight, constant dash
+size, constant crawl speed); handles the same size at every zoom; grabbing a corner handle at high
+zoom still feels right with the tighter tolerance; lasso outline; the warp/deform grid; iPad pinch
+zoom mid-selection.
+
 **Fit to view is reachable without a keyboard (2026-08-14):** `fitView` had exactly ONE caller —
 the `0` key in `Canvas.svelte` — and no UI route at all, which meant that on iPad (no keyboard) a
 canvas flung off-screen by a stray two-finger pan could only be recovered by RELOADING the page.

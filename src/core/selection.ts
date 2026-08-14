@@ -369,9 +369,21 @@ export class Selection {
     this.onChange?.();
   }
 
-  /** Hit half-width in document px — at least MIN_HIT_PX in screen px, regardless of zoom. */
+  /** One SCREEN pixel expressed in the overlay's document-space units. The overlay canvas lives
+   *  inside the zoom-transformed wrapper, so every COSMETIC size (line widths, dash lengths, handle
+   *  boxes) is multiplied by this to stay screen-constant — matching the transform gizmo and the
+   *  brush cursor, and keeping the drawn handle the same size as the hit target below. Selection
+   *  GEOMETRY stays in document space; only its chrome is compensated. */
+  private get px(): number {
+    return 1 / this.screenScale;
+  }
+
+  /** Hit half-width in document px — MIN_HIT_PX in screen px, regardless of zoom. A handle now
+   *  DRAWS at a constant HANDLE_SIZE screen px, so this stays a fixed few screen px of forgiveness
+   *  around it; the old `HANDLE_SIZE + 2` floor was a document-space number that matched the old
+   *  document-space handle and would now grab from 5× the handle's width at high zoom. */
   private hitTolerance(): number {
-    return Math.max(HANDLE_SIZE + 2, MIN_HIT_PX / this.screenScale);
+    return MIN_HIT_PX * this.px;
   }
 
   hitTest(x: number, y: number): Handle {
@@ -793,7 +805,7 @@ export class Selection {
       // Internal grid lines (between adjacent control points).
       ctx.save();
       ctx.strokeStyle = "rgba(0,0,0,0.3)";
-      ctx.lineWidth = 1;
+      ctx.lineWidth = this.px;
       ctx.beginPath();
       for (let r = 0; r < this.warpRows; r++) {
         for (let c = 0; c < this.warpCols - 1; c++) {
@@ -865,23 +877,25 @@ export class Selection {
     ctx.moveTo(top.x, top.y);
     ctx.lineTo(rotHandle.x, rotHandle.y);
     ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this.px;
     ctx.stroke();
     ctx.strokeStyle = "#000";
-    ctx.setLineDash([2, 2]);
+    ctx.setLineDash([2 * this.px, 2 * this.px]);
     ctx.stroke();
     ctx.setLineDash([]);
     this.drawHandle(ctx, rotHandle.x, rotHandle.y, "circle");
   }
 
   private strokeMarchingAnts(ctx: CanvasRenderingContext2D) {
+    const px = this.px;
     ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = px;
     ctx.setLineDash([]);
     ctx.stroke();
     ctx.strokeStyle = "#000";
-    ctx.setLineDash([4, 4]);
-    ctx.lineDashOffset = -this.marchOffset;
+    ctx.setLineDash([4 * px, 4 * px]);
+    // marchOffset cycles 0..8 in SCREEN px; scaling it here keeps the crawl speed constant too.
+    ctx.lineDashOffset = -this.marchOffset * px;
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -892,25 +906,28 @@ export class Selection {
     y: number,
     shape: "square" | "circle" | "pin",
   ) {
+    // HANDLE_SIZE is a SCREEN measurement; convert to document units for this zoom level.
+    const s = HANDLE_SIZE * this.px;
+    const lw = this.px;
     if (shape === "pin") {
       ctx.fillStyle = "#000";
-      ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.fillRect(x - s / 2, y - s / 2, s, s);
       ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.lineWidth = lw;
+      ctx.strokeRect(x - s / 2, y - s / 2, s, s);
     } else if (shape === "square") {
       ctx.fillStyle = "#fff";
-      ctx.fillRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.fillRect(x - s / 2, y - s / 2, s, s);
       ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - HANDLE_SIZE / 2, y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.lineWidth = lw;
+      ctx.strokeRect(x - s / 2, y - s / 2, s, s);
     } else {
       ctx.beginPath();
-      ctx.arc(x, y, HANDLE_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(x, y, s / 2, 0, Math.PI * 2);
       ctx.fillStyle = "#fff";
       ctx.fill();
       ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1;
+      ctx.lineWidth = lw;
       ctx.stroke();
     }
   }
