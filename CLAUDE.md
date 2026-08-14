@@ -997,10 +997,10 @@ handful of display pixels blown up. `drawCellComposed`/`drawTransformed` now use
 `min(zoom, 2)` (export stays 1×). Cells stay DPR=1. Zoom past 2× can still soften;
 a full screen-space camera is the next step if that shows up.
 
-**Two-finger pan no longer tilts then snaps (2026-08-14):** pinch applied live rotation from
-finger-pair angle, then `snapRotation` (~5°) popped anything near 0° on lift. A two-finger
-pan always drifted a few degrees. Rotation now engages only after a ~15° twist
-(`pinchRotation`, unit-tested); snap runs only if that gesture actually rotated.
+**Two-finger rotate is live again, snap window tightened (2026-08-14):** a 15° engage
+floor blocked small intentional rotates. Restored Procreate-style live twist during the
+pinch; on lift, snap to 90° only inside ~3° (`snappedRotation`, unit-tested) so a 2° pan
+tilt pops back and an 8° rotate stays. Snap still runs only after a two-finger pinch.
 
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
