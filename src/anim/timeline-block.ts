@@ -156,6 +156,15 @@ export function deleteBlock(
   }
 }
 
+/** True when at least one listed layer would actually be written by a block op. Used to skip
+ *  empty undo entries (keyboard Cut/Delete on an all-locked/hidden selection). */
+export function anyEditableLayer(project: Project, layerIds: number[]): boolean {
+  return layerIds.some((id) => {
+    const layer = project.layers.find((l) => l.id === id);
+    return !!layer && isLayerEditable(layer, project.groups);
+  });
+}
+
 /** Move the selected block by `delta` frames on its OWN layers (frames-only), overwriting the
  *  destination. Returns the applied delta after clamping so the earliest moved frame stays >= 0.
  *  Self-contained: leading holds are materialized (via copyBlock), the range is blanked, then the

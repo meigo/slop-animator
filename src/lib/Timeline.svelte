@@ -218,9 +218,15 @@
       : null,
   );
 
+  function rowMovesWithBlock(layerId: number): boolean {
+    if (dragMode !== "moveblock" || !selRect || !selRect.layerIds.includes(layerId)) return false;
+    const layer = appState.project.layers.find((l) => l.id === layerId);
+    return !!layer && isLayerEditable(layer, appState.project.groups);
+  }
+
   function inSelection(layerId: number, f: number): boolean {
     if (!selRect) return false;
-    const shift = dragMode === "moveblock" ? moveDelta : 0; // slide the highlight to the drop target
+    const shift = rowMovesWithBlock(layerId) ? moveDelta : 0; // inert rows stay put (skip-and-consume)
     return (
       selRect.layerIds.includes(layerId) &&
       f >= selRect.startFrame + shift &&
@@ -230,11 +236,9 @@
 
   // During a moveblock drag, preview the keyframe glyphs sliding to the drop target: a cell in the
   // shifted range shows the glyph moving into it (from `f - moveDelta`); a vacated source cell
-  // clears. Cheap index math over the already-computed glyph array — no recompute. Otherwise the
-  // real glyph.
+  // clears. Locked/hidden rows do not write, so they keep their real glyphs.
   function displayGlyph(layerId: number, glyphs: string[], f: number): string {
-    if (dragMode !== "moveblock" || !selRect || !selRect.layerIds.includes(layerId))
-      return glyphs[f];
+    if (!rowMovesWithBlock(layerId) || !selRect) return glyphs[f];
     if (f >= selRect.startFrame + moveDelta && f <= selRect.endFrame + moveDelta)
       return glyphs[f - moveDelta] ?? ""; // key sliding into the target
     if (f >= selRect.startFrame && f <= selRect.endFrame) return ""; // vacated source
@@ -406,10 +410,20 @@
       );
       return;
     }
-    // Idle hover cursor.
+    // Idle hover cursor. Don't advertise resize/move on a row that rowDown will refuse.
     if (dragMode === "none") {
-      const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
-      rowCursor = plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
+      if (!isLayerEditable(layer, appState.project.groups)) {
+        rowCursor = "default";
+      } else {
+        const plan = planCellPointer(
+          layer.cells,
+          rowOffset(e),
+          CELL_W,
+          appState.project.frameCount,
+        );
+        rowCursor =
+          plan.kind === "resize" ? "ew-resize" : plan.kind === "move" ? "grab" : "default";
+      }
     }
   }
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
@@ -513,6 +527,7 @@
   function clearFrame() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
     const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -865,7 +880,7 @@
                 ? "Layer hidden — edits refused"
                 : ""}
           >
-            {#if layer.locked}<Lock
+            {#if isLayerLocked(layer, appState.project.groups)}<Lock
                 size={11}
               />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
           </span>

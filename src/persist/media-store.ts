@@ -1,6 +1,7 @@
 import { idbDo, MEDIA_STORE } from "./db";
 import { mediaFromBlob } from "../anim/reference";
 import { shouldRestoreMedia } from "./project-file";
+import { persistGeneration } from "./generation";
 import type { Project } from "../anim/document";
 
 export interface MediaRecord {
@@ -21,8 +22,11 @@ export function getMedia(id: string): Promise<MediaRecord | undefined> {
 /** Delete every record not in `keep`. Call ONLY at project-load boundaries — undo snapshots
  *  share layer objects, so mid-session deletion could strand a restorable layer (gotcha #8). */
 export async function pruneMedia(keep: Set<string>): Promise<void> {
+  const started = persistGeneration();
   const keys = await idbDo<IDBValidKey[]>(MEDIA_STORE, "readonly", (s) => s.getAllKeys());
+  if (started !== persistGeneration()) return; // document replaced while we listed keys
   for (const k of keys) {
+    if (started !== persistGeneration()) return;
     if (!keep.has(String(k))) await idbDo(MEDIA_STORE, "readwrite", (s) => s.delete(k));
   }
 }

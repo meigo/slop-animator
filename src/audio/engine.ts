@@ -1,5 +1,5 @@
 import { getAudioContext } from "./context";
-import { bufferOffsetForFrame } from "./peaks";
+import { audioPlayPlan, bufferOffsetForFrame } from "./peaks";
 import type { AudioTrack } from "../anim/document";
 
 const SCRUB_WINDOW_S = 0.1; // ~100 ms preview per paused playhead move (P2 spec)
@@ -19,17 +19,22 @@ class AudioEngine {
   /** Start audio aligned to animation `frame`. */
   play(frame: number, fps: number): void {
     if (!this.track || this.track.muted) return;
+    const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
+    const plan = audioPlayPlan(at, this.track.buffer.duration);
+    if (plan.kind === "silence") {
+      this.stop(); // clip already over → silent, animation continues
+      return;
+    }
     const ctx = getAudioContext();
     void ctx.resume();
     this.stop();
     const src = ctx.createBufferSource();
     src.buffer = this.track.buffer;
     src.connect(ctx.destination);
-    const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
     // Negative = the clip starts in the future (offset drag pushed it right of the playhead):
     // schedule the start so the audio begins exactly when the frame clock reaches the clip.
-    if (at >= 0) src.start(0, at);
-    else src.start(ctx.currentTime - at, 0);
+    if (plan.kind === "offset") src.start(0, plan.offsetS);
+    else src.start(ctx.currentTime + plan.delayS, 0);
     this.source = src;
   }
 

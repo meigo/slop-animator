@@ -553,10 +553,10 @@
     }
     const d = refDrag;
     if (d.handle) {
-      d.dirty = true; // this gesture wrote a transform → its bracket is worth committing
       if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
       else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
       else setT(applyScale(d.startT, d.center, d.start, pc));
+      d.dirty = !isSameTransform(d.startT, getT());
       bump();
     }
     if (done) {
@@ -1361,7 +1361,7 @@
   />
   {#if poseBarVisible()}
     <div
-      class="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
+      class="selection-actions-panel absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
     >
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"

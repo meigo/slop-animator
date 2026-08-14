@@ -956,3 +956,33 @@ source (exercises the resample — iPad/Safari is the one to watch); a long proj
 window is materialised as one 48 kHz buffer, ~23 MB/minute stereo, so memory is the risk and it
 degrades to a warning rather than a crash); and iPad for at least the MP4 path. Spec/plan:
 `…/2026-08-11-audio-phase3-export-muxing*.md`.
+
+**Review-fix batch (2026-08-14, on `fix/review-batch-1`):** second-opinion review of `main` found
+seam bugs (later features not threaded through older paths). Fixed, with tests where the logic is
+pure (~409):
+
+- `ensureDrawableKeyframe` copies the held key's `transform`/`transformBox` (draw-on-hold no longer
+  jumps a cell-transformed drawing to identity).
+- `audioPlayPlan` + `AudioEngine.play` stay silent at/past clip end (`start(0, at)` threw and could
+  freeze transport). `syncReferenceVideos` freezes an ended video instead of `play()`-restarting
+  from 0. Play-start no longer seeks/plays refs itself (one policy, the Canvas tick).
+- `undo()`/`redo()` `bump()` after a successful pop so pixel undo dirties autosave and invalidates
+  glyph/bounds caches (structural restore already bumped).
+- `groupActiveLayer`/`ungroup` go through `commitStructural` (`groupId` was snapshot-restored but
+  the actions never pushed).
+- Transform-drag `dirty` is `!isSameTransform(startT, getT())` after apply, not "handle was hit" —
+  ⌘Z on a no-move grab no longer pushes an empty entry.
+- `liftGuard.discard` before `mergeDown` / `applyLayerTransform` / `applyCellTransform` / `clearFrame`.
+- Timeline gutter padlock uses `isLayerLocked` (group lock was invisible). Keyboard Cut/Delete
+  no-op when `anyEditableLayer` is false (no empty undo). Move-ghost skips inert rows.
+- `seekPlayhead` `syncTo`s project audio while playing. Export pauses playback (shared boil GL).
+- `idbDo` resolves on `tx.oncomplete` / rejects on abort (and always closes). Persist generation
+  drops a stale autosave put and aborts a prune after New/Open.
+- Finger Reset-to-fit + pose bar reuse `.selection-actions-panel` so touch-pan does not steal them.
+- `input.ts` binds `pointercancel` (same path as up/leave). Not a full abort-restore.
+
+**Still open from that review (not this batch):** select/lasso/deform/pose still live in raw
+document space under a cell/group transform (paint/fill inverse-map; these do not); stroke
+listeners are still on the document AABB so `LayerBoundsHint` can advertise a quad events never
+reach; hold-span resize has no settle hook; `state.version` is still both repaint and persist
+dirty; pixel history is still 50 full-frame ImageDatas.

@@ -10,6 +10,7 @@ import {
   pasteBlockInsert,
   deleteBlock,
   moveBlockFrames,
+  anyEditableLayer,
 } from "../anim/timeline-block";
 
 // Fake canvases tagged so we can assert identity/cloning without the DOM.
@@ -436,5 +437,25 @@ describe("hidden rows are inert to block writes", () => {
     deleteBlock(p, [1, 2], 0, 1);
     expect(a.cells.every((c) => c.kind === "hold")).toBe(true);
     expect(b.cells[0]).toBe(before0); // hidden content the user can't see is never destroyed
+  });
+});
+
+describe("anyEditableLayer", () => {
+  it("is true when any listed draw layer is unlocked and visible", () => {
+    const a = drawLayer(1, [key()]);
+    const b = { ...drawLayer(2, [key()]), locked: true };
+    expect(anyEditableLayer(proj([a, b], 1), [1, 2])).toBe(true);
+  });
+  it("is false when every listed layer is locked, hidden, or missing", () => {
+    const a = { ...drawLayer(1, [key()]), locked: true };
+    const b = { ...drawLayer(2, [key()]), visible: false };
+    expect(anyEditableLayer(proj([a, b], 1), [1, 2])).toBe(false);
+    expect(anyEditableLayer(proj([a], 1), [99])).toBe(false);
+  });
+  it("treats a group-locked layer as not editable", () => {
+    const a = { ...drawLayer(1, [key()]), groupId: 5 };
+    const p = proj([a], 1);
+    p.groups = [{ id: 5, name: "G", collapsed: false, visible: true, locked: true }];
+    expect(anyEditableLayer(p, [1])).toBe(false);
   });
 });

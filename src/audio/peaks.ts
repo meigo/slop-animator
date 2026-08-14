@@ -29,3 +29,16 @@ export function audioFrameSpan(durationSec: number, fps: number): number {
 export function bufferOffsetForFrame(frame: number, offsetFrames: number, fps: number): number {
   return (frame - offsetFrames) / fps;
 }
+
+/** How to start a buffer at signed offset `at` seconds. `start(0, at)` throws IndexSizeError
+ *  when `at >= duration` — silence, don't start. Negative `at` is a delayed start from 0. */
+export type AudioPlayPlan =
+  | { kind: "silence" }
+  | { kind: "delay"; delayS: number }
+  | { kind: "offset"; offsetS: number };
+
+export function audioPlayPlan(at: number, duration: number): AudioPlayPlan {
+  if (at >= duration) return { kind: "silence" };
+  if (at < 0) return { kind: "delay", delayS: -at };
+  return { kind: "offset", offsetS: at };
+}
