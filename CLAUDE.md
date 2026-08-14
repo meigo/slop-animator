@@ -819,6 +819,9 @@ mark; widen it if the art ever needs more. The fit is computed from the flattene
 bounds, so new artwork centres itself with no hand-tuned numbers (an earlier hand-guessed bounding
 box put the star wildly off-canvas — let the code measure it). Regenerate with
 `node tools/make-icons.mjs`; outputs are committed and not wired into the build.
+**Verified 2026-08-14:** the star shows in the browser tab. The installed Home Screen icon is NOT
+confirmed — iOS snapshots it at install time, so seeing the new logotype there needs a
+remove-and-re-add of the Home Screen app, not just a reload.
 
 **The selection marquee is screen-constant (2026-08-14):** asked as "the marquee scales with zoom —
 is that intended?" It wasn't; it was half-done. `Selection.screenScale` was maintained on every
