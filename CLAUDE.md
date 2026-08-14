@@ -1000,7 +1000,9 @@ a full screen-space camera is the next step if that shows up.
 **Two-finger rotate is live again, snap window tightened (2026-08-14):** a 15° engage
 floor blocked small intentional rotates. Restored Procreate-style live twist during the
 pinch; on lift, snap to 90° only inside ~3° (`snappedRotation`, unit-tested) so a 2° pan
-tilt pops back and an 8° rotate stays. Snap still runs only after a two-finger pinch.
+tilt pops back and an 8° rotate stays. Snap still runs only after a two-finger pinch. Snap now rotates about
+the last pinch midpoint (`panKeepingScreenPoint`) so it does not jump around the CSS
+top-left origin.
 
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)

@@ -65,6 +65,8 @@ export function setupTouchGestures(
   let pinchStartPanX = 0;
   let pinchStartPanY = 0;
   let pinchActive = false;
+  let lastPinchMidX = 0;
+  let lastPinchMidY = 0;
 
   // Single-finger pan state
   let singlePanActive = false;
@@ -203,6 +205,8 @@ export function setupTouchGestures(
     pinchStartRotation = viewport.rotation;
     pinchStartMidX = (a.x + b.x) / 2;
     pinchStartMidY = (a.y + b.y) / 2;
+    lastPinchMidX = pinchStartMidX;
+    lastPinchMidY = pinchStartMidY;
     pinchStartPanX = viewport.panX;
     pinchStartPanY = viewport.panY;
     pinchActive = true;
@@ -217,6 +221,8 @@ export function setupTouchGestures(
     const currentAngle = angleBetween(a.x, a.y, b.x, b.y);
     const currentMidX = (a.x + b.x) / 2;
     const currentMidY = (a.y + b.y) / 2;
+    lastPinchMidX = currentMidX;
+    lastPinchMidY = currentMidY;
 
     // New zoom & rotation
     const scale = currentDist / pinchStartDist;
@@ -260,8 +266,9 @@ export function setupTouchGestures(
   function snapRotation() {
     const next = snappedRotation(viewport.rotation);
     if (next === viewport.rotation) return;
-    viewport.rotation = next;
-    viewport.applyTransformPublic();
+    // Rotate about the last pinch midpoint — same pivot as the live twist.
+    // Setting rotation alone uses the CSS origin (top-left) and the canvas jumps.
+    viewport.setRotationAroundScreenPoint(lastPinchMidX, lastPinchMidY, next);
     callbacks.onViewportChange();
   }
 
