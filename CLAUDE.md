@@ -1035,3 +1035,13 @@ bracket at grab and used to leave it dangling — ⌘Z mid-resize undid the _pre
 `rowUp` committed the pre-resize snapshot and re-did it. Registers `transformDragGuard.settle` at
 grab (same hook undo/tool-switch already call). A dirty resize commits so the following undo pops
 it; a no-op drops. An in-flight move-block has not written yet, so settle just cancels the ghost.
+
+**Video-ref clip drag (2026-08-14):** a linked video reference draws as a draggable block on its
+timeline row (`videoClipLayout` — inverted offset mapping so dragging the clip right advances
+start later in the project). Missing media shows a "re-link" label (no file picker on the row).
+Image / unknown-duration refs keep a type label only. The LayerList offset number is gone; speed
+stays. Audio lane got a matching clip fill under the waveform. No filmstrip, trim, or model
+change; drag is not undoable (same as the old number field). Spec:
+`docs/superpowers/specs/2026-08-14-video-ref-clip-drag-design.md`. **Owed an iPad pass:** drag
+incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
+block; audio rectangle; finger pans; save/reload.
