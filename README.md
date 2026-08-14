@@ -81,3 +81,45 @@ npm run deploy     # build, then wrangler deploy (Cloudflare Workers static asse
 Animated/keyframed transforms, group-transform apply
 (pixel flatten), tiled copy-on-write cell storage for an expandable canvas. See `CLAUDE.md`
 for the detailed state and deferred-work list.
+
+## Contributors
+
+<table>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/meigo">
+        <img src="https://github.com/meigo.png?size=100" width="100" height="100" alt="meigo" /><br />
+        <sub><b>Meigo Kukk</b></sub>
+      </a><br />
+      <sub>owner</sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/claude">
+        <img src="https://github.com/claude.png?size=100" width="100" height="100" alt="Claude" /><br />
+        <sub><b>Claude</b></sub>
+      </a><br />
+      <sub>Anthropic · co-author</sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://x.ai/">
+        <img
+          src="https://www.google.com/s2/favicons?domain=x.ai&sz=128"
+          width="100"
+          height="100"
+          alt="Grok / xAI"
+        /><br />
+        <sub><b>Grok</b></sub>
+      </a><br />
+      <sub>xAI · co-author</sub>
+    </td>
+  </tr>
+</table>
+
+Assisted by **[Claude](https://claude.ai/)** (Anthropic) and **[Grok](https://x.ai/)** (xAI).
+GitHub lists Claude from `noreply@anthropic.com`. Grok’s
+`noreply@x.ai` is not tied to a GitHub user, so it does not appear in the
+sidebar. Commits may include:
+
+```text
+Co-Authored-By: Grok <noreply@x.ai>
+```
