@@ -26,6 +26,17 @@ const TAP_MAX_DISTANCE = 8; // px — must not move more than this
 /** Max distance (canvas px) between consecutive points before we interpolate */
 const INTERPOLATION_THRESHOLD = 4;
 
+/**
+ * True when the event landed on UI chrome that lives *inside* the drawing stage
+ * (the floating selection bar, pose bar). Svelte 5 delegates `pointerdown` to the
+ * document, so a child's `onpointerdown` + `stopPropagation` runs AFTER a native
+ * bubble listener on `stage` — filtering here is the only reliable guard.
+ * Same selector `touch-gestures.ts` already uses for finger pans.
+ */
+export function isStageChromeTarget(target: EventTarget | null): boolean {
+  return !!(target as Element | null)?.closest?.(".selection-actions-panel");
+}
+
 export function setupInput(
   canvas: HTMLElement,
   onStroke: StrokeHandler,
@@ -82,6 +93,7 @@ export function setupInput(
 
   function onPointerDown(e: PointerEvent) {
     if (e.button !== 0 || !shouldDraw(e)) return;
+    if (isStageChromeTarget(e.target)) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     isDrawing = true;

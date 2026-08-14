@@ -142,6 +142,13 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     the raw target never sees it — the engine read offset 0 forever (audio P2 bug, 2026-08-09). Pass
     the proxy read back AFTER assignment (`setTrack(state.project.audio)`). Applies to any
     singleton/module that caches model objects outside the store.
+12. **Svelte 5 delegates `pointerdown`.** A child's `onpointerdown` + `stopPropagation` runs at the
+    _document_, AFTER a native bubble listener on an ancestor. The selection action bar lives inside
+    `stage`, so `setupInput`'s listener treated a tap on Free transform / Distort / Mesh as "click
+    outside → cancel + start a new marquee" — selection vanished, no gizmos. `stopPropagation` in
+    the button is too late. Filter `.selection-actions-panel` in `setupInput` (pen/mouse) the same
+    way `touch-gestures.ts` already did for fingers. Any new chrome inside the stage needs the same
+    class (or an explicit `setupInput` ignore).
 
 ## Current state (all shipped & merged to `main`)
 

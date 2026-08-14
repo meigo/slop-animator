@@ -11,6 +11,7 @@
  */
 
 import { Viewport } from "./viewport";
+import { isStageChromeTarget } from "./input";
 
 interface ActiveTouch {
   id: number;
@@ -87,7 +88,7 @@ export function setupTouchGestures(
     if (e.pointerType !== "touch") return;
     // Don't intercept taps on the floating selection action panel — those are buttons.
     const target = e.target as Element | null;
-    if (target?.closest?.(".selection-actions-panel")) return;
+    if (isStageChromeTarget(e.target)) return;
     // Don't pan/pinch when a finger lands on a reference-transform handle — let it drag the handle.
     if (target?.closest?.("[data-ref-handle]")) return;
     e.preventDefault();

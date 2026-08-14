@@ -83,7 +83,10 @@
   const distortActive = $derived(mode === "warping" && warp.rows === 2 && warp.cols === 2);
   const meshActive = $derived(mode === "warping" && (warp.rows !== 2 || warp.cols !== 2));
 
-  // Stop taps from bleeding through to the canvas (which would start a new selection).
+  // stopPropagation is not enough on its own: Svelte 5 delegates pointerdown to the
+  // document, so the stage's native bubble listener in setupInput fires first and
+  // would treat this tap as "click outside → cancel the selection". setupInput
+  // filters `.selection-actions-panel`; keep both.
   function tap(handler: () => void) {
     return (e: PointerEvent) => {
       e.stopPropagation();
