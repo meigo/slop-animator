@@ -4,6 +4,7 @@ import {
   MIN_TIMELINE_HEIGHT,
   DEFAULT_TIMELINE_HEIGHT,
   playheadFollowScroll,
+  timelineStripFrames,
 } from "../anim/timeline-layout";
 
 describe("clampTimelineHeight", () => {
@@ -63,5 +64,20 @@ describe("playheadFollowScroll", () => {
     const prevX = 2500; // was at the end
     const next = playheadFollowScroll(playheadX, scroll, viewW, gutter, pad, prevX);
     expect(next).toBe(Math.max(0, playheadX - gutter - pad));
+  });
+});
+
+describe("timelineStripFrames", () => {
+  it("is the document length when no clip hangs past the end", () => {
+    expect(timelineStripFrames(24, [10, 24])).toBe(24);
+  });
+
+  it("grows to the furthest clip end so every row can share that width", () => {
+    expect(timelineStripFrames(24, [10, 80])).toBe(80);
+  });
+
+  it("ignores empty extras and never goes below 0", () => {
+    expect(timelineStripFrames(0, [])).toBe(0);
+    expect(timelineStripFrames(12, [-4])).toBe(12);
   });
 });

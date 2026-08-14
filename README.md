@@ -33,6 +33,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Reference & audio**
 
 - Reference layers (image/video) with a transform gizmo, lockable to pin them in place — images persist with the project; video is opt-in per clip and can play its own soundtrack
+- A video reference is a **draggable clip** on the timeline (no filmstrip) — drag to place it in time; speed is set in the layer panel
 - Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset, mute, and muxed into the MP4/WebM export
 - Clipboard image paste + rasterize to a drawing layer
 

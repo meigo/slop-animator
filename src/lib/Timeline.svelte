@@ -41,7 +41,12 @@
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
-  import { clampTimelineHeight, playheadFollowScroll } from "../anim/timeline-layout";
+  import {
+    clampTimelineHeight,
+    playheadFollowScroll,
+    timelineStripFrames,
+  } from "../anim/timeline-layout";
+  import { audioFrameSpan } from "../audio/peaks";
   import { pixelCommand } from "../anim/history";
   import {
     groupOf,
@@ -49,7 +54,9 @@
     isLayerLocked,
     isLayerVisible,
     type DrawingLayer,
+    type ReferenceLayer,
   } from "../anim/document";
+  import { videoClipLayout, offsetAfterClipDrag } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -63,6 +70,25 @@
   const MARKER_W = 22; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
   //                      frame cells don't butt against the name
   const GUTTER_W = LABEL_W + MARKER_W; // total sticky width before the first frame cell
+
+  // Sticky gutters live inside each row's box. A video/audio clip past the last frame
+  // widens THAT row only; shorter rows unstick when you scroll to the tail. Share one
+  // strip length so every gutter stays pinned for the full scroll.
+  const stripFrames = $derived.by(() => {
+    const ends: number[] = [];
+    const fps = appState.project.fps;
+    const audio = appState.project.audio;
+    if (audio) ends.push(audio.offsetFrames + audioFrameSpan(audio.buffer.duration, fps));
+    for (const l of appState.project.layers) {
+      if (l.kind !== "ref" || l.media.type !== "video") continue;
+      const dur = l.media.el.duration;
+      if (!Number.isFinite(dur) || dur <= 0) continue;
+      const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
+      ends.push(startFrame + spanFrames);
+    }
+    return timelineStripFrames(appState.project.frameCount, ends);
+  });
+  const stripMinW = $derived(GUTTER_W + stripFrames * CELL_W);
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
   // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
@@ -136,6 +162,50 @@
   }
   function touchPanUp() {
     touchPan = null;
+  }
+
+  // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
+  let clipDrag: { layer: ReferenceLayer; x: number; startFrame: number } | null = null;
+
+  function clipDown(e: PointerEvent, layer: ReferenceLayer) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e);
+      return;
+    }
+    if (layer.media.type !== "video") return;
+    const dur = layer.media.el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    const { startFrame } = videoClipLayout(
+      layer.offsetFrames,
+      layer.speed,
+      dur,
+      appState.project.fps,
+    );
+    clipDrag = { layer, x: e.clientX, startFrame };
+  }
+
+  function clipMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!clipDrag) return;
+    const delta = Math.round((e.clientX - clipDrag.x) / CELL_W);
+    // Zero-delta no-op: startFrame = round(-offset/speed) is lossy when offset is
+    // not a multiple of speed (e.g. placed at 1× then speed set to 1.5). Recomputing
+    // next would rewrite the in-point on a click or sub-cell twitch without moving.
+    if (delta === 0) return;
+    const next = offsetAfterClipDrag(clipDrag.startFrame, delta, clipDrag.layer.speed);
+    if (next !== clipDrag.layer.offsetFrames) {
+      clipDrag.layer.offsetFrames = next;
+      bump();
+    }
+  }
+
+  function clipUp() {
+    clipDrag = null;
+    touchPanUp();
   }
 
   function nameDown(e: PointerEvent, layerId: number) {
@@ -227,6 +297,19 @@
   let dragLastBoundary = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
+  // Visible height of the scroller — the gutter plate must cover empty space below the last row.
+  let gridH = $state(0);
+  $effect(() => {
+    const el = gridWrapper;
+    if (!el) return;
+    const sync = () => {
+      gridH = el.clientHeight;
+    };
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    sync();
+    return () => ro.disconnect();
+  });
 
   // Page-step the timeline during play when the playhead walks off the right edge.
   // Does not follow while paused/scrubbing, and does not yank back if the user scrolled ahead.
@@ -828,15 +911,26 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute inset-y-0 w-0.5 bg-accent pointer-events-none z-10"
+      class="absolute inset-y-0 z-10 w-0.5 bg-accent pointer-events-none"
       style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+    ></div>
+    <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
+         (absolute, inset-y-0, z-10) leaked through empty space below the last track. This
+         plate sits between the line and the names (z-15), stays in the visible left strip,
+         and is pulled out of flow so it does not push the rows down. -->
+    <div
+      class="pointer-events-none sticky top-0 left-0 z-15 bg-surface"
+      style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
     ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <div class="flex w-max items-stretch sticky top-0 z-20 bg-surface">
+    <div
+      class="sticky top-0 z-20 flex w-max items-stretch bg-surface"
+      style="min-width: {stripMinW}px"
+    >
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
@@ -926,6 +1020,7 @@
       cellW={CELL_W}
       labelW={LABEL_W}
       markerW={MARKER_W}
+      minWidth={stripMinW}
       onTouchDown={touchPanDown}
       onTouchMove={touchPanMove}
       onTouchUp={touchPanUp}
@@ -934,7 +1029,7 @@
     <!-- layer rows (top layer first) -->
     {#each [...appState.project.layers].reverse() as layer (layer.id)}
       {#if !groupOf(layer, appState.project.groups)?.collapsed}
-        <div class="flex w-max items-center">
+        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
             class:bg-surface={layer.id !== appState.activeLayerId}
@@ -1006,10 +1101,51 @@
               {/each}
             </div>
           {:else}
-            <span
-              class="text-xs text-text-muted ml-1"
-              class:opacity-70={layer.id !== appState.activeLayerId}>ref</span
-            >
+            {@const ref = layer}
+            {#if ref.media.type === "video" && Number.isFinite(ref.media.el.duration) && ref.media.el.duration > 0}
+              {@const lay = videoClipLayout(
+                ref.offsetFrames,
+                ref.speed,
+                ref.media.el.duration,
+                appState.project.fps,
+              )}
+              {@const tailFrames = Math.max(
+                0,
+                lay.startFrame + lay.spanFrames - appState.project.frameCount,
+              )}
+              <div
+                class="relative box-border h-6 cursor-grab overflow-hidden border border-border bg-surface-active text-xs/6 text-text-secondary"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                style="touch-action: none; margin-left: {lay.startFrame *
+                  CELL_W}px; width: {lay.spanFrames * CELL_W}px"
+                role="presentation"
+                title="Drag to offset the video"
+                onpointerdown={(e) => clipDown(e, ref)}
+                onpointermove={clipMove}
+                onpointerup={clipUp}
+                onpointercancel={clipUp}
+              >
+                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                {#if tailFrames > 0}
+                  <div
+                    class="pointer-events-none absolute inset-y-0 right-0 bg-surface/75"
+                    style="width: {tailFrames * CELL_W}px"
+                  ></div>
+                {/if}
+              </div>
+            {:else if ref.media.type === "missing"}
+              <span
+                class="ml-1 text-xs text-text-muted"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                title="Media missing — re-link from the layer panel">re-link</span
+              >
+            {:else}
+              <span
+                class="ml-1 text-xs text-text-muted"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                >{ref.media.type === "video" ? "video" : "image"}</span
+              >
+            {/if}
           {/if}
         </div>
       {/if}
