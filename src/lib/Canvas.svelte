@@ -259,14 +259,32 @@
   // True once the current fill gesture has already filled (one fill per pointer press).
   let fillUsed = false;
 
+  /** Backing-store scale so a CSS-zoomed view still has pixels for a scaled-down layer.
+   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows. */
+  function displayOutputScale(): number {
+    const z = viewport?.zoom ?? 1;
+    return Math.min(2, Math.max(1, z));
+  }
+
   function sizeDisplay() {
-    display.width = appState.project.width * DPR;
-    display.height = appState.project.height * DPR;
+    const ss = displayOutputScale();
+    const w = Math.round(appState.project.width * DPR * ss);
+    const h = Math.round(appState.project.height * DPR * ss);
+    if (display.width !== w || display.height !== h) {
+      display.width = w;
+      display.height = h;
+    }
     display.style.width = `${appState.project.width}px`;
     display.style.height = `${appState.project.height}px`;
+    if (scratch && (scratch.width !== w || scratch.height !== h)) {
+      scratch.width = w;
+      scratch.height = h;
+    }
   }
 
   function recomposite() {
+    sizeDisplay();
+    const ss = displayOutputScale();
     // Onion ghosts are hidden during playback (you want a clean preview while it runs).
     if (appState.onion.enabled && !appState.playback.isPlaying) {
       renderFrameWithOnion(
@@ -278,6 +296,7 @@
         appState.onion,
         appState.activeLayerId,
         appState.version,
+        ss,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
@@ -287,6 +306,7 @@
           : undefined;
       renderFrame(displayCtx, appState.project, appState.playhead, DPR, {
         drawBg: !appState.project.transparentBg,
+        outputScale: ss,
         boil,
         version: appState.version,
       });
@@ -418,8 +438,9 @@
   }
 
   function sampleAt(p: { x: number; y: number }): string | null {
-    const px = Math.round(p.x * DPR),
-      py = Math.round(p.y * DPR);
+    const ss = display.width / Math.max(1, appState.project.width * DPR);
+    const px = Math.round(p.x * DPR * ss),
+      py = Math.round(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
     const [r, g, b] = displayCtx.getImageData(px, py, 1, 1).data;
     return rgbToHex(r, g, b);
@@ -832,8 +853,14 @@
     selection.mode = "rect";
     selection.applyCompose = applyOverlayCompose;
     syncOverlayScale();
+    let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
       syncOverlayScale();
+      const ss = displayOutputScale();
+      if (ss !== lastOutputScale) {
+        lastOutputScale = ss;
+        recomposite(); // zoom crossed a backing-store step
+      }
     };
 
     selection.onChange = () => recomposite();
@@ -1210,7 +1237,7 @@
       onRedo: () => redo(),
       onToggleEraser: () => toggleEraser(),
       onViewportChange: () => {
-        selection.screenScale = viewport.zoom;
+        syncOverlayScale();
       },
     });
 
@@ -1229,8 +1256,6 @@
         lastW = appState.project.width;
         lastH = appState.project.height;
         sizeDisplay();
-        scratch.width = appState.project.width * DPR;
-        scratch.height = appState.project.height * DPR;
         overlay.width = appState.project.width;
         overlay.height = appState.project.height;
         overlay.style.width = `${appState.project.width}px`;

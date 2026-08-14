@@ -990,6 +990,13 @@ a full PNG encode. Pixel undos carry a `bytes` cost (`pixelCommand`); History ev
 oldest commands past 256 MB (~15 full-frame 1920×1080 strokes) while still keeping at
 least one, and still caps at 50 commands.
 
+**Scaled-down layer looks pixelated (2026-08-14):** the display canvas was document-sized
+and the viewport zoomed it in CSS, so a layer at 0.3 then zoomed to work on it was a
+handful of display pixels blown up. `drawCellComposed`/`drawTransformed` now use
+`imageSmoothingQuality: high`, and the display backing store supersamples by
+`min(zoom, 2)` (export stays 1×). Cells stay DPR=1. Zoom past 2× can still soften;
+a full screen-space camera is the next step if that shows up.
+
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
 and the overlay applies that compose so chrome sits on the visual ink. The layer-transform
