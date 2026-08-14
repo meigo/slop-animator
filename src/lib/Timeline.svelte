@@ -297,6 +297,19 @@
   let dragLastBoundary = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
+  // Visible height of the scroller — the gutter plate must cover empty space below the last row.
+  let gridH = $state(0);
+  $effect(() => {
+    const el = gridWrapper;
+    if (!el) return;
+    const sync = () => {
+      gridH = el.clientHeight;
+    };
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    sync();
+    return () => ro.disconnect();
+  });
 
   // Page-step the timeline during play when the playhead walks off the right edge.
   // Does not follow while paused/scrubbing, and does not yank back if the user scrolled ahead.
@@ -898,8 +911,16 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute inset-y-0 w-0.5 bg-accent pointer-events-none z-10"
+      class="absolute inset-y-0 z-10 w-0.5 bg-accent pointer-events-none"
       style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+    ></div>
+    <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
+         (absolute, inset-y-0, z-10) leaked through empty space below the last track. This
+         plate sits between the line and the names (z-15), stays in the visible left strip,
+         and is pulled out of flow so it does not push the rows down. -->
+    <div
+      class="pointer-events-none sticky top-0 left-0 z-15 bg-surface"
+      style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
     ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A

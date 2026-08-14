@@ -1044,7 +1044,9 @@ stays. Audio lane got a matching clip fill under the waveform. No filmstrip, tri
 change; drag is not undoable (same as the old number field). Every row shares
 `timelineStripFrames` (doc length or the furthest clip tail) as `min-width` so sticky
 gutters stay pinned when a clip hangs past the last frame — sticky is trapped in the
-row's own box. Spec:
+row's own box. A full-height sticky gutter plate (z-15) sits between the playhead
+line (z-10) and the name labels (z-20) so the line cannot leak through empty space
+below the last track. Spec:
 `docs/superpowers/specs/2026-08-14-video-ref-clip-drag-design.md`. **Owed an iPad pass:** drag
 incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
 block; audio rectangle; finger pans; save/reload.
