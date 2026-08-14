@@ -997,6 +997,11 @@ handful of display pixels blown up. `drawCellComposed`/`drawTransformed` now use
 `min(zoom, 2)` (export stays 1×). Cells stay DPR=1. Zoom past 2× can still soften;
 a full screen-space camera is the next step if that shows up.
 
+**Two-finger pan no longer tilts then snaps (2026-08-14):** pinch applied live rotation from
+finger-pair angle, then `snapRotation` (~5°) popped anything near 0° on lift. A two-finger
+pan always drifted a few degrees. Rotation now engages only after a ~15° twist
+(`pinchRotation`, unit-tested); snap runs only if that gesture actually rotated.
+
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
 and the overlay applies that compose so chrome sits on the visual ink. The layer-transform

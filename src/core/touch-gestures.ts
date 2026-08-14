@@ -3,7 +3,7 @@
  *
  * - One finger touch: pan canvas
  * - One-finger double-tap: toggle eraser
- * - Two-finger pinch: zoom + pan + rotate
+ * - Two-finger pinch: zoom + pan; rotate only after a ~15° twist (so a pan does not tilt)
  * - Two-finger tap: undo
  * - Three-finger tap: redo
  *
@@ -33,6 +33,24 @@ const TAP_MAX_DISTANCE = 15; // px
 const DOUBLE_TAP_WINDOW = 300; // ms between two 1-finger taps to count as a double-tap
 /** Snap to nearest 90° when within this threshold (radians, ~5°) */
 const SNAP_ANGLE = 5 * (Math.PI / 180);
+/** Two-finger twist must exceed this (~15°) before rotation engages.
+ *  Smaller deltas are two-finger pan/pinch — applying them live then snapping
+ *  to 0 on release is the "canvas tilts then pops back" bug. */
+export const PINCH_ROTATE_ENGAGE = 15 * (Math.PI / 180);
+
+/** Decide whether a two-finger angle delta should rotate the viewport. */
+export function pinchRotation(
+  startRotation: number,
+  angleDelta: number,
+  armed: boolean,
+  engage = PINCH_ROTATE_ENGAGE,
+): { rotation: number; armed: boolean } {
+  const nowArmed = armed || Math.abs(angleDelta) >= engage;
+  return {
+    armed: nowArmed,
+    rotation: nowArmed ? startRotation + angleDelta : startRotation,
+  };
+}
 
 export function setupTouchGestures(
   /** The stable workspace container (not the transformed element) */
@@ -51,6 +69,8 @@ export function setupTouchGestures(
   let pinchStartMidY = 0;
   let pinchStartPanX = 0;
   let pinchStartPanY = 0;
+  let pinchRotateArmed = false;
+  let pinchActive = false;
 
   // Single-finger pan state
   let singlePanActive = false;
@@ -98,7 +118,7 @@ export function setupTouchGestures(
       singlePanStartPanX = viewport.panX;
       singlePanStartPanY = viewport.panY;
     } else if (touches.size === 2) {
-      // Switch from pan to pinch+rotate
+      // Switch from pan to pinch (rotate only after a clear twist)
       singlePanActive = false;
       initPinch();
     }
@@ -148,9 +168,12 @@ export function setupTouchGestures(
       }
     }
 
-    // Snap rotation on gesture end
+    // Snap only after a two-finger gesture that actually rotated — a pan should
+    // never apply a tilt just to pop it back to 0 on lift.
     if (touches.size === 0) {
-      snapRotation();
+      if (pinchActive && pinchRotateArmed) snapRotation();
+      pinchActive = false;
+      pinchRotateArmed = false;
     }
 
     singlePanActive = false;
@@ -191,6 +214,8 @@ export function setupTouchGestures(
     pinchStartMidY = (a.y + b.y) / 2;
     pinchStartPanX = viewport.panX;
     pinchStartPanY = viewport.panY;
+    pinchRotateArmed = false;
+    pinchActive = true;
   }
 
   function updatePinch() {
@@ -206,7 +231,13 @@ export function setupTouchGestures(
     // New zoom & rotation
     const scale = currentDist / pinchStartDist;
     const newZoom = Math.max(0.1, Math.min(20, pinchStartZoom * scale));
-    const newRotation = pinchStartRotation + (currentAngle - pinchStartAngle);
+    const twist = pinchRotation(
+      pinchStartRotation,
+      currentAngle - pinchStartAngle,
+      pinchRotateArmed,
+    );
+    pinchRotateArmed = twist.armed;
+    const newRotation = twist.rotation;
 
     // The canvas point under the original pinch midpoint (using start state)
     const rect = workspace.getBoundingClientRect();
