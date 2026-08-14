@@ -42,7 +42,8 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 - Branch off `main`; merge with `git merge --no-ff` only when the user says so. One commit per task.
 - The user reviews/approves the spec before the plan, and the plan before implementation.
 - After a feature, the design rationale is preserved in its spec/plan — link to them.
-- Commit message trailer used here: `Co-Authored-By: Claude ...`.
+- Commit message trailer used here: `Co-Authored-By: Grok <noreply@x.ai>` (Claude-era commits used
+  `Co-Authored-By: Claude <noreply@anthropic.com>`).
 - **Keep `README.md` current as part of the change, not later.** It is the public face of a public
   repo, so a feature that changes what the app DOES (not how it's built) is not finished until the
   README says so. Check these specifically, since each has gone stale before: the **Features** bullets
