@@ -1,7 +1,7 @@
 # Video-ref clip drag (audio-clone) — design
 
 **Date:** 2026-08-14
-**Status:** Draft (session-approved; awaiting spec review)
+**Status:** Approved (2026-08-14)
 **Builds on:** audio P2 drag-offset (`2026-08-09-audio-phase2-design.md`), per-video speed
 (`2026-07-12-video-reference-speed-design.md`), timeline iPad pointer rule
 (`2026-08-14-timeline-ipad-ux-design.md`).
