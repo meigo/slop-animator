@@ -15,6 +15,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush — with pressure support, an adjustable pressure curve, and separate brush/eraser settings
 - Fill tool, eyedropper, lasso selection with float/transform
 - Transparent background support with checkerboard view and a paint-behind toggle
+- **iPad:** finger pans, Pencil edits (canvas and timeline). Two-finger pinch zooms, pans, and
+  rotates; lift snaps to 90° if you are within ~3°
 
 **Animation**
 
@@ -62,7 +64,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (~426); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (~439); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
