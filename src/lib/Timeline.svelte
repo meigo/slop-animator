@@ -24,6 +24,7 @@
     commitStructuralEdit,
     setActiveLayer,
     liftGuard,
+    transformDragGuard,
     setTimelineSelection,
     moveTimelineSelection,
     clearTimelineSelection,
@@ -382,6 +383,7 @@
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
+      transformDragGuard.settle = () => settleRowDrag();
       return;
     }
 
@@ -392,6 +394,7 @@
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
+      transformDragGuard.settle = () => settleRowDrag();
       return;
     }
 
@@ -473,6 +476,32 @@
       }
     }
   }
+  /** undo()/tool-switch mid-gesture: commit a dirty hold-span so the following undo pops it;
+   *  drop an in-flight move-block (it has not written yet). rowUp applies then calls resetRowDrag. */
+  function settleRowDrag() {
+    if (dragMode === "resize" && dragUndo && dragLastBoundary !== dragStartBoundary) {
+      commitStructuralEdit(dragUndo);
+    }
+    resetRowDrag();
+  }
+
+  function resetRowDrag() {
+    dragMode = "none";
+    dragLayerId = -1;
+    dragKey = -1;
+    dragUndo = null;
+    dragStartBoundary = -1;
+    dragLastBoundary = -1;
+    moveGrabFrame = -1;
+    moveDelta = 0;
+    moved = false;
+    armedOutside = false;
+    armedOnKey = false;
+    pressFrame = -1;
+    touchPanUp();
+    transformDragGuard.settle = null;
+  }
+
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
     cancelLongPress();
     try {
@@ -509,19 +538,7 @@
       }
     }
 
-    dragMode = "none";
-    dragLayerId = -1;
-    dragKey = -1;
-    dragUndo = null;
-    dragStartBoundary = -1;
-    dragLastBoundary = -1;
-    moveGrabFrame = -1;
-    moveDelta = 0;
-    moved = false;
-    armedOutside = false;
-    armedOnKey = false;
-    pressFrame = -1;
-    touchPanUp();
+    resetRowDrag();
   }
   function rowLeave() {
     if (dragMode === "none") rowCursor = "default";

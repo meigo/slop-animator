@@ -984,8 +984,8 @@ pure (~409):
 **Still open from that review (not this batch):** select/lasso/deform/pose still live in raw
 document space under a cell/group transform (paint/fill inverse-map; these do not); stroke
 listeners are still on the document AABB so `LayerBoundsHint` can advertise a quad events never
-reach; hold-span resize has no settle hook; `state.version` is still both repaint and persist
-dirty; pixel history is still 50 full-frame ImageDatas.
+reach; `state.version` is still both repaint and persist dirty; pixel history is still 50
+full-frame ImageDatas.
 
 **Timeline iPad UX (2026-08-14):** three prod-test findings. (1) Sticky gutter: row
 containing-blocks were only as wide as the visible scroller, so `position: sticky` unstuck after
@@ -995,3 +995,9 @@ just after the gutter; snap back on loop wrap; do not yank if the user scrolled 
 on the timeline while drawing: the whole grid now uses the canvas rule — `touch` pans only,
 `pen`/`mouse` edit. Layer _list_ stays finger-friendly. Spec:
 `docs/superpowers/specs/2026-08-14-timeline-ipad-ux-design.md`.
+
+**Timeline hold-span / move-block settle (2026-08-14):** hold-span resize opens a structural
+bracket at grab and used to leave it dangling — ⌘Z mid-resize undid the _previous_ command, then
+`rowUp` committed the pre-resize snapshot and re-did it. Registers `transformDragGuard.settle` at
+grab (same hook undo/tool-switch already call). A dirty resize commits so the following undo pops
+it; a no-op drops. An in-flight move-block has not written yet, so settle just cancels the ghost.
