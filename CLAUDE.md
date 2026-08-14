@@ -854,7 +854,10 @@ zoom mid-selection.
 the overlay was still document-sized inside the CSS zoom — at 4×, `lineWidth = 0.25` canvas px
 rasterized to crumbs, then blown up. Overlay is now **stage-sized** (sibling of the zoomed wrapper);
 `applyView` puts pan/rotate/zoom on the 2D context so the stroke is rasterized after scale.
-Hit-testing resets the transform so `isPointInPath` stays in cell space.
+Hit-testing resets the transform so `isPointInPath` stays in cell space. The overlay is
+`z-10` above the CSS-transformed display wrapper (WebKit can composite a transformed
+sibling on top). The tool `$effect` only banks a float when the tool actually changes —
+re-running it on `hasFloating` used to commit+clear a lift started from the on-canvas bar.
 
 **Fit to view is reachable without a keyboard (2026-08-14):** `fitView` had exactly ONE caller —
 the `0` key in `Canvas.svelte` — and no UI route at all, which meant that on iPad (no keyboard) a

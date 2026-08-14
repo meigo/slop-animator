@@ -160,6 +160,8 @@
     if (overlay.width !== w || overlay.height !== h) {
       overlay.width = w;
       overlay.height = h;
+      // Setting width/height clears the bitmap — put the marquee/float back.
+      selection?.drawOverlay();
     }
   }
 
@@ -1034,6 +1036,7 @@
     if (!lifted) return;
     selection.beginTransform(lifted);
     recomposite();
+    selection.drawOverlay();
   }
 
   function enterDeform() {
@@ -1354,18 +1357,19 @@
     void appState.transformScope;
     transformDragGuard.settle?.();
     if (!selection) return;
-    // Leaving the deform tool banks the floating warp (one undo step via onCommit).
-    if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
-    if (prevTool === "pose" && t !== "pose" && meshPose) applyPose();
+    // Only bank when the TOOL actually changes. This effect also re-runs when hasFloating
+    // flips (the reads below), and committing then would bake+clear a lift the user just started
+    // from the on-canvas bar (Select → Free transform).
+    const toolChanged = t !== prevTool;
+    if (toolChanged) {
+      if (prevTool === "pose" && t !== "pose" && meshPose) applyPose();
+      if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
+      else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
+    }
     prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
-    else {
-      // Any other tool (incl. deform): bank a floating transform so it isn't discarded. (Switching to
-      // deform used to skip this, then enterDeform's cancel() reverted the in-progress move/scale.)
-      if (selection.hasFloating) selection.commit();
-      if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
-    }
+    else if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
     // t === "deform": lift entry happens on the first canvas press (onStroke).
   });
 
@@ -1459,7 +1463,9 @@
     {/if}
     <canvas bind:this={display} class="absolute left-0 top-0 shadow-lg touch-none"></canvas>
   </div>
-  <canvas bind:this={overlay} class="pointer-events-none absolute inset-0"></canvas>
+  <!-- z-10: a CSS-transformed wrapper (the display) can composite above a later sibling
+       on WebKit. The overlay must sit above the paper so a lifted selection stays visible. -->
+  <canvas bind:this={overlay} class="pointer-events-none absolute inset-0 z-10"></canvas>
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}
