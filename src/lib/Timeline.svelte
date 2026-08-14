@@ -281,6 +281,7 @@
           appState.project.layers,
           appState.timelineSelection.anchor,
           appState.timelineSelection.focus,
+          appState.project.groups,
         )
       : null,
   );

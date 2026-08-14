@@ -33,6 +33,7 @@ import {
   deleteBlock,
   moveBlockFrames,
   anyEditableLayer,
+  anyEditablePasteTarget,
   type CellBlock,
 } from "../anim/timeline-block";
 import {
@@ -1015,7 +1016,9 @@ export function clearTimelineSelection(): void {
 
 function currentSelectionRect() {
   const sel = state.timelineSelection;
-  return sel ? resolveSelectionRect(state.project.layers, sel.anchor, sel.focus) : null;
+  return sel
+    ? resolveSelectionRect(state.project.layers, sel.anchor, sel.focus, state.project.groups)
+    : null;
 }
 
 /** Copy the current timeline selection into the internal cell clipboard (non-undoable). */
@@ -1077,6 +1080,7 @@ export function moveTimelineSelection(delta: number): void {
 export function pasteCells(insert = false): void {
   const block = state.cellClipboard;
   if (!block) return;
+  if (!anyEditablePasteTarget(state.project, state.activeLayerId)) return;
   const active = state.project.layers.find((l) => l.id === state.activeLayerId);
   if (!active || active.kind !== "draw") return; // paste anchors on a drawing layer only
   liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first

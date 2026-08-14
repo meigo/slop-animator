@@ -981,7 +981,17 @@ pure (~409):
 - Finger Reset-to-fit + pose bar reuse `.selection-actions-panel` so touch-pan does not steal them.
 - `input.ts` binds `pointercancel` (same path as up/leave). Not a full abort-restore.
 
-**Still open from that review:** none of the original high-severity items. (Follow-ups welcome.)
+**Still open from that review:** none of the original high-severity items.
+
+**Review leftovers (2026-08-14, on `fix/review-leftovers`):** the narrower items left after the
+high-severity batch. (1) `resolveSelectionRect` skips collapsed-group members (they have no
+timeline row; a spanning marquee no longer rewrites hidden art). (2) A mid-stroke layer/frame
+switch (`↑/↓` / `←/→`) commits the open stroke with its grab-time compose and drops the rest of
+that pointer — it no longer paints the old cell through the new inverse. (3) Timeline Paste
+enablement follows the paste dest (`anyEditablePasteTarget` = writable draw layer at/below the
+active layer), not the selection. (4) Locked-row hover cursor was already default (prior batch).
+(5) `moveBlockFrames` keeps leading holds as holds so a mid-span drag does not duplicate the
+resolved key (copy/paste still materializes).
 
 **persistTick vs version + pixel-undo byte budget (2026-08-14):** `bump()` now increments
 `persistTick` as well as `version`; `repaint()` is version-only (play/stop, onion, layer

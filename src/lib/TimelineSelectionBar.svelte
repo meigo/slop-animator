@@ -10,6 +10,7 @@
   } from "../state/appState.svelte";
   import type { SelectionRect } from "../anim/timeline-selection";
   import { isLayerEditable } from "../anim/document";
+  import { anyEditablePasteTarget } from "../anim/timeline-block";
 
   // The bar anchors to the top-left selected cell. `container` is the timeline's positioned
   // (relative) scroll wrapper; `rect` is the derived selection. `cellW`/`labelW` size the grid.
@@ -35,7 +36,10 @@
       }),
   );
   const readOnlyTitle = " — selection is on locked/hidden layers";
-  const canPaste = $derived(!!appState.cellClipboard && anyEditable);
+  // Paste stamps at (active layer, playhead), not the selection — a read-only selection can
+  // still paste onto a writable active layer, and an editable selection cannot if the dest is inert.
+  const pasteTargetOk = $derived(anyEditablePasteTarget(appState.project, appState.activeLayerId));
+  const canPaste = $derived(!!appState.cellClipboard && pasteTargetOk);
   /** Why a bar action is currently refused, appended to its title= so the status bar can say it.
    *  Read-only outranks an empty clipboard: it is the harder block, and matches the status-hint
    *  precedence elsewhere (a hint for the more fundamental refusal first). */
@@ -45,6 +49,13 @@
       : needsClipboard && !appState.cellClipboard
         ? " — nothing copied yet"
         : "";
+  const whyPaste = $derived(
+    !pasteTargetOk
+      ? " — no writable layer at or below the active layer"
+      : !appState.cellClipboard
+        ? " — nothing copied yet"
+        : "",
+  );
 
   let x = $state(0);
   let y = $state(0);
@@ -118,7 +129,7 @@
     >
     <button
       class={btn}
-      title={"Paste (overwrite)" + why(true)}
+      title={"Paste (overwrite)" + whyPaste}
       aria-disabled={!canPaste}
       onclick={() => {
         if (canPaste) pasteCells(false);
@@ -126,7 +137,7 @@
     >
     <button
       class={btn}
-      title={"Paste insert" + why(true)}
+      title={"Paste insert" + whyPaste}
       aria-disabled={!canPaste}
       onclick={() => {
         if (canPaste) pasteCells(true);

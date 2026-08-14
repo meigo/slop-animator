@@ -1,4 +1,4 @@
-import { isDrawingLayer, type Layer } from "./document";
+import { groupOf, isDrawingLayer, type Layer, type LayerGroup } from "./document";
 
 export interface SelectionEndpoint {
   layerId: number;
@@ -15,12 +15,14 @@ export interface SelectionRect {
 }
 
 /** Derive the selection rectangle from two endpoints. Layer axis spans the two endpoint layers
- *  inclusive in display order (top-first = layers reversed), drawing layers only. Returns null if
- *  either endpoint is missing or the span holds no drawing layer. */
+ *  inclusive in display order (top-first = layers reversed), drawing layers only. Collapsed-group
+ *  members have no timeline row and are skipped (same as refs). Returns null if either endpoint
+ *  is missing or the span holds no visible drawing layer. */
 export function resolveSelectionRect(
   layers: Layer[],
   anchor: SelectionEndpoint,
   focus: SelectionEndpoint,
+  groups: LayerGroup[] = [],
 ): SelectionRect | null {
   const display = [...layers].reverse(); // top-first
   const ai = display.findIndex((l) => l.id === anchor.layerId);
@@ -29,7 +31,12 @@ export function resolveSelectionRect(
   const lo = Math.min(ai, fi);
   const hi = Math.max(ai, fi);
   const layerIds: number[] = [];
-  for (let i = lo; i <= hi; i++) if (isDrawingLayer(display[i])) layerIds.push(display[i].id);
+  for (let i = lo; i <= hi; i++) {
+    const layer = display[i];
+    if (!isDrawingLayer(layer)) continue;
+    if (groupOf(layer, groups)?.collapsed) continue;
+    layerIds.push(layer.id);
+  }
   if (layerIds.length === 0) return null;
   return {
     layerIds,

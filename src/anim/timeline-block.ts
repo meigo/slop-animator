@@ -58,14 +58,18 @@ function overwriteColumn(
   );
 }
 
-/** Extract a self-contained block. `layerIds` top-first; frames inclusive [startFrame, endFrame]. */
+/** Extract a self-contained block. `layerIds` top-first; frames inclusive [startFrame, endFrame].
+ *  Copy/paste materializes a leading hold into a KEY so the clipboard stands alone. Move keeps
+ *  leading holds as holds so a mid-span drag does not duplicate the resolved key. */
 export function copyBlock(
   project: Project,
   layerIds: number[],
   startFrame: number,
   endFrame: number,
   ops: CanvasOps,
+  opts?: { materializeLeading?: boolean },
 ): CellBlock {
+  const materializeLeading = opts?.materializeLeading !== false;
   const rows = endFrame - startFrame + 1;
   const columns: Cell[][] = [];
   for (const id of layerIds) {
@@ -74,7 +78,7 @@ export function copyBlock(
     const col: Cell[] = [];
     for (let r = 0; r < rows; r++) {
       const f = startFrame + r;
-      if (r === 0) {
+      if (r === 0 && materializeLeading) {
         // Materialize the leading cell into a self-contained KEY (resolve holds to their key).
         const rk = resolvedKeyCell(layer, f);
         col.push(rk ? cloneCell(rk.cell, ops) : { kind: "key", canvas: ops.create() });
@@ -113,7 +117,7 @@ export function pasteBlockOverwrite(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break; // overflow past bottom layer
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || !isLayerEditable(layer, project.groups)) continue; // locked OR hidden row: inert // locked row: inert, column consumed
+    if (!layer || !isLayerEditable(layer, project.groups)) continue; // non-editable: inert, column consumed
     overwriteColumn(layer, block.columns[c], startFrame, ops);
   }
 }
@@ -131,7 +135,7 @@ export function pasteBlockInsert(
   for (let c = 0; c < block.cols; c++) {
     if (c >= targetIds.length) break;
     const layer = project.layers.find((l) => l.id === targetIds[c]);
-    if (!layer || !isLayerEditable(layer, project.groups)) continue; // locked OR hidden row: inert // locked row: inert, column consumed
+    if (!layer || !isLayerEditable(layer, project.groups)) continue; // non-editable: inert, column consumed
     const at = startFrame;
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
@@ -149,7 +153,7 @@ export function deleteBlock(
 ): void {
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
-    if (!layer || !isLayerEditable(layer, project.groups)) continue; // locked OR hidden row: inert // locked row: inert
+    if (!layer || !isLayerEditable(layer, project.groups)) continue; // non-editable: inert
     for (let f = startFrame; f <= endFrame && f < layer.cells.length; f++) {
       layer.cells[f] = { kind: "hold" };
     }
@@ -165,11 +169,22 @@ export function anyEditableLayer(project: Project, layerIds: number[]): boolean 
   });
 }
 
+/** True when paste at `topLayerId` (active layer, playhead) would write at least one cell.
+ *  Matches pasteCells: ref / unknown active → no; then skip-and-consume down the stack. */
+export function anyEditablePasteTarget(project: Project, topLayerId: number): boolean {
+  const top = project.layers.find((l) => l.id === topLayerId);
+  if (!top || top.kind !== "draw") return false;
+  return drawingLayerIdsDown(project, topLayerId).some((id) => {
+    const layer = project.layers.find((l) => l.id === id);
+    return !!layer && isLayerEditable(layer, project.groups);
+  });
+}
+
 /** Move the selected block by `delta` frames on its OWN layers (frames-only), overwriting the
  *  destination. Returns the applied delta after clamping so the earliest moved frame stays >= 0.
- *  Self-contained: leading holds are materialized (via copyBlock), the range is blanked, then the
- *  cloned block is re-stamped at +applied. copyBlock clones first, so source/destination overlap
- *  is safe. `layerIds` must be drawing layers (as resolveSelectionRect guarantees). */
+ *  Leading holds stay holds (unlike copy) so a mid-span drag does not duplicate the resolved key.
+ *  The range is blanked, then the cloned block is re-stamped at +applied. copyBlock clones first,
+ *  so source/destination overlap is safe. `layerIds` must be drawing layers. */
 export function moveBlockFrames(
   project: Project,
   layerIds: number[],
@@ -180,7 +195,9 @@ export function moveBlockFrames(
 ): number {
   const applied = Math.max(delta, -startFrame);
   if (applied === 0) return 0;
-  const block = copyBlock(project, layerIds, startFrame, endFrame, ops); // columns for draw layers, in order
+  const block = copyBlock(project, layerIds, startFrame, endFrame, ops, {
+    materializeLeading: false,
+  });
   deleteBlock(project, layerIds, startFrame, endFrame); // vacate the source → holds
   let c = 0;
   for (const id of layerIds) {
