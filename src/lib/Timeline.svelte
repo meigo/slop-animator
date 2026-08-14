@@ -49,7 +49,9 @@
     isLayerLocked,
     isLayerVisible,
     type DrawingLayer,
+    type ReferenceLayer,
   } from "../anim/document";
+  import { videoClipLayout, offsetAfterClipDrag } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -136,6 +138,46 @@
   }
   function touchPanUp() {
     touchPan = null;
+  }
+
+  // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
+  let clipDrag: { layer: ReferenceLayer; x: number; startFrame: number } | null = null;
+
+  function clipDown(e: PointerEvent, layer: ReferenceLayer) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e);
+      return;
+    }
+    if (layer.media.type !== "video") return;
+    const dur = layer.media.el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    const { startFrame } = videoClipLayout(
+      layer.offsetFrames,
+      layer.speed,
+      dur,
+      appState.project.fps,
+    );
+    clipDrag = { layer, x: e.clientX, startFrame };
+  }
+
+  function clipMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!clipDrag) return;
+    const delta = Math.round((e.clientX - clipDrag.x) / CELL_W);
+    const next = offsetAfterClipDrag(clipDrag.startFrame, delta, clipDrag.layer.speed);
+    if (next !== clipDrag.layer.offsetFrames) {
+      clipDrag.layer.offsetFrames = next;
+      bump();
+    }
+  }
+
+  function clipUp() {
+    clipDrag = null;
+    touchPanUp();
   }
 
   function nameDown(e: PointerEvent, layerId: number) {
@@ -1006,10 +1048,51 @@
               {/each}
             </div>
           {:else}
-            <span
-              class="text-xs text-text-muted ml-1"
-              class:opacity-70={layer.id !== appState.activeLayerId}>ref</span
-            >
+            {@const ref = layer}
+            {#if ref.media.type === "video" && Number.isFinite(ref.media.el.duration) && ref.media.el.duration > 0}
+              {@const lay = videoClipLayout(
+                ref.offsetFrames,
+                ref.speed,
+                ref.media.el.duration,
+                appState.project.fps,
+              )}
+              {@const tailFrames = Math.max(
+                0,
+                lay.startFrame + lay.spanFrames - appState.project.frameCount,
+              )}
+              <div
+                class="relative box-border h-6 cursor-grab overflow-hidden border border-border bg-surface-active text-xs/6 text-text-secondary"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                style="touch-action: none; margin-left: {lay.startFrame *
+                  CELL_W}px; width: {lay.spanFrames * CELL_W}px"
+                role="presentation"
+                title="Drag to offset the video"
+                onpointerdown={(e) => clipDown(e, ref)}
+                onpointermove={clipMove}
+                onpointerup={clipUp}
+                onpointercancel={clipUp}
+              >
+                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                {#if tailFrames > 0}
+                  <div
+                    class="pointer-events-none absolute inset-y-0 right-0 bg-surface/75"
+                    style="width: {tailFrames * CELL_W}px"
+                  ></div>
+                {/if}
+              </div>
+            {:else if ref.media.type === "missing"}
+              <span
+                class="ml-1 text-xs text-text-muted"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                title="Media missing — re-link from the layer panel">re-link</span
+              >
+            {:else}
+              <span
+                class="ml-1 text-xs text-text-muted"
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                >{ref.media.type === "video" ? "video" : "image"}</span
+              >
+            {/if}
           {/if}
         </div>
       {/if}
