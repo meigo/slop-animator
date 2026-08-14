@@ -79,13 +79,22 @@
       // with the timeline columns; the clamped backing store is stretched to fit.
       node.style.width = naturalW + "px";
       ctx.clearRect(0, 0, node.width, node.height);
+      // Boundary in backing-store px: CSS px scaled by the canvas-width clamp ratio.
+      // The clip may outlast the document: past the last frame there is no ruler and nothing to
+      // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
+      const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
+      // Clip plate — start/end read as a rectangle, not just a grey scribble.
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#3a3a3a";
+      ctx.fillRect(0, 0, Math.min(w, Math.max(0, docEndX)), node.height);
+      if (docEndX < w) {
+        ctx.globalAlpha = 0.25;
+        ctx.fillRect(Math.max(0, docEndX), 0, w - Math.max(0, docEndX), node.height);
+        ctx.globalAlpha = 1;
+      }
       const peaks = computePeaks(audio.buffer.getChannelData(0), w);
       ctx.fillStyle = "#888";
       const mid = node.height / 2;
-      // The clip may outlast the document: past the last frame there is no ruler and nothing to
-      // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
-      // Boundary in backing-store px: CSS px scaled by the canvas-width clamp ratio.
-      const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
       for (let x = 0; x < peaks.length; x++) {
         const h = peaks[x] * (node.height - 2);
         ctx.globalAlpha = x < docEndX ? 1 : 0.25;
