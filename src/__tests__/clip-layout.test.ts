@@ -42,4 +42,15 @@ describe("offsetAfterClipDrag", () => {
   it("speed <= 0 is treated as 1", () => {
     expect(offsetAfterClipDrag(0, 5, 0)).toBe(-5);
   });
+
+  // Documents why Timeline.clipMove must no-op when delta === 0: layout→offset
+  // through startFrame is not an identity when offset is not a multiple of speed.
+  it("zero-delta recompute is lossy when offset is not a multiple of speed", () => {
+    const offset = 1;
+    const speed = 1.5;
+    const { startFrame } = videoClipLayout(offset, speed, 2, 12);
+    // startFrame = round(-1/1.5) = -1; reverse: -(-1)*1.5 = 1.5 ≠ 1
+    expect(offsetAfterClipDrag(startFrame, 0, speed)).not.toBe(offset);
+    expect(offsetAfterClipDrag(startFrame, 0, speed)).toBe(1.5);
+  });
 });

@@ -168,6 +168,10 @@
     }
     if (!clipDrag) return;
     const delta = Math.round((e.clientX - clipDrag.x) / CELL_W);
+    // Zero-delta no-op: startFrame = round(-offset/speed) is lossy when offset is
+    // not a multiple of speed (e.g. placed at 1× then speed set to 1.5). Recomputing
+    // next would rewrite the in-point on a click or sub-cell twitch without moving.
+    if (delta === 0) return;
     const next = offsetAfterClipDrag(clipDrag.startFrame, delta, clipDrag.layer.speed);
     if (next !== clipDrag.layer.offsetFrames) {
       clipDrag.layer.offsetFrames = next;
