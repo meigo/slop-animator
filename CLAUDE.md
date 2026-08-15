@@ -1260,3 +1260,46 @@ raising Gap until it fills CLEARING it (as do the checkbox, Apply and Cancel); a
 at NO gap setting; typing `50` into Gap snapping to 8 without a freeze; a filled drawing unchanged
 throughout; and a very thin appendage (thinner than the gap radius) surviving — the reason Gap
 defaults to 0. Spec/plan: `…/2026-08-15-pose-fill-outlines*.md`.
+
+**Fill: paint every enclosed region (2026-08-15):** the Fill tool options (`src/lib/ToolOptions.svelte`,
+fill branch ~:159-184) gained a **Gap** range control (same shape as Tolerance/Expand beside it,
+`bind:value={appState.fill.gap}`, `max={MAX_GAP}` — a `<input type="range">` cannot exceed its own
+`max`, so no clamp handler is needed the way a number input would) and a **Fill enclosed** button,
+wired to `fillActions.allEnclosed?.()` (Task 3's `fillAllEnclosedOnCell` in `Canvas.svelte`, which owns
+the keyframe materialisation, undo bracket, `isLayerEditable` guard and selection clip). This **PAINTS**
+the current cell — real pixels, undoable, saved — where the Pose entry directly above only ever built a
+read-only `inside` **mask** for its own triangulation; the two features share
+`fillEnclosed`/`enclosedRegion` (`fill-holes.ts`) but do opposite things with the result. This is NOT
+the auto-fill the user declined in June (`prefers-manual-over-auto-altering-art`): the tool finds
+candidate regions on request, but nothing paints until the artist presses the button, and the result is
+ordinary undoable pixels the artist can paint back over — not a standing "fill holes" mode. It inherits
+`fillEnclosed`'s fail-safe property: the flood originates at the padded border, so a leak (a gap wider
+than the bridgeable `~2×gap` px) makes the region computation return empty — a leaky outline can only
+ever paint NOTHING, never bleed color across the canvas. **`gap` and `expand` are deliberately separate
+knobs, not one fudge factor**: `gap` acts BEFORE the flood, bridging small breaks in the ink so the
+outline reads as closed (`fill-holes.ts`'s dilate → flood → erode order); `expand` acts AFTER, growing
+the already-computed region so it tucks under the ink's anti-aliased fringe. Raising one is not a
+substitute for the other — a clean, closed outline needs `expand` alone; a sketchy line with breaks
+needs `gap` too. `fillAllEnclosed` (`src/core/fill.ts`) always composites `destination-over`, unlike
+`floodFill`, whose destination-over path is conditional on `expand > 0`: painting BEHIND the ink is
+this feature's entire point, not a side effect of growing the mask, so there is no "expand 0" branch
+that paints on top. `appState.fill` (now `{ tolerance, expand, gap }`) is persisted through the
+existing `gatherPreferences`/`applyPreferences` spread-merge, so `gap` rides along in new saves for
+free, and an OLD stored preference missing the key leaves `state.fill`'s own default (`gap: 0`)
+untouched — checked directly in both functions, not assumed: object spread never writes an `undefined`
+for an absent key. An empty result (`painted === 0`) sets `appState.statusHint` and returns rather than
+silently no-op'ing, because a no-op and a successful fill of an already-white interior are
+pixel-identical — there is no other way for the artist to tell "nothing happened" from "it worked,
+there was nothing to fill." The button is wired with **`onclick`, not `onpointerdown`**:
+`App.svelte` binds a window-level `pointerdown` listener that overwrites `statusHint` from the
+target's `title=` in the bubble phase, which runs AFTER a button's own `pointerdown` handler and would
+wipe a "nothing enclosed" message microseconds after it was set — the exact trap the Pose bar's
+`poseFillWarning` field (entry above) was carved out to dodge. A plain click fires after
+`pointerdown`/`pointerup`, so this write is the last one and sticks. Build+review verified only, per
+project convention (Vitest is node-only; this is Svelte markup with no node-testable surface).
+**Owed a browser pass:** an outline drawing filling behind its strokes with no halo at `expand ≥ 1`;
+the strokes themselves unmodified; undo restoring in one step; a gapped outline reporting rather than
+silently doing nothing, then filling once Gap is raised; a solid drawing reporting "nothing enclosed";
+filling on a HOLD materialising a keyframe; a selection clipping the fill; a locked or hidden layer
+refusing; and the Pose tool then meshing that drawing as a body with **Fill outlines OFF** — the
+end-to-end point of the feature. Spec/plan: `…/2026-08-15-fill-all-enclosed*.md`.

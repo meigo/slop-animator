@@ -7,6 +7,7 @@
     activeLayer,
     selectionActions,
     transformActions,
+    fillActions,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
@@ -14,6 +15,7 @@
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
+  import { MAX_GAP } from "../core/fill-holes";
 
   const WRITING_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "transform"];
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -167,6 +169,18 @@
       <input type="range" min="0" max="8" class="w-16" bind:value={appState.fill.expand} />
       <span class="text-xs w-4 tabular-nums">{appState.fill.expand}</span>
     </label>
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="Bridge breaks in the outline before filling, up to about twice this many pixels"
+      >Gap
+      <input type="range" min="0" max={MAX_GAP} class="w-16" bind:value={appState.fill.gap} />
+      <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
+    </label>
+    <button
+      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+      title="Fill every area enclosed by the outline, behind the strokes"
+      onclick={() => fillActions.allEnclosed?.()}>Fill enclosed</button
+    >
     <input type="color" bind:value={appState.brush.color} title="Fill color" />
   {:else if appState.tool === "select" || appState.tool === "lasso"}
     <!-- aria-disabled, NOT disabled: a disabled button dispatches no pointer events, so the status
