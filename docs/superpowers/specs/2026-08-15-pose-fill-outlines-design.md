@@ -53,8 +53,21 @@ export function fillEnclosed(
   w: number,
   h: number,
   opts?: { alphaThreshold?: number; gap?: number },
-): { mask: Uint8Array; inkArea: number; grownArea: number; insideArea: number };
+): {
+  mask: Uint8Array;
+  inkArea: number;
+  grownArea: number;
+  insideArea: number;
+  inkBBoxArea: number; // added 2026-08-15 with the corrected report — see Report
+  enclosedArea: number; // ditto
+};
 ```
+
+`gap` is clamped to `0..MAX_GAP` (8) **inside** `fillEnclosed`, not at the caller: the `max="8"` on
+the UI's number input is advisory (a browser accepts a typed `50`), the morphology is
+O(pixels × r²) and unseparated, and the pose lift has already cleared the cell's pixels and bumped
+`persistTick` by the time it runs — so a multi-minute freeze there is not just a hang, it is a
+force-quit away from losing the artwork.
 
 1. **Pad** the bitmap with `gap + 1` transparent pixels on every side. The pose lift is a TIGHT
    content bbox, so ink routinely touches all four edges; without a guaranteed clear ring the flood
@@ -89,8 +102,7 @@ condition):
 So **`gap: r` bridges a break of roughly `2r` pixels** (the dilated discs have to meet), and a closed
 outline shows **no bloat at any radius** — 121 px of interior at every setting.
 
-`inkArea`, `grownArea` and `insideArea` come back because they are free at this point and drive the
-report below.
+The area counters come back because they are free at this point and drive the report below.
 
 This module is the reason the feature is worth building properly: unlike almost all of this app's
 canvas code it is pure logic over an alpha array, so it can carry real unit tests rather than being
@@ -130,15 +142,63 @@ usually already correct, and when it is not, the control is on screen.
 
 ### Report
 
-With `fillHoles` on, report failure when `insideArea < grownArea * 1.1` — i.e. the flood found
-essentially nothing that the dilation had not already produced. **Compare against `grownArea`, not
-`inkArea`:** at `gap: 2` a failed fill still measured 1.26× the ink purely from dilation bloat, so an
-ink-based threshold would have called that a success. Measuring against the grown mask isolates
-*enclosure* from *bloat*, and the prototype separates cleanly on it — failures sit at ~1.0, successes
-at ~3.0.
+**This section was wrong in the version that shipped, and was corrected on 2026-08-15 after
+review.** It originally read: *"report failure when `insideArea < grownArea * 1.1`"*. That criterion
+tests the wrong thing twice, because the prototype behind it only ever measured outline rings and so
+never had to tell "**failed** to fill" apart from "**nothing** to fill":
 
-On failure, set a status hint naming the remedy: the outline is not closed; raise the gap value or
-fill the shape. Anything is better than leaving a web on screen with no explanation.
+1. `mask == ink` is the normal, correct outcome for **filled art, a single stroke, or any drawing
+   with no enclosed space at all** — measured: a solid blob reports `ink=900 grown=900 inside=900`,
+   which trips it. Posing a filled silhouette therefore said "Outline isn't closed — raise Gap, or
+   fill the shape", which is both wrong and unactionable.
+2. `grownArea` counts **dilation bloat that step 6 then erodes away**, so on a small shape it
+   exceeds even a *successful* fill: a **closed** 15×15 ring at `gap: 2` fills perfectly (121 px,
+   identical to `gap: 0`) yet measures `121 < 188 × 1.1`. The criterion fired on the very remedy
+   its own message asks for.
+
+The corrected criterion is `outlineFillFailed(r)` in `fill-holes.ts`, pure and unit-tested, with two
+conditions that must BOTH hold:
+
+1. **The art looks like an outline** — `inkArea < 0.4 * inkBBoxArea`, i.e. the ink is sparse within
+   its own bounding box. A solid blob measures ~1.0, a single stroke 1.0 along its own axis, the
+   15×15 test ring 0.33. This is what separates "failed" from "nothing to fill", and it is free:
+   the bounding box comes out of the pass that already reads the alpha.
+2. **The flood enclosed nothing at all** — `enclosedArea === 0`, where `enclosedArea` is
+   `mask \ grown`, the area gained beyond ink *and* bridging. A leak drives it to exactly 0 (the
+   flood reaches the interior, so `filled == grown`), while any real enclosure is > 0 regardless of
+   gap. This replaces the `grownArea` comparison, which no longer participates in the decision;
+   `grownArea` is kept in the result as a diagnostic only.
+
+Deliberately **conservative**: a partial fill (one pocket closes, the body still leaks) does not
+warn. A false alarm is the worse failure mode here — see the delivery note below.
+
+Measured across the criterion's whole domain (`old` = the shipped criterion, `new` = corrected):
+
+| case | ink | grown | inside | enclosed | density | old | new |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| solid blob, gap 0 | 400 | 400 | 400 | 0 | 1.000 | ⚠️ warns | ✅ silent |
+| solid blob, gap 2 | 400 | 564 | 400 | 0 | 1.000 | ⚠️ warns | ✅ silent |
+| single stroke, gap 0 | 20 | 20 | 20 | 0 | 1.000 | ⚠️ warns | ✅ silent |
+| closed ring, gap 0 | 40 | 40 | 121 | 81 | 0.331 | ✅ silent | ✅ silent |
+| closed ring, gap 2 | 40 | 188 | 121 | 25 | 0.331 | ⚠️ warns | ✅ silent |
+| ring, 5 px break, gap 0 | 35 | 35 | 35 | 0 | 0.289 | ⚠️ warns | ⚠️ warns |
+| ring, 5 px break, gap 2 | 35 | 174 | 44 | 0 | 0.289 | ⚠️ warns | ⚠️ warns |
+| open "C", gap 0 | 31 | 31 | 31 | 0 | 0.256 | ⚠️ warns | ⚠️ warns |
+
+The open "C" still warns, and that is intended — it *is* an unclosed outline, and both remedies
+apply. One known residual: a lone **diagonal** stroke is sparse in its own bounding box (0.05) and
+encloses nothing, so it warns. It needs a lift whose entire content is a single diagonal line to
+reach, and the message costs nothing but a glance.
+
+**Delivery.** On failure, name the remedy — the outline is not closed; raise the gap value or fill
+the shape. It must NOT go through `statusHint`: that field means "the hovered/pressed control's
+`title=`" and has a window-level writer in `App.svelte`, so the very `pointerdown` that builds the
+mesh overwrites it microseconds later (and each density button overwrites it with its own title).
+The message lives in `appState.poseFillWarning`, is rendered **in the pose bar next to the Gap
+control** that remedies it, and is set *or cleared* on every mesh build and on apply/cancel. Clearing
+it is not optional: on iPad there is no hover to replace a stale message, and `StatusBar` renders
+`statusHint || idleHint`, so a stuck warning would also suppress the pose context hint — including
+"leaving the tool bakes it", the only commit path without a keyboard.
 
 ## Out of scope
 
@@ -153,11 +213,17 @@ fill the shape. Anything is better than leaving a web on screen with no explanat
 
 `fillEnclosed` is unit-tested (node): a closed square fills; a square with a 1 px break leaks and
 returns `insideArea ≈ inkArea`; `gap: 1` bridges that break; nested holes; ink touching the crop
-edge; an empty bitmap; and a donut with `fillHoles: false` keeps its hole. The `fromLift` wiring and
-the bar controls are canvas/DOM and get build + review gates per project convention.
+edge; an empty bitmap; and a donut with `fillHoles: false` keeps its hole. `outlineFillFailed` and
+`clampGap` are unit-tested too (the corrected report's table above is the test matrix — a solid
+blob and a single stroke must stay silent, a gapped ring must warn, a closed ring at `gap: 2` must
+stay silent, and `gap: 50` must behave exactly as `gap: 8`). The `fromLift` wiring and the bar
+controls are canvas/DOM and get build + review gates per project convention.
 
 **Browser pass owed:** pose an outline-only drawing and confirm the mesh is a body, not a web; that
 a handle drag now falls off through the shape rather than along the lines; a **donut** with the
-checkbox off keeps its hole; a deliberately gapped outline reports the failure; raising the gap
-closes it; a filled drawing is unchanged by any of this; and that a very thin appendage (thinner
-than the gap radius) is not eaten by the erode — the reason gap defaults to 0.
+checkbox off keeps its hole; a deliberately gapped outline reports the failure **in the pose bar**
+and raising the gap until it fills CLEARS that message (as do the checkbox, Apply and Cancel); a
+filled drawing reports nothing at any gap; a filled drawing is unchanged by any of this; and that a
+very thin appendage (thinner than the gap radius) is not eaten by the erode — the reason gap
+defaults to 0. Also: type `50` into Gap and confirm it snaps to 8 without a freeze, and empty the
+field and confirm it reads back 0.
