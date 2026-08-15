@@ -1,7 +1,7 @@
 # Reference layer visibility ranges — design
 
 **Date:** 2026-08-15
-**Status:** Approved (2026-08-15)
+**Status:** Implemented (2026-08-15)
 **Builds on:** video-ref clip drag (`2026-08-14-video-ref-clip-drag-design.md`), timeline iPad
 pointer rule (`2026-08-14-timeline-ipad-ux-design.md`), reference media persistence
 (`2026-08-08-reference-media-persistence-design.md`).

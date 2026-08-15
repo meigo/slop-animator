@@ -1344,3 +1344,75 @@ a keyframe, and a "nothing enclosed" press on a hold leaving the ·/◆ marker A
 clipping the fill; a locked or hidden layer
 refusing; and the Pose tool then meshing that drawing as a body with **Fill outlines OFF** — the
 end-to-end point of the feature. Spec/plan: `…/2026-08-15-fill-all-enclosed*.md`.
+
+**Reference layer visibility ranges (2026-08-15):** reported as "the image ref layer is the only
+one without a visible clip — should we add options, maybe make it trimmable?" Investigation
+reframed the ask: **no reference layer had a notion of a frame range at all.**
+`buildFrameDrawList` pushed a `ref` op for every frame unconditionally, so an image block would
+have spanned the whole timeline always and conveyed nothing — and **the existing video clip block
+already misrepresented behaviour**, looking like a trim range while `syncReferenceVideos`'s
+`Math.max(0, Math.min(dur, wanted))` clamp held the video's first/last frame across every frame
+outside it. Adding a block to the image row without adding the underlying concept would have
+shipped a third misleading rectangle. New optional `ReferenceLayer.range?: { start, end }`
+(inclusive project frames) plus pure `refVisibleSpan`/`isRefVisibleAtFrame` (`document.ts`,
+unit-tested). **One span, not two:** a video's range **is** its footage span
+(`videoClipLayout`-derived) — there is no separate place-in-project vs in-point-of-source model,
+so `refVisibleSpan` ignores any stored `range` on a video layer rather than erroring (a range
+written while the layer was an image survives a re-link to video harmlessly and comes back on a
+re-link to image). Images store a range because a still has no footage to derive one from; a
+not-yet-loaded video (`preload="metadata"`) resolves to "always" so it never blinks out before its
+duration is known, and a missing-media ref resolves to "always" too (nothing to draw either way —
+the row shows its re-link CTA instead). **Absent means "always visible, follows the project's
+length"** — deliberately, so an untrimmed image renders identically before and after this feature
+and so lengthening the animation later cannot silently strand an image ref at the project's old
+last frame. Trimming either edge is what converts "always" into a concrete stored span. **One
+gate:** `buildFrameDrawList` skips the `ref` op when `!isRefVisibleAtFrame(...)`, and it has
+exactly one production consumer (`render.ts`) — so editor, export and onion skins are all covered
+by that single `continue`, with no second code path that could drift from it.
+`syncReferenceVideos` now skips-and-pauses a video outside its span instead of clamping into it,
+which is also why the old clamp was lying. Image ref rows render a clip block (reusing the
+`media-clip` timeline tokens): **dashed + default cursor while untrimmed** (it spans everything by
+definition, so its edges aren't real positions and its body has nothing to slide), **solid +
+grab-cursor once trimmed**, with edge handles that trim and a body that slides. Trim/slide push one
+undo entry per completed gesture via the same `beginStructuralEdit`/`commitStructuralEdit` +
+`transformDragGuard.settle` bracket the hold-span resize uses — **deliberately diverging from the
+video and audio clip drags, which stay non-undoable** (inherited from the numeric fields they
+replaced): those move where a reference _sits_, this changes **what renders**, and a mis-drag that
+silently blanks frames is exactly the loss undo exists for. `cloneLayers` deep-copies `range` the
+same way it already deep-copies `transform` (gotcha #8 — snapshots share refs, so the drag replaces
+`layer.range` wholesale rather than writing `.start`/`.end` in place), and `restoreStructure` copies
+`range` as a structural field alongside `transform`, not left as a view-prop.
+
+Two decisions made mid-implementation, worth recording since neither is obvious from the spec: (1)
+a zero-delta **tap** on an untrimmed block's edge handle used to materialise a concrete range while
+correctly pushing no undo entry — an unrecoverable mutation with no undo to recover it. Fixed with
+a `wasAbsent` flag captured at grab, reverting `range` back to `undefined` on the
+unchanged-and-was-absent path. (2) the untrimmed block deliberately renders `0..frameCount-1`, NOT
+the full width of the shared `stripFrames` (which can be wider when a neighbouring row's video clip
+hangs past the project end) — so the display always matches exactly what an edge drag would
+materialise, and the two can never drift apart.
+
+**Migration — the one behaviour change to existing projects, and it is silent:** a video reference
+shorter than the animation used to hold its final frame across the remaining frames; it now renders
+those frames empty. The project opens fine and simply renders differently past the clip end — there
+is no dialog, no warning, nothing in the file format changes (format version stays 1, `range` is
+optional and absent on every old save). Documented in README.md and here on purpose, since nothing
+in the app itself surfaces it.
+
+Pure logic (`refVisibleSpan`, `isRefVisibleAtFrame`, the trim-clamp helper) is unit-tested; the
+timeline block/handles/drag lifecycle are Svelte/DOM with no node harness — build+review verified
+only, per project convention. **Three known Minor issues found in review, deliberately deferred,
+not fixed:** a `stopPropagation` in the range drag means a Pencil/mouse press on the block or a trim
+handle never reaches `App.svelte`'s status-hint listener, so on iPad the discoverability route for
+these gestures is dead for the very pointer that performs them; a zero-delta press on an untrimmed
+edge handle writes then reverts, costing two `bump()`s and scheduling a full autosave re-encode for
+a tap that changed nothing; and `rangeMove`/`rangeUp` fire twice per event during a handle drag
+(pointer-capture retarget plus bubble), harmless today only because the writes are idempotent off a
+frozen start value. **Owed a browser pass:** an image ref shows a dashed full-strip block; trimming
+an edge converts it to a solid block and the image disappears outside the span while scrubbing;
+slide and both edge trims; trim → undo → redo; ⌘Z mid-drag; a range dragged past the last frame
+(gutters stay pinned); a short video going blank past its footage instead of holding; a
+not-yet-loaded video not blinking out on first paint; export honouring the range; onion skins
+honouring it; save → reload preserving a trimmed range; an old project opening unchanged; iPad for
+the handles (`touch-action`, `pointercancel`, finger-pan vs pen-edit). Spec/plan:
+`…/2026-08-15-reference-layer-ranges*.md`.
