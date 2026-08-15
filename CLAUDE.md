@@ -474,8 +474,10 @@ and `,`/`.` stepping. **Offset:** drag the waveform canvas (touch-action none, p
 `round(dx / cellW)` frames applied live + `bump()`; rendered as `margin-left` so negative offsets
 (clip before frame 0) tuck under the sticky label; release re-`syncTo`s a running playback. No
 clamp on the offset range (accepted). **Mute:** 🔊/🔇 beside Remove; toggling mid-playback
-stops/rejoins the engine; `play()` also refuses muted as defense. Offset/mute are NOT undoable
-(audio is outside `StructSnapshot`, like set/remove-track). **Owed a browser pass:** scrub audible
+stops/rejoins the engine; `play()` also refuses muted as defense. ~~Offset/mute are NOT undoable
+(audio is outside `StructSnapshot`, like set/remove-track).~~ **Superseded 2026-08-15: the OFFSET is
+now undoable** (one entry per completed lane drag) — see the audio-offset-undo entry at the end of
+this file. Mute and set/remove-track remain non-undoable. **Owed a browser pass:** scrub audible
 on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
 (touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
 muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.
@@ -1504,3 +1506,23 @@ not-yet-loaded video not blinking out on first paint; export honouring the range
 preserving a trimmed range; an old project opening unchanged; iPad for the handles (`touch-action`,
 `pointercancel`, finger-pan vs pen-edit, and that a handle press no longer suppresses the status
 hint). Spec/plan: `…/2026-08-15-reference-layer-ranges*.md`.
+
+**Audio offset is undoable (2026-08-15) — and the reason is an invariant worth keeping.** The ripple
+work put `audioOffsetFrames` into `StructSnapshot` so a ripple insert/delete could move audio
+undoably. That silently broke the lane drag: `restoreStructure` writes the offset on EVERY structural
+undo, so a drag (which pushed no command) followed by any unrelated structural edit followed by undo
+snapped the audio back to its pre-drag position. **Once a field is in the undo snapshot, every writer
+of that field must push a command** — otherwise unrelated undos revert the writes that don't. So the
+lane drag now brackets with `beginStructuralEdit`/`commitStructuralEdit`, commits only if the offset
+actually moved (a click without a drag pushes nothing, or the next undo looks dead), and registers
+`transformDragGuard.settle` so a mid-drag undo or Open cannot leave the bracket open — the same shape
+as the reference range drag and the hold-span resize. Mute and set/remove-track are NOT in the
+snapshot and stay non-undoable, so they are unaffected; removing the audio track is still not
+undoable (it holds decoded PCM, which is a separate and larger call).
+Also fixed alongside it: `undo`/`redo` now call `resyncAudioAfterHistory()`, because a structural
+restore can move the offset while playback has ALREADY scheduled its buffer — without it the number
+changed but the sound kept playing at the old position until the next seek. Reachable from both
+writers, so it belongs in the history path rather than at either call site.
+**Owed a browser pass:** drag the clip → undo → it returns; drag → make an unrelated edit → undo once
+(the edit reverts, the drag survives); a click on the waveform with no movement pushes nothing; undo
+an offset change mid-playback and hear it reposition; ⌘Z during a held lane drag.
