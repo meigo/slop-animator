@@ -476,8 +476,8 @@ and `,`/`.` stepping. **Offset:** drag the waveform canvas (touch-action none, p
 clamp on the offset range (accepted). **Mute:** 🔊/🔇 beside Remove; toggling mid-playback
 stops/rejoins the engine; `play()` also refuses muted as defense. ~~Offset/mute are NOT undoable
 (audio is outside `StructSnapshot`, like set/remove-track).~~ **Superseded 2026-08-15: the OFFSET is
-now undoable** (one entry per completed lane drag) — see the audio-offset-undo entry at the end of
-this file. Mute and set/remove-track remain non-undoable. **Owed a browser pass:** scrub audible
+now undoable** (one entry per completed lane drag), **as are import and remove-track** — see the
+audio-undo entries at the end of this file. Only MUTE remains non-undoable. **Owed a browser pass:** scrub audible
 on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
 (touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
 muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.
@@ -1517,8 +1517,7 @@ lane drag now brackets with `beginStructuralEdit`/`commitStructuralEdit`, commit
 actually moved (a click without a drag pushes nothing, or the next undo looks dead), and registers
 `transformDragGuard.settle` so a mid-drag undo or Open cannot leave the bracket open — the same shape
 as the reference range drag and the hold-span resize. Mute and set/remove-track are NOT in the
-snapshot and stay non-undoable, so they are unaffected; removing the audio track is still not
-undoable (it holds decoded PCM, which is a separate and larger call).
+snapshot and stay non-undoable, so they are unaffected.
 Also fixed alongside it: `undo`/`redo` now call `resyncAudioAfterHistory()`, because a structural
 restore can move the offset while playback has ALREADY scheduled its buffer — without it the number
 changed but the sound kept playing at the old position until the next seek. Reachable from both
@@ -1526,3 +1525,26 @@ writers, so it belongs in the history path rather than at either call site.
 **Owed a browser pass:** drag the clip → undo → it returns; drag → make an unrelated edit → undo once
 (the edit reverts, the drag survives); a click on the waveform with no movement pushes nothing; undo
 an offset change mid-playback and hear it reposition; ⌘Z during a held lane drag.
+
+**Import and remove audio track are undoable (2026-08-15).** `StructSnapshot` gained
+`audio: AudioTrack | null`, held **by REFERENCE, never copied** — a copy would clone the decoded PCM
+into every snapshot, while a reference costs one pointer, exactly as `layers` already references
+canvases. Keeping the track alive after a remove is the whole point: undo hands the same decoded
+buffer back, with no re-decode and nothing stashed elsewhere. The earlier concern that "the track
+holds decoded PCM, so this is a larger call" was wrong for that reason — copying was never required.
+Both writers push a command, per the invariant in the entry above: adding it to the snapshot without
+making `setAudioTrack` undoable would have made an unrelated undo silently revert an import.
+**Why the snapshot keeps BOTH `audio` and `audioOffsetFrames`, which looks redundant:** the lane drag
+writes `audio.offsetFrames` IN PLACE on the shared object, so `snap.audio.offsetFrames` tracks the
+live value and cannot serve as a before-state (gotcha #8). The separate number is the immutable
+capture that actually restores. By the same mechanism `muted` is deliberately NOT captured — it is
+also written in place, so it survives an undo untouched, which is exactly the documented "mute is not
+undoable" behaviour. Do not "simplify" either half away.
+`restoreStructure` re-points the engine **only when the track identity changed**: `setTrack()` stops
+playback, so calling it on every undo would kill playback on unrelated edits. It hands over the
+$state proxy read back after assignment, never the snapshot's raw object (gotcha #11).
+Memory note: a removed track stays alive as long as a snapshot referencing it is in history (capped
+at 50 commands), and `replaceProject`'s `history.clear()` releases it on Open/New.
+**Owed a browser pass:** remove the track → undo → it returns, plays, and keeps its offset; import →
+undo → gone; remove → redo; remove mid-playback → undo; import, then an unrelated edit, then one undo
+(the edit reverts, the import survives); mute → unrelated undo (mute must NOT revert).

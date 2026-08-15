@@ -241,10 +241,17 @@ export interface StructSnapshot {
   height: number;
   activeLayerId: number;
   playhead: number;
-  /** The audio track's start frame. Audio is otherwise OUTSIDE undo on purpose (set/remove-track,
-   *  mute and the waveform drag are all non-undoable, matching opacity). This one field is in
-   *  because a ripple insert/delete MOVES it programmatically: without it, undoing a ripple would
-   *  restore every layer and range but leave the audio shifted — worse than not shifting at all. */
+  /** The audio track itself, by REFERENCE — never a copy. A copy would clone the decoded PCM into
+   *  every snapshot; a reference costs one pointer, exactly as `layers` already references canvases.
+   *  Keeping it alive after a remove is the point: undo has to be able to hand the buffer back. */
+  audio: AudioTrack | null;
+  /** The track's start frame, captured SEPARATELY as a number even though `audio` is above — and
+   *  that duplication is load-bearing. The lane drag writes `audio.offsetFrames` IN PLACE on the
+   *  shared object, so `snap.audio.offsetFrames` tracks the live value and cannot serve as a
+   *  before-state (gotcha #8). This immutable copy is what actually restores.
+   *
+   *  `muted` is deliberately NOT captured: mute is also written in place on the shared object, so it
+   *  survives an undo untouched — which is exactly the documented behaviour (mute is not undoable). */
   audioOffsetFrames: number | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
@@ -270,6 +277,7 @@ function snapshotStructure(): StructSnapshot {
     height: state.project.height,
     activeLayerId: state.activeLayerId,
     playhead: state.playhead,
+    audio: state.project.audio,
     audioOffsetFrames: state.project.audio?.offsetFrames ?? null,
   };
 }
@@ -317,10 +325,17 @@ function restoreStructure(s: StructSnapshot) {
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
-  // Only when the track still exists AND the snapshot had one: a set/remove-track between the
-  // snapshot and now is not undoable, so this must not resurrect or zero an offset out of nowhere.
+  // Restore the track itself (import/remove are undoable), then its offset from the immutable
+  // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
+  // this same shared object. Re-point the engine only when the track identity actually changed:
+  // setTrack() stops playback, so calling it on every undo would kill playback on unrelated edits.
+  const audioChanged = state.project.audio !== s.audio;
+  state.project.audio = s.audio;
   if (state.project.audio && s.audioOffsetFrames !== null)
     state.project.audio.offsetFrames = s.audioOffsetFrames;
+  // The $state PROXY read back after assignment, never `s.audio` raw — a raw ref left the engine
+  // reading offsetFrames 0 forever (gotcha #11).
+  if (audioChanged) audioEngine.setTrack(state.project.audio);
   state.version++;
 }
 
@@ -744,13 +759,16 @@ export async function toggleEmbedMedia(id: number): Promise<void> {
 }
 
 /** Set/replace the project audio track (not undoable; persisted with the project). */
+/** Import a track. Undoable — `audio` is in `StructSnapshot`, and once a field is in the snapshot
+ *  every writer of it must push a command, or an unrelated undo silently reverts this import. */
 export function setAudioTrack(track: AudioTrack) {
-  state.project.audio = track;
-  // Hand the engine the $state PROXY (read back after assignment), never the raw object: UI writes
-  // (offset drag, mute) go through the proxy, and the raw target does not see them — a raw ref
-  // left the engine reading offsetFrames 0 forever. Same fix in replaceProject.
-  audioEngine.setTrack(state.project.audio);
-  bump();
+  commitStructural(() => {
+    state.project.audio = track;
+    // Hand the engine the $state PROXY (read back after assignment), never the raw object: UI writes
+    // (offset drag, mute) go through the proxy, and the raw target does not see them — a raw ref
+    // left the engine reading offsetFrames 0 forever. Same fix in replaceProject.
+    audioEngine.setTrack(state.project.audio);
+  });
 }
 /** Move the playhead (clamped); when paused, plays a short audio scrub window at the new frame.
  *  All paused playhead-move UI routes through this (ruler, prev/next, keyboard stepping). */
@@ -776,10 +794,13 @@ export function toggleAudioMute(): void {
 }
 
 /** Remove the audio track. */
+/** Remove the track. Undoable: the snapshot holds the track by reference, so undo hands the same
+ *  decoded buffer back — no re-decode, and no need to keep the bytes anywhere else. */
 export function removeAudioTrack() {
-  state.project.audio = null;
-  audioEngine.setTrack(null);
-  bump();
+  commitStructural(() => {
+    state.project.audio = null;
+    audioEngine.setTrack(null);
+  });
 }
 
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the
