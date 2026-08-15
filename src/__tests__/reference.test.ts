@@ -19,6 +19,11 @@ function fakeVid(
       this.paused = false;
       return Promise.resolve();
     },
+    pauseCount: 0,
+    pause() {
+      this.pauseCount++;
+      this.paused = true;
+    },
   };
 }
 type FakeVid = ReturnType<typeof fakeVid>;
@@ -55,8 +60,10 @@ describe("syncReferenceVideos", () => {
     syncReferenceVideos(proj([vidLayer(a, 24)]), 12, 12, false); // (12+24)/12 = 3s
     expect(a.currentTime).toBe(3);
     const b = fakeVid({ duration: 2 });
-    syncReferenceVideos(proj([vidLayer(b)]), 120, 12, false); // 10s clamped to 2
-    expect(b.currentTime).toBe(2);
+    // 10s is past the derived span (dur 2s) — Task 3 leaves it untouched rather than clamping to the
+    // last frame; see "out-of-span videos" below for the dedicated coverage.
+    syncReferenceVideos(proj([vidLayer(b)]), 120, 12, false);
+    expect(b.currentTime).toBe(0);
     const c = fakeVid();
     syncReferenceVideos(proj([vidLayer(c, -120)]), 12, 12, false); // -9s clamped to 0
     expect(c.currentTime).toBe(0);
@@ -204,5 +211,31 @@ describe("syncReferenceVideos", () => {
     syncReferenceVideos(proj([vidLayer(v, 0, 1, true)]), 12, 12, false); // wanted 1.0s
     expect(v.currentTime).toBe(1);
     expect(v.muted).toBe(false);
+  });
+});
+
+describe("out-of-span videos", () => {
+  it("does not seek a video whose frame is past its footage", () => {
+    const v = fakeVid({ duration: 2, currentTime: 0 }); // 2s @ 12fps -> frames 0..23
+    syncReferenceVideos(proj([vidLayer(v)]), 100, 12);
+    expect(v.currentTime).toBe(0); // untouched, NOT clamped to the last frame
+  });
+
+  it("pauses a running video that leaves its span", () => {
+    const v = fakeVid({ duration: 2, paused: false, currentTime: 1.9 });
+    syncReferenceVideos(proj([vidLayer(v)]), 100, 12, true);
+    expect(v.paused).toBe(true);
+  });
+
+  it("still syncs normally inside the span", () => {
+    const v = fakeVid({ duration: 2, currentTime: 0 });
+    syncReferenceVideos(proj([vidLayer(v)]), 12, 12);
+    expect(v.currentTime).toBeCloseTo(1);
+  });
+
+  it("a video with no duration is never treated as out of span", () => {
+    const v = fakeVid({ duration: NaN, currentTime: 0 });
+    syncReferenceVideos(proj([vidLayer(v)]), 50, 12);
+    expect(v.currentTime).toBeCloseTo(50 / 12);
   });
 });

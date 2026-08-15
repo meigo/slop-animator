@@ -1,5 +1,6 @@
 import {
   createReferenceLayer,
+  isRefVisibleAtFrame,
   type ReferenceLayer,
   type ReferenceMedia,
   type Project,
@@ -99,6 +100,13 @@ export function syncReferenceVideos(
   for (const layer of project.layers) {
     if (layer.kind !== "ref" || layer.media.type !== "video") continue;
     const vid = layer.media.el;
+    // Outside its span the ref never composites (buildFrameDrawList gates it), so there is nothing
+    // to seek for — and waking the decoder for an undrawn frame is exactly the cost the persistTick
+    // split exists to avoid. Pause a running element so it cannot free-run past the gate.
+    if (!isRefVisibleAtFrame(layer, frame, fps)) {
+      if (!vid.paused) vid.pause();
+      continue;
+    }
     // Coalesce: don't issue a new seek while one is already in flight — it would pile up and lag
     // behind a fast scrub. The seeked event bumps the version, so the next tick re-syncs to the
     // *latest* playhead, dropping the intermediate targets.
