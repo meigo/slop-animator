@@ -53,10 +53,16 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    refVisibleSpan,
     type DrawingLayer,
     type ReferenceLayer,
   } from "../anim/document";
-  import { videoClipLayout, offsetAfterClipDrag } from "../anim/clip-layout";
+  import {
+    videoClipLayout,
+    offsetAfterClipDrag,
+    rangeAfterSlide,
+    rangeAfterTrim,
+  } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -80,7 +86,12 @@
     const audio = appState.project.audio;
     if (audio) ends.push(audio.offsetFrames + audioFrameSpan(audio.buffer.duration, fps));
     for (const l of appState.project.layers) {
-      if (l.kind !== "ref" || l.media.type !== "video") continue;
+      if (l.kind !== "ref") continue;
+      if (l.media.type === "image") {
+        if (l.range) ends.push(l.range.end + 1); // +1: `end` is inclusive, `ends` are exclusive
+        continue;
+      }
+      if (l.media.type !== "video") continue;
       const dur = l.media.el.duration;
       if (!Number.isFinite(dur) || dur <= 0) continue;
       const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
@@ -206,6 +217,99 @@
   function clipUp() {
     clipDrag = null;
     touchPanUp();
+  }
+
+  // Image-ref range drag. Mirrors clipDown/Move/Up, but writes layer.range and IS undoable:
+  // a range change alters what renders, so a mis-drag silently blanks frames.
+  let rangeDrag: {
+    layer: ReferenceLayer;
+    mode: "slide" | "start" | "end";
+    x: number;
+    from: { start: number; end: number };
+    /** The layer had NO explicit range at grab (an edge drag materialises the implicit one). */
+    wasAbsent: boolean;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function rangeDown(e: PointerEvent, layer: ReferenceLayer, mode: "slide" | "start" | "end") {
+    // An edge handle's own rangeDown runs first (delegated child handler fires before the
+    // parent's — see Timeline gotcha), setting rangeDrag; this guard then stops the bubbled
+    // call on the body from ALSO starting a slide.
+    if (rangeDrag) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e); // finger navigates, pen edits (the app-wide rule)
+      return;
+    }
+    const span = refVisibleSpan(layer, appState.project.fps);
+    // An untrimmed block has no body to slide; an edge drag materialises the implicit whole-project
+    // range and trims from there.
+    if (span === null && mode === "slide") return;
+    // Fresh object, never the live layer.range itself: refVisibleSpan returns a trimmed image's
+    // range BY REFERENCE, so an in-place write anywhere would make this baseline track the live
+    // value and silently disable both the commit gate and the wasAbsent revert below.
+    const from = span
+      ? { ...span }
+      : { start: 0, end: Math.max(0, appState.project.frameCount - 1) };
+    rangeDrag = {
+      layer,
+      mode,
+      x: e.clientX,
+      from,
+      wasAbsent: !layer.range,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleRangeDrag();
+  }
+
+  function rangeMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!rangeDrag) return;
+    const delta = Math.round((e.clientX - rangeDrag.x) / CELL_W);
+    if (delta === 0) return;
+    // During a handle drag this fires TWICE per pointermove: pointer capture retargets the event
+    // to the handle, but it still bubbles to the body, which carries the same handlers. Harmless
+    // only because both calls derive `next` from the frozen rangeDrag.from, so the second call
+    // recomputes the same value and the `cur.start !== next.start || ...` check below finds no
+    // change. Switching this to accumulate deltas incrementally (rather than always recomputing
+    // from `from`) would silently double-apply every move.
+    const next =
+      rangeDrag.mode === "slide"
+        ? rangeAfterSlide(rangeDrag.from, delta)
+        : rangeAfterTrim(rangeDrag.from, rangeDrag.mode, delta);
+    const cur = rangeDrag.layer.range;
+    if (!cur || cur.start !== next.start || cur.end !== next.end) {
+      rangeDrag.layer.range = next; // REPLACE, never mutate in place (shared snapshot refs)
+      bump();
+    }
+  }
+
+  /** Commit iff the gesture actually changed the range; an empty entry makes undo look dead. */
+  function settleRangeDrag() {
+    if (!rangeDrag) return;
+    const cur = rangeDrag.layer.range;
+    if (cur && (cur.start !== rangeDrag.from.start || cur.end !== rangeDrag.from.end)) {
+      commitStructuralEdit(rangeDrag.undo);
+    } else if (rangeDrag.wasAbsent && cur) {
+      // A no-op edge drag on an untrimmed block still WROTE the implicit range (rangeMove writes
+      // whenever the layer had none). Pushing nothing is right, but leaving it written is not: an
+      // explicit range stops following the project's length, and undo could not take it back.
+      rangeDrag.layer.range = undefined;
+      bump();
+    }
+    rangeDrag = null;
+    transformDragGuard.settle = null;
+  }
+
+  function rangeUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanUp();
+      return;
+    }
+    settleRangeDrag();
   }
 
   function nameDown(e: PointerEvent, layerId: number) {
@@ -1139,6 +1243,54 @@
                 class:opacity-70={ref.id !== appState.activeLayerId}
                 title="Media missing — re-link from the layer panel">re-link</span
               >
+            {:else if ref.media.type === "image"}
+              {@const span = refVisibleSpan(ref, appState.project.fps)}
+              <!-- Untrimmed: span the project's REAL frames, the same implicit range an edge drag
+                   materialises (rangeDown). Not stripFrames — that only runs wider when some OTHER
+                   row's clip hangs past the end, which says nothing about this image. -->
+              {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
+              <div
+                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text-secondary"
+                class:border-media-clip-border={span !== null}
+                class:cursor-grab={span !== null}
+                class:border-dashed={span === null}
+                class:border-text-muted={span === null}
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                style="touch-action: none; margin-left: {s.start * CELL_W}px; width: {(s.end -
+                  s.start +
+                  1) *
+                  CELL_W}px"
+                role="presentation"
+                title={span === null
+                  ? "Visible on every frame — drag an edge to trim"
+                  : "Drag to move, drag an edge to trim"}
+                onpointerdown={(e) => rangeDown(e, ref, "slide")}
+                onpointermove={rangeMove}
+                onpointerup={rangeUp}
+                onpointercancel={rangeUp}
+              >
+                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                <div
+                  class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize"
+                  style="touch-action: none"
+                  role="presentation"
+                  title="Trim the start"
+                  onpointerdown={(e) => rangeDown(e, ref, "start")}
+                  onpointermove={rangeMove}
+                  onpointerup={rangeUp}
+                  onpointercancel={rangeUp}
+                ></div>
+                <div
+                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize"
+                  style="touch-action: none"
+                  role="presentation"
+                  title="Trim the end"
+                  onpointerdown={(e) => rangeDown(e, ref, "end")}
+                  onpointermove={rangeMove}
+                  onpointerup={rangeUp}
+                  onpointercancel={rangeUp}
+                ></div>
+              </div>
             {:else}
               <span
                 class="ml-1 text-xs text-text-muted"

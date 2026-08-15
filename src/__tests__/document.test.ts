@@ -24,6 +24,8 @@ import {
   isLayerVisible,
   groupOf,
   nonEmptyGroups,
+  refVisibleSpan,
+  isRefVisibleAtFrame,
   IDENTITY_TRANSFORM,
   isIdentityTransform,
   transformBaseRect,
@@ -32,6 +34,7 @@ import {
   type DrawingLayer,
   type ReferenceMedia,
   type ReferenceLayer,
+  type Layer,
 } from "../anim/document";
 
 const makeKey = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
@@ -168,6 +171,48 @@ describe("buildFrameDrawList", () => {
     expect(buildFrameDrawList(p, 0, false)).toEqual([
       { kind: "draw", layerId: 2, keyframeIndex: 0, opacity: 100 },
     ]);
+  });
+
+  it("omits a reference outside its range, keeps it inside", () => {
+    const ref = {
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      range: { start: 2, end: 4 },
+    } as unknown as Layer;
+    const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
+
+    expect(buildFrameDrawList(p, 1).length).toBe(0);
+    expect(buildFrameDrawList(p, 2).map((o) => o.kind)).toEqual(["ref"]);
+    expect(buildFrameDrawList(p, 4).map((o) => o.kind)).toEqual(["ref"]);
+    expect(buildFrameDrawList(p, 5).length).toBe(0);
+  });
+
+  it("an untrimmed reference still draws on every frame", () => {
+    const ref = {
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    } as unknown as Layer;
+    const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
+    expect(buildFrameDrawList(p, 0).length).toBe(1);
+    expect(buildFrameDrawList(p, 500).length).toBe(1);
   });
 });
 
@@ -664,5 +709,87 @@ describe("groupHasLockedLayer covers reference members", () => {
     const draw = { kind: "draw", id: 2, groupId: 9, locked: false };
     expect(groupHasLockedLayer(g, [ref, draw])).toBe(true);
     expect(groupHasLockedLayer(g, [{ ...ref, locked: false }, draw])).toBe(false);
+  });
+});
+
+describe("refVisibleSpan / isRefVisibleAtFrame", () => {
+  const imageRef = (over: Partial<ReferenceLayer> = {}): ReferenceLayer =>
+    ({
+      kind: "ref",
+      id: 1,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      ...over,
+    }) as ReferenceLayer;
+
+  const videoRef = (duration: number, over: Partial<ReferenceLayer> = {}): ReferenceLayer =>
+    imageRef({
+      media: { type: "video", el: { duration } as HTMLVideoElement },
+      ...over,
+    });
+
+  it("an untrimmed image is ALWAYS visible (null span)", () => {
+    const l = imageRef();
+    expect(refVisibleSpan(l, 12)).toBeNull();
+    expect(isRefVisibleAtFrame(l, 0, 12)).toBe(true);
+    expect(isRefVisibleAtFrame(l, 9999, 12)).toBe(true);
+  });
+
+  it("a trimmed image uses its stored range, inclusive on both ends", () => {
+    const l = imageRef({ range: { start: 6, end: 14 } });
+    expect(refVisibleSpan(l, 12)).toEqual({ start: 6, end: 14 });
+    expect(isRefVisibleAtFrame(l, 5, 12)).toBe(false);
+    expect(isRefVisibleAtFrame(l, 6, 12)).toBe(true); // boundary
+    expect(isRefVisibleAtFrame(l, 14, 12)).toBe(true); // boundary
+    expect(isRefVisibleAtFrame(l, 15, 12)).toBe(false);
+  });
+
+  it("a video's span is DERIVED from its footage", () => {
+    // 2s at 12fps, speed 1, no offset -> 24 frames, 0..23
+    expect(refVisibleSpan(videoRef(2), 12)).toEqual({ start: 0, end: 23 });
+  });
+
+  it("a video's derived span honours offsetFrames and speed", () => {
+    // offset -12 shifts the visible start to frame 12; 2s at 2x -> 12 frames, 12..23
+    expect(refVisibleSpan(videoRef(2, { offsetFrames: -24, speed: 2 }), 12)).toEqual({
+      start: 12,
+      end: 23,
+    });
+  });
+
+  it("a video with no duration yet is ALWAYS visible, not blank", () => {
+    // preload="metadata" is lazy; blinking out on first paint would look like a bug
+    expect(refVisibleSpan(videoRef(NaN), 12)).toBeNull();
+    expect(refVisibleSpan(videoRef(0), 12)).toBeNull();
+    expect(refVisibleSpan(videoRef(Infinity), 12)).toBeNull();
+  });
+
+  it("a video IGNORES a stored range (its span is its footage)", () => {
+    const l = videoRef(2, { range: { start: 100, end: 200 } });
+    expect(refVisibleSpan(l, 12)).toEqual({ start: 0, end: 23 });
+  });
+
+  it("missing media is always (nothing to draw either way)", () => {
+    const l = imageRef({
+      media: { type: "missing", was: "image", name: "x" },
+      range: { start: 3, end: 5 },
+    });
+    expect(refVisibleSpan(l, 12)).toBeNull();
+  });
+
+  it("a sub-frame video still spans exactly one frame", () => {
+    // An EMPTY span is unreachable: dur <= 0 returns null before deriving, and ceil() of any
+    // positive duration is >= 1. So the floor is one frame, not zero.
+    const l = videoRef(0.0001);
+    expect(refVisibleSpan(l, 12)).toEqual({ start: 0, end: 0 });
+    expect(isRefVisibleAtFrame(l, 0, 12)).toBe(true);
+    expect(isRefVisibleAtFrame(l, 1, 12)).toBe(false);
   });
 });

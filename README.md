@@ -38,7 +38,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Reference & audio**
 
 - Reference layers (image/video) with a transform gizmo, lockable to pin them in place — images persist with the project; video is opt-in per clip and can play its own soundtrack
-- A video reference is a **draggable clip** on the timeline (no filmstrip) — drag to place it in time; speed is set in the layer panel
+- A video reference is a **draggable clip** on the timeline (no filmstrip) — drag to place it in time; speed is set in the layer panel. Its clip is its footage span, so it no longer holds its last frame past the end of the video — those frames render empty
+- An image reference can be trimmed to a range of frames — drag either edge of its timeline clip to set when it appears; untrimmed, it stays visible for the whole project
 - Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset, mute, and muxed into the MP4/WebM export
 - Clipboard image paste + rasterize to a drawing layer
 
@@ -67,7 +68,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (508); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (532); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

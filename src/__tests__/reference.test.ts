@@ -19,6 +19,11 @@ function fakeVid(
       this.paused = false;
       return Promise.resolve();
     },
+    pauseCount: 0,
+    pause() {
+      this.pauseCount++;
+      this.paused = true;
+    },
   };
 }
 type FakeVid = ReturnType<typeof fakeVid>;
@@ -55,10 +60,15 @@ describe("syncReferenceVideos", () => {
     syncReferenceVideos(proj([vidLayer(a, 24)]), 12, 12, false); // (12+24)/12 = 3s
     expect(a.currentTime).toBe(3);
     const b = fakeVid({ duration: 2 });
-    syncReferenceVideos(proj([vidLayer(b)]), 120, 12, false); // 10s clamped to 2
-    expect(b.currentTime).toBe(2);
+    // 10s is past the derived span (dur 2s) — Task 3 leaves it untouched rather than clamping to the
+    // last frame; see "out-of-span videos" below for the dedicated coverage.
+    syncReferenceVideos(proj([vidLayer(b)]), 120, 12, false);
+    expect(b.currentTime).toBe(0);
     const c = fakeVid();
-    syncReferenceVideos(proj([vidLayer(c, -120)]), 12, 12, false); // -9s clamped to 0
+    // offset -120 pushes this video's derived span to start at frame 120 (10s of lead-in before the
+    // clip's own frame 0 becomes visible), so frame 12 is BEFORE the span, not a negative-wanted
+    // clamp — it hits the out-of-span skip and is left untouched (already 0 from fakeVid's default).
+    syncReferenceVideos(proj([vidLayer(c, -120)]), 12, 12, false);
     expect(c.currentTime).toBe(0);
   });
 
@@ -90,11 +100,29 @@ describe("syncReferenceVideos", () => {
     expect(v.paused).toBe(false);
   });
 
-  it("playing + playhead at/past clip end: freezes on last frame, does not play()", () => {
-    // HTML play() on an ended element seeks to 0 — so we must not call it once wanted >= duration.
+  it("playing + past a KNOWN-duration clip's span: out-of-span skip leaves it untouched", () => {
+    // Frame 120 (10s) is past this clip's derived span (dur 2s -> frames 0..23), so this now hits
+    // the out-of-span skip before ever reaching the wanted>=dur freeze branch below — it passes only
+    // because the fixture already sits at (currentTime 2, paused true), which the skip doesn't touch.
+    // The freeze branch (finite-duration case) is rare but not unreachable — rounding in
+    // startFrame = round(-off/spd) can leave `wanted` a hair past `dur` at the last in-span frame;
+    // see the next test for the path that reaches it reliably (duration not yet known).
     const v = fakeVid({ currentTime: 2, paused: true, duration: 2 });
-    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true); // wanted 10s, clamped to 2
+    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true);
     expect(v.currentTime).toBe(2);
+    expect(v.playCount).toBe(0);
+    expect(v.paused).toBe(true);
+  });
+
+  it("playing + duration not yet known: freezes at the wanted time, does not play()", () => {
+    // With duration NaN (preload="metadata" hasn't resolved it yet), refVisibleSpan returns null
+    // ("always visible"), so the out-of-span skip does not fire; `dur` then falls back to `wanted`
+    // itself, making `wanted >= dur` trivially true. This is the one remaining path that reaches the
+    // freeze branch — also exercises `!vid.paused` -> pause(), since play() on an ended element
+    // seeks to 0 and must not be called once frozen.
+    const v = fakeVid({ currentTime: 3, paused: false, duration: NaN });
+    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true); // wanted 10s; dur === wanted (10) -> freeze
+    expect(v.currentTime).toBe(10);
     expect(v.playCount).toBe(0);
     expect(v.paused).toBe(true);
   });
@@ -204,5 +232,31 @@ describe("syncReferenceVideos", () => {
     syncReferenceVideos(proj([vidLayer(v, 0, 1, true)]), 12, 12, false); // wanted 1.0s
     expect(v.currentTime).toBe(1);
     expect(v.muted).toBe(false);
+  });
+});
+
+describe("out-of-span videos", () => {
+  it("does not seek a video whose frame is past its footage", () => {
+    const v = fakeVid({ duration: 2, currentTime: 0 }); // 2s @ 12fps -> frames 0..23
+    syncReferenceVideos(proj([vidLayer(v)]), 100, 12);
+    expect(v.currentTime).toBe(0); // untouched, NOT clamped to the last frame
+  });
+
+  it("pauses a running video that leaves its span", () => {
+    const v = fakeVid({ duration: 2, paused: false, currentTime: 1.9 });
+    syncReferenceVideos(proj([vidLayer(v)]), 100, 12, true);
+    expect(v.paused).toBe(true);
+  });
+
+  it("still syncs normally inside the span", () => {
+    const v = fakeVid({ duration: 2, currentTime: 0 });
+    syncReferenceVideos(proj([vidLayer(v)]), 12, 12);
+    expect(v.currentTime).toBeCloseTo(1);
+  });
+
+  it("a video with no duration is never treated as out of span", () => {
+    const v = fakeVid({ duration: NaN, currentTime: 0 });
+    syncReferenceVideos(proj([vidLayer(v)]), 50, 12);
+    expect(v.currentTime).toBeCloseTo(50 / 12);
   });
 });

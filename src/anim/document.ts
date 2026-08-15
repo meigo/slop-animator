@@ -1,3 +1,5 @@
+import { videoClipLayout } from "./clip-layout";
+
 export type Cell =
   | {
       kind: "key";
@@ -68,6 +70,10 @@ export interface ReferenceLayer {
   audioEnabled: boolean; // video plays its own soundtrack when true (unmuted during playback); video-only, ignored for images
   locked?: boolean; // pins the TRANSFORM (the ref gizmo is live under any tool, so a stray canvas
   //                   drag can nudge an aligned reference); management ops stay allowed
+  /** Inclusive project-frame span this ref draws over. ABSENT = always visible (follows the
+   *  project's length, so lengthening the animation cannot strand it). Images only — a video's
+   *  span is DERIVED from its footage, see refVisibleSpan. */
+  range?: { start: number; end: number };
   mediaId?: string; // key into the ref-media IndexedDB store / media/<id> zip entry; absent = not persisted
   mediaMime?: string; // original file MIME (rebuilds the Blob type on restore)
   embedMedia?: boolean; // video-only opt-in: persist/embed the (potentially huge) video bytes
@@ -265,6 +271,7 @@ export function buildFrameDrawList(
       ops.push({ kind: "draw", layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
     } else {
       if (!includeReference) continue;
+      if (!isRefVisibleAtFrame(layer, frame, project.fps)) continue;
       ops.push({ kind: "ref", layerId: layer.id, opacity: layer.opacity });
     }
   }
@@ -282,6 +289,32 @@ export function isLayerVisible(layer: Layer, groups: LayerGroup[]): boolean {
   if (!layer.visible) return false;
   const g = groupOf(layer, groups);
   return !g || g.visible;
+}
+
+/** The inclusive project-frame span a reference draws over, or null for "always visible".
+ *  A video's span IS its footage (derived, so there is only ever one span to reason about);
+ *  an image has no footage, so its span is whatever the artist trimmed. */
+export function refVisibleSpan(
+  layer: ReferenceLayer,
+  fps: number,
+): { start: number; end: number } | null {
+  if (layer.media.type === "video") {
+    const dur = layer.media.el.duration;
+    // Metadata loads lazily (preload="metadata"). With no duration there is no span to derive,
+    // and blinking the layer out on first paint would read as a bug, so treat it as always.
+    if (!Number.isFinite(dur) || dur <= 0) return null;
+    const { startFrame, spanFrames } = videoClipLayout(layer.offsetFrames, layer.speed, dur, fps);
+    return { start: startFrame, end: startFrame + spanFrames - 1 };
+  }
+  // Missing media draws nothing either way; a stored range on a video is ignored rather than an
+  // error, so a range survives a re-link to video and comes back on a re-link to an image.
+  if (layer.media.type === "missing") return null;
+  return layer.range ?? null;
+}
+
+export function isRefVisibleAtFrame(layer: ReferenceLayer, frame: number, fps: number): boolean {
+  const span = refVisibleSpan(layer, fps);
+  return span === null || (frame >= span.start && frame <= span.end);
 }
 
 /** Groups that have at least one member layer (drops empties for the panel). */

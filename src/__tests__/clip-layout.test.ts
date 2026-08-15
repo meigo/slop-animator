@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { videoClipLayout, offsetAfterClipDrag } from "../anim/clip-layout";
+import {
+  videoClipLayout,
+  offsetAfterClipDrag,
+  rangeAfterSlide,
+  rangeAfterTrim,
+} from "../anim/clip-layout";
 
 describe("videoClipLayout", () => {
   it("offset 0, speed 1 → starts at 0, span is ceil(duration*fps)", () => {
@@ -52,5 +57,40 @@ describe("offsetAfterClipDrag", () => {
     // startFrame = round(-1/1.5) = -1; reverse: -(-1)*1.5 = 1.5 ≠ 1
     expect(offsetAfterClipDrag(startFrame, 0, speed)).not.toBe(offset);
     expect(offsetAfterClipDrag(startFrame, 0, speed)).toBe(1.5);
+  });
+});
+
+describe("rangeAfterSlide", () => {
+  it("slides both edges, preserving length", () => {
+    expect(rangeAfterSlide({ start: 4, end: 9 }, 3)).toEqual({ start: 7, end: 12 });
+    expect(rangeAfterSlide({ start: 4, end: 9 }, -2)).toEqual({ start: 2, end: 7 });
+  });
+
+  it("clamps the start at frame 0 WITHOUT shrinking the span", () => {
+    expect(rangeAfterSlide({ start: 2, end: 7 }, -10)).toEqual({ start: 0, end: 5 });
+  });
+
+  it("may slide past the last frame (the strip sizes for it)", () => {
+    expect(rangeAfterSlide({ start: 0, end: 3 }, 1000)).toEqual({ start: 1000, end: 1003 });
+  });
+});
+
+describe("rangeAfterTrim", () => {
+  it("trims the start edge", () => {
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "start", 2)).toEqual({ start: 6, end: 9 });
+  });
+
+  it("trims the end edge", () => {
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "end", -3)).toEqual({ start: 4, end: 6 });
+  });
+
+  it("never shrinks below a single frame, from either edge", () => {
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "start", 99)).toEqual({ start: 9, end: 9 });
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "end", -99)).toEqual({ start: 4, end: 4 });
+  });
+
+  it("clamps the start edge at frame 0 but lets the end run past the project", () => {
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "start", -99)).toEqual({ start: 0, end: 9 });
+    expect(rangeAfterTrim({ start: 4, end: 9 }, "end", 500)).toEqual({ start: 4, end: 509 });
   });
 });

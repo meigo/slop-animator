@@ -1,7 +1,7 @@
 # Reference layer visibility ranges — design
 
 **Date:** 2026-08-15
-**Status:** Approved (2026-08-15)
+**Status:** Implemented (2026-08-15)
 **Builds on:** video-ref clip drag (`2026-08-14-video-ref-clip-drag-design.md`), timeline iPad
 pointer rule (`2026-08-14-timeline-ipad-ux-design.md`), reference media persistence
 (`2026-08-08-reference-media-persistence-design.md`).
@@ -98,8 +98,9 @@ Resolution order:
 written while the layer was an image survives a re-link to a video harmlessly, and re-linking
 back restores it.
 
-An empty derived span (`spanFrames === 0`) yields `end < start`, and `isRefVisibleAtFrame` is
-false for every frame — correct, and no special case needed.
+An *empty* derived span is unreachable, and deliberately so: the `dur <= 0` guard returns "always"
+before anything is derived, and `videoClipLayout`'s `Math.ceil` of any positive duration is at
+least 1. A sub-frame video therefore spans exactly one frame rather than none.
 
 ## Render gate
 
@@ -132,9 +133,14 @@ will not be drawn — the same reasoning that made scrubbing over a video ref ch
 Image ref rows render a clip block using the `media-clip` tokens introduced for the audio/video
 clips, in two visual states:
 
-- **Untrimmed ("always")** — a full-strip block with a **dashed** border and the default cursor.
-  It must not read as a block someone happened to drag to full width; it spans everything by
-  definition, and its edges are not meaningful positions.
+- **Untrimmed ("always")** — a block spanning the whole project (`0..frameCount-1`) with a
+  **dashed** border and the default cursor. It must not read as a block someone happened to drag
+  to full width; it spans everything by definition, and its edges are not meaningful positions.
+  It deliberately does NOT span the full `stripFrames` width: the strip is wider only when a
+  neighbouring row's video clip hangs past the last frame, which is a shared-strip layout
+  artifact rather than a fact about this image — and rendering to it would claim visibility over
+  frames that do not exist. The rendered end mirrors what an edge drag materialises, so display
+  and materialisation cannot drift apart (amended during implementation, 2026-08-15).
 - **Trimmed** — a concrete block, solid border, body drags to slide, **edge handles trim**.
 
 Video blocks keep their current geometry and body-slide gesture, now truthful. They are **not**
@@ -171,6 +177,13 @@ is intentional and worth the inconsistency: those drags move where a reference *
 range change alters **what renders** — a mis-drag silently blanks frames, and blanked frames are
 exactly the kind of loss undo exists for. Left open: whether the video/audio clip slide should
 later join this bracket for consistency. Not in scope here.
+
+Two snapshot sites need `range`, and the reason is the in-place-mutation family from gotcha #8.
+`cloneLayers` shallow-clones each layer and **deep-copies `transform`** precisely so a later
+in-place field write cannot corrupt an in-flight snapshot; `range` is the same kind of nested
+object and joins it (`range: l.range ? { ...l.range } : undefined` on the ref branch). The drag
+must also **replace** `layer.range` with a new object rather than writing `layer.range.start`,
+matching the cell-replacement discipline.
 
 `restoreStructure` needs an explicit `range` copy. Its live-layer path deliberately keeps the
 existing layer object and copies only `groupId`, `cells` and `transform` from the snapshot —
