@@ -1513,6 +1513,23 @@
   function discardActiveEdits() {
     if (meshPose) cancelPose();
     if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
+    // An open stroke holds the key cell's canvas + ctx, which the caller is about to replace or
+    // replay history over — the Pencil can be mid-stroke while fingers undo (touch-gestures.ts lets
+    // pen and touch run independently). Roll back to the pre-stroke snapshot instead of committing:
+    // pushing undo here would land a pixel entry on top of the op that asked for the discard.
+    if (strokeCanvas && strokeCtx && beforeSnapshot) {
+      if (drawRaf) {
+        cancelAnimationFrame(drawRaf); // a queued paint would repaint the stroke we just reverted
+        drawRaf = 0;
+      }
+      strokeCtx.putImageData(beforeSnapshot, 0, 0);
+      strokeCanvas = null;
+      strokeCtx = null;
+      beforeSnapshot = null;
+      strokeSteps = null;
+      dropStrokeUntilUp = true; // swallow the rest of this pointer stream
+      recomposite();
+    }
   }
   $effect(() => {
     const layer = appState.activeLayerId;
