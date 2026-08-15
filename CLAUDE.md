@@ -1440,12 +1440,19 @@ gets a lone key at frame 0 (unchanged). Edge cases pinned by tests: a range reac
 last frame writes no blank key; a range starting past the project yields an all-holds layer (correct
 — it was visible on no existing frame); a negative start clamps rather than writing out of bounds.
 
-**Three known gaps, deferred as product decisions, not bugs:** (2) The ref transform gizmo
-(`RefTransformGizmo.svelte`) stays live on frames where the ref no longer draws — trim a ref to 0–10,
-scrub to frame 30, and the handles still render over blank canvas; a drag there undoably commits a
-move to a layer that is invisible at that frame. Whether that should be blocked is a design call:
-positioning a ref while scrubbed outside its own span may be a legitimate workflow (e.g. lining it up
-before trimming). (3) Frame insert/delete does not shift ranges, so an image ref aligned to a shot
+**A ref is unmovable outside its span (fixed 2026-08-15, was gap 2 of four).** The gizmo used to
+stay live on frames where the ref draws nothing — trim to 0–10, scrub to 30, and the handles
+rendered over blank canvas, where a drag undoably committed a move to something invisible. Both
+guards now also require `isRefVisibleAtFrame`: `activeTransformLayer` (`RefTransformGizmo.svelte`)
+hides the handles, and `refPinned` (`Canvas.svelte`) refuses the drag. **Both were required.** Fixing
+only the gizmo would have been worse than the bug: the ref gizmo is live under EVERY tool, so
+`refPinned` is the guard that stops a stray canvas drag nudging a reference — hiding the handles
+alone would have left an invisible layer draggable with nothing on screen to explain it. That is the
+same two-site pattern lock enforcement uses, and the comment at each site says they must agree.
+Cost, accepted: repositioning a trimmed ref now means scrubbing inside its span first. Untrimmed refs
+are unaffected — `isRefVisibleAtFrame` is true everywhere when there is no range.
+
+**Two known gaps, deferred as product decisions, not bugs:** (3) Frame insert/delete does not shift ranges, so an image ref aligned to a shot
 desyncs by the inserted/deleted count. Consistent with the video clip's `offsetFrames`, which is also
 left unshifted — but an image ref was structurally immune to this class of bug before this feature,
 so the exposure is new. (4) `replaceProject` calls `liftGuard.discard?.()` but never

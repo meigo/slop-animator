@@ -22,6 +22,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    isRefVisibleAtFrame,
     groupTransform,
     isIdentityTransform,
     isSameTransform,
@@ -77,10 +78,13 @@
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
-    // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too.
+    // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too. Also gated
+    // on the ref's own frame SPAN — outside it the ref draws nothing, so handles over blank canvas
+    // would offer to move something invisible. Canvas.svelte's refPinned must agree with this.
     if (l.kind === "ref")
       return isLayerVisible(l, appState.project.groups) &&
-        !isLayerLocked(l, appState.project.groups)
+        !isLayerLocked(l, appState.project.groups) &&
+        isRefVisibleAtFrame(l, appState.playhead, appState.project.fps)
         ? l
         : null;
     if (l.kind === "draw" && appState.tool === "transform") {
