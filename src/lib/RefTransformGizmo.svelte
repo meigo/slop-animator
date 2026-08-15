@@ -11,6 +11,7 @@
     resetCellTransform,
     resetGroupTransform,
     transformDragGuard,
+    transformActions,
   } from "../state/appState.svelte";
   import {
     transformBaseRect,
@@ -300,7 +301,13 @@
       corners = transformedCorners(base, t).map(toLocal);
       rotatePt = toLocal(rotateHandlePos(base, t, gap));
       visible = true;
-    } else visible = false;
+      // Publish whether Reset would do anything, so the ToolOptions bar can hide a dead button.
+      // Assigning the same boolean is a no-op for $state dependents, so this is safe per frame.
+      appState.canResetTransform = !isIdentityTransform(t);
+    } else {
+      visible = false;
+      appState.canResetTransform = false;
+    }
     raf = requestAnimationFrame(tick);
   }
 
@@ -314,8 +321,11 @@
   }
 
   onMount(() => {
+    transformActions.reset = resetTransform;
     raf = requestAnimationFrame(tick);
     return () => {
+      transformActions.reset = null;
+      appState.canResetTransform = false;
       cancelAnimationFrame(raf);
       // Drop any in-flight drag listeners if the component unmounts mid-drag.
       settleDragUndo();
@@ -374,17 +384,6 @@
       onpointerdown={(e) => startHandleDrag("rotate", e)}
     />
   </svg>
-  <!-- The gesture text moved to the status bar (2026-08-11 contextual hints) so it stops painting
-       over the artwork; only the Reset action stays on canvas. -->
-  <div
-    class="selection-actions-panel absolute left-2 top-2 flex items-center gap-2 text-xs text-text-secondary bg-surface/90 rounded px-2 py-1 pointer-events-auto"
-  >
-    <button
-      class="underline hover:text-text"
-      onpointerdown={(e) => {
-        e.stopPropagation();
-        resetTransform();
-      }}>Reset to fit</button
-    >
-  </div>
+  <!-- Nothing else on canvas: the gesture text moved to the status bar (2026-08-11) and Reset moved
+       to the ToolOptions bar (2026-08-15), so the gizmo never paints over the artwork. -->
 {/if}

@@ -6,6 +6,7 @@
     bumpCurve,
     activeLayer,
     selectionActions,
+    transformActions,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
@@ -250,5 +251,16 @@
     >
   {:else}
     <span class="text-xs text-text-muted"></span>
+  {/if}
+  <!-- Outside the per-tool branches on purpose: a REFERENCE layer's gizmo is live under EVERY tool,
+       so gating this on the Transform tool would leave a moved reference unresettable. It appears
+       only when a gizmo is up AND its transform is non-identity — a Reset that would do nothing is
+       worse than no button (2026-08-15). -->
+  {#if appState.canResetTransform}
+    <button
+      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+      title="Reset the current transform back to fit"
+      onclick={() => transformActions.reset?.()}>Reset to fit</button
+    >
   {/if}
 </div>

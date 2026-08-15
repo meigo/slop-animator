@@ -1079,6 +1079,25 @@ below the last track. Spec:
 incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
 block; audio rectangle; finger pans; save/reload.
 
+**Reset to fit moved to the bar, and only when it does something (2026-08-15):** the gizmo's
+on-canvas "Reset to fit" panel rendered whenever the gizmo was visible — offering an action that was
+a no-op most of the time, on top of the artwork. Now it lives in **ToolOptions** beside the
+Frame/Layer/Group scope toggle, completing the 2026-08-11 move that took the Transform tool's
+on-canvas TEXT to the status bar; the gizmo now paints nothing but handles. Two things worth
+knowing if this is touched again. (1) **The button is rendered OUTSIDE the per-tool branches on
+purpose** — a reference layer's gizmo is live under EVERY tool, so gating it on
+`tool === "transform"` would leave a nudged reference unresettable without switching tools. (2) The
+logic stayed in the gizmo: `transformActions.reset` (registry, like `viewActions.fitView`) plus a
+reactive `state.canResetTransform` mirrored from the gizmo's rAF tick — the same shape as
+`poseActive` mirroring `meshPose`, and for the same reason: the scope dispatch it derives from is
+gizmo-local, and a plain function isn't reactive. Duplicating that dispatch in `appState` would have
+created exactly the derived-vs-raw divergence this codebase keeps getting bitten by. Assigning the
+same boolean per frame is a no-op for `$state` dependents, so the tick write is free. This also
+fixes a review finding: the old button used `onpointerdown`, so Enter/Space did nothing on the
+gizmo's only tab-reachable control — it is a plain `onclick` now. **Owed:** eyeball that the button
+appears only after a transform exists, that it works for a reference layer under a paint tool, and
+an iPad tap.
+
 **Independent review of the 35 Grok commits (2026-08-15):** five parallel reviewers, one per
 subsystem (timeline / input+viewport / selection+transform chrome / persistence+undo / canvas+render
 +audio), over `684c6ef..000aeec` — 2,900 insertions across 54 files that had had only a self-review.
