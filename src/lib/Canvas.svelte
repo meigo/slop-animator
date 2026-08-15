@@ -71,6 +71,7 @@
     applyScale,
     applyRotate,
     inverseChain,
+    forwardChain,
     type Handle,
     type Pt,
     type ComposeStep,
@@ -121,6 +122,14 @@
     const steps = cellComposeSteps(al);
     if (!steps.some((s) => !isIdentityTransform(s.t))) return p;
     return inverseChain(steps, p);
+  }
+
+  /** Cell-local point → document space: the point-wise twin of applyOverlayCompose (used to anchor
+   *  the on-canvas action bar to a cell-space lift, which lives under the same compose). */
+  function composeToDoc(p: { x: number; y: number }): { x: number; y: number } {
+    const al = activeLayer();
+    if (al.kind !== "draw") return p;
+    return forwardChain(cellComposeSteps(al), p);
   }
 
   /** Apply group ∘ layer ∘ cell to an overlay ctx (logical px, dpr = 1). Outer first. */
@@ -914,6 +923,7 @@
     selection.applyView = applyViewTransform;
     // Only consulted for a cellSpaceLift (deform) — see Selection.applyCompose.
     selection.applyCompose = applyOverlayCompose;
+    selection.boundsToDoc = composeToDoc;
     syncComposeSteps();
     syncOverlayScale();
     let lastOutputScale = displayOutputScale();

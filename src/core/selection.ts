@@ -181,6 +181,13 @@ export class Selection {
    */
   getScreenBounds(): { x: number; y: number }[] | null {
     if (!this.rect || this.state === "idle" || this.isCreating) return null;
+    const pts = this.rawBounds();
+    // A cellSpaceLift's geometry is CELL-local (same reason drawOverlay runs applyCompose on it), so
+    // push it out through `group ∘ layer ∘ cell` — the caller maps DOCUMENT space to the screen.
+    return this.cellSpaceLift && this.boundsToDoc ? pts.map(this.boundsToDoc) : pts;
+  }
+
+  private rawBounds(): { x: number; y: number }[] {
     if (this.state === "warping" && this.warpGrid.length === this.warpRows) {
       return outerPerimeter(this.warpGrid, this.warpRows, this.warpCols);
     }
@@ -189,7 +196,7 @@ export class Selection {
       return [c.tl, c.tr, c.br, c.bl];
     }
     // 'selected' — rect or lasso, both use this.rect's AABB.
-    const r = this.rect;
+    const r = this.rect!;
     return [
       { x: r.x, y: r.y },
       { x: r.x + r.w, y: r.y },
@@ -825,6 +832,10 @@ export class Selection {
   /** Optional: `group ∘ layer ∘ cell`, applied ONLY for a `cellSpaceLift` (deform). Document-space
    *  geometry — the marquee and every paper-crop float — must never be composed. */
   applyCompose: ((ctx: CanvasRenderingContext2D) => void) | null = null;
+  /** The point-wise twin of `applyCompose`, for `getScreenBounds`. Same rule: consulted only for a
+   *  `cellSpaceLift`. Kept separate from `composeSteps`, which a cell-space lift deliberately
+   *  clears (the compose lives in the callback, not on the selection). */
+  boundsToDoc: ((p: { x: number; y: number }) => { x: number; y: number }) | null = null;
 
   drawOverlay() {
     const ctx = this.overlayCtx;
