@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { fillEnclosed, outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
+import {
+  fillEnclosed,
+  outlineFillFailed,
+  clampGap,
+  MAX_GAP,
+  enclosedRegion,
+} from "../core/fill-holes";
 
 /**
  * A 15×15 square ring (1 px stroke, inset 2) with a `gap`-wide break in its top edge — the
@@ -140,5 +146,129 @@ describe("fillEnclosed — edges and degenerate input", () => {
     for (let i = 3; i < faint.length; i += 4) if (faint[i]) faint[i] = 5; // below the default 10
     expect(fillEnclosed(faint, 15, 15).inkArea).toBe(0);
     expect(fillEnclosed(faint, 15, 15, { alphaThreshold: 4 }).inkArea).toBe(40);
+  });
+});
+
+/** A solid w×h block of ink, inset by `pad`, as RGBA. */
+function blob(size = 15, pad = 3): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let y = pad; y < size - pad; y++)
+    for (let x = pad; x < size - pad; x++) rgba[(y * size + x) * 4 + 3] = 255;
+  return rgba;
+}
+
+/**
+ * Two parallel 1px strokes 3px apart, OPEN AT BOTH ENDS — the case that separates "encloses" from
+ * "closes". It encloses nothing at any radius, yet the morphological closing bridges the channel
+ * (the dilated strokes merge, and eroding the merged blob does not re-open it).
+ */
+function channel(size = 21): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let x = 4; x < size - 4; x++) {
+    rgba[(8 * size + x) * 4 + 3] = 255;
+    rgba[(12 * size + x) * 4 + 3] = 255;
+  }
+  return rgba;
+}
+
+/** A closed ring whose interior is only 3×3 — narrower than 2×gap as soon as gap reaches 2. */
+function smallRing(size = 15): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  const lo = 5,
+    hi = 9;
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const onEdge =
+        ((x === lo || x === hi) && y >= lo && y <= hi) ||
+        ((y === lo || y === hi) && x >= lo && x <= hi);
+      if (onEdge) rgba[(y * size + x) * 4 + 3] = 255;
+    }
+  return rgba;
+}
+
+describe("fillEnclosed — enclosed space vs the closing", () => {
+  it("counts nothing enclosed in an open channel, however wide the closing bridges it", () => {
+    for (const gap of [0, 2, 3, MAX_GAP]) {
+      const r = fillEnclosed(channel(), 21, 21, { gap });
+      expect(r.enclosedArea).toBe(0);
+      expect(r.rawEnclosedArea).toBe(0);
+      if (gap >= 2) expect(r.insideArea).toBeGreaterThan(r.inkArea); // the closing DID bridge it
+    }
+  });
+
+  it("rawEnclosedArea sees a hole the dilation has swallowed", () => {
+    // The reason `enclosedArea` alone cannot be the gate: past gap 4 the dilated ring covers its own
+    // 9×9 interior, so the flood has nothing left to find even though the outline is closed.
+    expect(fillEnclosed(ring(0), 15, 15, { gap: 5 }).enclosedArea).toBe(0);
+    expect(fillEnclosed(ring(0), 15, 15, { gap: 5 }).rawEnclosedArea).toBe(81);
+    // At gap 0 it is the same measurement, so the default path computes nothing extra.
+    const r = fillEnclosed(ring(0), 15, 15);
+    expect(r.rawEnclosedArea).toBe(r.enclosedArea);
+  });
+});
+
+describe("enclosedRegion", () => {
+  it("is the interior of a closed outline, and excludes the ink itself", () => {
+    const r = enclosedRegion(ring(0), 15, 15);
+    expect(r.area).toBe(81); // the 9×9 interior of the 11×11 ring — the stroke is not painted
+    expect(r.region[CENTRE]).toBe(1);
+    expect(r.region[2 * 15 + 2]).toBe(0); // a ring pixel: ink, so not painted
+  });
+
+  it("is empty when the outline leaks", () => {
+    expect(enclosedRegion(ring(1), 15, 15).area).toBe(0);
+  });
+
+  it("bridges the leak once gap is large enough", () => {
+    expect(enclosedRegion(ring(1), 15, 15, { gap: 1 }).area).toBeGreaterThan(0);
+  });
+
+  it("is empty for a solid shape — nothing is enclosed", () => {
+    expect(enclosedRegion(blob(), 15, 15).area).toBe(0);
+  });
+
+  it("is empty for a fully transparent bitmap", () => {
+    expect(enclosedRegion(new Uint8ClampedArray(15 * 15 * 4), 15, 15).area).toBe(0);
+  });
+
+  it("grows by `expand` to tuck under an anti-aliased stroke", () => {
+    const plain = enclosedRegion(ring(0), 15, 15).area;
+    const grown = enclosedRegion(ring(0), 15, 15, { expand: 1 }).area;
+    expect(grown).toBeGreaterThan(plain); // reaches into the ink it will be painted behind
+  });
+
+  it("paints NOTHING on an open channel, at every gap", () => {
+    // The region is the CLOSING, which bridges this channel (37 px at gap 2 before the gate) —
+    // but nothing here is enclosed, and "raise Gap" must never turn an open outline into a fill
+    // that reports success.
+    for (let gap = 0; gap <= MAX_GAP; gap++) {
+      expect(enclosedRegion(channel(), 21, 21, { gap }).area).toBe(0);
+    }
+    // `expand` must not resurrect it either — the gate runs before the dilation.
+    expect(enclosedRegion(channel(), 21, 21, { gap: 3, expand: 2 }).area).toBe(0);
+  });
+
+  it("still fills what a raised gap genuinely bridges", () => {
+    // The gate must not be over-tightened into uselessness: a 3px break needs gap 2, and once
+    // bridged the whole 9×9 interior paints.
+    expect(enclosedRegion(ring(3), 15, 15, { gap: 1 }).area).toBe(0); // too small to bridge
+    const r = enclosedRegion(ring(3), 15, 15, { gap: 2 });
+    expect(r.area).toBeGreaterThan(70);
+    expect(r.region[CENTRE]).toBe(1);
+  });
+
+  it("keeps filling a CLOSED outline once gap outgrows the interior", () => {
+    // `enclosedArea` is 0 here (the dilation covers the hole); `rawEnclosedArea` is what keeps
+    // these fills alive.
+    for (const gap of [5, MAX_GAP]) {
+      expect(enclosedRegion(ring(0), 15, 15, { gap }).area).toBe(81);
+      expect(enclosedRegion(smallRing(), 15, 15, { gap }).area).toBe(9);
+    }
+  });
+
+  it("clamps gap like fillEnclosed does", () => {
+    const a = enclosedRegion(ring(5), 15, 15, { gap: 50 });
+    const b = enclosedRegion(ring(5), 15, 15, { gap: MAX_GAP });
+    expect(a.area).toBe(b.area);
   });
 });

@@ -88,7 +88,7 @@ interface AnimState {
   transformScope: "frame" | "layer" | "group";
   brush: ToolSettings;
   eraser: ToolSettings;
-  fill: { tolerance: number; expand: number };
+  fill: { tolerance: number; expand: number; gap: number };
   /** Bumped whenever the display must recomposite (document edits AND view-only ticks). */
   version: number;
   /** Bumped only when the saved project would change. Autosave keys off this, not version. */
@@ -154,7 +154,7 @@ export const state: AnimState = $state({
     streamline: 50,
     brushType: "smooth",
   },
-  fill: { tolerance: 32, expand: 2 },
+  fill: { tolerance: 32, expand: 2, gap: 0 },
   version: 0,
   persistTick: 0,
   curveVersion: 0,
@@ -967,6 +967,10 @@ export const selectionActions: {
 /** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
  *  menu) reaches zoom/pan through here. */
 export const viewActions: { fitView: (() => void) | null } = { fitView: null };
+
+/** Canvas-owned fill actions. `ToolOptions` reaches the active cell's pixels through here — the
+ *  canvas owns the keyframe, the undo bracket and the selection clip. */
+export const fillActions: { allEnclosed: (() => void) | null } = { allEnclosed: null };
 
 /** Gizmo-owned Reset-to-fit, so the ToolOptions bar can offer it without duplicating the gizmo's
  *  scope dispatch. Paired with `state.canResetTransform`, which says whether it would do anything. */
