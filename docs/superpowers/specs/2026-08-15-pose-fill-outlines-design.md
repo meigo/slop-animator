@@ -48,24 +48,49 @@ Two things then go wrong, and only the second is obvious:
 ### Core (`src/core/fill-holes.ts`) — pure, node-testable
 
 ```ts
-export function closeAndFill(
+export function fillEnclosed(
   alpha: Uint8ClampedArray, // RGBA of the lifted bitmap
   w: number,
   h: number,
   opts?: { alphaThreshold?: number; gap?: number },
-): { mask: Uint8Array; inkArea: number; insideArea: number };
+): { mask: Uint8Array; inkArea: number; grownArea: number; insideArea: number };
 ```
 
-1. `ink` = `alpha > (alphaThreshold ?? 10)` — the same threshold `fromLift` uses today.
-2. `inkClosed` = **morphological close** of `ink` at radius `gap`: dilate, then erode. At `gap: 0`
-   this is `ink` unchanged, so the strict path costs nothing.
-   **Closing the INK — rather than dilating the filled result — is what bridges breaks without
-   bloating the silhouette**, because the erode returns the outer boundary to where it started.
-3. Flood-fill from the bitmap **border** through non-`inkClosed` pixels. Everything reached is
+1. **Pad** the bitmap with `gap + 1` transparent pixels on every side. The pose lift is a TIGHT
+   content bbox, so ink routinely touches all four edges; without a guaranteed clear ring the flood
+   below has nowhere to start and the whole bitmap reads as "inside".
+2. `ink` = `alpha > (alphaThreshold ?? 10)` — the same threshold `fromLift` uses today.
+3. `grown` = **dilate** `ink` by `gap` (at `gap: 0`, `ink` unchanged — the strict path costs nothing).
+4. Flood-fill from the padded **border** through non-`grown` pixels. Everything reached is
    genuinely outside the character.
-4. `mask` = the complement of that flood: the ink, plus every region the ink encircles.
+5. `filled` = the complement of that flood.
+6. If `gap > 0`, **erode `filled` by `gap`** — undoing the dilation's bloat. Erosion is applied to
+   the SOLID filled mask, never to the thin ink.
+7. `mask` = `filled ∪ ink`, cropped back to the original size. The union guarantees the strokes
+   themselves are never eroded away.
 
-`inkArea`/`insideArea` come back because they are free at this point and drive the report below.
+**The order is load-bearing, and an earlier draft of this spec had it wrong.** Closing the *ink*
+(dilate → erode) does NOT bridge a break in a 1-px line at any radius: the dilation joins the ends,
+then the erosion eats the join straight back out, because the joint is never thicker than the
+structuring element. Prototyped and measured — a 15×15 ring with a 1 px break stayed unfilled at
+radii 1, 2 and 3. Dilating, filling, then eroding the *solid result* is what actually works, because
+by then the mask is thick enough to survive erosion.
+
+Measured behaviour of the prototype (ratio = `insideArea / inkArea`; a filled centre is the pass
+condition):
+
+| break in the outline | gap 0 | gap 1 | gap 2 | gap 3 |
+| --- | --- | --- | --- | --- |
+| closed | ✅ 3.02 | ✅ 3.02 | ✅ 3.02 | ✅ 3.02 |
+| 1 px | ❌ 1.00 | ✅ 3.08 | ✅ 3.08 | ✅ 3.08 |
+| 3 px | ❌ 1.00 | ❌ 1.11 | ✅ 3.16 | ✅ 3.19 |
+| 5 px | ❌ 1.00 | ❌ 1.09 | ❌ 1.26 | ✅ 3.14 |
+
+So **`gap: r` bridges a break of roughly `2r` pixels** (the dilated discs have to meet), and a closed
+outline shows **no bloat at any radius** — 121 px of interior at every setting.
+
+`inkArea`, `grownArea` and `insideArea` come back because they are free at this point and drive the
+report below.
 
 This module is the reason the feature is worth building properly: unlike almost all of this app's
 canvas code it is pure logic over an alpha array, so it can carry real unit tests rather than being
@@ -77,7 +102,7 @@ another build-and-review-only change.
 ### Wiring (`src/core/mesh-pose.ts`)
 
 `MeshPose.fromLift(img, rect, dpr, spacing, opts?: { fillHoles?: boolean; gap?: number })` builds
-its `inside` predicate from `closeAndFill`'s mask when `fillHoles` is on, and from raw alpha when it
+its `inside` predicate from `fillEnclosed`'s mask when `fillHoles` is on, and from raw alpha when it
 is off. Nothing else in the pose path changes — same triangulation, same geodesic solve, same bake.
 
 Both call sites are in `Canvas.svelte` (`:1303` initial lift, `:1370` density rebuild).
@@ -105,10 +130,15 @@ usually already correct, and when it is not, the control is on screen.
 
 ### Report
 
-With `fillHoles` on, if `insideArea < inkArea * 1.15`, nothing meaningful was enclosed. Set a status
-hint naming the remedy — the outline is not closed; raise the gap value or fill the shape — instead
-of leaving a web on screen with no explanation. The 1.15 factor is a heuristic: a genuinely closed
-outline encloses far more area than its own strokes.
+With `fillHoles` on, report failure when `insideArea < grownArea * 1.1` — i.e. the flood found
+essentially nothing that the dilation had not already produced. **Compare against `grownArea`, not
+`inkArea`:** at `gap: 2` a failed fill still measured 1.26× the ink purely from dilation bloat, so an
+ink-based threshold would have called that a success. Measuring against the grown mask isolates
+*enclosure* from *bloat*, and the prototype separates cleanly on it — failures sit at ~1.0, successes
+at ~3.0.
+
+On failure, set a status hint naming the remedy: the outline is not closed; raise the gap value or
+fill the shape. Anything is better than leaving a web on screen with no explanation.
 
 ## Out of scope
 
@@ -121,7 +151,7 @@ outline encloses far more area than its own strokes.
 
 ## Testing & verification
 
-`closeAndFill` is unit-tested (node): a closed square fills; a square with a 1 px break leaks and
+`fillEnclosed` is unit-tested (node): a closed square fills; a square with a 1 px break leaks and
 returns `insideArea ≈ inkArea`; `gap: 1` bridges that break; nested holes; ink touching the crop
 edge; an empty bitmap; and a donut with `fillHoles: false` keeps its hole. The `fromLift` wiring and
 the bar controls are canvas/DOM and get build + review gates per project convention.
