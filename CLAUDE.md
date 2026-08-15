@@ -1427,10 +1427,20 @@ image's `range` **by reference**, so `rangeDrag.from` aliased the live `layer.ra
 (`span ? { ...span } : …`) so an in-place write anywhere else could never make the grab-time
 baseline track the live value.
 
-**Four known gaps, deferred as product decisions, not bugs:** (1) `rasterizeReference`
-(`appState.svelte.ts`) drops the range — rasterizing an image ref trimmed to frames 0–10 in a
-48-frame project produces a drawing layer whose single keyframe holds to the end, so the image
-reappears on frames 11–47 where it had been trimmed away. (2) The ref transform gizmo
+**Rasterize reproduces the range (fixed 2026-08-15, was gap 1 of four).** `rasterizeReference` wrote
+one key at frame 0 and left every other cell a hold, so `resolveKeyframeIndex` resolved every later
+frame back to it: an image ref trimmed to 0–10 in a 48-frame project reappeared on frames 11–47,
+where it had been trimmed away. The keyframes now reproduce the ref's VISIBILITY, using structure the
+app already has rather than a new concept — pure `rasterizeKeyframePlan` (`document.ts`, unit-tested,
+8 cases) returns where the image key goes and where a BLANK key ends the run. Frames before the range
+need nothing at all: a leading hold with no key at or before it already resolves to null and draws
+nothing, which is the same mechanism that blanks a drawing layer before its first keyframe. The blank
+key at `end + 1` is the existing ◇ glyph, so the timeline reads correctly too. An untrimmed ref still
+gets a lone key at frame 0 (unchanged). Edge cases pinned by tests: a range reaching or passing the
+last frame writes no blank key; a range starting past the project yields an all-holds layer (correct
+— it was visible on no existing frame); a negative start clamps rather than writing out of bounds.
+
+**Three known gaps, deferred as product decisions, not bugs:** (2) The ref transform gizmo
 (`RefTransformGizmo.svelte`) stays live on frames where the ref no longer draws — trim a ref to 0–10,
 scrub to frame 30, and the handles still render over blank canvas; a drag there undoably commits a
 move to a layer that is invisible at that frame. Whether that should be blocked is a design call:
