@@ -1114,7 +1114,7 @@
                 lay.startFrame + lay.spanFrames - appState.project.frameCount,
               )}
               <div
-                class="relative box-border h-6 cursor-grab overflow-hidden border border-border bg-surface-active text-xs/6 text-text-secondary"
+                class="relative box-border h-6 cursor-grab overflow-hidden border border-media-clip-border bg-media-clip text-xs/6 text-text-secondary"
                 class:opacity-70={ref.id !== appState.activeLayerId}
                 style="touch-action: none; margin-left: {lay.startFrame *
                   CELL_W}px; width: {lay.spanFrames * CELL_W}px"
@@ -1128,7 +1128,7 @@
                 <span class="relative z-10 block truncate px-1">{ref.name}</span>
                 {#if tailFrames > 0}
                   <div
-                    class="pointer-events-none absolute inset-y-0 right-0 bg-surface/75"
+                    class="pointer-events-none absolute inset-y-0 right-0 bg-media-clip-dim"
                     style="width: {tailFrames * CELL_W}px"
                   ></div>
                 {/if}

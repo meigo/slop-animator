@@ -63,7 +63,9 @@
   const MAX_CANVAS_W = 16384;
 
   // Draw the waveform onto the canvas; redraws when params change (Svelte action).
-  function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
+  // `theme` is unread inside, but it is what re-runs the draw on a theme toggle: the colors come
+  // from CSS tokens via getComputedStyle, which nothing else invalidates.
+  function waveform(node: HTMLCanvasElement, _p: { audioVersion: number; theme: string }) {
     const draw = () => {
       const audio = state.project.audio;
       const ctx = node.getContext("2d");
@@ -85,17 +87,30 @@
       // The clip may outlast the document: past the last frame there is no ruler and nothing to
       // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
       const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
-      // Clip plate — start/end read as a rectangle, not just a grey scribble.
+      // Canvas can't use Tailwind classes, so read the same media-clip tokens the video-ref clip
+      // block uses — hardcoded greys were near-black in light mode, and any grey blends with the
+      // ruler (surface-active) directly above this lane.
+      const cs = getComputedStyle(node);
+      const token = (name: string, fallback: string) =>
+        cs.getPropertyValue(name).trim() || fallback;
+      // Clip plate — start/end read as a rectangle, not just a scribble. The tail past the last
+      // frame is a DIFFERENT token rather than the plate at low alpha: alpha reads as "dimmer" only
+      // against a dark lane, and would have vanished into white once the plate stopped being dark.
       ctx.globalAlpha = 1;
-      ctx.fillStyle = "#3a3a3a";
-      ctx.fillRect(0, 0, Math.min(w, Math.max(0, docEndX)), node.height);
+      const plateEnd = Math.min(w, Math.max(0, docEndX));
+      ctx.fillStyle = token("--color-media-clip", "#2b3240");
+      ctx.fillRect(0, 0, plateEnd, node.height);
       if (docEndX < w) {
-        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = token("--color-media-clip-dim", "#24272f");
         ctx.fillRect(Math.max(0, docEndX), 0, w - Math.max(0, docEndX), node.height);
-        ctx.globalAlpha = 1;
       }
+      // Outline, matching the video clip's border. Scaled with the backing store on a
+      // >MAX_CANVAS_W clip, which is cosmetic-only.
+      ctx.strokeStyle = token("--color-media-clip-border", "#3d4759");
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 0.5, w - 1, node.height - 1);
       const peaks = computePeaks(audio.buffer.getChannelData(0), w);
-      ctx.fillStyle = "#888";
+      ctx.fillStyle = token("--color-text-secondary", "#999999");
       const mid = node.height / 2;
       for (let x = 0; x < peaks.length; x++) {
         const h = peaks[x] * (node.height - 2);
@@ -155,7 +170,7 @@
     <canvas
       class="h-7 cursor-grab"
       style="touch-action: none; margin-left: {state.project.audio.offsetFrames * cellW}px"
-      use:waveform={{ audioVersion: state.version }}
+      use:waveform={{ audioVersion: state.version, theme: state.theme }}
       onpointerdown={laneDown}
       onpointermove={laneMove}
       onpointerup={laneUp}
