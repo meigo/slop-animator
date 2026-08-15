@@ -892,7 +892,7 @@
 <svelte:window onresize={onWindowResize} />
 
 <div
-  class="border-t border-border bg-surface text-text p-2 text-sm flex flex-col min-h-0 relative"
+  class="border-t border-border bg-surface text-text px-2 pt-3 pb-2 text-sm flex flex-col min-h-0 relative"
   style="height: {appState.timelineHeight}px"
 >
   <!-- accept mirrors LayerList's: image/* and video/* both resolve correctly on iOS (unlike
@@ -906,7 +906,7 @@
   />
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
-    class="absolute top-0 inset-x-0 h-2 z-30 cursor-row-resize hover:bg-text/10"
+    class="absolute top-0 inset-x-0 h-3 z-30 cursor-row-resize hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1134,7 +1134,7 @@
     <div
       class="sticky top-0 z-25 cursor-col-resize hover:bg-text/10"
       style="left: {GUTTER_W -
-        3}px; width: 6px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
+        10}px; width: 12px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize the timeline name column"
