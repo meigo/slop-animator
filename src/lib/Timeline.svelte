@@ -57,7 +57,12 @@
     type DrawingLayer,
     type ReferenceLayer,
   } from "../anim/document";
-  import { videoClipLayout, offsetAfterClipDrag } from "../anim/clip-layout";
+  import {
+    videoClipLayout,
+    offsetAfterClipDrag,
+    rangeAfterSlide,
+    rangeAfterTrim,
+  } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -212,6 +217,84 @@
   function clipUp() {
     clipDrag = null;
     touchPanUp();
+  }
+
+  // Image-ref range drag. Mirrors clipDown/Move/Up, but writes layer.range and IS undoable:
+  // a range change alters what renders, so a mis-drag silently blanks frames.
+  let rangeDrag: {
+    layer: ReferenceLayer;
+    mode: "slide" | "start" | "end";
+    x: number;
+    from: { start: number; end: number };
+    /** The layer had NO explicit range at grab (an edge drag materialises the implicit one). */
+    wasAbsent: boolean;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function rangeDown(e: PointerEvent, layer: ReferenceLayer, mode: "slide" | "start" | "end") {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e); // finger navigates, pen edits (the app-wide rule)
+      return;
+    }
+    e.stopPropagation(); // an edge handle must not also start a body slide
+    const span = refVisibleSpan(layer, appState.project.fps);
+    // An untrimmed block has no body to slide; an edge drag materialises the implicit whole-project
+    // range and trims from there.
+    if (span === null && mode === "slide") return;
+    const from = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) };
+    rangeDrag = {
+      layer,
+      mode,
+      x: e.clientX,
+      from,
+      wasAbsent: !layer.range,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleRangeDrag();
+  }
+
+  function rangeMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!rangeDrag) return;
+    const delta = Math.round((e.clientX - rangeDrag.x) / CELL_W);
+    const next =
+      rangeDrag.mode === "slide"
+        ? rangeAfterSlide(rangeDrag.from, delta)
+        : rangeAfterTrim(rangeDrag.from, rangeDrag.mode, delta);
+    const cur = rangeDrag.layer.range;
+    if (!cur || cur.start !== next.start || cur.end !== next.end) {
+      rangeDrag.layer.range = next; // REPLACE, never mutate in place (shared snapshot refs)
+      bump();
+    }
+  }
+
+  /** Commit iff the gesture actually changed the range; an empty entry makes undo look dead. */
+  function settleRangeDrag() {
+    if (!rangeDrag) return;
+    const cur = rangeDrag.layer.range;
+    if (cur && (cur.start !== rangeDrag.from.start || cur.end !== rangeDrag.from.end)) {
+      commitStructuralEdit(rangeDrag.undo);
+    } else if (rangeDrag.wasAbsent && cur) {
+      // A no-op edge drag on an untrimmed block still WROTE the implicit range (rangeMove writes
+      // whenever the layer had none). Pushing nothing is right, but leaving it written is not: an
+      // explicit range stops following the project's length, and undo could not take it back.
+      rangeDrag.layer.range = undefined;
+      bump();
+    }
+    rangeDrag = null;
+    transformDragGuard.settle = null;
+  }
+
+  function rangeUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanUp();
+      return;
+    }
+    settleRangeDrag();
   }
 
   function nameDown(e: PointerEvent, layerId: number) {
@@ -1163,8 +1246,32 @@
                 title={span === null
                   ? "Visible on every frame — drag an edge to trim"
                   : "Drag to move, drag an edge to trim"}
+                onpointerdown={(e) => rangeDown(e, ref, "slide")}
+                onpointermove={rangeMove}
+                onpointerup={rangeUp}
+                onpointercancel={rangeUp}
               >
                 <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                <div
+                  class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize"
+                  style="touch-action: none"
+                  role="presentation"
+                  title="Trim the start"
+                  onpointerdown={(e) => rangeDown(e, ref, "start")}
+                  onpointermove={rangeMove}
+                  onpointerup={rangeUp}
+                  onpointercancel={rangeUp}
+                ></div>
+                <div
+                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize"
+                  style="touch-action: none"
+                  role="presentation"
+                  title="Trim the end"
+                  onpointerdown={(e) => rangeDown(e, ref, "end")}
+                  onpointermove={rangeMove}
+                  onpointerup={rangeUp}
+                  onpointercancel={rangeUp}
+                ></div>
               </div>
             {:else}
               <span

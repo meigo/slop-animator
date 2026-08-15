@@ -247,7 +247,7 @@ function cloneLayers(layers: Layer[]): Layer[] {
   return layers.map((l) =>
     l.kind === "draw"
       ? { ...l, cells: l.cells.slice(), transform: { ...l.transform } }
-      : { ...l, transform: { ...l.transform } },
+      : { ...l, transform: { ...l.transform }, range: l.range ? { ...l.range } : undefined },
   );
 }
 function snapshotStructure(): StructSnapshot {
@@ -278,6 +278,9 @@ function restoreStructure(s: StructSnapshot) {
         live.cells = snap.cells.slice();
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
+      if (live.kind === "ref" && snap.kind === "ref")
+        // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
+        live.range = snap.range ? { ...snap.range } : undefined;
       return live;
     }
     // Layer was removed, OR its kind changed since the snapshot (e.g. rasterize ref→draw, same id) →
