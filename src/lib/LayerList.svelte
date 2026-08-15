@@ -30,6 +30,7 @@
   import {
     state as appState,
     bump,
+    repaint,
     addLayerToProject,
     removeLayer,
     duplicateLayer,
@@ -86,7 +87,7 @@
     const file = relinkInput.files?.[0];
     const id = relinkTargetId;
     if (!file || id == null) return;
-    relinkReference(id, await loadReferenceMedia(file, () => bump()), file);
+    relinkReference(id, await loadReferenceMedia(file, () => repaint()), file);
   }
 
   function startEdit(layer: { id: number; name: string }) {

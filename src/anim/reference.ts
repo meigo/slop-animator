@@ -14,6 +14,9 @@ export function loadImageMedia(file: File): Promise<ReferenceMedia> {
   });
 }
 
+/** `onSeeked` stays registered for the element's whole life, and paused scrubbing exact-seeks it once
+ *  per frame — so it must be a plain repaint. A `bump()` here re-armed the autosave debounce on every
+ *  scrubbed frame, re-encoding every key cell to PNG the moment the scrub stopped. */
 export function loadVideoMedia(file: File, onSeeked: () => void): Promise<ReferenceMedia> {
   return new Promise((resolve, reject) => {
     const el = document.createElement("video");

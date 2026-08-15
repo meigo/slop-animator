@@ -171,22 +171,30 @@ export function setupTouchGestures(
     }
 
     singlePanActive = false;
-
-    // If one finger remains after lifting one, restart single-finger pan from current position
-    if (touches.size === 1) {
-      const remaining = touches.values().next().value!;
-      singlePanActive = true;
-      singlePanStartX = remaining.x;
-      singlePanStartY = remaining.y;
-      singlePanStartPanX = viewport.panX;
-      singlePanStartPanY = viewport.panY;
-    }
+    restartSinglePan();
   }
 
   function onPointerCancel(e: PointerEvent) {
     if (e.pointerType !== "touch") return;
     touches.delete(e.pointerId);
     singlePanActive = false;
+    // Clear the pinch WITHOUT snapping: a cancelled gesture's rotation is whatever it happened to be
+    // when the OS took the pointer away, so snapping it would twist the canvas unasked. Leaving
+    // pinchActive set also meant the next lift snapped on those stale numbers.
+    pinchActive = false;
+    restartSinglePan();
+  }
+
+  /** After one finger goes away, hand the survivor back to single-finger pan from where it is now
+   *  (no move branch matches one touch with singlePanActive false — the finger would be dead). */
+  function restartSinglePan() {
+    if (touches.size !== 1) return;
+    const remaining = touches.values().next().value!;
+    singlePanActive = true;
+    singlePanStartX = remaining.x;
+    singlePanStartY = remaining.y;
+    singlePanStartPanX = viewport.panX;
+    singlePanStartPanY = viewport.panY;
   }
 
   // --- Pinch + rotate helpers ---

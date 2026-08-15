@@ -180,11 +180,21 @@ export function anyEditablePasteTarget(project: Project, topLayerId: number): bo
   });
 }
 
+/** The key a HOLD written at `frame` would show, given every cell before `frame` is already final.
+ *  Past the track's end the pad holds writeColumn adds chain back to the last existing cell, so
+ *  clamp instead of taking resolveKeyframeIndex's "blank after the end" null. */
+function keyShownBefore(layer: DrawingLayer, frame: number): Cell | null {
+  const at = Math.min(frame - 1, layer.cells.length - 1);
+  if (at < 0) return null;
+  return resolvedKeyCell(layer, at)?.cell ?? null;
+}
+
 /** Move the selected block by `delta` frames on its OWN layers (frames-only), overwriting the
  *  destination. Returns the applied delta after clamping so the earliest moved frame stays >= 0.
- *  Leading holds stay holds (unlike copy) so a mid-span drag does not duplicate the resolved key.
- *  The range is blanked, then the cloned block is re-stamped at +applied. copyBlock clones first,
- *  so source/destination overlap is safe. `layerIds` must be drawing layers. */
+ *  Leading holds stay holds (unlike copy) so a mid-span drag does not duplicate the resolved key —
+ *  unless the move crosses a key, see below. The range is blanked, then the cloned block is
+ *  re-stamped at +applied. copyBlock clones first, so source/destination overlap is safe.
+ *  `layerIds` must be drawing layers. */
 export function moveBlockFrames(
   project: Project,
   layerIds: number[],
@@ -195,17 +205,40 @@ export function moveBlockFrames(
 ): number {
   const applied = Math.max(delta, -startFrame);
   if (applied === 0) return 0;
+  const dest = startFrame + applied;
   const block = copyBlock(project, layerIds, startFrame, endFrame, ops, {
     materializeLeading: false,
   });
+  // What each column's leading cell DISPLAYS right now. A leading hold carries no pixels, so at the
+  // destination it re-resolves to whatever key precedes it THERE: correct for a nudge inside its own
+  // hold span, but across an intervening key the marquee would move while the drawing silently
+  // changed. Read before deleteBlock vacates the source, and per layer (each resolves on its own
+  // track).
+  const shown = new Map<number, Cell | null>();
+  for (const id of layerIds) {
+    const layer = project.layers.find((l) => l.id === id);
+    if (!layer || layer.kind !== "draw") continue;
+    if (layer.cells[startFrame]?.kind === "key") continue; // already self-contained
+    shown.set(id, resolvedKeyCell(layer, startFrame)?.cell ?? null);
+  }
   deleteBlock(project, layerIds, startFrame, endFrame); // vacate the source → holds
   let c = 0;
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
     if (!layer || layer.kind !== "draw") continue; // mirrors copyBlock's column filter → alignment
     // Locked row: consume the column (deleteBlock skipped it too, so its cells are untouched).
-    if (isLayerEditable(layer, project.groups))
-      writeColumn(layer, block.columns[c], startFrame + applied);
+    if (isLayerEditable(layer, project.groups)) {
+      const col = block.columns[c];
+      if (shown.has(id)) {
+        // The source is vacated and the write starts at `dest`, so everything before `dest` is now
+        // final — this is exactly what the moved hold would resolve to on arrival. Materialize only
+        // when that differs, so the mid-span case still moves a hold as a hold.
+        const src = shown.get(id)!;
+        if (keyShownBefore(layer, dest) !== src)
+          col[0] = src ? cloneCell(src, ops) : { kind: "key", canvas: ops.create() };
+      }
+      writeColumn(layer, col, dest);
+    }
     c++;
   }
   return applied;

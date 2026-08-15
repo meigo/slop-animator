@@ -71,6 +71,7 @@
     applyScale,
     applyRotate,
     inverseChain,
+    forwardChain,
     type Handle,
     type Pt,
     type ComposeStep,
@@ -121,6 +122,14 @@
     const steps = cellComposeSteps(al);
     if (!steps.some((s) => !isIdentityTransform(s.t))) return p;
     return inverseChain(steps, p);
+  }
+
+  /** Cell-local point → document space: the point-wise twin of applyOverlayCompose (used to anchor
+   *  the on-canvas action bar to a cell-space lift, which lives under the same compose). */
+  function composeToDoc(p: { x: number; y: number }): { x: number; y: number } {
+    const al = activeLayer();
+    if (al.kind !== "draw") return p;
+    return forwardChain(cellComposeSteps(al), p);
   }
 
   /** Apply group ∘ layer ∘ cell to an overlay ctx (logical px, dpr = 1). Outer first. */
@@ -183,7 +192,20 @@
       overlay.height = h;
       // Setting width/height clears the bitmap — put the marquee/float back.
       selection?.drawOverlay();
+      repaintPoseOverlay();
     }
+  }
+
+  /** The overlay is stage-sized and bakes the view transform in at paint time, so every pan / zoom /
+   *  resize has to repaint it. The marquee self-heals from its own marching-ants rAF; the pose mesh
+   *  has no such loop, so without this it sits still while the artwork slides out from under it.
+   *  Coalesced to one frame like `drawRaf`: a pinch fires the viewport hooks per raw pointermove. */
+  function repaintPoseOverlay() {
+    if (!meshPose || poseRaf) return;
+    poseRaf = requestAnimationFrame(() => {
+      poseRaf = 0;
+      if (meshPose) posePaint();
+    });
   }
 
   let display: HTMLCanvasElement;
@@ -288,6 +310,8 @@
   let poseDrag: number | null = null;
   let activeHandle: number | null = null;
   let poseAdjusting = false;
+  // Coalesces view-driven pose repaints (see repaintPoseOverlay); pose gestures still paint directly.
+  let poseRaf = 0;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
   let poseSpacing = POSE_SPACING;
 
@@ -308,10 +332,15 @@
   let fillUsed = false;
 
   /** Backing-store scale so a CSS-zoomed view still has pixels for a scaled-down layer.
-   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows. */
+   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows.
+   *  QUANTISED to genuine steps: the viewport hooks fire per raw pointermove/wheel event, so a
+   *  continuous scale meant a pinch reallocated the display + scratch backing stores and
+   *  re-composited every layer on every touch sample. Stepping caps that at one realloc per crossing
+   *  (and at worst renders a mid-step zoom from 1.5× pixels instead of, say, 1.7×). */
+  const OUTPUT_SCALE_STEPS = [2, 1.5, 1];
   function displayOutputScale(): number {
     const z = viewport?.zoom ?? 1;
-    return Math.min(2, Math.max(1, z));
+    return OUTPUT_SCALE_STEPS.find((s) => z >= s) ?? 1;
   }
 
   function sizeDisplay() {
@@ -894,12 +923,14 @@
     selection.applyView = applyViewTransform;
     // Only consulted for a cellSpaceLift (deform) — see Selection.applyCompose.
     selection.applyCompose = applyOverlayCompose;
+    selection.boundsToDoc = composeToDoc;
     syncComposeSteps();
     syncOverlayScale();
     let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
       sizeOverlay();
       syncOverlayScale();
+      repaintPoseOverlay();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
         lastOutputScale = ss;
@@ -1380,6 +1411,7 @@
       onViewportChange: () => {
         sizeOverlay();
         syncOverlayScale();
+        repaintPoseOverlay();
       },
     });
 
@@ -1454,6 +1486,7 @@
       window.removeEventListener("blur", onViewBlur);
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
+      if (poseRaf) cancelAnimationFrame(poseRaf);
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
       selectionRef.current = null;
       liftGuard.discard = null;
@@ -1513,6 +1546,23 @@
   function discardActiveEdits() {
     if (meshPose) cancelPose();
     if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
+    // An open stroke holds the key cell's canvas + ctx, which the caller is about to replace or
+    // replay history over — the Pencil can be mid-stroke while fingers undo (touch-gestures.ts lets
+    // pen and touch run independently). Roll back to the pre-stroke snapshot instead of committing:
+    // pushing undo here would land a pixel entry on top of the op that asked for the discard.
+    if (strokeCanvas && strokeCtx && beforeSnapshot) {
+      if (drawRaf) {
+        cancelAnimationFrame(drawRaf); // a queued paint would repaint the stroke we just reverted
+        drawRaf = 0;
+      }
+      strokeCtx.putImageData(beforeSnapshot, 0, 0);
+      strokeCanvas = null;
+      strokeCtx = null;
+      beforeSnapshot = null;
+      strokeSteps = null;
+      dropStrokeUntilUp = true; // swallow the rest of this pointer stream
+      recomposite();
+    }
   }
   $effect(() => {
     const layer = appState.activeLayerId;

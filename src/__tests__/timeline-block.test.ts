@@ -360,6 +360,40 @@ describe("moveBlockFrames", () => {
     expect(l.cells[2]).toEqual({ kind: "hold" });
     expect(l.cells[3]).toEqual({ kind: "hold" });
   });
+
+  it("materializes a leading hold that crosses a key — the dragged content follows", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const l = drawLayer(1, [key(a), hold(), hold(), key(b), hold(), hold()]); // [A][·][·][B][·][·]
+    moveBlockFrames(proj([l], 6), [1], 1, 1, 3, fakeOps); // the hold at 1 (shows A) → frame 4
+    expect(l.cells[1]).toEqual({ kind: "hold" }); // vacated
+    const c3 = l.cells[3];
+    if (c3.kind === "key") expect(idOf(c3.canvas)).toBe(idOf(b)); // B untouched
+    const c4 = l.cells[4];
+    expect(c4.kind).toBe("key"); // would have shown B as a hold → carry A instead
+    if (c4.kind === "key") expect(cloneOf(c4.canvas)).toBe(idOf(a));
+  });
+
+  it("decides materialization per layer (each track resolves on its own)", () => {
+    const a = fakeOps.create();
+    const b = fakeOps.create();
+    const x = fakeOps.create();
+    const top = drawLayer(3, [key(a), hold(), hold(), key(b), hold()]); // crossing B
+    const bottom = drawLayer(1, [key(x), hold(), hold(), hold(), hold()]); // one long span
+    moveBlockFrames(proj([bottom, top], 5), [3, 1], 1, 1, 3, fakeOps); // hold at 1 → 4
+    const t4 = top.cells[4];
+    expect(t4.kind).toBe("key");
+    if (t4.kind === "key") expect(cloneOf(t4.canvas)).toBe(idOf(a)); // materialized
+    expect(bottom.cells[4]).toEqual({ kind: "hold" }); // still resolves to X → stays a hold
+  });
+
+  it("keeps a hold moved past the track end (the pad holds still resolve to the same key)", () => {
+    const a = fakeOps.create();
+    const l = drawLayer(1, [key(a), hold()]); // [A][·]
+    moveBlockFrames(proj([l], 4), [1], 1, 1, 2, fakeOps); // the hold at 1 → frame 3
+    expect(l.cells.length).toBe(4);
+    expect(l.cells[3]).toEqual({ kind: "hold" }); // frames 1–3 all chain back to A
+  });
 });
 
 describe("group-locked layers are inert to block writes", () => {

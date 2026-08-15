@@ -1079,6 +1079,67 @@ below the last track. Spec:
 incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
 block; audio rectangle; finger pans; save/reload.
 
+**Independent review of the 35 Grok commits (2026-08-15):** five parallel reviewers, one per
+subsystem (timeline / input+viewport / selection+transform chrome / persistence+undo / canvas+render
++audio), over `684c6ef..000aeec` — 2,900 insertions across 54 files that had had only a self-review.
+**No Criticals; seven Important findings, all confirmed against the code and all fixed.** Two
+recurring shapes, worth knowing because both will recur: **"applied everywhere except here"** (a
+split or guard rolled out to most call sites) and **"an invariant that used to hold for free"**
+(CSS or a framework used to maintain it; a refactor made it explicit and nobody noticed).
+
+1. **`discardActiveEdits` ignored an in-progress stroke** while its sibling `bankActiveEdits`
+   handled it ten lines above. It is `liftGuard.discard`, so it runs before resize / replaceProject
+   / undo / redo — and on iPad the Pencil draws while fingers gesture independently, so
+   draw-plus-two-finger-undo left the stroke painting into a canvas the undo had replaced. Now
+   reverts from the captured `beforeSnapshot` (no history entry), cancels the queued `drawRaf`
+   FIRST (a pending `paintStroke` would have repainted over the revert), and sets
+   `dropStrokeUntilUp`.
+2. **Moving a hold across a keyframe silently substituted content.** `moveBlockFrames` passed
+   `materializeLeading: false` unconditionally — right for a mid-span drag, wrong across a key,
+   because `writeColumn` writes a bare hold and `resolveKeyframeIndex` scans BACKWARD, so it
+   resolved to whatever key preceded it at the DESTINATION. The marquee moved, the drawing did not,
+   and the hold glyph looks identical either way. Now materializes only when the resolved key
+   differs, compared **post-delete** (a pre-delete comparison over-materializes when the moved block
+   itself contains a key). Unit-tested — this was the one node-testable finding of the seven.
+3. **A lifted pose mesh never repainted on pan/zoom/resize.** Fallout from the overlay leaving the
+   CSS-transformed wrapper: the view transform is now baked into the bitmap at paint time, so every
+   viewport change needs an explicit repaint. Selection self-heals via its marching-ants rAF;
+   `posePaint` is only called from pose interactions. `repaintPoseOverlay` (rAF-coalesced, since the
+   touch path fires both viewport hooks per raw pointermove) now runs wherever the selection overlay
+   is repainted.
+4. **A cancelled finger mid-pinch wedged the gesture machine.** `onPointerCancel` never reset the
+   new `pinchActive` and, unlike `onPointerUp`, never restarted pan for the surviving finger — that
+   finger went dead, and lifting it later fired `snapRotation()` on stale frozen values. Same
+   state-survives-a-cancelled-pointer family as gotcha #6.
+5. **The deform action bar was anchored in cell space.** `getScreenBounds` returns raw
+   `warpGrid`/`rect`, which for a `cellSpaceLift` is cell space, and `SelectionActions` mapped it
+   through `canvasToScreen` alone. New `boundsToDoc` hook (the point-wise twin of
+   `applyOverlayCompose`), gated on `cellSpaceLift` so a selection-originated warp is untouched.
+6. **Pinch-zoom reallocated the display backing store every touchmove.** `displayOutputScale()` was
+   CONTINUOUS on [1,2] despite a comment claiming discrete steps, and `touch-gestures.ts` has no
+   rAF anywhere — so `recomposite()` → `sizeDisplay()` reallocated the canvas and re-composited every
+   layer per raw pointer sample, through the most common zoom range. Now genuinely quantised
+   (`[2, 1.5, 1]`), making the comment true: a pinch sweep costs at most two reallocations.
+   `outputScale` only ever reaches a `setTransform` supersampling multiplier — nothing compares it
+   against zoom or uses it for hit-testing — so quantising is hit-free.
+7. **The `persistTick` split was ~90% applied**: three video-`seeked` callbacks still called
+   `bump()` (`Toolbar` ×2, `LayerList`), and `reference.ts` registers that callback as a PERMANENT
+   `seeked` listener, so paused scrubbing over a video ref re-armed the 3s autosave debounce every
+   frame and re-encoded every key cell — the iPad rotoscoping path, and exactly the workload the
+   split existed to remove.
+
+Verified sound by the reviews, worth not re-litigating: the History byte accounting (traced through
+push/undo/redo interleavings — it cannot drift, and eviction only shifts from the front so the
+surviving stack is always a contiguous suffix), the rotate-snap pivot math, export staying decoupled
+at 1× from display supersampling, and the palm-vs-Pencil routing (stricter than the canvas path —
+every timeline drag surface wires `pointercancel`). **Owed a browser pass** for all seven fixes
+(only #2 has a unit test): Pencil-draw + two-finger undo; drag a hold across a key; pan/pinch with a
+pose lifted, and resize mid-pose; cancel one finger of a pinch (OS edge-swipe); the deform bar on a
+transformed layer; pinch-zoom smoothness and the quality step at zoom 1.0/1.5/2.0; scrubbing a video
+ref without an autosave storm. Two known minors: undo with an EMPTY history now discards an
+in-flight stroke and undoes nothing; a stroke discarded on a hold leaves the materialized keyframe
+behind (app-wide, pre-existing).
+
 **Document-space selection (2026-08-15):** the select/lasso marquee is a region of the **paper**,
 not the active layer. Switching layers keeps the ants put; viewport pan/zoom/rotate still apply
 via `applyView`. Overlay must not `applyCompose` the ants. Pixel ops (clip/lift/copy/commit)
