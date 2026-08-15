@@ -183,15 +183,24 @@
     title="Pose (mesh deform)"
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
+  <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
+       no pointer events, so the status bar's delegated hint could never read it (CLAUDE.md,
+       2026-08-12). Handlers are guarded to match; `undo()`/`redo()` also refuse on their own. -->
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    title="Undo"
-    onclick={() => undo()}><Undo2 size={18} /></button
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+    title={appState.canUndo ? "Undo" : "Undo — nothing to undo"}
+    aria-disabled={!appState.canUndo}
+    onclick={() => {
+      if (appState.canUndo) undo();
+    }}><Undo2 size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-    title="Redo"
-    onclick={() => redo()}><Redo2 size={18} /></button
+    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+    title={appState.canRedo ? "Redo" : "Redo — nothing to redo"}
+    aria-disabled={!appState.canRedo}
+    onclick={() => {
+      if (appState.canRedo) redo();
+    }}><Redo2 size={18} /></button
   >
   <span class="flex-1"></span>
   <ToolbarMenu label="File">

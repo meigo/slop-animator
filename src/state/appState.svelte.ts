@@ -120,6 +120,11 @@ interface AnimState {
    *  Mirrored from RefTransformGizmo's rAF tick because the scope dispatch it derives from is
    *  gizmo-local — same reason poseActive mirrors meshPose rather than exposing a function. */
   canResetTransform: boolean;
+  /** Mirrors `history.canUndo`/`canRedo`. History is a plain class, so its getters are not $state
+   *  dependencies — the toolbar buttons would never grey out without this. Kept in sync by the
+   *  `history.onChange` hook below, so there is one writer rather than one per push site. */
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const project = createProject();
@@ -182,9 +187,15 @@ export const state: AnimState = $state({
   poseFillWarning: "",
   hasPixelClipboard: false,
   canResetTransform: false,
+  canUndo: false,
+  canRedo: false,
 });
 
 export const history = new History();
+history.onChange = () => {
+  state.canUndo = history.canUndo;
+  state.canRedo = history.canRedo;
+};
 
 /**
  * Document raster scale: device pixels per logical pixel, for cell canvases, the display and
