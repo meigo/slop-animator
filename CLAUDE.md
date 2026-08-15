@@ -1200,7 +1200,8 @@ strokes — but the worse part is that **geodesic weighting then travels ALONG t
 hand propagates down the arm outline, around the shoulder, and can drag the far side of the head,
 because that is the shortest path through the mesh. "Far away" stopped meaning what the artist
 expected. The fix (`src/core/fill-holes.ts`, `fillEnclosed`) **changes no pixels** — it reads the
-lifted bitmap's alpha and returns a `mask`/`inkArea`/`grownArea`/`insideArea`, and `MeshPose.fromLift`
+lifted bitmap's alpha and returns a
+`mask`/`inkArea`/`grownArea`/`insideArea`/`inkBBoxArea`/`enclosedArea`, and `MeshPose.fromLift`
 (`src/core/mesh-pose.ts`) builds its `inside` predicate from that mask instead of raw alpha when
 `fillHoles` is on; the artwork, the saved cell and the lift are untouched. The morphology
 (`dilateMask`/`erodeMask`, moved to shared `src/core/mask-ops.ts` — the Fill tool's `expand` uses the
@@ -1212,18 +1213,50 @@ already-solid flood-filled mask survives. The bitmap is padded by `gap + 1` on e
 of this, because the pose lift is a TIGHT content bbox — ink routinely touches all four edges, and
 without a guaranteed clear ring the border flood has nowhere to start and everything reads as inside.
 Net effect: **`gap: r` bridges a break of roughly `2r` px** (the dilated discs on either side of the
-gap have to meet). The failure report (`rebuildPoseMesh` in `Canvas.svelte`, and once more after the
-initial lift in `enterPose`) compares `insideArea` against **`grownArea`, not `inkArea`** — dilation
-alone inflates the ink area even when the flood never escapes, so an ink-based threshold would call a
-real failure a success; `grownArea` isolates enclosure from bloat. `state.pose = { fillHoles: true,
+gap have to meet). `gap` is **clamped to `0..MAX_GAP` (8) inside `fillEnclosed`**, not at the widget:
+the input's `max="8"` is advisory (a browser takes a typed `50`), the morphology is O(pixels × r²) and
+unseparated, and by the time it runs the pose lift has ALREADY cleared the cell's pixels and bumped
+`persistTick` — so a minutes-long freeze there is a force-quit away from losing the artwork, and the
+guarantee must not depend on the caller. **The failure report was redesigned on 2026-08-15 after
+review; do not restore the original criterion.** It was `insideArea < grownArea * 1.1`, and that
+compares quantities measured in different units — `grownArea` counts dilation bloat that the erode
+then removes, so it exceeds even a SUCCESSFUL fill on a small shape: a **closed** ring at `gap: 2`
+fills perfectly (121 px, identical to `gap: 0`) yet measured `121 < 188 × 1.1`, i.e. the very remedy
+the message recommends reported itself as failing. It also fired on any art with **nothing** to fill
+(a filled silhouette, a single stroke, an open "C" all measure `mask == ink`), where "raise Gap, or
+fill the shape" is wrong and unactionable. The criterion is now `outlineFillFailed` (pure, in
+`fill-holes.ts`, unit-tested), two conditions that must BOTH hold: (1) the ink is **sparse within its
+own bounding box** — `inkArea < 0.4 * inkBBoxArea`, which is what separates an outline (~0.33) from a
+body (~1.0), i.e. "failed to fill" from "nothing to fill"; and (2) the flood **enclosed nothing at
+all** — `enclosedArea === 0`, where `enclosedArea` is `mask \ grown`, the area gained beyond ink AND
+bridging. A leak drives it to a structural zero (the flood reaches the interior, so `filled == grown`
+exactly), so unlike the old ratio there is no constant to tune and it cannot fire on a fill that
+achieved anything. Deliberately conservative — a PARTIAL fill does not warn, because a false alarm is
+the worse error here (it is sticky on iPad and displaces the pose bar's own guidance). `grownArea`
+survives as a **diagnostic only**; it and the regression test that pins the old criterion's failure
+(`"does NOT report a fill that SUCCEEDED because the gap was raised"`, which asserts
+`insideArea < grownArea * 1.1` is true first) must be removed together or not at all — the test is
+what stops the comparison being reintroduced. `state.pose = { fillHoles: true,
 gap: 0 }` is **session-only, not persisted** — same convention as `onion`. The two pose-bar controls
 and the density buttons now share one `rebuildPoseMesh()` (extracted from what was `poseDensity`'s
 body) so every mesh-changing setting resets `poseDrag`/`activeHandle`/`poseAdjusting` the same way —
 vertex indices change on any rebuild, so stale handle indices must be dropped every time, not just on
-density changes. `fillEnclosed` and the mask ops are unit-tested (pure, node-testable); the
+density changes. The message is carried by a dedicated **`appState.poseFillWarning`**, rendered in the
+**pose bar beside the Gap control** that remedies it, and set OR cleared by `reportPoseFill()` on every
+mesh build plus apply/cancel/teardown. It deliberately does NOT go through `statusHint`: that field
+means "the hovered/pressed control's `title=`" and has a window-level `pointerdown` writer in
+`App.svelte`, so the very press that builds the mesh overwrote the warning microseconds after
+`enterPose` set it (each density button clobbered it with its own title too) — the spec's primary
+scenario showed nothing at all. Clearing on every rebuild is equally load-bearing: iPad has no hover
+to replace a stale message, and `StatusBar` renders `statusHint || idleHint`, so a stuck warning also
+suppressed the pose context hint, including "leaving the tool bakes it" — the only commit path without
+a keyboard. **Any new per-tool warning wants its own field for the same reason; `statusHint` is
+title-only.** `fillEnclosed` and the mask ops are unit-tested (pure, node-testable); the
 `fromLift` wiring and the bar controls are canvas/DOM and are build+review-verified only, per project
 convention. **Owed a browser pass:** an outline-only drawing meshing as a body rather than a web; a
 handle drag falling off through the shape instead of along the lines; a **donut** with the checkbox
-OFF keeping its hole; a deliberately gapped outline producing the status hint; raising Gap closing it;
-a filled drawing unchanged throughout; and a very thin appendage (thinner than the gap radius)
-surviving — the reason Gap defaults to 0. Spec/plan: `…/2026-08-15-pose-fill-outlines*.md`.
+OFF keeping its hole; a deliberately gapped outline producing the warning **in the pose bar** and
+raising Gap until it fills CLEARING it (as do the checkbox, Apply and Cancel); a filled drawing warning
+at NO gap setting; typing `50` into Gap snapping to 8 without a freeze; a filled drawing unchanged
+throughout; and a very thin appendage (thinner than the gap radius) surviving — the reason Gap
+defaults to 0. Spec/plan: `…/2026-08-15-pose-fill-outlines*.md`.
