@@ -311,6 +311,27 @@
     raf = requestAnimationFrame(tick);
   }
 
+  // A corner handle resizes along its diagonal from the gizmo centre — and that diagonal ROTATES
+  // with the layer, so the cursor is derived from the corner's actual on-screen angle rather than
+  // its index (index-mapping is only right at 0°). Spelling the four class names out as literals is
+  // also what lets Tailwind's scanner see them, since the class is chosen at runtime.
+  const RESIZE_CURSORS = [
+    "cursor-ew-resize",
+    "cursor-nwse-resize",
+    "cursor-ns-resize",
+    "cursor-nesw-resize",
+  ];
+  function cornerCursor(i: number): string {
+    // corners[0] and corners[2] are opposite corners, so their midpoint is the centre.
+    const cx = (corners[0].x + corners[2].x) / 2;
+    const cy = (corners[0].y + corners[2].y) / 2;
+    const deg = (Math.atan2(corners[i].y - cy, corners[i].x - cx) * 180) / Math.PI;
+    // Screen y grows DOWNWARD, so a down-right diagonal is the NW↔SE axis. A resize axis is the
+    // same in both directions, so fold to [0,180) and bucket every 45°.
+    const a = ((deg % 180) + 180) % 180;
+    return RESIZE_CURSORS[Math.round(a / 45) % 4];
+  }
+
   function resetTransform() {
     const l = activeTransformLayer();
     const tgt = transformTarget();
@@ -357,7 +378,7 @@
         role="button"
         tabindex="-1"
         aria-label="Scale reference"
-        class="pointer-events-auto cursor-pointer"
+        class="pointer-events-auto {cornerCursor(i)}"
         data-ref-handle=""
         x={c.x - 6}
         y={c.y - 6}
