@@ -149,6 +149,10 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     the button is too late. Filter `.selection-actions-panel` in `setupInput` (pen/mouse) the same
     way `touch-gestures.ts` already did for fingers. Any new chrome inside the stage needs the same
     class (or an explicit `setupInput` ignore).
+13. **Selection geometry is DOCUMENT space (the paper).** Viewport pan/zoom still apply;
+    group ∘ layer ∘ cell does not. Overlay must not applyCompose the ants. Pixel ops
+    (clip/lift/copy/commit) map through inverseChain via selection.composeSteps.
+    Switching layers keeps the ants put; a live lift still banks (gotcha #9).
 
 ## Current state (all shipped & merged to `main`)
 
@@ -1067,3 +1071,13 @@ below the last track. Spec:
 `docs/superpowers/specs/2026-08-14-video-ref-clip-drag-design.md`. **Owed an iPad pass:** drag
 incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
 block; audio rectangle; finger pans; save/reload.
+
+**Document-space selection (2026-08-15):** the select/lasso marquee is a region of the **paper**,
+not the active layer. Switching layers keeps the ants put; viewport pan/zoom/rotate still apply
+via `applyView`. Overlay must not `applyCompose` the ants. Pixel ops (clip/lift/copy/commit)
+inverse-map through `selection.composeSteps` (`group ∘ layer ∘ cell`). A live lift still banks
+on layer/frame switch (gotcha #9). Deform/Pose stay cell-local. Spec/plan:
+`docs/superpowers/{specs,plans}/2026-08-15-document-space-selection*.md`. **Owed a browser
+pass:** select on identity → switch to a moved/scaled/rotated layer → ants stay put; Free
+transform lifts what you see and commits through inverse compose; identity-layer
+lift/copy/commit unchanged.
