@@ -140,9 +140,7 @@
 
   function syncOverlayScale() {
     if (!selection || !viewport) return;
-    const al = activeLayer();
-    const extra = al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1;
-    selection.screenScale = viewport.zoom * extra;
+    selection.screenScale = viewport.zoom;
   }
 
   /** Map document space onto the stage-sized overlay (same pan/rotate/zoom as the CSS wrapper). */
@@ -793,7 +791,11 @@
       return;
     }
     if (appState.tool === "select" || appState.tool === "lasso") {
-      const p = toCellSpace(points[points.length - 1]);
+      if (selection) {
+        const al = activeLayer();
+        selection.composeSteps = al.kind === "draw" ? cellComposeSteps(al) : [];
+      }
+      const p = points[points.length - 1];
       if (points.length === 1 && !done) {
         const handle = selection.hitTest(p.x, p.y);
         if (selection.state === "selected" && handle === "move") {
@@ -878,7 +880,7 @@
     selection = new Selection(overlay);
     selection.mode = "rect";
     selection.applyView = applyViewTransform;
-    selection.applyCompose = applyOverlayCompose;
+    selection.applyCompose = null;
     syncOverlayScale();
     let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
@@ -1284,6 +1286,10 @@
     let lastW = appState.project.width;
     let lastH = appState.project.height;
     const tick = () => {
+      if (selection) {
+        const al = activeLayer();
+        selection.composeSteps = al.kind === "draw" ? cellComposeSteps(al) : [];
+      }
       const dimsChanged = appState.project.width !== lastW || appState.project.height !== lastH;
       if (dimsChanged) {
         lastW = appState.project.width;
