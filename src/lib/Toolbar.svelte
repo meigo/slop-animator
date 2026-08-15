@@ -5,6 +5,7 @@
     undo,
     redo,
     bump,
+    repaint,
     addLayerToProject,
     replaceProject,
     setAudioTrack,
@@ -65,7 +66,7 @@
       const project = await loadProjectBlob(
         file,
         DPR,
-        () => bump(),
+        () => repaint(),
         () => (appState.statusHint = "Storage full — references won't survive a reload"),
       );
       // Pre-name-field saves carry no name — adopt the picked file's basename.
@@ -81,7 +82,7 @@
     const layer =
       pendingKind === "image"
         ? await loadImageLayer(file)
-        : await loadVideoLayer(file, () => bump());
+        : await loadVideoLayer(file, () => repaint());
     if (pendingKind === "image") persistReferenceMedia(layer, file, file.name);
     addLayerToProject(layer);
   }
