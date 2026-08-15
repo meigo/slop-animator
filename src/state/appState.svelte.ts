@@ -109,6 +109,10 @@ interface AnimState {
   selectionFloating: boolean; // pixels are lifted/moved (Copy/Cut are off, but Deselect still applies)
   poseActive: boolean; // the pose mesh is built (drives the contextual status hint)
   hasPixelClipboard: boolean; // the pixel selection clipboard has content (drives ToolOptions Paste)
+  /** A live gizmo target carries a NON-identity transform, i.e. Reset to fit would do something.
+   *  Mirrored from RefTransformGizmo's rAF tick because the scope dispatch it derives from is
+   *  gizmo-local — same reason poseActive mirrors meshPose rather than exposing a function. */
+  canResetTransform: boolean;
 }
 
 const project = createProject();
@@ -168,6 +172,7 @@ export const state: AnimState = $state({
   selectionFloating: false,
   poseActive: false,
   hasPixelClipboard: false,
+  canResetTransform: false,
 });
 
 export const history = new History();
@@ -953,6 +958,10 @@ export const selectionActions: {
 /** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
  *  menu) reaches zoom/pan through here. */
 export const viewActions: { fitView: (() => void) | null } = { fitView: null };
+
+/** Gizmo-owned Reset-to-fit, so the ToolOptions bar can offer it without duplicating the gizmo's
+ *  scope dispatch. Paired with `state.canResetTransform`, which says whether it would do anything. */
+export const transformActions: { reset: (() => void) | null } = { reset: null };
 
 /** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
 export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
