@@ -1697,88 +1697,101 @@
     }}
   />
   {#if poseBarVisible()}
+    <!-- Two rows on purpose: the controls stay a compact, stable-width strip, and the warning gets
+         its own line below. Inline, it stretched the panel most of the canvas width and shifted
+         every button whenever it appeared. `max-w` + `flex-wrap` mean it wraps instead of pushing
+         the panel past the canvas edge on a narrow (iPad portrait) viewport. -->
     <div
-      class="selection-actions-panel absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border shadow-lg z-10"
+      class="selection-actions-panel absolute top-2 left-1/2 -translate-x-1/2 flex max-w-[min(92vw,34rem)] flex-col gap-1 rounded border border-border bg-surface px-2 py-1 shadow-lg z-10"
     >
-      <button
-        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
-        title="Coarser mesh"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          poseDensity(-1);
-        }}>−</button
-      >
-      <button
-        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
-        title="Denser mesh"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          poseDensity(1);
-        }}>+</button
-      >
-      <button
-        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
-        title="Reset handles"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          meshPose?.resetHandles();
-          poseDrag = null;
-          activeHandle = null;
-          poseAdjusting = false;
-          posePaint();
-        }}>Reset</button
-      >
-      <label
-        class="flex items-center gap-1 text-xs"
-        title="Treat space enclosed by the outline as part of the shape"
-      >
-        <input type="checkbox" bind:checked={appState.pose.fillHoles} onchange={rebuildPoseMesh} /> Fill
-        outlines
-      </label>
-      {#if appState.pose.fillHoles}
+      <div class="flex flex-wrap items-center gap-1">
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          title="Coarser mesh"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            poseDensity(-1);
+          }}>−</button
+        >
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          title="Denser mesh"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            poseDensity(1);
+          }}>+</button
+        >
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          title="Reset handles"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            meshPose?.resetHandles();
+            poseDrag = null;
+            activeHandle = null;
+            poseAdjusting = false;
+            posePaint();
+          }}>Reset</button
+        >
+        <!-- Group separator — the bar language the playbar and timeline tool bar already use. -->
+        <span class="w-px h-5 bg-border mx-1"></span>
         <label
           class="flex items-center gap-1 text-xs"
-          title="Bridge breaks in the outline, up to about twice this many pixels"
+          title="Treat space enclosed by the outline as part of the shape"
         >
-          Gap
           <input
-            class="w-10 text-xs bg-surface border border-border rounded px-1 text-text"
-            type="number"
-            min="0"
-            max={MAX_GAP}
-            value={appState.pose.gap}
-            onchange={(e) => {
-              // Read + clamp rather than `bind:value`, which writes `null` into a `number` field
-              // when emptied and takes a typed 50 straight through (`max` is advisory). Writing the
-              // clamped value back to the DOM makes the snap visible.
-              appState.pose.gap = clampGap(e.currentTarget.value);
-              e.currentTarget.value = String(appState.pose.gap);
-              rebuildPoseMesh();
-            }}
-          />
+            type="checkbox"
+            bind:checked={appState.pose.fillHoles}
+            onchange={rebuildPoseMesh}
+          /> Fill outlines
         </label>
-        {#if appState.poseFillWarning}
-          <!-- Shown HERE, beside the Gap control that fixes it: statusHint is the hovered control's
-               title= and is overwritten by the very pointerdown that builds the mesh. -->
-          <span class="text-xs text-amber-500">{appState.poseFillWarning}</span>
+        {#if appState.pose.fillHoles}
+          <label
+            class="flex items-center gap-1 text-xs"
+            title="Bridge breaks in the outline, up to about twice this many pixels"
+          >
+            Gap
+            <input
+              class="w-10 text-xs bg-surface border border-border rounded px-1 text-text"
+              type="number"
+              min="0"
+              max={MAX_GAP}
+              value={appState.pose.gap}
+              onchange={(e) => {
+                // Read + clamp rather than `bind:value`, which writes `null` into a `number` field
+                // when emptied and takes a typed 50 straight through (`max` is advisory). Writing the
+                // clamped value back to the DOM makes the snap visible.
+                appState.pose.gap = clampGap(e.currentTarget.value);
+                e.currentTarget.value = String(appState.pose.gap);
+                rebuildPoseMesh();
+              }}
+            />
+          </label>
         {/if}
+        <span class="w-px h-5 bg-border mx-1"></span>
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
+          title="Apply pose"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            applyPose();
+          }}>Apply</button
+        >
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          title="Cancel pose"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            cancelPose();
+          }}>Cancel</button
+        >
+      </div>
+      {#if appState.pose.fillHoles && appState.poseFillWarning}
+        <!-- Row 2. Kept in THIS panel rather than the status bar: statusHint carries the hovered
+             control's title= and is overwritten by the very pointerdown that builds the mesh, and
+             the remedy (Gap) is one row above. -->
+        <span class="text-xs/snug text-amber-500">{appState.poseFillWarning}</span>
       {/if}
-      <button
-        class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
-        title="Apply pose"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          applyPose();
-        }}>Apply</button
-      >
-      <button
-        class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
-        title="Cancel pose"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          cancelPose();
-        }}>Cancel</button
-      >
     </div>
   {/if}
 </div>
