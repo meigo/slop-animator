@@ -1230,7 +1230,10 @@
               >
             {:else if ref.media.type === "image"}
               {@const span = refVisibleSpan(ref, appState.project.fps)}
-              {@const s = span ?? { start: 0, end: stripFrames - 1 }}
+              <!-- Untrimmed: span the project's REAL frames, the same implicit range an edge drag
+                   materialises (rangeDown). Not stripFrames — that only runs wider when some OTHER
+                   row's clip hangs past the end, which says nothing about this image. -->
+              {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
               <div
                 class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text-secondary"
                 class:border-media-clip-border={span !== null}
