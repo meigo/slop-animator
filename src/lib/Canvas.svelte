@@ -139,10 +139,7 @@
   }
 
   /** Invert applyOverlayCompose: inner-to-outer, each step inverted. Logical px. */
-  function applyInverseCompose(ctx: CanvasRenderingContext2D) {
-    const al = activeLayer();
-    if (al.kind !== "draw") return;
-    const steps = cellComposeSteps(al);
+  function applyInverseCompose(ctx: CanvasRenderingContext2D, steps: ComposeStep[]) {
     if (!steps.some((s) => !isIdentityTransform(s.t))) return;
     for (const s of steps) {
       const cx = s.base.x + s.base.w / 2;
@@ -270,6 +267,9 @@
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
+  // Compose at lift/paste time. Commit inverts *this*, not live activeLayer() —
+  // bankActiveEdits runs after the layer/playhead has already changed.
+  let liftComposeSteps: ComposeStep[] = [];
   const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
   // $state so the floating Paste button reacts to copy/cut filling the clipboard.
   let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
@@ -910,7 +910,7 @@
       // renderFloatingTo draws the paper crop in document space; inverse compose + dpr
       // map it into the cell. Identity compose is a no-op → today's blit.
       selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      applyInverseCompose(selCtx);
+      applyInverseCompose(selCtx, liftComposeSteps);
       selection.renderFloatingTo(selCtx);
       const ctx = selCtx;
       const before = selBefore;
@@ -931,6 +931,7 @@
       );
       selCtx = null;
       selBefore = null;
+      liftComposeSteps = [];
       bump();
       recomposite();
     };
@@ -942,6 +943,7 @@
       }
       selCtx = null;
       selBefore = null;
+      liftComposeSteps = [];
     };
 
     selectionRef.current = selection;
@@ -1026,8 +1028,13 @@
     if (!crop) {
       selCtx = null;
       selBefore = null;
+      liftComposeSteps = [];
       return false;
     }
+    // Refresh before the hole punch so we don't clip with a previous layer's steps.
+    const steps = cellComposeSteps(layer);
+    selection.composeSteps = steps;
+    liftComposeSteps = steps;
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     selection.clearRegion(selCtx, DPR);
     selection.beginTransform(crop);
@@ -1091,6 +1098,9 @@
     if (!ctx) return false;
     selCtx = ctx;
     selBefore = selCtx.getImageData(0, 0, selCtx.canvas.width, selCtx.canvas.height); // for the commit undo
+    const dest = activeLayer();
+    liftComposeSteps = dest.kind === "draw" ? cellComposeSteps(dest) : [];
+    if (selection) selection.composeSteps = liftComposeSteps;
     const r = selectionClipboard.rect;
     selection?.pasteFloat(cloneCanvas(selectionClipboard.canvas), {
       x: r.x + PASTE_OFFSET,
@@ -1124,6 +1134,7 @@
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
     selection.rect = rect;
     selection.composeSteps = [];
+    liftComposeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR);
     if (!lifted) {
       selCtx = null;
@@ -1229,6 +1240,7 @@
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     selection.rect = rect;
     selection.composeSteps = [];
+    liftComposeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
     if (!lifted) {
       selCtx = null;
@@ -1277,6 +1289,7 @@
     poseAdjusting = false;
     selCtx = null;
     selBefore = null;
+    liftComposeSteps = [];
     posePaint(); // meshPose null → clears overlay
     bump();
     recomposite();
@@ -1291,6 +1304,7 @@
     poseAdjusting = false;
     selCtx = null;
     selBefore = null;
+    liftComposeSteps = [];
     posePaint();
     recomposite();
     bump(); // bump version so the reactive pose bar unmounts
