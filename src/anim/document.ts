@@ -102,6 +102,39 @@ export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlo
   return null;
 }
 
+/** Whether `removeLayer` will act. A project must keep at least one drawing layer; reference layers
+ *  are always removable, even as the last layer left. */
+export function canRemoveLayer(layers: Layer[], id: number): boolean {
+  const layer = layers.find((l) => l.id === id);
+  if (!layer) return false;
+  if (!isDrawingLayer(layer)) return true;
+  return layers.filter(isDrawingLayer).length > 1;
+}
+
+/** Whether `duplicateLayer` will act — it clones pixels, so only drawing layers duplicate. */
+export function canDuplicateLayer(layers: Layer[], id: number): boolean {
+  const layer = layers.find((l) => l.id === id);
+  return !!layer && isDrawingLayer(layer);
+}
+
+/** Why `mergeDown` would refuse, in the order it checks. */
+export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only";
+
+export function whyNotMergeDown(
+  layers: Layer[],
+  groups: LayerGroup[],
+  id: number,
+): MergeDownBlock | null {
+  const idx = layers.findIndex((l) => l.id === id);
+  if (idx <= 0) return "no-layer-below"; // also covers "not found"
+  const upper = layers[idx];
+  const below = layers[idx - 1];
+  if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return "not-drawing";
+  // Merging replaces the lower layer's whole cell track, so it is a content edit on both.
+  if (!isLayerEditable(upper, groups) || !isLayerEditable(below, groups)) return "read-only";
+  return null;
+}
+
 /** Effective lock: the layer's own flag OR its group's. Derived (never cascaded) — same contract as
  *  `isLayerVisible`, so toggling a group's lock needs no per-child state to save and restore. */
 export function isLayerLocked(layer: Layer, groups: LayerGroup[]): boolean {

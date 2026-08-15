@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   groupHasLockedLayer,
+  canRemoveLayer,
+  canDuplicateLayer,
+  whyNotMergeDown,
   isLayerEditable,
   isLayerLocked,
   whyNotEditable,
@@ -519,6 +522,100 @@ describe("isLayerEditable", () => {
     expect(whyNotEditable({ ...base, locked: true }, [])).toBe("locked");
     expect(whyNotEditable({ ...base, visible: false }, [])).toBe("hidden");
     expect(whyNotEditable({ ...base, locked: true, visible: false }, [])).toBe("locked");
+  });
+});
+
+describe("layer-action availability (what the LayerList buttons dim on)", () => {
+  const ref = (id: number, over = {}): ReferenceLayer => ({
+    kind: "ref",
+    id,
+    name: `R${id}`,
+    visible: true,
+    opacity: 60,
+    offsetFrames: 0,
+    speed: 1,
+    audioEnabled: false,
+    groupId: null,
+    media: { type: "missing", was: "image", name: "x" },
+    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    ...over,
+  });
+
+  describe("canRemoveLayer", () => {
+    it("refuses the LAST drawing layer, allows it once a second exists", () => {
+      const a = layer(1, [makeKey()]);
+      expect(canRemoveLayer([a], 1)).toBe(false);
+      expect(canRemoveLayer([a, layer(2, [makeKey()])], 1)).toBe(true);
+    });
+
+    it("a reference layer does not count toward the one-drawing-layer minimum", () => {
+      const a = layer(1, [makeKey()]);
+      expect(canRemoveLayer([a, ref(2)], 1)).toBe(false); // still the only DRAWING layer
+      expect(canRemoveLayer([a, ref(2)], 2)).toBe(true); // the ref itself is removable
+    });
+
+    it("a reference layer is removable even as the only layer left", () => {
+      expect(canRemoveLayer([ref(9)], 9)).toBe(true);
+    });
+
+    it("false for an unknown id", () => {
+      expect(canRemoveLayer([layer(1, [makeKey()])], 99)).toBe(false);
+    });
+  });
+
+  describe("canDuplicateLayer", () => {
+    it("drawing layers only — duplication clones pixels", () => {
+      expect(canDuplicateLayer([layer(1, [makeKey()])], 1)).toBe(true);
+      expect(canDuplicateLayer([ref(2)], 2)).toBe(false);
+      expect(canDuplicateLayer([layer(1, [makeKey()])], 99)).toBe(false);
+    });
+
+    it("does not care about lock or visibility (management, not content)", () => {
+      const l = layer(1, [makeKey()], { locked: true, visible: false });
+      expect(canDuplicateLayer([l], 1)).toBe(true);
+    });
+  });
+
+  describe("whyNotMergeDown", () => {
+    const g = (over = {}) => ({ id: 7, name: "G", collapsed: false, visible: true, ...over });
+
+    it("allows a merge into an editable drawing layer below", () => {
+      const layers = [layer(1, [makeKey()]), layer(2, [makeKey()])];
+      expect(whyNotMergeDown(layers, [], 2)).toBeNull();
+    });
+
+    it("names the bottom layer and an unknown id as having nothing below", () => {
+      const layers = [layer(1, [makeKey()]), layer(2, [makeKey()])];
+      expect(whyNotMergeDown(layers, [], 1)).toBe("no-layer-below");
+      expect(whyNotMergeDown(layers, [], 99)).toBe("no-layer-below");
+    });
+
+    it("refuses when either side is a reference layer", () => {
+      expect(whyNotMergeDown([ref(1), layer(2, [makeKey()])], [], 2)).toBe("not-drawing");
+      expect(whyNotMergeDown([layer(1, [makeKey()]), ref(2)], [], 2)).toBe("not-drawing");
+    });
+
+    it("refuses when either side is locked or hidden — merge rewrites both tracks", () => {
+      const below = layer(1, [makeKey()]);
+      const upper = layer(2, [makeKey()]);
+      expect(whyNotMergeDown([{ ...below, locked: true }, upper], [], 2)).toBe("read-only");
+      expect(whyNotMergeDown([below, { ...upper, locked: true }], [], 2)).toBe("read-only");
+      expect(whyNotMergeDown([{ ...below, visible: false }, upper], [], 2)).toBe("read-only");
+    });
+
+    it("honors GROUP-derived lock and visibility, not just the layer's own flags", () => {
+      const below = { ...layer(1, [makeKey()]), groupId: 7 };
+      const upper = layer(2, [makeKey()]);
+      expect(whyNotMergeDown([below, upper], [g()], 2)).toBeNull();
+      expect(whyNotMergeDown([below, upper], [g({ locked: true })], 2)).toBe("read-only");
+      expect(whyNotMergeDown([below, upper], [g({ visible: false })], 2)).toBe("read-only");
+    });
+
+    it("reports the structural block before the read-only one", () => {
+      // A locked BOTTOM layer has nothing below it either — the more fundamental reason wins.
+      const layers = [layer(1, [makeKey()], { locked: true }), layer(2, [makeKey()])];
+      expect(whyNotMergeDown(layers, [], 1)).toBe("no-layer-below");
+    });
   });
 });
 
