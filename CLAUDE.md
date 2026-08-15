@@ -1654,13 +1654,16 @@ paragraph.
 the selection bar all stay aligned; scroll horizontally while narrow (the grip and gutter stay
 pinned); reload keeps the width; a very narrow name column still truncates cleanly; iPad drag.
 
-**Both resize grips are bare edges (2026-08-16).** The layer panel's grip drew a short vertical bar
+**All THREE resize grips are bare edges (2026-08-16).** The layer panel's grip drew a short vertical bar
 centred in its full-height strip, which floated at whatever the panel's mid-height happened to be and
 read as an object rather than an edge; the gutter's drew one at the top. Both marks are gone. The
 affordance is now the divider line that was already there, plus `hover:bg-text/10` on the hit strip,
 so the edge tints under the pointer instead of carrying permanent chrome. Rationale: dragging a panel
 edge is a learned convention that needs no badge, and two resize edges in one app must look alike —
 a bare edge on one and a mark on the other was the actual inconsistency.
+The timeline's own top grip (height) followed the same day, for consistency: its hit area was
+ALREADY the same 8px as the other two (`h-2` vs `w-2`) — the only thing making it look like a bigger
+target was the bar it still drew. Measure before resizing a hit area; the difference was chrome.
 **Known trade, accepted:** hover does not exist on iPad, so there is no visual affordance there at
 all; the edges are discoverable only by trying them. Both still carry `title=`, which the status bar
 surfaces on tap, so the hint route survives even though the tint does not.

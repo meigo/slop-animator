@@ -906,7 +906,7 @@
   />
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
-    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
+    class="absolute top-0 inset-x-0 h-2 z-30 cursor-row-resize hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -916,9 +916,7 @@
     onpointermove={gripMove}
     onpointerup={gripUp}
     onpointercancel={gripUp}
-  >
-    <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
-  </div>
+  ></div>
   <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
       ><Plus size={16} /></button
