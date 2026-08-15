@@ -65,7 +65,10 @@ describe("syncReferenceVideos", () => {
     syncReferenceVideos(proj([vidLayer(b)]), 120, 12, false);
     expect(b.currentTime).toBe(0);
     const c = fakeVid();
-    syncReferenceVideos(proj([vidLayer(c, -120)]), 12, 12, false); // -9s clamped to 0
+    // offset -120 pushes this video's derived span to start at frame 120 (10s of lead-in before the
+    // clip's own frame 0 becomes visible), so frame 12 is BEFORE the span, not a negative-wanted
+    // clamp — it hits the out-of-span skip and is left untouched (already 0 from fakeVid's default).
+    syncReferenceVideos(proj([vidLayer(c, -120)]), 12, 12, false);
     expect(c.currentTime).toBe(0);
   });
 
@@ -97,11 +100,28 @@ describe("syncReferenceVideos", () => {
     expect(v.paused).toBe(false);
   });
 
-  it("playing + playhead at/past clip end: freezes on last frame, does not play()", () => {
-    // HTML play() on an ended element seeks to 0 — so we must not call it once wanted >= duration.
+  it("playing + past a KNOWN-duration clip's span: out-of-span skip leaves it untouched", () => {
+    // Frame 120 (10s) is past this clip's derived span (dur 2s -> frames 0..23), so this now hits
+    // the out-of-span skip before ever reaching the wanted>=dur freeze branch below — it passes only
+    // because the fixture already sits at (currentTime 2, paused true), which the skip doesn't touch.
+    // The freeze branch itself (finite-duration case) is unreachable now; see the next test for the
+    // one path that still reaches it (duration not yet known).
     const v = fakeVid({ currentTime: 2, paused: true, duration: 2 });
-    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true); // wanted 10s, clamped to 2
+    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true);
     expect(v.currentTime).toBe(2);
+    expect(v.playCount).toBe(0);
+    expect(v.paused).toBe(true);
+  });
+
+  it("playing + duration not yet known: freezes at the wanted time, does not play()", () => {
+    // With duration NaN (preload="metadata" hasn't resolved it yet), refVisibleSpan returns null
+    // ("always visible"), so the out-of-span skip does not fire; `dur` then falls back to `wanted`
+    // itself, making `wanted >= dur` trivially true. This is the one remaining path that reaches the
+    // freeze branch — also exercises `!vid.paused` -> pause(), since play() on an ended element
+    // seeks to 0 and must not be called once frozen.
+    const v = fakeVid({ currentTime: 3, paused: false, duration: NaN });
+    syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true); // wanted 10s; dur === wanted (10) -> freeze
+    expect(v.currentTime).toBe(10);
     expect(v.playCount).toBe(0);
     expect(v.paused).toBe(true);
   });

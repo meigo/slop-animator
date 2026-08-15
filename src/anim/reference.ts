@@ -124,6 +124,11 @@ export function syncReferenceVideos(
       if (Math.abs(vid.currentTime - clamped) > SEEK_EPSILON) vid.currentTime = clamped;
     } else if (wanted >= dur) {
       // Past the clip: freeze on the last frame. play() on an ended element seeks to 0.
+      // Reachable only while `vid.duration` is not yet finite (preload="metadata" hasn't resolved
+      // it): `dur` then falls back to `wanted` itself, so `wanted >= dur` is trivially true. Once
+      // duration IS finite, this frame is out of the derived span and the skip above (isRefVisibleAtFrame)
+      // has already `continue`d before reaching here — for a finite duration this branch cannot fire.
+      // Don't delete it as dead code.
       if (Math.abs(vid.currentTime - dur) > SEEK_EPSILON) vid.currentTime = dur;
       if (!vid.paused) vid.pause();
     } else if (vid.paused) {
