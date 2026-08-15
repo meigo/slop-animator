@@ -1103,8 +1103,12 @@ lossless no-op. Identity layers are unaffected (the identity branch is a straigh
 Accepted, not mitigated — a lossless path would have to keep the float in cell space, which is
 exactly the coupling this feature removed.
 
-**Owed a browser pass:** select on identity → switch to a moved/scaled/rotated layer → ants stay
-put; Free transform lifts what you see and commits through inverse compose; identity-layer
+**Verified 2026-08-15:** a selection made on one layer stays put across switches to layers carrying
+different transforms — the feature's headline property, and the one the whole doc-space model exists
+for. The rest of the list below was NOT walked and stays owed; in particular the Deform item is a
+different code path (the review-caught regression), not covered by this check.
+
+**Owed a browser pass:** Free transform lifts what you see and commits through inverse compose; identity-layer
 lift/copy/commit unchanged; **Deform on a moved/scaled/rotated layer** (grid, handles and warped
 bitmap sit on the ink, and a handle drag tracks the pointer 1:1 — the regression above);
 **lift → commit without moving on a scaled-down layer** (how much detail the double resample
