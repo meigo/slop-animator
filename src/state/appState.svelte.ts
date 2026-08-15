@@ -72,6 +72,7 @@ import type { OnionConfig } from "../anim/onion";
 import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
 import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
+import { clampPanelWidth, DEFAULT_PANEL_WIDTH } from "../anim/panel-layout";
 
 export type Tool =
   | "brush"
@@ -109,6 +110,7 @@ interface AnimState {
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
   statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
   timelineHeight: number; // px height of the resizable timeline panel
+  layerPanelWidth: number; // px width of the resizable layer panel
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
@@ -183,6 +185,7 @@ export const state: AnimState = $state({
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
+  layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineSelection: null,
   cellClipboard: null,
   selectionActive: false,
@@ -909,6 +912,7 @@ export function gatherPreferences(): Preferences {
     theme: state.theme,
     loop: state.playback.loop,
     timelineHeight: state.timelineHeight,
+    layerPanelWidth: state.layerPanelWidth,
     pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
   };
 }
@@ -927,6 +931,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
   if (typeof p.timelineHeight === "number")
     state.timelineHeight = clampTimelineHeight(p.timelineHeight, window.innerHeight);
+  if (typeof p.layerPanelWidth === "number")
+    state.layerPanelWidth = clampPanelWidth(p.layerPanelWidth, window.innerWidth);
   if (p.pressureCurve && typeof p.pressureCurve === "object") {
     const { cp1, cp2 } = p.pressureCurve;
     if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")
