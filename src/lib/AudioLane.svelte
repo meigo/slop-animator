@@ -38,7 +38,8 @@
   // audio undoably), and once a field is in the snapshot every writer of it must push a command —
   // otherwise an unrelated structural undo silently reverts the writes that don't. Before this, a
   // drag followed by any structural edit followed by undo snapped the audio back to its pre-drag
-  // position. Mute and add/remove-track are NOT in the snapshot and stay non-undoable.
+  // position. Import, remove-track and mute were brought under undo for the same reason shortly
+  // after, so every audio edit now pushes a command.
   let dragStart: {
     x: number;
     offset: number;
