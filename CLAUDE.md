@@ -1077,6 +1077,22 @@ below the last track. Spec:
 incl. negative start and speed ≠ 1; speed changes width; missing says re-link; image has no
 block; audio rectangle; finger pans; save/reload.
 
+**Undo/redo grey out at the ends of the stack (2026-08-15):** the toolbar buttons always looked
+live, so pressing Undo on a fresh project did nothing with no explanation. They now dim, and their
+`title` says _why_ ("Undo — nothing to undo"), which per the 2026-08-12 rule means **`aria-disabled`
+rather than `disabled`** — a disabled button dispatches no pointer events, so the status bar's
+delegated hint could never read that title. Handlers are guarded to match; `undo()`/`redo()` keep
+their own guards, so the keyboard path is unaffected.
+**The reactive bridge is the part worth knowing.** `history` is a plain class, so `history.canUndo`
+is a getter, NOT a `$state` dependency — a button bound straight to it would never re-render. Rather
+than notify at every `history.push` site (they are spread across `Canvas.svelte` and the appState
+actions), `History` gained one `onChange` hook fired after any change to either stack, and
+`appState` wires it to mirror both flags into `state.canUndo`/`canRedo`. Same shape as `poseActive`
+mirroring `meshPose`, and one writer instead of N. The hook deliberately does NOT fire when
+`undo()`/`redo()` find their stack empty — nothing changed. It IS unit-tested (`history.test.ts`,
+3 cases incl. push-clears-the-redo-stack), because the whole feature silently stops working if the
+hook stops firing and nothing else would catch that.
+
 **Reset to fit moved to the bar, and only when it does something (2026-08-15):** the gizmo's
 on-canvas "Reset to fit" panel rendered whenever the gizmo was visible — offering an action that was
 a no-op most of the time, on top of the artwork. Now it lives in **ToolOptions** beside the

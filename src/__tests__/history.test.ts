@@ -85,3 +85,44 @@ describe("History", () => {
     expect(h.canUndo).toBe(false);
   });
 });
+
+describe("History.onChange", () => {
+  /** The toolbar mirrors canUndo/canRedo into $state through this hook — a plain class getter is
+   *  not a reactive dependency, so if the hook stops firing the buttons silently stop greying. */
+  function tracked() {
+    const st = { n: 0 };
+    const h = new History();
+    const seen: { undo: boolean; redo: boolean }[] = [];
+    h.onChange = () => seen.push({ undo: h.canUndo, redo: h.canRedo });
+    return { st, h, seen };
+  }
+
+  it("fires on push, undo, redo and clear, reporting the state AFTER the change", () => {
+    const { st, h, seen } = tracked();
+    h.push(counterCmd(st, 1));
+    expect(seen.at(-1)).toEqual({ undo: true, redo: false });
+    h.undo();
+    expect(seen.at(-1)).toEqual({ undo: false, redo: true });
+    h.redo();
+    expect(seen.at(-1)).toEqual({ undo: true, redo: false });
+    h.clear();
+    expect(seen.at(-1)).toEqual({ undo: false, redo: false });
+    expect(seen).toHaveLength(4);
+  });
+
+  it("does not fire when undo/redo have nothing to do", () => {
+    const { h, seen } = tracked();
+    h.undo();
+    h.redo();
+    expect(seen).toHaveLength(0);
+  });
+
+  it("reports redo as unavailable once a push clears the redo stack", () => {
+    const { st, h, seen } = tracked();
+    h.push(counterCmd(st, 1));
+    h.undo();
+    expect(h.canRedo).toBe(true);
+    h.push(counterCmd(st, 2));
+    expect(seen.at(-1)).toEqual({ undo: true, redo: false });
+  });
+});

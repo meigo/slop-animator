@@ -20,6 +20,10 @@ export function pixelCommand(
 }
 
 export class History {
+  /** Fired after any change to either stack. The UI mirrors `canUndo`/`canRedo` into `$state`
+   *  through this: a plain class getter is not a reactive dependency, so a button bound directly
+   *  to `history.canUndo` would never re-render. One hook here beats notifying at every push site. */
+  onChange?: () => void;
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private bytes = 0;
@@ -36,6 +40,7 @@ export class History {
     this.undoStack.push(cmd);
     this.bytes += cmd.bytes ?? 0;
     this.trim();
+    this.onChange?.();
   }
 
   private trim(): void {
@@ -55,6 +60,7 @@ export class History {
     if (!cmd) return;
     cmd.undo();
     this.redoStack.push(cmd);
+    this.onChange?.();
   }
 
   redo(): void {
@@ -62,12 +68,14 @@ export class History {
     if (!cmd) return;
     cmd.redo();
     this.undoStack.push(cmd);
+    this.onChange?.();
   }
 
   clear(): void {
     this.undoStack = [];
     this.redoStack = [];
     this.bytes = 0;
+    this.onChange?.();
   }
 
   get canUndo(): boolean {
