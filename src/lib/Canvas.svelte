@@ -183,7 +183,20 @@
       overlay.height = h;
       // Setting width/height clears the bitmap — put the marquee/float back.
       selection?.drawOverlay();
+      repaintPoseOverlay();
     }
+  }
+
+  /** The overlay is stage-sized and bakes the view transform in at paint time, so every pan / zoom /
+   *  resize has to repaint it. The marquee self-heals from its own marching-ants rAF; the pose mesh
+   *  has no such loop, so without this it sits still while the artwork slides out from under it.
+   *  Coalesced to one frame like `drawRaf`: a pinch fires the viewport hooks per raw pointermove. */
+  function repaintPoseOverlay() {
+    if (!meshPose || poseRaf) return;
+    poseRaf = requestAnimationFrame(() => {
+      poseRaf = 0;
+      if (meshPose) posePaint();
+    });
   }
 
   let display: HTMLCanvasElement;
@@ -288,6 +301,8 @@
   let poseDrag: number | null = null;
   let activeHandle: number | null = null;
   let poseAdjusting = false;
+  // Coalesces view-driven pose repaints (see repaintPoseOverlay); pose gestures still paint directly.
+  let poseRaf = 0;
   const POSE_SPACING = 16; // device px; dev-viz-tuned mesh density
   let poseSpacing = POSE_SPACING;
 
@@ -900,6 +915,7 @@
     viewport.onChange = () => {
       sizeOverlay();
       syncOverlayScale();
+      repaintPoseOverlay();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
         lastOutputScale = ss;
@@ -1380,6 +1396,7 @@
       onViewportChange: () => {
         sizeOverlay();
         syncOverlayScale();
+        repaintPoseOverlay();
       },
     });
 
@@ -1454,6 +1471,7 @@
       window.removeEventListener("blur", onViewBlur);
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
+      if (poseRaf) cancelAnimationFrame(poseRaf);
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
       selectionRef.current = null;
       liftGuard.discard = null;
