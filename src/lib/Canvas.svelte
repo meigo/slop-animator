@@ -5,7 +5,7 @@
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
-  import { renderFrame } from "../anim/render";
+  import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import {
@@ -38,6 +38,7 @@
   import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection, type SelectionRect } from "../core/selection";
+  import { inverseComposeMatrix, needsMap } from "../core/selection-map";
   import SelectionActions from "./SelectionActions.svelte";
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
@@ -138,11 +139,31 @@
     }
   }
 
+  /** Invert applyOverlayCompose: inner-to-outer, each step inverted. Logical px. The math lives in
+   *  `inverseComposeMatrix` (pure + unit-tested against inverseChain) — this only installs it. */
+  function applyInverseCompose(ctx: CanvasRenderingContext2D, steps: ComposeStep[]) {
+    if (!needsMap(steps)) return;
+    const m = inverseComposeMatrix(steps);
+    ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+  }
+
   function syncOverlayScale() {
     if (!selection || !viewport) return;
+    // A cell-space lift (deform) draws through applyCompose, so one screen px is 1/(zoom × compose
+    // scale) there; document-space geometry only sees the viewport zoom.
     const al = activeLayer();
-    const extra = al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1;
-    selection.screenScale = viewport.zoom * extra;
+    const composeScale =
+      selection.cellSpaceLift && al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1;
+    selection.screenScale = viewport.zoom * composeScale;
+  }
+
+  /** Keep `selection.composeSteps` on the active layer — EXCEPT while a lift owns them. Deform and
+   *  pose deliberately clear them (their lift is cell-space, gotcha #13); re-asserting the layer's
+   *  chain from the rAF tick silently undid that. A paper-crop float keeps its lift-time chain. */
+  function syncComposeSteps() {
+    if (!selection || selection.hasFloating || meshPose) return;
+    const al = activeLayer();
+    selection.composeSteps = al.kind === "draw" ? cellComposeSteps(al) : [];
   }
 
   /** Map document space onto the stage-sized overlay (same pan/rotate/zoom as the CSS wrapper). */
@@ -256,6 +277,9 @@
   // The cell being transformed + its pre-lift snapshot, for commit/cancel undo.
   let selCtx: CanvasRenderingContext2D | null = null;
   let selBefore: ImageData | null = null;
+  // Compose at lift/paste time. Commit inverts *this*, not live activeLayer() —
+  // bankActiveEdits runs after the layer/playhead has already changed.
+  let liftComposeSteps: ComposeStep[] = [];
   const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
   // $state so the floating Paste button reacts to copy/cut filling the clipboard.
   let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
@@ -793,26 +817,16 @@
       return;
     }
     if (appState.tool === "select" || appState.tool === "lasso") {
-      const p = toCellSpace(points[points.length - 1]);
+      const p = points[points.length - 1];
       if (points.length === 1 && !done) {
+        syncComposeSteps(); // gesture start: match the layer we are about to clip / lift on
         const handle = selection.hitTest(p.x, p.y);
         if (selection.state === "selected" && handle === "move") {
-          // First grab inside a fresh marquee: lift the pixels and enter transform mode.
-          const layer = activeLayer();
-          if (!isLayerEditable(layer, appState.project.groups)) return;
-          const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
-          selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
-          selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
-          // liftPixels' rect-clear and the later commit blit operate in CSS coords, so the
-          // cell ctx must carry the dpr transform (a cloned cell's ctx is at identity).
-          selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-          const lifted = selection.liftPixels(selCtx, DPR);
-          if (lifted) {
-            selection.beginTransform(lifted);
-            recomposite();
-            selectionMode = "drag";
-            selection.startDrag("move", p.x, p.y);
-          }
+          // First grab inside a fresh marquee: paper-crop lift, then drag.
+          if (!liftPaperCrop()) return;
+          recomposite();
+          selectionMode = "drag";
+          selection.startDrag("move", p.x, p.y);
         } else if (
           (selection.state === "transforming" || selection.state === "warping") &&
           handle
@@ -878,7 +892,9 @@
     selection = new Selection(overlay);
     selection.mode = "rect";
     selection.applyView = applyViewTransform;
+    // Only consulted for a cellSpaceLift (deform) — see Selection.applyCompose.
     selection.applyCompose = applyOverlayCompose;
+    syncComposeSteps();
     syncOverlayScale();
     let lastOutputScale = displayOutputScale();
     viewport.onChange = () => {
@@ -900,9 +916,14 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
-      // renderFloatingTo blits the floating pixels via a CSS-coord matrix → needs dpr.
+      // renderFloatingTo draws the paper crop in document space; inverse compose + dpr
+      // map it into the cell. Identity compose is a no-op → today's blit. save/restore because the
+      // cell ctx is SHARED and carries the plain dpr transform by convention.
+      selCtx.save();
       selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      applyInverseCompose(selCtx, liftComposeSteps);
       selection.renderFloatingTo(selCtx);
+      selCtx.restore();
       const ctx = selCtx;
       const before = selBefore;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -922,6 +943,7 @@
       );
       selCtx = null;
       selBefore = null;
+      liftComposeSteps = [];
       bump();
       recomposite();
     };
@@ -933,6 +955,7 @@
       }
       selCtx = null;
       selBefore = null;
+      liftComposeSteps = [];
     };
 
     selectionRef.current = selection;
@@ -942,16 +965,96 @@
     poseActions.cancel = () => cancelPose();
   }
 
-  // Read-only ctx of the resolved key shown at the current frame (for copy — never materializes a key).
-  function activeResolvedCtx(): CanvasRenderingContext2D | null {
-    const layer = activeLayer();
-    if (layer.kind !== "draw") return null;
-    const rk = resolvedKeyCell(layer, appState.playhead);
+  /**
+   * Crop the document-space selection from what the active layer looks like on the paper.
+   * Identity compose is a straight cell blit (bit-identical to the old copyPixels path).
+   */
+  function cropComposedSelection(): HTMLCanvasElement | null {
+    if (!selection?.rect) return null;
+    const al = activeLayer();
+    if (al.kind !== "draw") return null;
+    const rk = resolvedKeyCell(al, appState.playhead);
     if (!rk) return null;
-    const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    return ctx;
+    const W = appState.project.width;
+    const H = appState.project.height;
+    const cellT = cellTransform(rk.cell);
+    const g = groupOf(al, appState.project.groups);
+    const groupT = groupTransform(g);
+    if (
+      isIdentityTransform(al.transform) &&
+      isIdentityTransform(cellT) &&
+      isIdentityTransform(groupT)
+    ) {
+      // Document space == cell space: crop the cell bitmap at this.rect (same blit as today).
+      const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
+      return selection.copyPixelsFromDoc(ctx, DPR);
+    }
+    const tmp = document.createElement("canvas");
+    tmp.width = W * DPR;
+    tmp.height = H * DPR;
+    const tctx = tmp.getContext("2d")!;
+    const boxDev = isIdentityTransform(cellT)
+      ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
+      : {
+          x: rk.cell.transformBox!.x * DPR,
+          y: rk.cell.transformBox!.y * DPR,
+          w: rk.cell.transformBox!.w * DPR,
+          h: rk.cell.transformBox!.h * DPR,
+        };
+    const groupBoxDev = isIdentityTransform(groupT)
+      ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
+      : (() => {
+          const lb = groupBoxLogical(
+            g!,
+            appState.project,
+            appState.playhead,
+            DPR,
+            appState.version,
+          );
+          return { x: lb.x * DPR, y: lb.y * DPR, w: lb.w * DPR, h: lb.h * DPR };
+        })();
+    drawCellComposed(
+      tctx,
+      rk.cell.canvas,
+      W * DPR,
+      H * DPR,
+      al.transform,
+      cellT,
+      boxDev,
+      DPR,
+      groupT,
+      groupBoxDev,
+    );
+    return selection.copyPixelsFromDoc(tctx, DPR);
   }
+
+  /** Snapshot → paper crop → punch the cell → beginTransform. False if nothing to lift. */
+  function liftPaperCrop(): boolean {
+    if (!selection?.rect) return false;
+    const layer = activeLayer();
+    if (!isLayerEditable(layer, appState.project.groups)) return false;
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    const crop = cropComposedSelection();
+    if (!crop) {
+      selCtx = null;
+      selBefore = null;
+      liftComposeSteps = [];
+      return false;
+    }
+    // Refresh before the hole punch so we don't clip with a previous layer's steps.
+    const steps = cellComposeSteps(layer);
+    selection.composeSteps = steps;
+    liftComposeSteps = steps;
+    selection.cellSpaceLift = false; // a paper crop: overlay stays uncomposed
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    selection.clearRegion(selCtx, DPR);
+    selection.beginTransform(crop);
+    syncOverlayScale();
+    return true;
+  }
+
   // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
   // active layer isn't an editable (unlocked, visible) drawing layer.
   function activeDrawableCtx(): CanvasRenderingContext2D | null {
@@ -965,9 +1068,7 @@
 
   function copySelection() {
     if (!selection || selection.state !== "selected" || !selection.rect) return;
-    const ctx = activeResolvedCtx();
-    if (!ctx) return;
-    const float = selection.copyPixels(ctx, DPR);
+    const float = cropComposedSelection();
     if (float) {
       selectionClipboard = { canvas: float, rect: { ...selection.rect } };
       appState.hasPixelClipboard = true;
@@ -1011,6 +1112,12 @@
     if (!ctx) return false;
     selCtx = ctx;
     selBefore = selCtx.getImageData(0, 0, selCtx.canvas.width, selCtx.canvas.height); // for the commit undo
+    const dest = activeLayer();
+    liftComposeSteps = dest.kind === "draw" ? cellComposeSteps(dest) : [];
+    if (selection) {
+      selection.composeSteps = liftComposeSteps;
+      selection.cellSpaceLift = false; // pasted pixels are document-space
+    }
     const r = selectionClipboard.rect;
     selection?.pasteFloat(cloneCanvas(selectionClipboard.canvas), {
       x: r.x + PASTE_OFFSET,
@@ -1025,16 +1132,7 @@
 
   function enterTransform() {
     if (!selection || selection.state !== "selected") return;
-    const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return;
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
-    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
-    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
-    // See note in onStroke: the cell ctx must carry the dpr transform for lift/commit.
-    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    const lifted = selection.liftPixels(selCtx, DPR);
-    if (!lifted) return;
-    selection.beginTransform(lifted);
+    if (!liftPaperCrop()) return;
     recomposite();
     selection.drawOverlay();
   }
@@ -1052,12 +1150,19 @@
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
     selection.rect = rect;
+    selection.composeSteps = [];
+    liftComposeSteps = [];
+    // The lift, the warp grid and the deform pointer path (toCellSpace, above) are all CELL-space,
+    // so this overlay — unlike the marquee — must carry `group ∘ layer ∘ cell`.
+    selection.cellSpaceLift = true;
     const lifted = selection.liftPixels(selCtx, DPR);
     if (!lifted) {
+      selection.cellSpaceLift = false;
       selCtx = null;
       selBefore = null;
       return;
     }
+    syncOverlayScale(); // handles/grid stay screen-constant against zoom × compose scale
     selection.beginTransform(lifted);
     selection.beginWarp(4, 4);
   }
@@ -1156,6 +1261,8 @@
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     selection.rect = rect;
+    selection.composeSteps = [];
+    liftComposeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
     if (!lifted) {
       selCtx = null;
@@ -1204,6 +1311,7 @@
     poseAdjusting = false;
     selCtx = null;
     selBefore = null;
+    liftComposeSteps = [];
     posePaint(); // meshPose null → clears overlay
     bump();
     recomposite();
@@ -1218,6 +1326,7 @@
     poseAdjusting = false;
     selCtx = null;
     selBefore = null;
+    liftComposeSteps = [];
     posePaint();
     recomposite();
     bump(); // bump version so the reactive pose bar unmounts
@@ -1281,17 +1390,29 @@
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
     let lastVersion = appState.version;
     let lastPlayhead = appState.playhead;
+    let lastLayerId = appState.activeLayerId;
     let lastW = appState.project.width;
     let lastH = appState.project.height;
     const tick = () => {
       const dimsChanged = appState.project.width !== lastW || appState.project.height !== lastH;
+      const changed =
+        dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead;
+      // setActiveLayer only bumps the version in single-layer onion mode, so a layer switch needs
+      // its own check — a stale chain would clip/clear the wrong region on the new layer.
+      const layerChanged = appState.activeLayerId !== lastLayerId;
       if (dimsChanged) {
         lastW = appState.project.width;
         lastH = appState.project.height;
         sizeDisplay();
         sizeOverlay();
       }
-      if (dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead) {
+      // Gated: cellComposeSteps walks the keyframe list, hits two WeakMaps and allocates, and on a
+      // cache miss runs a full-resolution contentBounds scan — not something to do every idle frame.
+      if (changed || layerChanged) {
+        lastLayerId = appState.activeLayerId;
+        syncComposeSteps();
+      }
+      if (changed) {
         lastVersion = appState.version;
         lastPlayhead = appState.playhead;
         syncReferenceVideos(

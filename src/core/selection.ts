@@ -10,7 +10,9 @@
  * Press Enter to commit, Escape to cancel.
  */
 
+import type { ComposeStep } from "./ref-transform";
 import { rigidDeformGrid } from "./rigid-grid";
+import { mapDocPolyToCell, mapDocRectToCell, needsMap } from "./selection-map";
 
 export interface SelectionRect {
   x: number;
@@ -109,6 +111,20 @@ export class Selection {
    *  marching-ants loop keeps running so it redraws the moment this clears. */
   hidden = false;
   floatingPixels: HTMLCanvasElement | null = null;
+  /** Active-layer compose (`group ∘ layer ∘ cell`). Empty = identity. */
+  composeSteps: ComposeStep[] = [];
+  /**
+   * True when the lifted content is CELL-space, not document-space — the Deform tool's
+   * content-bounds lift (`rect` = the cell's ink box, pointers inverse-mapped to cell space).
+   * Its overlay must therefore carry `group ∘ layer ∘ cell` (`applyCompose`) so the warp grid sits
+   * on the visible ink, and `screenScale` must include the compose scale so handles stay
+   * screen-constant.
+   *
+   * The discriminator is the LIFT'S SPACE, never `state`: a selection-originated warp
+   * (Free transform → Distort/Mesh) is also `"warping"` but is a paper crop in document space and
+   * must stay uncomposed. Cleared by `clear()`.
+   */
+  cellSpaceLift = false;
 
   /** Lasso path points (CSS coords) */
   private lassoPoints: { x: number; y: number }[] = [];
@@ -239,8 +255,34 @@ export class Selection {
     this.drawOverlay();
   }
 
-  /** Build a float canvas of the selected region (rect or lasso-clipped). Does NOT modify the source. */
-  copyPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
+  private cellPts(): { x: number; y: number }[] | null {
+    if (!this.rect) return null;
+    const steps = this.composeSteps;
+    // Gate on lassoPath, exactly like every identity path does: the path is only built at ≥ 3
+    // points, so a 2-point flick falls back to the rect here too. Gating on `lassoPoints.length > 1`
+    // instead clipped such a flick to a degenerate line — i.e. clipped everything away.
+    return this.mode === "lasso" && this.lassoPath
+      ? mapDocPolyToCell(steps, this.lassoPoints)
+      : mapDocRectToCell(steps, this.rect);
+  }
+
+  private cellPath(): Path2D | null {
+    const pts = this.cellPts();
+    if (!pts) return null;
+    const path = new Path2D();
+    path.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
+    path.closePath();
+    return path;
+  }
+
+  /**
+   * Crop `this.rect` (AABB, lasso-clipped if needed) straight out of `srcCtx`. Ignores
+   * `composeSteps`: the source must ALREADY be in the rect's space — either a document-sized
+   * temp rendered through the compose (`Canvas.cropComposedSelection`), or the cell itself when
+   * the rect is cell-local (the deform/pose content-bounds lift, which clears `composeSteps`).
+   */
+  copyPixelsFromDoc(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
     if (!this.rect) return null;
     const r = this.rect;
     const px = Math.round(r.x * dpr);
@@ -276,6 +318,17 @@ export class Selection {
   /** Clear the selected region (rect or lasso-clipped) from the source. Does NOT extract. */
   clearRegion(srcCtx: CanvasRenderingContext2D, dpr: number): void {
     if (!this.rect) return;
+    if (needsMap(this.composeSteps)) {
+      const pts = this.cellPts();
+      const clip = this.cellPath();
+      if (!pts || !clip) return;
+      const r = ptsAabb(pts);
+      srcCtx.save();
+      srcCtx.clip(clip);
+      srcCtx.clearRect(r.x, r.y, r.w, r.h);
+      srcCtx.restore();
+      return;
+    }
     const r = this.rect;
     if (this.lassoPath) {
       srcCtx.save();
@@ -297,9 +350,11 @@ export class Selection {
     }
   }
 
-  /** Lift the selected pixels off the layer: extract to a float AND clear the source. */
+  /** Lift the selected pixels off the layer: extract to a float AND clear the source.
+   *  CELL-space only (deform / pose): callers set `rect` to the cell's content box and clear
+   *  `composeSteps` first, so both halves read the same space. */
   liftPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
-    const cvs = this.copyPixels(srcCtx, dpr);
+    const cvs = this.copyPixelsFromDoc(srcCtx, dpr);
     if (!cvs) return null;
     this.clearRegion(srcCtx, dpr);
     return cvs;
@@ -631,7 +686,10 @@ export class Selection {
    */
   applyClip(ctx: CanvasRenderingContext2D): boolean {
     if (this.state !== "selected" || !this.rect) return false;
-    if (this.mode === "lasso" && this.lassoPath) {
+    if (needsMap(this.composeSteps)) {
+      const path = this.cellPath();
+      if (path) ctx.clip(path);
+    } else if (this.mode === "lasso" && this.lassoPath) {
       ctx.clip(this.lassoPath);
     } else {
       ctx.beginPath();
@@ -679,6 +737,7 @@ export class Selection {
     this.hitGridIdx = null;
     this.isCreating = false;
     this.dragging = null;
+    this.cellSpaceLift = false;
     this.state = "idle";
     cancelAnimationFrame(this.animFrame);
     this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
@@ -763,7 +822,8 @@ export class Selection {
    *  The overlay canvas is stage-sized (not CSS-zoomed); zoom lives on the 2D context so a
    *  1-screen-px stroke is rasterized after scale, not as a sub-pixel line blown up by CSS. */
   applyView: ((ctx: CanvasRenderingContext2D) => void) | null = null;
-  /** Optional: applied after the identity reset so the overlay matches `group ∘ layer ∘ cell`. */
+  /** Optional: `group ∘ layer ∘ cell`, applied ONLY for a `cellSpaceLift` (deform). Document-space
+   *  geometry — the marquee and every paper-crop float — must never be composed. */
   applyCompose: ((ctx: CanvasRenderingContext2D) => void) | null = null;
 
   drawOverlay() {
@@ -773,7 +833,7 @@ export class Selection {
     ctx.clearRect(0, 0, cvs.width, cvs.height);
     if (!this.rect || this.state === "idle") return;
     this.applyView?.(ctx);
-    this.applyCompose?.(ctx);
+    if (this.cellSpaceLift) this.applyCompose?.(ctx);
     try {
       // Animation re-trigger
       this.marchOffset = (this.marchOffset + 0.3) % 8;
@@ -948,6 +1008,20 @@ export class Selection {
 }
 
 type Pt = { x: number; y: number };
+
+function ptsAabb(pts: Pt[]): SelectionRect {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
 
 /**
  * Draw a bitmap warped through an N×M control-point grid by splitting each cell
