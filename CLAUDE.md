@@ -1654,25 +1654,31 @@ paragraph.
 the selection bar all stay aligned; scroll horizontally while narrow (the grip and gutter stay
 pinned); reload keeps the width; a very narrow name column still truncates cleanly; iPad drag.
 
-**All THREE resize grips are bare edges (2026-08-16).** The layer panel's grip drew a short vertical bar
+**The two VERTICAL resize grips are bare edges (2026-08-16).** The layer panel's grip drew a short vertical bar
 centred in its full-height strip, which floated at whatever the panel's mid-height happened to be and
 read as an object rather than an edge; the gutter's drew one at the top. Both marks are gone. The
 affordance is now the divider line that was already there, plus `hover:bg-text/10` on the hit strip,
 so the edge tints under the pointer instead of carrying permanent chrome. Rationale: dragging a panel
 edge is a learned convention that needs no badge, and two resize edges in one app must look alike —
 a bare edge on one and a mark on the other was the actual inconsistency.
-The timeline's own top grip (height) followed the same day, for consistency: its hit area was
-ALREADY the same 8px as the other two (`h-2` vs `w-2`) — the only thing making it look like a bigger
-target was the bar it still drew. Measure before resizing a hit area; the difference was chrome.
-**All three are 12px** (bumped from 8px on 2026-08-16), and each needed its own accommodation to get
-there without covering a real control — worth knowing before anyone resizes them again:
-the LAYER PANEL's grip abuts the drag-handle icon exactly (8px reserved strip + the row's own 4px
-`p-1` = 12), so it needed no extra room; the TIMELINE's height grip sits in the panel's top padding,
-which went `p-2` → `px-2 pt-3 pb-2` so the thicker strip still lands on empty space instead of the
-top 4px of the frame-tool buttons (`p-2 pt-3` would be a conflicting-classes lint ERROR here, hence
-the split); and the GUTTER's is deliberately ASYMMETRIC — `left: GUTTER_W - 10` with width 12, so 10
-of its 12px fall inside the gutter and only 2 reach the first frame cell, which is interactive at
-24px wide and would otherwise lose a quarter of itself to resizing.
+The timeline's height grip briefly lost its bar too, then had it restored — see the paragraph above
+for why that one is the exception. Worth keeping from that detour: its hit area was ALREADY the same
+8px as the other two (`h-2` vs `w-2`), so the "wider grab area" it appeared to have was purely the
+bar. Measure before resizing a hit area; the difference was chrome.
+**All three are 8px** (briefly 12px on 2026-08-16, reverted the same day — thicker read as heavy).
+The LAYER PANEL's grip abuts the drag-handle icon exactly: 4px reserved (`pl-1` on the list, the
+header's own `p-1`) plus each row's 4px `p-1` puts the icon at 8px, where the grip ends — abutting,
+with nothing wasted between. Note the reservation lives on the panel's TWO direct children, never on
+its root, or the header's bottom border gets inset and stops short of the left edge.
+The GUTTER's grip is deliberately ASYMMETRIC — `left: GUTTER_W - 6` with width 8, so 6 of its 8px
+fall inside the gutter and only 2 reach the first frame cell, which is interactive and only 24px
+wide. Do not "centre" it.
+**`MARKER_W` is 28**, widened from 22 so the lock/hidden glyph is not crowded against the divider.
+
+**The TIMELINE's height grip keeps a visual bar; the two vertical ones do not.** Not an oversight —
+they sit on a panel EDGE, where drag-to-resize is a learned convention that needs no badge, while the
+height grip is an INTERIOR divider between the canvas and the timeline, so nothing about its position
+suggests it can be dragged at all. Edge → bare; interior → hinted.
 **Known trade, accepted:** hover does not exist on iPad, so there is no visual affordance there at
 all; the edges are discoverable only by trying them. Both still carry `title=`, which the status bar
 surfaces on tap, so the hint route survives even though the tint does not.
