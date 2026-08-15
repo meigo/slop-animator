@@ -17,7 +17,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **400 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **458 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -1037,10 +1037,17 @@ top-left origin.
 
 **Select/deform/pose under transforms + stage input (2026-08-14):** paint/fill already
 inverse-mapped `group ∘ layer ∘ cell`; select/lasso/deform/pose now do the same (`toCellSpace`)
-and the overlay applies that compose so chrome sits on the visual ink. The layer-transform
+so a transformed layer is editable where its ink appears. The layer-transform
 "Apply first" gate and status hint are gone. `setupInput` listens on `stage` (not the
 document-sized display) and no longer treats `pointerleave` as stroke-end — capture +
 `pointercancel` end the gesture, so a translated/scaled layer is paintable outside the paper.
+**Amended 2026-08-15 — the OVERLAY is no longer uniformly composed.** Which chrome carries the
+compose is decided by the LIFT's space, via `Selection.cellSpaceLift`, never by `state`
+(a selection warp and a deform warp are both `"warping"`): **deform** lifts the cell's content
+rect and keeps `toCellSpace` pointers, so its overlay applies `applyCompose` and its
+`screenScale` includes `composeScaleOf`; **pose** paints its own overlay (`posePaint` composes
+directly, and computes its own `hitPx`), so it needs no flag; **select/lasso** geometry and
+paper-crop floats are document space and must NOT be composed (gotcha #13).
 
 **Timeline iPad UX (2026-08-14):** three prod-test findings. (1) Sticky gutter: row
 containing-blocks were only as wide as the visible scroller, so `position: sticky` unstuck after
@@ -1076,8 +1083,30 @@ block; audio rectangle; finger pans; save/reload.
 not the active layer. Switching layers keeps the ants put; viewport pan/zoom/rotate still apply
 via `applyView`. Overlay must not `applyCompose` the ants. Pixel ops (clip/lift/copy/commit)
 inverse-map through `selection.composeSteps` (`group ∘ layer ∘ cell`). A live lift still banks
-on layer/frame switch (gotcha #9). Deform/Pose stay cell-local. Spec/plan:
-`docs/superpowers/{specs,plans}/2026-08-15-document-space-selection*.md`. **Owed a browser
-pass:** select on identity → switch to a moved/scaled/rotated layer → ants stay put; Free
-transform lifts what you see and commits through inverse compose; identity-layer
-lift/copy/commit unchanged.
+on layer/frame switch (gotcha #9). Deform/Pose stay cell-local — and stay COMPOSED, via
+`Selection.cellSpaceLift` (see the amended 2026-08-14 entry above; a whole-branch review caught
+that the blanket `applyCompose = null` had knocked the deform overlay off its ink).
+`composeSteps` has ONE writer, `Canvas.syncComposeSteps()`, which refuses to touch a live lift and
+is called on version / playhead / dims / active-layer change and at gesture start — never every
+frame (`cellComposeSteps` can trigger a full-resolution `contentBounds` scan on a cache miss).
+The hand-written inverse lives in the pure, unit-tested `inverseComposeMatrix` (`selection-map.ts`),
+asserted against `inverseChain` over a rotated 3-step chain. Spec/plan:
+`docs/superpowers/{specs,plans}/2026-08-15-document-space-selection*.md`.
+
+**Known cost of this design — a lift on a transformed layer is a LOSSY double resample.** The
+crop is rasterized at DOCUMENT resolution through the compose (`cropComposedSelection`) and the
+commit stamps it back through the inverse (`applyInverseCompose`), so a layer at scale 0.3 yields
+a 0.3×-resolution crop blown up 1/0.3 into the cell — permanently. It is not gated on the user
+doing anything: the first grab inside a marquee lifts immediately and a click-outside commits, so
+a tap-and-release on a scaled-down layer destroys detail where the old cell-space path was a
+lossless no-op. Identity layers are unaffected (the identity branch is a straight cell blit).
+Accepted, not mitigated — a lossless path would have to keep the float in cell space, which is
+exactly the coupling this feature removed.
+
+**Owed a browser pass:** select on identity → switch to a moved/scaled/rotated layer → ants stay
+put; Free transform lifts what you see and commits through inverse compose; identity-layer
+lift/copy/commit unchanged; **Deform on a moved/scaled/rotated layer** (grid, handles and warped
+bitmap sit on the ink, and a handle drag tracks the pointer 1:1 — the regression above);
+**lift → commit without moving on a scaled-down layer** (how much detail the double resample
+actually costs); a **2-point lasso flick** on a transformed layer (falls back to the rect, does
+not clip everything away); **delete / cut of a ROTATED marquee** (the mapped AABB + clip path).
