@@ -1607,10 +1607,12 @@ every existing preferences blob look identical; the test pins that number for th
 It carries the same `touch-action: none` + pointer-capture + `pointercancel` trio every drag surface
 here needs. **It RESERVES a 12px strip rather than overlaying the rows** (corrected 2026-08-16 from a
 screenshot): overlaying put it directly on top of each row's `layer-drag-handle`, so the two
-grab targets sat on the same pixels. The strip comes from `pl-3` on the panel's TWO direct children,
+grab targets sat on the same pixels. The strip comes from `pl-2` on the panel's TWO direct children,
 not on the root — padding the root would inset the header's bottom border and leave it short of the
-left edge. `MIN_PANEL_WIDTH` rose 180 → 192 to match, since the floor is a guarantee about CONTENT
-width and reserving space had to raise it by the same amount. `DEFAULT_PANEL_WIDTH` stays 224 so the
+left edge. It was briefly 12px, trimmed to **8px** once the grip lost its visual bar: with no mark to
+sit in, the strip only has to stop the grip colliding with the drag handles. `MIN_PANEL_WIDTH` is
+180 of usable content PLUS that strip = **188**, since the floor is a guarantee about CONTENT width
+and the reserve has to be added on top of it. `DEFAULT_PANEL_WIDTH` stays 224 so the
 panel's overall width is unchanged; that costs stored preferences 12px of content, which the row's
 `flex-wrap` absorbs and the drag itself remedies.
 This is only safe because the layer detail row is already `flex-wrap` (the 2026-08-11 de-crowding
