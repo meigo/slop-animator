@@ -10,7 +10,10 @@
  * Press Enter to commit, Escape to cancel.
  */
 
+import { isIdentityTransform } from "../anim/document";
+import type { ComposeStep } from "./ref-transform";
 import { rigidDeformGrid } from "./rigid-grid";
+import { mapDocPolyToCell, mapDocRectToCell } from "./selection-map";
 
 export interface SelectionRect {
   x: number;
@@ -109,6 +112,8 @@ export class Selection {
    *  marching-ants loop keeps running so it redraws the moment this clears. */
   hidden = false;
   floatingPixels: HTMLCanvasElement | null = null;
+  /** Active-layer compose (`group ∘ layer ∘ cell`). Empty = identity. */
+  composeSteps: ComposeStep[] = [];
 
   /** Lasso path points (CSS coords) */
   private lassoPoints: { x: number; y: number }[] = [];
@@ -239,10 +244,30 @@ export class Selection {
     this.drawOverlay();
   }
 
+  private cellPts(): { x: number; y: number }[] | null {
+    if (!this.rect) return null;
+    const steps = this.composeSteps;
+    return this.mode === "lasso" && this.lassoPoints.length > 1
+      ? mapDocPolyToCell(steps, this.lassoPoints)
+      : mapDocRectToCell(steps, this.rect);
+  }
+
+  private cellPath(): Path2D | null {
+    const pts = this.cellPts();
+    if (!pts) return null;
+    const path = new Path2D();
+    path.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
+    path.closePath();
+    return path;
+  }
+
   /** Build a float canvas of the selected region (rect or lasso-clipped). Does NOT modify the source. */
   copyPixels(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
     if (!this.rect) return null;
-    const r = this.rect;
+    const mapped = this.composeSteps.some((s) => !isIdentityTransform(s.t));
+    const pts = mapped ? this.cellPts() : null;
+    const r = pts ? ptsAabb(pts) : this.rect;
     const px = Math.round(r.x * dpr);
     const py = Math.round(r.y * dpr);
     const pw = Math.round(r.w * dpr);
@@ -254,7 +279,17 @@ export class Selection {
     cvs.height = ph;
     const ctx = cvs.getContext("2d")!;
 
-    if (this.lassoPath) {
+    if (mapped) {
+      const clip = this.cellPath();
+      ctx.save();
+      if (clip) {
+        ctx.setTransform(dpr, 0, 0, dpr, -r.x * dpr, -r.y * dpr);
+        ctx.clip(clip);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
+      ctx.restore();
+    } else if (this.lassoPath) {
       ctx.save();
       const clipPath = new Path2D();
       for (let i = 0; i < this.lassoPoints.length; i++) {
@@ -276,6 +311,17 @@ export class Selection {
   /** Clear the selected region (rect or lasso-clipped) from the source. Does NOT extract. */
   clearRegion(srcCtx: CanvasRenderingContext2D, dpr: number): void {
     if (!this.rect) return;
+    if (this.composeSteps.some((s) => !isIdentityTransform(s.t))) {
+      const pts = this.cellPts();
+      const clip = this.cellPath();
+      if (!pts || !clip) return;
+      const r = ptsAabb(pts);
+      srcCtx.save();
+      srcCtx.clip(clip);
+      srcCtx.clearRect(r.x, r.y, r.w, r.h);
+      srcCtx.restore();
+      return;
+    }
     const r = this.rect;
     if (this.lassoPath) {
       srcCtx.save();
@@ -631,7 +677,10 @@ export class Selection {
    */
   applyClip(ctx: CanvasRenderingContext2D): boolean {
     if (this.state !== "selected" || !this.rect) return false;
-    if (this.mode === "lasso" && this.lassoPath) {
+    if (this.composeSteps.some((s) => !isIdentityTransform(s.t))) {
+      const path = this.cellPath();
+      if (path) ctx.clip(path);
+    } else if (this.mode === "lasso" && this.lassoPath) {
       ctx.clip(this.lassoPath);
     } else {
       ctx.beginPath();
@@ -948,6 +997,20 @@ export class Selection {
 }
 
 type Pt = { x: number; y: number };
+
+function ptsAabb(pts: Pt[]): SelectionRect {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
 
 /**
  * Draw a bitmap warped through an N×M control-point grid by splitting each cell
