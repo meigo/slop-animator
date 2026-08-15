@@ -1269,9 +1269,13 @@
                 onpointerup={rangeUp}
                 onpointercancel={rangeUp}
               >
-                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
+                <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
+                <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing
+                     on iPad (no cursor, no hover), which is the platform this app is used on most. The
+                     bars are pointer-events-none so the handle div stays the event target. -->
                 <div
-                  class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize"
+                  class="absolute inset-y-0 left-0 z-20 flex w-2 cursor-ew-resize items-center justify-center gap-px"
                   style="touch-action: none"
                   role="presentation"
                   title="Trim the start"
@@ -1279,9 +1283,12 @@
                   onpointermove={rangeMove}
                   onpointerup={rangeUp}
                   onpointercancel={rangeUp}
-                ></div>
+                >
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                </div>
                 <div
-                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize"
+                  class="absolute inset-y-0 right-0 z-20 flex w-2 cursor-ew-resize items-center justify-center gap-px"
                   style="touch-action: none"
                   role="presentation"
                   title="Trim the end"
@@ -1289,7 +1296,10 @@
                   onpointermove={rangeMove}
                   onpointerup={rangeUp}
                   onpointercancel={rangeUp}
-                ></div>
+                >
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                </div>
               </div>
             {:else}
               <span
