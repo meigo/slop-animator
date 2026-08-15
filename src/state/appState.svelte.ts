@@ -100,6 +100,8 @@ interface AnimState {
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
+  /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
+  pose: { fillHoles: boolean; gap: number };
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
   statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
   timelineHeight: number; // px height of the resizable timeline panel
@@ -163,6 +165,7 @@ export const state: AnimState = $state({
     tintPrev: "#e0526a", // warm red
     tintNext: "#3f7fd0", // cool blue
   },
+  pose: { fillHoles: true, gap: 0 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,

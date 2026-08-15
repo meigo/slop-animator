@@ -1300,7 +1300,10 @@
       selBefore = null;
       return;
     }
-    meshPose = MeshPose.fromLift(lifted, rect, DPR, poseSpacing);
+    meshPose = MeshPose.fromLift(lifted, rect, DPR, poseSpacing, {
+      fillHoles: appState.pose.fillHoles,
+      gap: appState.pose.gap,
+    });
     appState.poseActive = meshPose !== null;
     if (!meshPose) {
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
@@ -1367,7 +1370,11 @@
     if (!meshPose) return;
     poseSpacing = Math.max(4, poseSpacing + delta * 4);
     // rebuild from the SAME lifted img (resets handles — vertex indices change)
-    meshPose = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing) ?? meshPose;
+    meshPose =
+      MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
+        fillHoles: appState.pose.fillHoles,
+        gap: appState.pose.gap,
+      }) ?? meshPose;
     appState.poseActive = meshPose !== null;
     poseDrag = null;
     activeHandle = null;
