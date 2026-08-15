@@ -1126,7 +1126,7 @@
          plate sits between the line and the names (z-15), stays in the visible left strip,
          and is pulled out of flow so it does not push the rows down. -->
     <div
-      class="pointer-events-none sticky top-0 left-0 z-15 bg-surface"
+      class="pointer-events-none sticky top-0 left-0 z-15 bg-surface border-r border-text-muted"
       style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
     ></div>
     <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
@@ -1134,7 +1134,7 @@
          (z-20) — otherwise a row's own label would swallow the press. Pulled out of flow the same
          way the plate is, so it adds no height. -->
     <div
-      class="sticky top-0 z-25 cursor-col-resize"
+      class="sticky top-0 z-25 cursor-col-resize text-text-muted hover:text-text"
       style="left: {GUTTER_W -
         3}px; width: 6px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
       role="separator"
@@ -1145,7 +1145,12 @@
       onpointermove={gutterGripMove}
       onpointerup={gutterGripUp}
       onpointercancel={gutterGripUp}
-    ></div>
+    >
+      <!-- Visible handle at the TOP, level with the ruler — a column divider is grabbed at its
+           header, and a mark centred in a full-height strip would sit wherever the timeline happens
+           to end. It straddles the divider line, so it reads as a thickened part of it. -->
+      <div class="absolute top-0 left-1/2 h-6 w-0.5 -translate-x-1/2 rounded bg-current"></div>
+    </div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->

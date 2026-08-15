@@ -1642,6 +1642,13 @@ its own label. It straddles the divider (`left: GUTTER_W - 3`, 6px wide), is sti
 edge through horizontal scroll, and is pulled out of flow with the same negative margin the plate
 uses so it adds no height. Dragging RIGHT widens — not inverted, unlike the layer panel's grip, whose
 panel is docked on the other side.
+**Two follow-ups from a screenshot (2026-08-16).** (1) The divider stopped level with the last row:
+the per-row `border-r` only covers its own row, and the full-height plate that hides the playhead
+below the last track had no border of its own — it now carries `border-r border-text-muted`, so the
+line runs the full height and the two coincide at the same x. (2) The grip was invisible. It now
+draws a short bar at the TOP, level with the ruler, straddling the divider so it reads as a
+thickened part of it — a column divider is grabbed at its header, and a mark centred in a
+full-height strip would float wherever the timeline happens to end.
 **Owed a browser pass:** drag the divider and watch names, marker column, ruler, playhead, clips and
 the selection bar all stay aligned; scroll horizontally while narrow (the grip and gutter stay
 pinned); reload keeps the width; a very narrow name column still truncates cleanly; iPad drag.
