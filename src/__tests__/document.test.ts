@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   groupHasLockedLayer,
   canRemoveLayer,
+  rasterizeKeyframePlan,
   canDuplicateLayer,
   whyNotMergeDown,
   isLayerEditable,
@@ -567,6 +568,62 @@ describe("isLayerEditable", () => {
     expect(whyNotEditable({ ...base, locked: true }, [])).toBe("locked");
     expect(whyNotEditable({ ...base, visible: false }, [])).toBe("hidden");
     expect(whyNotEditable({ ...base, locked: true, visible: false }, [])).toBe("locked");
+  });
+});
+
+describe("rasterizeKeyframePlan", () => {
+  it("an untrimmed ref keeps the old behaviour — one key at frame 0, no blank", () => {
+    expect(rasterizeKeyframePlan(null, 48)).toEqual({ imageFrame: 0, blankFrame: null });
+  });
+
+  it("a trimmed ref puts the image at the range start and a blank one past its end", () => {
+    // The reported bug: frames 11..47 used to keep showing the image.
+    expect(rasterizeKeyframePlan({ start: 0, end: 10 }, 48)).toEqual({
+      imageFrame: 0,
+      blankFrame: 11,
+    });
+  });
+
+  it("frames before the range are left to leading holds, which resolve to nothing", () => {
+    expect(rasterizeKeyframePlan({ start: 6, end: 14 }, 48)).toEqual({
+      imageFrame: 6,
+      blankFrame: 15,
+    });
+  });
+
+  it("writes no blank key when the range runs to the last frame", () => {
+    expect(rasterizeKeyframePlan({ start: 4, end: 47 }, 48)).toEqual({
+      imageFrame: 4,
+      blankFrame: null,
+    });
+  });
+
+  it("writes no blank key when the range runs PAST the last frame", () => {
+    expect(rasterizeKeyframePlan({ start: 4, end: 900 }, 48)).toEqual({
+      imageFrame: 4,
+      blankFrame: null,
+    });
+  });
+
+  it("a range starting past the project yields a wholly blank layer", () => {
+    expect(rasterizeKeyframePlan({ start: 48, end: 60 }, 48)).toEqual({
+      imageFrame: null,
+      blankFrame: null,
+    });
+  });
+
+  it("clamps a negative start rather than writing an out-of-bounds key", () => {
+    expect(rasterizeKeyframePlan({ start: -5, end: 10 }, 48)).toEqual({
+      imageFrame: 0,
+      blankFrame: 11,
+    });
+  });
+
+  it("a single-frame range blanks the very next frame", () => {
+    expect(rasterizeKeyframePlan({ start: 7, end: 7 }, 48)).toEqual({
+      imageFrame: 7,
+      blankFrame: 8,
+    });
   });
 });
 

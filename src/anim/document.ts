@@ -108,6 +108,24 @@ export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlo
   return null;
 }
 
+/** Where a rasterized reference's keyframes go, so the drawing layer reproduces the ref's visibility
+ *  instead of showing on every frame. Returns the frame to put the IMAGE key on (null = the range
+ *  starts past the end of the project, so the ref was never visible and the layer stays blank), and
+ *  the frame to put a BLANK key on to end it (null = the range runs to the end, nothing to blank).
+ *
+ *  Every other cell stays a `hold`: a hold with no key at or before it resolves to null and draws
+ *  nothing (`resolveKeyframeIndex`), which is what blanks the frames BEFORE the range. */
+export function rasterizeKeyframePlan(
+  range: { start: number; end: number } | null,
+  frameCount: number,
+): { imageFrame: number | null; blankFrame: number | null } {
+  if (!range) return { imageFrame: 0, blankFrame: null }; // untrimmed: show on every frame (unchanged)
+  const start = Math.max(0, range.start);
+  if (start >= frameCount) return { imageFrame: null, blankFrame: null };
+  const after = range.end + 1;
+  return { imageFrame: start, blankFrame: after < frameCount ? after : null };
+}
+
 /** Whether `removeLayer` will act. A project must keep at least one drawing layer; reference layers
  *  are always removable, even as the last layer left. */
 export function canRemoveLayer(layers: Layer[], id: number): boolean {

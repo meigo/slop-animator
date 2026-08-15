@@ -4,6 +4,8 @@ import {
   cloneCanvas,
   isDrawingLayer,
   canRemoveLayer,
+  rasterizeKeyframePlan,
+  refVisibleSpan,
   whyNotMergeDown,
   createDrawingLayer,
   createReferenceLayer,
@@ -394,14 +396,27 @@ export function rasterizeReference(layerId: number): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0); // helper draws in device pixels
     drawReferenceMedia(ctx, ref, state.project.width, state.project.height, DPR);
 
-    // Replace in place: keep id/name/group/opacity/visibility; one keyframe at frame 0 (holds after)
-    // so the image shows on every frame. Off-canvas pixels are clipped (the accepted commit trade).
+    // Replace in place: keep id/name/group/opacity/visibility. Off-canvas pixels are clipped (the
+    // accepted commit trade). The keyframes reproduce the ref's VISIBILITY rather than showing on
+    // every frame: a trimmed ref used to reappear on the frames it had been trimmed away from,
+    // because a lone key at frame 0 resolves forward forever.
     const dl = createDrawingLayer(state.project.frameCount, ref.name);
     dl.id = ref.id;
     dl.groupId = ref.groupId;
     dl.opacity = ref.opacity;
     dl.visible = ref.visible;
-    dl.cells[0] = { kind: "key", canvas: cell };
+    const plan = rasterizeKeyframePlan(
+      refVisibleSpan(ref, state.project.fps),
+      state.project.frameCount,
+    );
+    if (plan.imageFrame !== null) dl.cells[plan.imageFrame] = { kind: "key", canvas: cell };
+    // A BLANK keyframe ends the run; frames before the range stay leading holds, which resolve to
+    // nothing on their own.
+    if (plan.blankFrame !== null)
+      dl.cells[plan.blankFrame] = {
+        kind: "key",
+        canvas: createCellCanvas(state.project.width, state.project.height, DPR),
+      };
     layers[idx] = dl;
     setActiveLayer(dl.id);
   });
