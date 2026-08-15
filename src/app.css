@@ -13,6 +13,14 @@
   --color-accent: #222222;
   --color-accent-text: #ffffff;
   --color-selection: #6688cc;
+  /* Timeline media clips (audio waveform block, video-ref block). Deliberately TINTED rather than
+     another step on the grey scale: the clips sit directly under the ruler, which is
+     surface-active, and the greys between surface and border are too close together in light mode
+     to read as a separate object. The hue is what separates content from chrome.
+     Named media-clip, not clip — bg-clip-* is Tailwind's background-clip namespace. */
+  --color-media-clip: #e3e8f4;
+  --color-media-clip-dim: #f1f4fa; /* the tail past the last frame — toward the lane background */
+  --color-media-clip-border: #c3cee6;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
@@ -37,6 +45,9 @@
   --color-accent: #e0e0e0;
   --color-accent-text: #1e1e1e;
   --color-selection: #6688cc;
+  --color-media-clip: #2b3240;
+  --color-media-clip-dim: #24272f;
+  --color-media-clip-border: #3d4759;
 }
 
 html,
