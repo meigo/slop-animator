@@ -17,7 +17,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **481 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **493 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -1272,25 +1272,47 @@ read-only `inside` **mask** for its own triangulation; the two features share
 `fillEnclosed`/`enclosedRegion` (`fill-holes.ts`) but do opposite things with the result. This is NOT
 the auto-fill the user declined in June (`prefers-manual-over-auto-altering-art`): the tool finds
 candidate regions on request, but nothing paints until the artist presses the button, and the result is
-ordinary undoable pixels the artist can paint back over — not a standing "fill holes" mode. It inherits
-`fillEnclosed`'s fail-safe property: the flood originates at the padded border, so a leak (a gap wider
-than the bridgeable `~2×gap` px) makes the region computation return empty — a leaky outline can only
-ever paint NOTHING, never bleed color across the canvas. **`gap` and `expand` are deliberately separate
+ordinary undoable pixels the artist can paint back over — not a standing "fill holes" mode. Its
+fail-safe property is that a leaky outline can only ever paint NOTHING, never bleed color across the
+canvas — but **that holds only because the region is gated on GENUINELY ENCLOSED space, and it did
+not hold before that gate** (fixed 2026-08-15, same day): the border flood is fail-safe, but
+`fillEnclosed`'s `mask` is `erode(dilate(ink))` — the morphological **CLOSING** — and a closing fills
+a narrow channel between two OPEN strokes exactly as readily as a real pocket (two parallel 1px
+strokes 3px apart, open at both ends, closed 37 px at `gap 2`). So at `gap >= 1` a leaky outline
+painted a fringe hugging the inside of its own strokes and reported success — and the advertised
+remedy for "Nothing enclosed" is to **raise Gap**, i.e. the advice made it worse. `enclosedRegion`
+now returns empty unless something is genuinely enclosed, measured two ways because neither alone is
+sufficient: `enclosedArea` (what the flood found BEYOND the dilation's reach) goes blind on a hole
+narrower than `2×gap` — a **closed** 9×9 interior measures 0 from `gap 5` up — so `fillEnclosed` also
+reports `rawEnclosedArea`, the same flood with no dilation at all (equal to `enclosedArea` at `gap 0`,
+so the default path pays nothing). **Do not "simplify" the region back to `mask \ ink`, and do not
+drop `rawEnclosedArea` as redundant** — the parallel-channel and closed-small-ring cases are pinned in
+`fill-holes.test.ts`. Known conservative edge, deliberate: art that encloses nothing until a gap
+bridges it AND whose every pocket is narrower than `2×gap` is suppressed — at that radius it only
+"fills" as closing bloat anyway, and lowering Gap is the same remedy the message already asks for.
+**`gap` and `expand` are deliberately separate
 knobs, not one fudge factor**: `gap` acts BEFORE the flood, bridging small breaks in the ink so the
 outline reads as closed (`fill-holes.ts`'s dilate → flood → erode order); `expand` acts AFTER, growing
 the already-computed region so it tucks under the ink's anti-aliased fringe. Raising one is not a
 substitute for the other — a clean, closed outline needs `expand` alone; a sketchy line with breaks
-needs `gap` too. `fillAllEnclosed` (`src/core/fill.ts`) always composites `destination-over`, unlike
+needs `gap` too. `fillRegionBehind` (`src/core/fill.ts`) always composites `destination-over`, unlike
 `floodFill`, whose destination-over path is conditional on `expand > 0`: painting BEHIND the ink is
 this feature's entire point, not a side effect of growing the mask, so there is no "expand 0" branch
 that paints on top. `appState.fill` (now `{ tolerance, expand, gap }`) is persisted through the
 existing `gatherPreferences`/`applyPreferences` spread-merge, so `gap` rides along in new saves for
 free, and an OLD stored preference missing the key leaves `state.fill`'s own default (`gap: 0`)
 untouched — checked directly in both functions, not assumed: object spread never writes an `undefined`
-for an absent key. An empty result (`painted === 0`) sets `appState.statusHint` and returns rather than
+for an absent key. An empty result (`area === 0`) sets `appState.statusHint` and returns rather than
 silently no-op'ing, because a no-op and a successful fill of an already-white interior are
 pixel-identical — there is no other way for the artist to tell "nothing happened" from "it worked,
-there was nothing to fill." The button is wired with **`onclick`, not `onpointerdown`**:
+there was nothing to fill." **That early return is why the region is computed FIRST, from
+`resolvedKeyCell` (read-only, same pixels), and `ensureDrawableKeyframe` runs only once `area > 0`**
+— hence the `enclosedFillRegion` / `fillRegionBehind` split in `fill.ts` (one used to do both).
+Materialising first left the no-op path mutating the model with no `bump()`: past a layer's end
+`ensureDrawableKeyframe` APPENDS holds and a blank keyframe, so `refreshLength` never ran
+(`project.frameCount` stale against a track that just grew) and autosave never saw the change; on a
+hold it also stamped a ·→◆ keyframe for a press that painted nothing. **Any new "measure, then maybe
+paint" action must keep that order.** The button is wired with **`onclick`, not `onpointerdown`**:
 `App.svelte` binds a window-level `pointerdown` listener that overwrites `statusHint` from the
 target's `title=` in the bubble phase, which runs AFTER a button's own `pointerdown` handler and would
 wipe a "nothing enclosed" message microseconds after it was set — the exact trap the Pose bar's
@@ -1299,7 +1321,10 @@ wipe a "nothing enclosed" message microseconds after it was set — the exact tr
 project convention (Vitest is node-only; this is Svelte markup with no node-testable surface).
 **Owed a browser pass:** an outline drawing filling behind its strokes with no halo at `expand ≥ 1`;
 the strokes themselves unmodified; undo restoring in one step; a gapped outline reporting rather than
-silently doing nothing, then filling once Gap is raised; a solid drawing reporting "nothing enclosed";
-filling on a HOLD materialising a keyframe; a selection clipping the fill; a locked or hidden layer
+silently doing nothing, then filling once Gap is raised; **an outline that is open at both ends (a
+parallel-stroke channel) still reporting "nothing enclosed" at a HIGH Gap rather than painting a
+fringe** — the fixed bug; a solid drawing reporting "nothing enclosed"; filling on a HOLD materialising
+a keyframe, and a "nothing enclosed" press on a hold leaving the ·/◆ marker ALONE; a selection
+clipping the fill; a locked or hidden layer
 refusing; and the Pose tool then meshing that drawing as a body with **Fill outlines OFF** — the
 end-to-end point of the feature. Spec/plan: `…/2026-08-15-fill-all-enclosed*.md`.
