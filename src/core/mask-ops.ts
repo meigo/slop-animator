@@ -15,7 +15,12 @@ function circleOffsets(radius: number): [number, number][] {
   return offsets;
 }
 
-/** Grow every set pixel by `radius`. Off-grid neighbours are simply skipped (no wrap). */
+/**
+ * Grow every set pixel by `radius`. Off-grid neighbours are simply skipped (no wrap).
+ *
+ * NOTE `radius <= 0` returns the CALLER'S array, not a copy — that early return is what makes gap 0
+ * a true no-op, so don't write to the result assuming it is fresh.
+ */
 export function dilateMask(mask: Uint8Array, w: number, h: number, radius: number): Uint8Array {
   if (radius <= 0) return mask;
   const result = new Uint8Array(w * h);
@@ -37,6 +42,9 @@ export function dilateMask(mask: Uint8Array, w: number, h: number, radius: numbe
  * Shrink every set region by `radius`: a pixel survives only if its whole neighbourhood is set.
  * Off-grid counts as CLEAR, so a shape flush to the edge erodes there — the alternative (treating
  * off-grid as set) lets a dilated mask reach the border and swallow the whole bitmap.
+ *
+ * NOTE `radius <= 0` returns the CALLER'S array, not a copy (as `dilateMask`) — don't write to the
+ * result assuming it is fresh.
  */
 export function erodeMask(mask: Uint8Array, w: number, h: number, radius: number): Uint8Array {
   if (radius <= 0) return mask;

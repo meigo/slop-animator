@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillEnclosed } from "../core/fill-holes";
+import { fillEnclosed, outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
 
 /**
  * A 15×15 square ring (1 px stroke, inset 2) with a `gap`-wide break in its top edge — the
@@ -21,6 +21,19 @@ function ring(gap: number, size = 15, inset = 2): Uint8ClampedArray {
   return rgba;
 }
 const CENTRE = 7 * 15 + 7;
+
+/** A filled 20×20 square inside a 30×30 bitmap — art with nothing to fill. */
+function solid(size = 30): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let y = 5; y < 25; y++) for (let x = 5; x < 25; x++) rgba[(y * size + x) * 4 + 3] = 255;
+  return rgba;
+}
+/** A single horizontal stroke — also nothing to fill. */
+function stroke(size = 30): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let x = 5; x < 25; x++) rgba[(15 * size + x) * 4 + 3] = 255;
+  return rgba;
+}
 
 describe("fillEnclosed — a closed outline", () => {
   it("fills the enclosed interior", () => {
@@ -53,12 +66,43 @@ describe("fillEnclosed — a broken outline", () => {
     expect(fillEnclosed(ring(5), 15, 15, { gap: 3 }).mask[CENTRE]).toBe(1);
   });
 
-  it("reports failure against the GROWN mask, not the ink", () => {
+  it("encloses nothing when it leaks, however much the dilation bloats it", () => {
     // A failed fill still measures ~1.26× the ink from dilation bloat alone, so an ink-based
-    // threshold would call this a success. Against `grownArea` the failure is unambiguous.
+    // ratio would call this a success. `enclosedArea` (mask beyond ink+bridging) is exactly 0.
     const r = fillEnclosed(ring(5), 15, 15, { gap: 2 });
     expect(r.insideArea / r.inkArea).toBeGreaterThan(1.2); // the misleading number
-    expect(r.insideArea).toBeLessThan(r.grownArea * 1.1); // the honest one
+    expect(r.enclosedArea).toBe(0); // the honest one
+  });
+});
+
+describe("outlineFillFailed — only warn when an OUTLINE failed to fill", () => {
+  it("reports a gapped outline, at every gap too small to bridge it", () => {
+    expect(outlineFillFailed(fillEnclosed(ring(5), 15, 15))).toBe(true);
+    expect(outlineFillFailed(fillEnclosed(ring(5), 15, 15, { gap: 2 }))).toBe(true);
+  });
+
+  it("does NOT report art with nothing to fill", () => {
+    // Both satisfy the old `insideArea < grownArea * 1.1` criterion, so both used to be told
+    // "Outline isn't closed — raise Gap, or fill the shape". Dense ink is not an outline.
+    for (const gap of [0, 2]) {
+      expect(outlineFillFailed(fillEnclosed(solid(), 30, 30, { gap }))).toBe(false);
+      expect(outlineFillFailed(fillEnclosed(stroke(), 30, 30, { gap }))).toBe(false);
+    }
+  });
+
+  it("does NOT report a fill that SUCCEEDED because the gap was raised", () => {
+    // The regression the old criterion had in the other direction: a closed ring fills identically
+    // at gap 0 and gap 2 (121 px), but at gap 2 the dilation bloats `grownArea` to 188, so the
+    // remedy the message asks for reported itself as still failing.
+    const r = fillEnclosed(ring(0), 15, 15, { gap: 2 });
+    expect(r.insideArea).toBe(121);
+    expect(r.insideArea).toBeLessThan(r.grownArea * 1.1); // the old criterion fired here
+    expect(outlineFillFailed(r)).toBe(false);
+    expect(outlineFillFailed(fillEnclosed(ring(1), 15, 15, { gap: 1 }))).toBe(false);
+  });
+
+  it("does not report an empty bitmap", () => {
+    expect(outlineFillFailed(fillEnclosed(new Uint8ClampedArray(15 * 15 * 4), 15, 15))).toBe(false);
   });
 });
 
@@ -74,6 +118,21 @@ describe("fillEnclosed — edges and degenerate input", () => {
     const r = fillEnclosed(new Uint8ClampedArray(15 * 15 * 4), 15, 15);
     expect(r.inkArea).toBe(0);
     expect(r.insideArea).toBe(0);
+  });
+
+  it("clamps gap to 0..MAX_GAP, whatever the caller passes", () => {
+    // The `max="8"` on the number input is advisory — a browser accepts a typed 50, and the
+    // morphology is O(pixels × r²), so an unclamped radius freezes the tab mid-lift.
+    expect(clampGap(50)).toBe(MAX_GAP);
+    expect(clampGap(-3)).toBe(0);
+    expect(clampGap(2.9)).toBe(2);
+    expect(clampGap(null)).toBe(0); // an emptied number input binds null
+    expect(clampGap(undefined)).toBe(0);
+    expect(clampGap(NaN)).toBe(0);
+    const huge = fillEnclosed(ring(5), 15, 15, { gap: 50 });
+    const capped = fillEnclosed(ring(5), 15, 15, { gap: MAX_GAP });
+    expect(huge.insideArea).toBe(capped.insideArea);
+    expect(Array.from(huge.mask)).toEqual(Array.from(capped.mask));
   });
 
   it("respects the alpha threshold", () => {
