@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { fillEnclosed, outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
+import {
+  fillEnclosed,
+  outlineFillFailed,
+  clampGap,
+  MAX_GAP,
+  enclosedRegion,
+} from "../core/fill-holes";
 
 /**
  * A 15×15 square ring (1 px stroke, inset 2) with a `gap`-wide break in its top edge — the
@@ -140,5 +146,50 @@ describe("fillEnclosed — edges and degenerate input", () => {
     for (let i = 3; i < faint.length; i += 4) if (faint[i]) faint[i] = 5; // below the default 10
     expect(fillEnclosed(faint, 15, 15).inkArea).toBe(0);
     expect(fillEnclosed(faint, 15, 15, { alphaThreshold: 4 }).inkArea).toBe(40);
+  });
+});
+
+/** A solid w×h block of ink, inset by `pad`, as RGBA. */
+function blob(size = 15, pad = 3): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let y = pad; y < size - pad; y++)
+    for (let x = pad; x < size - pad; x++) rgba[(y * size + x) * 4 + 3] = 255;
+  return rgba;
+}
+
+describe("enclosedRegion", () => {
+  it("is the interior of a closed outline, and excludes the ink itself", () => {
+    const r = enclosedRegion(ring(0), 15, 15);
+    expect(r.area).toBe(81); // the 9×9 interior of the 11×11 ring — the stroke is not painted
+    expect(r.region[CENTRE]).toBe(1);
+    expect(r.region[2 * 15 + 2]).toBe(0); // a ring pixel: ink, so not painted
+  });
+
+  it("is empty when the outline leaks", () => {
+    expect(enclosedRegion(ring(1), 15, 15).area).toBe(0);
+  });
+
+  it("bridges the leak once gap is large enough", () => {
+    expect(enclosedRegion(ring(1), 15, 15, { gap: 1 }).area).toBeGreaterThan(0);
+  });
+
+  it("is empty for a solid shape — nothing is enclosed", () => {
+    expect(enclosedRegion(blob(), 15, 15).area).toBe(0);
+  });
+
+  it("is empty for a fully transparent bitmap", () => {
+    expect(enclosedRegion(new Uint8ClampedArray(15 * 15 * 4), 15, 15).area).toBe(0);
+  });
+
+  it("grows by `expand` to tuck under an anti-aliased stroke", () => {
+    const plain = enclosedRegion(ring(0), 15, 15).area;
+    const grown = enclosedRegion(ring(0), 15, 15, { expand: 1 }).area;
+    expect(grown).toBeGreaterThan(plain); // reaches into the ink it will be painted behind
+  });
+
+  it("clamps gap like fillEnclosed does", () => {
+    const a = enclosedRegion(ring(5), 15, 15, { gap: 50 });
+    const b = enclosedRegion(ring(5), 15, 15, { gap: MAX_GAP });
+    expect(a.area).toBe(b.area);
   });
 });

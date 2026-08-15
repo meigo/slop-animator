@@ -152,3 +152,37 @@ export function fillEnclosed(
   }
   return { mask, inkArea, grownArea, insideArea, inkBBoxArea, enclosedArea };
 }
+
+/**
+ * The pixels a "fill all enclosed" should PAINT: inside the shape but not ink themselves.
+ *
+ * Derived from `fillEnclosed`, so it inherits the property that makes a one-press whole-cell fill
+ * safe — the flood starts at the border, so an outline with a gap encloses nothing and this returns
+ * an empty region. A leak can never paint the canvas; worst case it paints nothing.
+ *
+ * `expand` grows the region so it tucks UNDER an anti-aliased stroke. The mask stops at the alpha
+ * threshold, so without it the fringe stays unpainted and leaves a one-pixel halo. Safe to grow
+ * because the caller composites behind the ink.
+ */
+export function enclosedRegion(
+  alpha: Uint8ClampedArray,
+  w: number,
+  h: number,
+  opts: { alphaThreshold?: number; gap?: number; expand?: number } = {},
+): { region: Uint8Array; area: number } {
+  const threshold = opts.alphaThreshold ?? 10;
+  const filled = fillEnclosed(alpha, w, h, { alphaThreshold: threshold, gap: opts.gap });
+
+  let region = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    // In the shape, but not ink: exactly the space the ink encloses.
+    if (filled.mask[i] && alpha[i * 4 + 3] <= threshold) region[i] = 1;
+  }
+
+  const expand = Math.max(0, Math.floor(opts.expand ?? 0));
+  if (expand > 0) region = new Uint8Array(dilateMask(region, w, h, expand));
+
+  let area = 0;
+  for (let i = 0; i < w * h; i++) area += region[i];
+  return { region, area };
+}
