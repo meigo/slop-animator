@@ -5,7 +5,7 @@
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
   import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
-  import { renderFrame } from "../anim/render";
+  import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
   import {
@@ -135,6 +135,22 @@
       ctx.rotate(s.t.rotation);
       ctx.scale(s.t.scale, s.t.scale);
       ctx.translate(-cx, -cy);
+    }
+  }
+
+  /** Invert applyOverlayCompose: inner-to-outer, each step inverted. Logical px. */
+  function applyInverseCompose(ctx: CanvasRenderingContext2D) {
+    const al = activeLayer();
+    if (al.kind !== "draw") return;
+    const steps = cellComposeSteps(al);
+    if (!steps.some((s) => !isIdentityTransform(s.t))) return;
+    for (const s of steps) {
+      const cx = s.base.x + s.base.w / 2;
+      const cy = s.base.y + s.base.h / 2;
+      ctx.translate(cx, cy);
+      ctx.scale(1 / s.t.scale, 1 / s.t.scale);
+      ctx.rotate(-s.t.rotation);
+      ctx.translate(-cx - s.t.dx, -cy - s.t.dy);
     }
   }
 
@@ -799,22 +815,11 @@
       if (points.length === 1 && !done) {
         const handle = selection.hitTest(p.x, p.y);
         if (selection.state === "selected" && handle === "move") {
-          // First grab inside a fresh marquee: lift the pixels and enter transform mode.
-          const layer = activeLayer();
-          if (!isLayerEditable(layer, appState.project.groups)) return;
-          const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
-          selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
-          selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
-          // liftPixels' rect-clear and the later commit blit operate in CSS coords, so the
-          // cell ctx must carry the dpr transform (a cloned cell's ctx is at identity).
-          selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-          const lifted = selection.liftPixels(selCtx, DPR);
-          if (lifted) {
-            selection.beginTransform(lifted);
-            recomposite();
-            selectionMode = "drag";
-            selection.startDrag("move", p.x, p.y);
-          }
+          // First grab inside a fresh marquee: paper-crop lift, then drag.
+          if (!liftPaperCrop()) return;
+          recomposite();
+          selectionMode = "drag";
+          selection.startDrag("move", p.x, p.y);
         } else if (
           (selection.state === "transforming" || selection.state === "warping") &&
           handle
@@ -902,8 +907,10 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
-      // renderFloatingTo blits the floating pixels via a CSS-coord matrix → needs dpr.
+      // renderFloatingTo draws the paper crop in document space; inverse compose + dpr
+      // map it into the cell. Identity compose is a no-op → today's blit.
       selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      applyInverseCompose(selCtx);
       selection.renderFloatingTo(selCtx);
       const ctx = selCtx;
       const before = selBefore;
@@ -944,16 +951,89 @@
     poseActions.cancel = () => cancelPose();
   }
 
-  // Read-only ctx of the resolved key shown at the current frame (for copy — never materializes a key).
-  function activeResolvedCtx(): CanvasRenderingContext2D | null {
-    const layer = activeLayer();
-    if (layer.kind !== "draw") return null;
-    const rk = resolvedKeyCell(layer, appState.playhead);
+  /**
+   * Crop the document-space selection from what the active layer looks like on the paper.
+   * Identity compose is a straight cell blit (bit-identical to the old copyPixels path).
+   */
+  function cropComposedSelection(): HTMLCanvasElement | null {
+    if (!selection?.rect) return null;
+    const al = activeLayer();
+    if (al.kind !== "draw") return null;
+    const rk = resolvedKeyCell(al, appState.playhead);
     if (!rk) return null;
-    const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    return ctx;
+    const W = appState.project.width;
+    const H = appState.project.height;
+    const cellT = cellTransform(rk.cell);
+    const g = groupOf(al, appState.project.groups);
+    const groupT = groupTransform(g);
+    if (
+      isIdentityTransform(al.transform) &&
+      isIdentityTransform(cellT) &&
+      isIdentityTransform(groupT)
+    ) {
+      // Document space == cell space: crop the cell bitmap at this.rect (same blit as today).
+      const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
+      return selection.copyPixelsFromDoc(ctx, DPR);
+    }
+    const tmp = document.createElement("canvas");
+    tmp.width = W * DPR;
+    tmp.height = H * DPR;
+    const tctx = tmp.getContext("2d")!;
+    const boxDev = isIdentityTransform(cellT)
+      ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
+      : {
+          x: rk.cell.transformBox!.x * DPR,
+          y: rk.cell.transformBox!.y * DPR,
+          w: rk.cell.transformBox!.w * DPR,
+          h: rk.cell.transformBox!.h * DPR,
+        };
+    const groupBoxDev = isIdentityTransform(groupT)
+      ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
+      : (() => {
+          const lb = groupBoxLogical(
+            g!,
+            appState.project,
+            appState.playhead,
+            DPR,
+            appState.version,
+          );
+          return { x: lb.x * DPR, y: lb.y * DPR, w: lb.w * DPR, h: lb.h * DPR };
+        })();
+    drawCellComposed(
+      tctx,
+      rk.cell.canvas,
+      W * DPR,
+      H * DPR,
+      al.transform,
+      cellT,
+      boxDev,
+      DPR,
+      groupT,
+      groupBoxDev,
+    );
+    return selection.copyPixelsFromDoc(tctx, DPR);
   }
+
+  /** Snapshot → paper crop → punch the cell → beginTransform. False if nothing to lift. */
+  function liftPaperCrop(): boolean {
+    if (!selection?.rect) return false;
+    const layer = activeLayer();
+    if (!isLayerEditable(layer, appState.project.groups)) return false;
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
+    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
+    const crop = cropComposedSelection();
+    if (!crop) {
+      selCtx = null;
+      selBefore = null;
+      return false;
+    }
+    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    selection.clearRegion(selCtx, DPR);
+    selection.beginTransform(crop);
+    return true;
+  }
+
   // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
   // active layer isn't an editable (unlocked, visible) drawing layer.
   function activeDrawableCtx(): CanvasRenderingContext2D | null {
@@ -967,9 +1047,7 @@
 
   function copySelection() {
     if (!selection || selection.state !== "selected" || !selection.rect) return;
-    const ctx = activeResolvedCtx();
-    if (!ctx) return;
-    const float = selection.copyPixels(ctx, DPR);
+    const float = cropComposedSelection();
     if (float) {
       selectionClipboard = { canvas: float, rect: { ...selection.rect } };
       appState.hasPixelClipboard = true;
@@ -1027,16 +1105,7 @@
 
   function enterTransform() {
     if (!selection || selection.state !== "selected") return;
-    const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return;
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
-    selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
-    selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
-    // See note in onStroke: the cell ctx must carry the dpr transform for lift/commit.
-    selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    const lifted = selection.liftPixels(selCtx, DPR);
-    if (!lifted) return;
-    selection.beginTransform(lifted);
+    if (!liftPaperCrop()) return;
     recomposite();
     selection.drawOverlay();
   }

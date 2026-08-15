@@ -308,6 +308,43 @@ export class Selection {
     return cvs;
   }
 
+  /**
+   * Crop `this.rect` (document AABB, lasso-clipped if needed) from a document-sized
+   * source. Ignores `composeSteps` — the temp is already in paper space.
+   */
+  copyPixelsFromDoc(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
+    if (!this.rect) return null;
+    const r = this.rect;
+    const px = Math.round(r.x * dpr);
+    const py = Math.round(r.y * dpr);
+    const pw = Math.round(r.w * dpr);
+    const ph = Math.round(r.h * dpr);
+    if (pw <= 0 || ph <= 0) return null;
+
+    const cvs = document.createElement("canvas");
+    cvs.width = pw;
+    cvs.height = ph;
+    const ctx = cvs.getContext("2d")!;
+
+    if (this.lassoPath) {
+      ctx.save();
+      const clipPath = new Path2D();
+      for (let i = 0; i < this.lassoPoints.length; i++) {
+        const lx = (this.lassoPoints[i].x - r.x) * dpr;
+        const ly = (this.lassoPoints[i].y - r.y) * dpr;
+        if (i === 0) clipPath.moveTo(lx, ly);
+        else clipPath.lineTo(lx, ly);
+      }
+      clipPath.closePath();
+      ctx.clip(clipPath);
+      ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
+      ctx.restore();
+    } else {
+      ctx.drawImage(srcCtx.canvas, px, py, pw, ph, 0, 0, pw, ph);
+    }
+    return cvs;
+  }
+
   /** Clear the selected region (rect or lasso-clipped) from the source. Does NOT extract. */
   clearRegion(srcCtx: CanvasRenderingContext2D, dpr: number): void {
     if (!this.rect) return;
