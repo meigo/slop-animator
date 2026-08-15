@@ -1574,3 +1574,23 @@ already bracketed.
 **Owed a browser pass:** mute → undo → it unmutes AND becomes audible again mid-playback; unmute →
 undo → it goes silent immediately; mute, then an unrelated edit, then one undo (the edit reverts, the
 mute stays); mute → remove track → undo → undo (the track returns still muted).
+
+**Reference layers say they are guides (2026-08-16).** Reported as "nothing tells you image/video
+layers are references and not rendered". Confirmed: both exporters hardcode `includeReference: false`
+(`png-sequence.ts`, `video.ts`), so a reference is visible at 60% opacity while you work and silently
+absent from every output, and nothing anywhere said so.
+**Chosen: tell, don't render** — over a per-layer "include in export" flag and over extending
+Rasterize to video. Rendering references would contradict what the name and the 60% default opacity
+already promise, and a per-layer export flag pushes this app toward being a compositor, which
+CLAUDE.md's own scope note puts in slop-video-compositor instead. The app ALREADY has the "I want
+this in the output" answer for images: `rasterizeReference` converts a ref into a real drawing layer.
+So the gap was purely discoverability, and it is closed in two places: the **Export dialog** shows a
+line whenever the project has references (counted regardless of visibility — a hidden ref is equally
+absent, and the point is "these are guides"), naming “Rasterize to drawing layer” exactly as its
+tooltip reads so it is findable; and the **type glyph** in both the layer panel and the timeline
+gutter carries it in its `title`, which costs no layout and reads out in the status bar on an iPad
+tap, where tooltips never fire.
+**Known and deliberately left:** a VIDEO reference cannot reach the export by any route —
+`rasterizeReference` is image-only. Baking a video would mean decoding N frames into N full-size cell
+canvases (~8.3 MB each at 1920×1080), which is exactly the memory the 1× document-scale work went to
+some length to avoid. If it is ever wanted, that memory profile is the thing to weigh first.
