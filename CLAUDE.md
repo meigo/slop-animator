@@ -477,7 +477,8 @@ clamp on the offset range (accepted). **Mute:** 🔊/🔇 beside Remove; togglin
 stops/rejoins the engine; `play()` also refuses muted as defense. ~~Offset/mute are NOT undoable
 (audio is outside `StructSnapshot`, like set/remove-track).~~ **Superseded 2026-08-15: the OFFSET is
 now undoable** (one entry per completed lane drag), **as are import and remove-track** — see the
-audio-undo entries at the end of this file. Only MUTE remains non-undoable. **Owed a browser pass:** scrub audible
+audio-undo entries at the end of this file. As of the same date EVERY audio edit is undoable —
+offset, import, remove and mute. **Owed a browser pass:** scrub audible
 on drag + stepping, silent while playing/muted; offset drag incl. negative + save/reload (deep negative offsets scroll out of reach past the label width — eyeball whether that needs a clamp); iPad drag
 (touch-action); mute mid-playback both ways; unmute-while-playing rejoins in sync. Phase 3 (export
 muxing) still deferred. Spec: `…/2026-08-09-audio-phase2-design.md`.
@@ -1477,8 +1478,8 @@ otherwise deliberately outside undo (set/remove-track, mute and the waveform dra
 non-undoable, matching opacity), but this is the first operation that moves audio _programmatically_
 — without the field, undoing a ripple would restore every layer and range and leave the audio
 shifted, which is worse than never shifting it. `restoreStructure` applies it only when the track
-still exists AND the snapshot had one, so a non-undoable set/remove-track between snapshot and undo
-cannot resurrect or zero an offset. The ripple ops are **not** gated on the active layer being
+still exists AND the snapshot had one. (Set/remove-track and mute later became undoable too, so the
+snapshot now carries the track and both its flags — see the audio-undo entries below.) The ripple ops are **not** gated on the active layer being
 editable, unlike the per-layer tools: this is a document op, and skipping locked rows would destroy
 the very alignment it exists to preserve (same treatment a document resize gives them).
 
@@ -1516,8 +1517,8 @@ of that field must push a command** — otherwise unrelated undos revert the wri
 lane drag now brackets with `beginStructuralEdit`/`commitStructuralEdit`, commits only if the offset
 actually moved (a click without a drag pushes nothing, or the next undo looks dead), and registers
 `transformDragGuard.settle` so a mid-drag undo or Open cannot leave the bracket open — the same shape
-as the reference range drag and the hold-span resize. Mute and set/remove-track are NOT in the
-snapshot and stay non-undoable, so they are unaffected.
+as the reference range drag and the hold-span resize. (Mute and set/remove-track were still outside
+the snapshot at this point; both were brought in shortly after — see below.)
 Also fixed alongside it: `undo`/`redo` now call `resyncAudioAfterHistory()`, because a structural
 restore can move the offset while playback has ALREADY scheduled its buffer — without it the number
 changed but the sound kept playing at the old position until the next seek. Reachable from both
@@ -1537,9 +1538,8 @@ making `setAudioTrack` undoable would have made an unrelated undo silently rever
 **Why the snapshot keeps BOTH `audio` and `audioOffsetFrames`, which looks redundant:** the lane drag
 writes `audio.offsetFrames` IN PLACE on the shared object, so `snap.audio.offsetFrames` tracks the
 live value and cannot serve as a before-state (gotcha #8). The separate number is the immutable
-capture that actually restores. By the same mechanism `muted` is deliberately NOT captured — it is
-also written in place, so it survives an undo untouched, which is exactly the documented "mute is not
-undoable" behaviour. Do not "simplify" either half away.
+capture that actually restores. `muted` is captured separately for exactly the same reason (added
+with the mute entry below). Do not "simplify" any of the three away into `snap.audio`.
 `restoreStructure` re-points the engine **only when the track identity changed**: `setTrack()` stops
 playback, so calling it on every undo would kill playback on unrelated edits. It hands over the
 $state proxy read back after assignment, never the snapshot's raw object (gotcha #11).
@@ -1548,3 +1548,22 @@ at 50 commands), and `replaceProject`'s `history.clear()` releases it on Open/Ne
 **Owed a browser pass:** remove the track → undo → it returns, plays, and keeps its offset; import →
 undo → gone; remove → redo; remove mid-playback → undo; import, then an unrelated edit, then one undo
 (the edit reverts, the import survives); mute → unrelated undo (mute must NOT revert).
+
+**Mute is undoable (2026-08-15) — audio is now fully under undo.** The last non-undoable audio edit.
+`StructSnapshot` gained `audioMuted`, captured as a separate boolean for the same reason the offset
+is: the toggle writes `muted` IN PLACE on the shared track object, so `snap.audio.muted` tracks the
+live value and cannot be a before-state (gotcha #8). `toggleAudioMute` now pushes a command like
+every other writer of a captured field.
+**The restore had to mirror the toggle's ENGINE behaviour, not just the flag** — mute gates the
+output, so restoring the boolean alone would flip the icon while the sound carried on. On a mute it
+calls `audioEngine.stop()`; on an un-mute during playback it calls `play()`. `resyncAudioAfterHistory`
+cannot cover this: `syncTo` is `if (this.source) this.play(...)`, so it only repositions an EXISTING
+source and can never restart one the mute stopped.
+Together with the offset, import and remove-track entries above, this closes the audio/undo work:
+**every audio edit now pushes exactly one command per gesture**, and the invariant that started it
+("once a field is in the undo snapshot, every writer of it must push a command") is now satisfied
+across the whole track rather than field by field. Any future audio field must arrive with its writer
+already bracketed.
+**Owed a browser pass:** mute → undo → it unmutes AND becomes audible again mid-playback; unmute →
+undo → it goes silent immediately; mute, then an unrelated edit, then one undo (the edit reverts, the
+mute stays); mute → remove track → undo → undo (the track returns still muted).

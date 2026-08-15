@@ -248,11 +248,11 @@ export interface StructSnapshot {
   /** The track's start frame, captured SEPARATELY as a number even though `audio` is above — and
    *  that duplication is load-bearing. The lane drag writes `audio.offsetFrames` IN PLACE on the
    *  shared object, so `snap.audio.offsetFrames` tracks the live value and cannot serve as a
-   *  before-state (gotcha #8). This immutable copy is what actually restores.
-   *
-   *  `muted` is deliberately NOT captured: mute is also written in place on the shared object, so it
-   *  survives an undo untouched — which is exactly the documented behaviour (mute is not undoable). */
+   *  before-state (gotcha #8). This immutable copy is what actually restores. */
   audioOffsetFrames: number | null;
+  /** Same story as the offset: `muted` is written in place by the toggle, so the shared `audio`
+   *  object cannot carry its before-state. Captured separately for the same reason. */
+  audioMuted: boolean | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -279,6 +279,7 @@ function snapshotStructure(): StructSnapshot {
     playhead: state.playhead,
     audio: state.project.audio,
     audioOffsetFrames: state.project.audio?.offsetFrames ?? null,
+    audioMuted: state.project.audio?.muted ?? null,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -330,12 +331,23 @@ function restoreStructure(s: StructSnapshot) {
   // this same shared object. Re-point the engine only when the track identity actually changed:
   // setTrack() stops playback, so calling it on every undo would kill playback on unrelated edits.
   const audioChanged = state.project.audio !== s.audio;
+  const wasMuted = state.project.audio?.muted ?? null;
   state.project.audio = s.audio;
-  if (state.project.audio && s.audioOffsetFrames !== null)
-    state.project.audio.offsetFrames = s.audioOffsetFrames;
+  if (state.project.audio) {
+    if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
+    if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
+  }
   // The $state PROXY read back after assignment, never `s.audio` raw — a raw ref left the engine
   // reading offsetFrames 0 forever (gotcha #11).
   if (audioChanged) audioEngine.setTrack(state.project.audio);
+  // Mute is not just a flag, it gates the OUTPUT — mirror toggleAudioMute here or an undo restores
+  // the icon while the sound carries on. `syncTo` cannot help: it only acts when a source already
+  // exists, so an un-mute has to explicitly restart playback.
+  const nowMuted = state.project.audio?.muted ?? null;
+  if (nowMuted !== wasMuted) {
+    if (nowMuted) audioEngine.stop();
+    else if (state.playback.isPlaying) audioEngine.play(state.playhead, state.project.fps);
+  }
   state.version++;
 }
 
@@ -781,16 +793,19 @@ export function seekPlayhead(f: number): void {
 }
 
 /** Mute/unmute the audio track (not undoable — matches set/removeAudioTrack). */
+/** Undoable, like every other writer of a field `StructSnapshot` captures — otherwise an unrelated
+ *  undo would silently flip the mute back. */
 export function toggleAudioMute(): void {
   const t = state.project.audio;
   if (!t) return;
-  t.muted = !t.muted;
-  if (t.muted) {
-    audioEngine.stop(); // also kills an in-flight scrub window — muted must mean silent NOW
-  } else if (state.playback.isPlaying) {
-    audioEngine.play(state.playhead, state.project.fps); // rejoin in sync mid-playback
-  }
-  bump();
+  commitStructural(() => {
+    t.muted = !t.muted;
+    if (t.muted) {
+      audioEngine.stop(); // also kills an in-flight scrub window — muted must mean silent NOW
+    } else if (state.playback.isPlaying) {
+      audioEngine.play(state.playhead, state.project.fps); // rejoin in sync mid-playback
+    }
+  });
 }
 
 /** Remove the audio track. */
