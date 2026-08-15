@@ -1054,6 +1054,7 @@
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
     selection.rect = rect;
+    selection.composeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR);
     if (!lifted) {
       selCtx = null;
@@ -1158,6 +1159,7 @@
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     selection.rect = rect;
+    selection.composeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
     if (!lifted) {
       selCtx = null;
