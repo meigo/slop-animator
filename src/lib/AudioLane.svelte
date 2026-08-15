@@ -1,6 +1,14 @@
 <script lang="ts">
   import { Music, X, Volume2, VolumeX } from "@lucide/svelte";
-  import { state, bump, removeAudioTrack, toggleAudioMute } from "../state/appState.svelte";
+  import {
+    state,
+    bump,
+    removeAudioTrack,
+    toggleAudioMute,
+    beginStructuralEdit,
+    commitStructuralEdit,
+    transformDragGuard,
+  } from "../state/appState.svelte";
   import { audioEngine } from "../audio/engine";
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
 
@@ -24,8 +32,18 @@
   } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
-  // the clip may start before frame 0). Not undoable: audio is outside StructSnapshot (P2 spec).
-  let dragStart: { x: number; offset: number } | null = null;
+  // the clip may start before frame 0). Undoable, one entry per completed gesture.
+  //
+  // It HAS to be. `StructSnapshot` carries `audioOffsetFrames` (so a ripple insert/delete can move
+  // audio undoably), and once a field is in the snapshot every writer of it must push a command —
+  // otherwise an unrelated structural undo silently reverts the writes that don't. Before this, a
+  // drag followed by any structural edit followed by undo snapped the audio back to its pre-drag
+  // position. Mute and add/remove-track are NOT in the snapshot and stay non-undoable.
+  let dragStart: {
+    x: number;
+    offset: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
   function ignoreTouchClick(e: PointerEvent) {
     if (e.pointerType === "touch") e.preventDefault();
   }
@@ -37,7 +55,12 @@
       onTouchDown(e);
       return;
     }
-    dragStart = { x: e.clientX, offset: state.project.audio.offsetFrames };
+    dragStart = {
+      x: e.clientX,
+      offset: state.project.audio.offsetFrames,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleLaneDrag(); // undo / Open mid-drag settles the bracket
   }
   function laneMove(e: PointerEvent) {
     if (e.pointerType === "touch") {
@@ -52,10 +75,20 @@
       bump();
     }
   }
+  /** Commit iff the offset actually moved — a click without a drag must push nothing, or the next
+   *  undo appears dead. Also the settle hook, so a mid-drag undo/Open cannot leave the bracket open. */
+  function settleLaneDrag() {
+    if (!dragStart) return;
+    const audio = state.project.audio;
+    if (audio && audio.offsetFrames !== dragStart.offset) commitStructuralEdit(dragStart.undo);
+    dragStart = null;
+    transformDragGuard.settle = null;
+  }
+
   function laneUp() {
     if (dragStart && state.playback.isPlaying)
       audioEngine.syncTo(state.playhead, state.project.fps);
-    dragStart = null;
+    settleLaneDrag();
     onTouchUp();
   }
 

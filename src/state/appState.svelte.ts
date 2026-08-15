@@ -1041,6 +1041,14 @@ export function undo(): void {
   history.undo();
   state.timelineSelection = null; // a structural restore can invalidate stored endpoints
   bump(); // pixel commands only recomposite — glyphs, contentBounds, and autosave key off version
+  resyncAudioAfterHistory();
+}
+
+/** A structural restore can move the audio offset (the lane drag and ripple insert/delete both write
+ *  it), and running playback has already scheduled its buffer — without this the number changes but
+ *  the sound keeps playing at the old position until the next seek. */
+function resyncAudioAfterHistory(): void {
+  if (state.playback.isPlaying) audioEngine.syncTo(state.playhead, state.project.fps);
 }
 export function redo(): void {
   transformDragGuard.settle?.();
@@ -1049,6 +1057,7 @@ export function redo(): void {
   history.redo();
   state.timelineSelection = null;
   bump();
+  resyncAudioAfterHistory();
 }
 
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
