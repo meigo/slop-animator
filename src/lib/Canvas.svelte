@@ -323,10 +323,15 @@
   let fillUsed = false;
 
   /** Backing-store scale so a CSS-zoomed view still has pixels for a scaled-down layer.
-   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows. */
+   *  Capped at 2× — cells stay DPR=1; only the one display canvas grows.
+   *  QUANTISED to genuine steps: the viewport hooks fire per raw pointermove/wheel event, so a
+   *  continuous scale meant a pinch reallocated the display + scratch backing stores and
+   *  re-composited every layer on every touch sample. Stepping caps that at one realloc per crossing
+   *  (and at worst renders a mid-step zoom from 1.5× pixels instead of, say, 1.7×). */
+  const OUTPUT_SCALE_STEPS = [2, 1.5, 1];
   function displayOutputScale(): number {
     const z = viewport?.zoom ?? 1;
-    return Math.min(2, Math.max(1, z));
+    return OUTPUT_SCALE_STEPS.find((s) => z >= s) ?? 1;
   }
 
   function sizeDisplay() {
