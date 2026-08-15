@@ -5,6 +5,7 @@ import {
   type DrawingLayer,
   type Project,
 } from "./document";
+import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -95,17 +96,72 @@ export function ensureDrawableKeyframe(
   return canvas;
 }
 
-/** Insert a hold at index `at` in EVERY drawing layer (global shift), then refresh document length. */
+/**
+ * How an inclusive `{start,end}` span reacts to a frame being inserted at / deleted from `at`.
+ *
+ * A span that STRADDLES `at` grows (insert) or shrinks (delete) rather than moving: the frame lands
+ * inside the shot, which is what rotoscoping wants — insert a breakdown mid-action and the reference
+ * should cover it, not slide off it. A span entirely after `at` moves; one entirely before is
+ * untouched. Deleting never inverts a span: it floors at a single frame.
+ */
+export function shiftSpan(
+  span: { start: number; end: number },
+  at: number,
+  delta: 1 | -1,
+): { start: number; end: number } {
+  if (delta === 1) {
+    if (span.start >= at) return { start: span.start + 1, end: span.end + 1 };
+    if (at <= span.end) return { start: span.start, end: span.end + 1 }; // straddles → grows
+    return span;
+  }
+  if (span.start > at) return { start: span.start - 1, end: span.end - 1 };
+  if (at <= span.end) return { start: span.start, end: Math.max(span.start, span.end - 1) };
+  return span;
+}
+
+/** Where a clip pinned to a single START frame lands. Used for audio and video, which have no `end`
+ *  to grow — a video's length is its footage, so a clip straddling `at` simply cannot absorb the
+ *  frame and is left alone rather than faked. */
+export function shiftStartFrame(startFrame: number, at: number, delta: 1 | -1): number {
+  if (delta === 1) return startFrame >= at ? startFrame + 1 : startFrame;
+  return startFrame > at ? startFrame - 1 : startFrame;
+}
+
+/** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: image reference
+ *  ranges, video clip offsets, and the audio track. Drawing-layer cells are handled by the
+ *  callers, which splice them directly. */
+function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void {
+  for (const layer of project.layers) {
+    if (layer.kind !== "ref") continue;
+    if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
+    if (layer.media.type === "video") {
+      const dur = layer.media.el.duration;
+      if (!Number.isFinite(dur) || dur <= 0) continue;
+      const { startFrame } = videoClipLayout(layer.offsetFrames, layer.speed, dur, project.fps);
+      const next = shiftStartFrame(startFrame, at, delta);
+      if (next !== startFrame)
+        layer.offsetFrames = offsetAfterClipDrag(startFrame, next - startFrame, layer.speed);
+    }
+  }
+  if (project.audio) {
+    const next = shiftStartFrame(project.audio.offsetFrames, at, delta);
+    if (next !== project.audio.offsetFrames) project.audio.offsetFrames = next;
+  }
+}
+
+/** Insert a hold at index `at` in EVERY drawing layer, ripple document-space clips, refresh length. */
 export function insertFrameAllLayers(project: Project, at: number): void {
   for (const layer of project.layers) {
     if (layer.kind !== "draw") continue;
     const idx = Math.max(0, Math.min(at, layer.cells.length));
     layer.cells.splice(idx, 0, { kind: "hold" });
   }
+  rippleDocumentFrames(project, at, 1);
   refreshLength(project);
 }
 
-/** Remove index `at` from every drawing layer that has it (global shift), keeping ≥1 cell each. */
+/** Remove index `at` from every drawing layer that has it, ripple document-space clips, keeping ≥1
+ *  cell each. */
 export function deleteFrameAllLayers(project: Project, at: number): void {
   for (const layer of project.layers) {
     if (layer.kind !== "draw") continue;
@@ -113,6 +169,7 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
     if (at < 0 || at >= layer.cells.length) continue;
     layer.cells.splice(at, 1);
   }
+  rippleDocumentFrames(project, at, -1);
   refreshLength(project);
 }
 

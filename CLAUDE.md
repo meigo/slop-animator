@@ -1452,7 +1452,37 @@ same two-site pattern lock enforcement uses, and the comment at each site says t
 Cost, accepted: repositioning a trimmed ref now means scrubbing inside its span first. Untrimmed refs
 are unaffected — `isRefVisibleAtFrame` is true everywhere when there is no range.
 
-**Two known gaps, deferred as product decisions, not bugs:** (3) Frame insert/delete does not shift ranges, so an image ref aligned to a shot
+**Ripple insert/delete (2026-08-15, closes gap 3 — but the reported premise was wrong).** The review
+said "frame insert/delete does not shift ranges". Checking first showed there was **no document-wide
+frame op at all**: every frame tool acts on the ACTIVE LAYER only (`Timeline.svelte`'s
+`frameTool`/`keyTool`/`dupTool`/`deleteTool`), and `insertFrameAllLayers`/`deleteFrameAllLayers` had
+existed in `timeline.ts` with **zero production callers** — tests only. So "shift the range by the
+inserted count" was unimplementable as stated: when layer A gains a frame and layer B does not, a
+document-space range has no single correct shift, and moving it would sync the ref to A while
+desyncing it from B. **The real gap was the missing operation**, so that is what was built. Those two
+functions are now wired to a pair of timeline-bar buttons and extended to ripple everything living in
+document-frame space: image ref ranges, video clip offsets, and the audio track. Per-layer tools are
+untouched.
+The shift math is pure and unit-tested (`shiftSpan`, `shiftStartFrame`). **The straddle rule is the
+part worth knowing:** a span containing the inserted frame GROWS rather than moving — insert a
+breakdown mid-action and the reference should cover it, not slide off it — while a span entirely
+after the frame moves and one entirely before is untouched. Delete mirrors it, flooring a span at one
+frame rather than inverting it. Audio and video have no `end` to grow, so a clip STRADDLING the
+frame is left alone: a video's length is its footage and cannot absorb a frame, so it will drift if
+you insert mid-clip. That is honest rather than fixable.
+**`StructSnapshot` gained `audioOffsetFrames`, and that widening is load-bearing.** Audio is
+otherwise deliberately outside undo (set/remove-track, mute and the waveform drag are all
+non-undoable, matching opacity), but this is the first operation that moves audio _programmatically_
+— without the field, undoing a ripple would restore every layer and range and leave the audio
+shifted, which is worse than never shifting it. `restoreStructure` applies it only when the track
+still exists AND the snapshot had one, so a non-undoable set/remove-track between snapshot and undo
+cannot resurrect or zero an offset. The ripple ops are **not** gated on the active layer being
+editable, unlike the per-layer tools: this is a document op, and skipping locked rows would destroy
+the very alignment it exists to preserve (same treatment a document resize gives them).
+
+**One known gap, deferred as a product decision, not a bug:** (3) The per-layer frame tools still do not shift ranges,
+which is correct — see the entry above for why a per-layer op has no single right answer for a
+document-space span. Recorded here only so the question is not re-opened from scratch. Previously (4): so an image ref aligned to a shot
 desyncs by the inserted/deleted count. Consistent with the video clip's `offsetFrames`, which is also
 left unshifted — but an image ref was structurally immune to this class of bug before this feature,
 so the exposure is new. (4) `replaceProject` calls `liftGuard.discard?.()` but never

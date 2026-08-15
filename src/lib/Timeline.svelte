@@ -6,6 +6,8 @@
     Copy,
     Minus,
     Trash2,
+    BetweenHorizonalStart,
+    BetweenHorizonalEnd,
     Layers,
     Waves,
     Settings,
@@ -37,6 +39,8 @@
     duplicateKeyframe,
     setHold,
     deleteFrame,
+    insertFrameAllLayers,
+    deleteFrameAllLayers,
     ensureDrawableKeyframe,
     setHoldSpan,
   } from "../anim/timeline";
@@ -769,6 +773,20 @@
     liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
     commitStructural(() => setHold(l, appState.playhead));
   }
+  // Document-wide ripple: shifts EVERY drawing layer plus everything in document-frame space, so a
+  // reference aligned to a shot stays aligned. Deliberately not gated on the active layer being
+  // editable (the per-layer tools are) — it is a document op, and skipping locked rows would break
+  // the alignment it exists to preserve. Individual locked layers are still shifted, matching how
+  // a document resize treats them.
+  function rippleInsert() {
+    liftGuard.discard?.(); // every layer's cell array is respliced under any live lift
+    commitStructural(() => insertFrameAllLayers(appState.project, appState.playhead));
+  }
+  function rippleDelete() {
+    if (appState.project.frameCount <= 1) return; // never leave a project with no frames
+    liftGuard.discard?.();
+    commitStructural(() => deleteFrameAllLayers(appState.project, appState.playhead));
+  }
   function deleteTool() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
@@ -849,6 +867,22 @@
       ><Diamond size={16} /></button
     >
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
+
+    <span class="w-px h-5 bg-border mx-1"></span>
+
+    <!-- Ripple ops: separated from the five per-layer tools above because they act on the WHOLE
+         document — every layer, plus anything living in document-frame space (reference ranges,
+         video clip offsets, the audio track). The titles carry that distinction to the status bar. -->
+    <button
+      class={toolBtn}
+      title="Insert frame in all layers (ripples clips and audio)"
+      onclick={rippleInsert}><BetweenHorizonalStart size={16} /></button
+    >
+    <button
+      class={toolBtn}
+      title="Remove frame from all layers (ripples clips and audio)"
+      onclick={rippleDelete}><BetweenHorizonalEnd size={16} /></button
+    >
 
     <span class="w-px h-5 bg-border mx-1"></span>
 
