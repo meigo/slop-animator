@@ -1367,8 +1367,11 @@ length"** — deliberately, so an untrimmed image renders identically before and
 and so lengthening the animation later cannot silently strand an image ref at the project's old
 last frame. Trimming either edge is what converts "always" into a concrete stored span. **One
 gate:** `buildFrameDrawList` skips the `ref` op when `!isRefVisibleAtFrame(...)`, and it has
-exactly one production consumer (`render.ts`) — so editor, export and onion skins are all covered
-by that single `continue`, with no second code path that could drift from it.
+exactly one production consumer (`render.ts`) — so editor and export are both covered by that
+single `continue`, with no second code path that could drift from it. (Onion-skin ghosts never
+drew reference layers before this feature either — `onion.ts` composites ghosts with
+`includeReference: false` — so this gate has no effect on onion one way or the other; there is no
+onion behaviour here to verify.)
 `syncReferenceVideos` now skips-and-pauses a video outside its span instead of clamping into it,
 which is also why the old clamp was lying. Image ref rows render a clip block (reusing the
 `media-clip` timeline tokens): **dashed + default cursor while untrimmed** (it spans everything by
@@ -1401,18 +1404,52 @@ in the app itself surfaces it.
 
 Pure logic (`refVisibleSpan`, `isRefVisibleAtFrame`, the trim-clamp helper) is unit-tested; the
 timeline block/handles/drag lifecycle are Svelte/DOM with no node harness — build+review verified
-only, per project convention. **Three known Minor issues found in review, deliberately deferred,
-not fixed:** a `stopPropagation` in the range drag means a Pencil/mouse press on the block or a trim
-handle never reaches `App.svelte`'s status-hint listener, so on iPad the discoverability route for
-these gestures is dead for the very pointer that performs them; a zero-delta press on an untrimmed
-edge handle writes then reverts, costing two `bump()`s and scheduling a full autosave re-encode for
-a tap that changed nothing; and `rangeMove`/`rangeUp` fire twice per event during a handle drag
-(pointer-capture retarget plus bubble), harmless today only because the writes are idempotent off a
-frozen start value. **Owed a browser pass:** an image ref shows a dashed full-strip block; trimming
-an edge converts it to a solid block and the image disappears outside the span while scrubbing;
-slide and both edge trims; trim → undo → redo; ⌘Z mid-drag; a range dragged past the last frame
-(gutters stay pinned); a short video going blank past its footage instead of holding; a
-not-yet-loaded video not blinking out on first paint; export honouring the range; onion skins
-honouring it; save → reload preserving a trimmed range; an old project opening unchanged; iPad for
-the handles (`touch-action`, `pointercancel`, finger-pan vs pen-edit). Spec/plan:
-`…/2026-08-15-reference-layer-ranges*.md`.
+only, per project convention.
+
+**Fix wave from the final whole-branch review (2026-08-15, same day, no Critical/Important
+findings):** four Minor issues, all fixed except one left as documented-but-unchanged. `rangeDown`
+used `stopPropagation()` to stop an edge handle's press from also starting a body slide, which had
+the side effect of suppressing `App.svelte`'s status-hint listener for every Pencil/mouse press on
+the block or a handle — replaced with `if (rangeDrag) return` as the first line of `rangeDown`,
+relying on Svelte 5 delegating a child element's handler before its parent's (confirmed against the
+markup, not assumed: the edge-handle `<div>`s are DOM descendants of the body `<div>`, all wired via
+`onpointerdown`, so the handle's own `rangeDown` call sets `rangeDrag` before the bubbled call on the
+body sees it). A zero-delta press on an untrimmed edge handle wrote then reverted the implicit
+range, costing two `bump()`s and scheduling a full autosave re-encode for a tap that changed nothing
+— `rangeMove` now early-returns on `delta === 0`, matching `clipMove`'s existing guard; the
+`wasAbsent` revert in `settleRangeDrag` is unchanged and still covers drag-out-and-back.
+`rangeMove`/`rangeUp` still fire twice per event during a handle drag (pointer-capture retarget plus
+bubble) — left as-is, since every write derives from the frozen `rangeDrag.from` and is therefore
+idempotent, but now commented in place warning against switching to incremental deltas (that would
+silently double-apply). A fourth issue found in the same pass: `refVisibleSpan` returns a trimmed
+image's `range` **by reference**, so `rangeDrag.from` aliased the live `layer.range` object at grab
+— safe only as long as every writer replaces the whole object; `rangeDown` now copies it
+(`span ? { ...span } : …`) so an in-place write anywhere else could never make the grab-time
+baseline track the live value.
+
+**Four known gaps, deferred as product decisions, not bugs:** (1) `rasterizeReference`
+(`appState.svelte.ts`) drops the range — rasterizing an image ref trimmed to frames 0–10 in a
+48-frame project produces a drawing layer whose single keyframe holds to the end, so the image
+reappears on frames 11–47 where it had been trimmed away. (2) The ref transform gizmo
+(`RefTransformGizmo.svelte`) stays live on frames where the ref no longer draws — trim a ref to 0–10,
+scrub to frame 30, and the handles still render over blank canvas; a drag there undoably commits a
+move to a layer that is invisible at that frame. Whether that should be blocked is a design call:
+positioning a ref while scrubbed outside its own span may be a legitimate workflow (e.g. lining it up
+before trimming). (3) Frame insert/delete does not shift ranges, so an image ref aligned to a shot
+desyncs by the inserted/deleted count. Consistent with the video clip's `offsetFrames`, which is also
+left unshifted — but an image ref was structurally immune to this class of bug before this feature,
+so the exposure is new. (4) `replaceProject` calls `liftGuard.discard?.()` but never
+`transformDragGuard.settle?.()` alongside it, so an in-flight transform drag surviving an Open/New
+would commit a snapshot built from the outgoing document. Pre-existing and practically unreachable
+(Open requires releasing the pointer first) — this feature just adds a second client
+(`rangeDown`/`settleRangeDrag`) to a hook that already had the same latent gap. The one-line addition
+belongs next to `liftGuard.discard?.()` whenever that function is next touched.
+
+**Owed a browser pass:** an image ref shows a dashed block spanning `0..frameCount-1` while
+untrimmed; trimming an edge converts it to a solid block and the image disappears outside the span
+while scrubbing; slide and both edge trims; trim → undo → redo; ⌘Z mid-drag; a range dragged past the
+last frame (gutters stay pinned); a short video going blank past its footage instead of holding; a
+not-yet-loaded video not blinking out on first paint; export honouring the range; save → reload
+preserving a trimmed range; an old project opening unchanged; iPad for the handles (`touch-action`,
+`pointercancel`, finger-pan vs pen-edit, and that a handle press no longer suppresses the status
+hint). Spec/plan: `…/2026-08-15-reference-layer-ranges*.md`.

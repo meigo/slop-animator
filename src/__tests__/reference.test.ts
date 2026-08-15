@@ -104,8 +104,9 @@ describe("syncReferenceVideos", () => {
     // Frame 120 (10s) is past this clip's derived span (dur 2s -> frames 0..23), so this now hits
     // the out-of-span skip before ever reaching the wanted>=dur freeze branch below — it passes only
     // because the fixture already sits at (currentTime 2, paused true), which the skip doesn't touch.
-    // The freeze branch itself (finite-duration case) is unreachable now; see the next test for the
-    // one path that still reaches it (duration not yet known).
+    // The freeze branch (finite-duration case) is rare but not unreachable — rounding in
+    // startFrame = round(-off/spd) can leave `wanted` a hair past `dur` at the last in-span frame;
+    // see the next test for the path that reaches it reliably (duration not yet known).
     const v = fakeVid({ currentTime: 2, paused: true, duration: 2 });
     syncReferenceVideos(proj([vidLayer(v)]), 120, 12, true);
     expect(v.currentTime).toBe(2);

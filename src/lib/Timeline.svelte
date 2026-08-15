@@ -232,17 +232,25 @@
   } | null = null;
 
   function rangeDown(e: PointerEvent, layer: ReferenceLayer, mode: "slide" | "start" | "end") {
+    // An edge handle's own rangeDown runs first (delegated child handler fires before the
+    // parent's — see Timeline gotcha), setting rangeDrag; this guard then stops the bubbled
+    // call on the body from ALSO starting a slide.
+    if (rangeDrag) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e); // finger navigates, pen edits (the app-wide rule)
       return;
     }
-    e.stopPropagation(); // an edge handle must not also start a body slide
     const span = refVisibleSpan(layer, appState.project.fps);
     // An untrimmed block has no body to slide; an edge drag materialises the implicit whole-project
     // range and trims from there.
     if (span === null && mode === "slide") return;
-    const from = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) };
+    // Fresh object, never the live layer.range itself: refVisibleSpan returns a trimmed image's
+    // range BY REFERENCE, so an in-place write anywhere would make this baseline track the live
+    // value and silently disable both the commit gate and the wasAbsent revert below.
+    const from = span
+      ? { ...span }
+      : { start: 0, end: Math.max(0, appState.project.frameCount - 1) };
     rangeDrag = {
       layer,
       mode,
@@ -261,6 +269,13 @@
     }
     if (!rangeDrag) return;
     const delta = Math.round((e.clientX - rangeDrag.x) / CELL_W);
+    if (delta === 0) return;
+    // During a handle drag this fires TWICE per pointermove: pointer capture retargets the event
+    // to the handle, but it still bubbles to the body, which carries the same handlers. Harmless
+    // only because both calls derive `next` from the frozen rangeDrag.from, so the second call
+    // recomputes the same value and the `cur.start !== next.start || ...` check below finds no
+    // change. Switching this to accumulate deltas incrementally (rather than always recomputing
+    // from `from`) would silently double-apply every move.
     const next =
       rangeDrag.mode === "slide"
         ? rangeAfterSlide(rangeDrag.from, delta)
