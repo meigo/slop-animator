@@ -6,6 +6,8 @@
     Copy,
     Minus,
     Trash2,
+    Image,
+    Film,
     BetweenHorizonalStart,
     BetweenHorizonalEnd,
     Layers,
@@ -1169,7 +1171,7 @@
       {#if !groupOf(layer, appState.project.groups)?.collapsed}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
-            class="shrink-0 sticky left-0 z-20 h-6 leading-6 truncate text-left pr-1 hover:bg-surface-hover"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:bg-surface={layer.id !== appState.activeLayerId}
             class:bg-surface-active={layer.id === appState.activeLayerId}
             class:text-text={layer.id === appState.activeLayerId}
@@ -1182,7 +1184,23 @@
             }}
             onpointerup={touchPanUp}
             onpointercancel={touchPanUp}
-            onclick={() => setActiveLayer(layer.id)}>{layer.name}</button
+            onclick={() => setActiveLayer(layer.id)}
+          >
+            <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
+                 layers) for the same reason the marker column is: it reserves the width so every row
+                 — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x. -->
+            <span class="flex w-3.5 shrink-0 justify-center" role="presentation">
+              {#if layer.kind === "ref"}
+                {#if layer.media.type === "video" || (layer.media.type === "missing" && layer.media.was === "video")}
+                  <Film size={13} />
+                {:else}
+                  <Image size={13} />
+                {/if}
+              {/if}
+            </span>
+            <!-- min-w-0: a flex child will not shrink below its content without it, so `truncate`
+                 would silently do nothing and push the name past the sticky label's edge. -->
+            <span class="min-w-0 flex-1 truncate">{layer.name}</span></button
           >
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
