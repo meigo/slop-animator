@@ -3,6 +3,8 @@
  * Operates on raw ImageData for performance.
  */
 
+import { dilateMask } from "./mask-ops";
+
 export interface FillOptions {
   /** Color tolerance for matching the clicked pixel's color (0-255) */
   tolerance?: number;
@@ -172,40 +174,6 @@ export function floodFill(
     }
     ctx.putImageData(imageData, 0, 0);
   }
-}
-
-/**
- * Dilate a binary mask by `radius` pixels using a circular kernel.
- * Uses a distance-based approach for clean circular expansion.
- */
-function dilateMask(mask: Uint8Array, w: number, h: number, radius: number): Uint8Array {
-  const result = new Uint8Array(w * h);
-
-  // Build list of offsets within the circular radius
-  const offsets: [number, number][] = [];
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy <= radius * radius) {
-        offsets.push([dx, dy]);
-      }
-    }
-  }
-
-  // For each filled pixel, mark all pixels within radius
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!mask[y * w + x]) continue;
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-          result[ny * w + nx] = 1;
-        }
-      }
-    }
-  }
-
-  return result;
 }
 
 /** [0..255] r,g,b → "#rrggbb" (lowercase); clamps + rounds. */

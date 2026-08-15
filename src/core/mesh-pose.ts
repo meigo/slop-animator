@@ -2,6 +2,7 @@ import { triangulateSilhouette, type Mesh } from "./triangulate";
 import { poseWeights } from "./geodesic";
 import { mlsRigidWeighted, type Pt } from "./mls";
 import { drawTriangle, type SelectionRect } from "./selection";
+import { fillEnclosed, type FillEnclosedResult } from "./fill-holes";
 
 export interface PoseHandle {
   vertex: number;
@@ -90,6 +91,7 @@ export class MeshPose {
   handles: PoseHandle[] = [];
   readonly img: HTMLCanvasElement;
   readonly rect: SelectionRect;
+  readonly fill: FillEnclosedResult | null;
   private from: Pt[] = [];
   private weights: number[][] = [];
 
@@ -98,12 +100,14 @@ export class MeshPose {
     triangles: [number, number, number][],
     img: HTMLCanvasElement,
     rect: SelectionRect,
+    fill: FillEnclosedResult | null,
   ) {
     this.rest = rest;
     this.deformed = rest.map((v) => ({ x: v.x, y: v.y }));
     this.triangles = triangles;
     this.img = img;
     this.rect = rect;
+    this.fill = fill;
   }
 
   /** Triangulate the lifted alpha and map vertices to doc coords. null if no mesh (empty content). */
@@ -112,16 +116,28 @@ export class MeshPose {
     rect: SelectionRect,
     dpr: number,
     spacing: number,
+    opts?: { fillHoles?: boolean; gap?: number },
   ): MeshPose | null {
     const ctx = img.getContext("2d", { willReadFrequently: true });
     if (!ctx || img.width === 0 || img.height === 0) return null;
     const { data } = ctx.getImageData(0, 0, img.width, img.height);
+    // Outline-only art has ink ONLY on the strokes, so an alpha predicate meshes a thin web. When
+    // fillHoles is on, enclosed space counts as body — this paints nothing, it only changes what
+    // the mesh considers part of the shape.
+    const fill =
+      opts?.fillHoles === false
+        ? null
+        : fillEnclosed(data, img.width, img.height, { gap: opts?.gap ?? 0 });
     const inside = (x: number, y: number) =>
-      x >= 0 && x < img.width && y >= 0 && y < img.height && data[(y * img.width + x) * 4 + 3] > 10;
+      x >= 0 &&
+      x < img.width &&
+      y >= 0 &&
+      y < img.height &&
+      (fill ? fill.mask[y * img.width + x] === 1 : data[(y * img.width + x) * 4 + 3] > 10);
     const mesh: Mesh = triangulateSilhouette(inside, img.width, img.height, { spacing });
     if (mesh.triangles.length === 0) return null;
     const rest = mesh.vertices.map((v) => ({ x: rect.x + v.x / dpr, y: rect.y + v.y / dpr }));
-    return new MeshPose(rest, mesh.triangles, img, rect);
+    return new MeshPose(rest, mesh.triangles, img, rect, fill);
   }
 
   private restMesh(): Mesh {

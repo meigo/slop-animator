@@ -100,6 +100,8 @@ interface AnimState {
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
   onion: OnionConfig;
+  /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
+  pose: { fillHoles: boolean; gap: number };
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
   statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
   timelineHeight: number; // px height of the resizable timeline panel
@@ -108,6 +110,11 @@ interface AnimState {
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
   selectionFloating: boolean; // pixels are lifted/moved (Copy/Cut are off, but Deselect still applies)
   poseActive: boolean; // the pose mesh is built (drives the contextual status hint)
+  /** "Fill outlines" found nothing to enclose; "" when it worked or there was nothing to fill.
+   *  Deliberately NOT `statusHint`: that field is the hovered/pressed control's `title=` and has a
+   *  window-level writer, so the same pointerdown that builds the mesh overwrites it microseconds
+   *  later. Rendered in the pose bar, next to the Gap control that remedies it. */
+  poseFillWarning: string;
   hasPixelClipboard: boolean; // the pixel selection clipboard has content (drives ToolOptions Paste)
   /** A live gizmo target carries a NON-identity transform, i.e. Reset to fit would do something.
    *  Mirrored from RefTransformGizmo's rAF tick because the scope dispatch it derives from is
@@ -163,6 +170,7 @@ export const state: AnimState = $state({
     tintPrev: "#e0526a", // warm red
     tintNext: "#3f7fd0", // cool blue
   },
+  pose: { fillHoles: true, gap: 0 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
@@ -171,6 +179,7 @@ export const state: AnimState = $state({
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
+  poseFillWarning: "",
   hasPixelClipboard: false,
   canResetTransform: false,
 });
