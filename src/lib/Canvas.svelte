@@ -63,6 +63,7 @@
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
+  import { outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -1281,6 +1282,15 @@
     }
   }
 
+  /** The fill-outlines report. Set (or cleared) on EVERY mesh build, so raising Gap until it works,
+   *  switching Fill outlines off, or applying the pose all clear it — there is no hover on iPad to
+   *  clear it for us, and a stale warning would sit next to a mesh it no longer describes. */
+  function reportPoseFill() {
+    const f = meshPose?.fill;
+    appState.poseFillWarning =
+      f && outlineFillFailed(f) ? "Outline isn't closed — raise Gap, or fill the shape" : "";
+  }
+
   function enterPose() {
     const al = activeLayer();
     if (!isLayerEditable(al, appState.project.groups)) return;
@@ -1309,14 +1319,13 @@
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
       selCtx = null;
       selBefore = null;
+      appState.poseFillWarning = "";
       recomposite();
       return;
     }
     // A gapped outline lets the flood escape, silently producing the old thin web. Say so, and name
-    // the remedy — compare against the GROWN mask, since dilation bloat alone can look like success.
-    const f = meshPose.fill;
-    if (f && f.inkArea > 0 && f.insideArea < f.grownArea * 1.1)
-      appState.statusHint = "Outline isn't closed — raise Gap, or fill the shape";
+    // the remedy.
+    reportPoseFill();
     recomposite(); // show the hole where the content lifted out
     posePaint(); // draw the deformed raster + wireframe on the overlay
     bump(); // bump version so the reactive pose bar mounts
@@ -1345,6 +1354,7 @@
     );
     meshPose = null;
     appState.poseActive = false;
+    appState.poseFillWarning = "";
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
@@ -1360,6 +1370,7 @@
     if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
     meshPose = null;
     appState.poseActive = false;
+    appState.poseFillWarning = "";
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
@@ -1385,11 +1396,7 @@
     activeHandle = null;
     poseAdjusting = false;
     posePaint();
-    // A gapped outline lets the flood escape, silently producing the old thin web. Say so, and name
-    // the remedy — compare against the GROWN mask, since dilation bloat alone can look like success.
-    const f = meshPose?.fill;
-    if (f && f.inkArea > 0 && f.insideArea < f.grownArea * 1.1)
-      appState.statusHint = "Outline isn't closed — raise Gap, or fill the shape";
+    reportPoseFill();
   }
 
   function poseDensity(delta: number) {
@@ -1524,6 +1531,7 @@
       appState.selectionActive = false;
       appState.selectionFloating = false;
       appState.poseActive = false;
+      appState.poseFillWarning = "";
     };
   });
 
@@ -1737,11 +1745,23 @@
             class="w-10 text-xs bg-surface border border-border rounded px-1 text-text"
             type="number"
             min="0"
-            max="8"
-            bind:value={appState.pose.gap}
-            onchange={rebuildPoseMesh}
+            max={MAX_GAP}
+            value={appState.pose.gap}
+            onchange={(e) => {
+              // Read + clamp rather than `bind:value`, which writes `null` into a `number` field
+              // when emptied and takes a typed 50 straight through (`max` is advisory). Writing the
+              // clamped value back to the DOM makes the snap visible.
+              appState.pose.gap = clampGap(e.currentTarget.value);
+              e.currentTarget.value = String(appState.pose.gap);
+              rebuildPoseMesh();
+            }}
           />
         </label>
+        {#if appState.poseFillWarning}
+          <!-- Shown HERE, beside the Gap control that fixes it: statusHint is the hovered control's
+               title= and is overwritten by the very pointerdown that builds the mesh. -->
+          <span class="text-xs text-amber-500">{appState.poseFillWarning}</span>
+        {/if}
       {/if}
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
