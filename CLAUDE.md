@@ -1594,3 +1594,23 @@ tap, where tooltips never fire.
 `rasterizeReference` is image-only. Baking a video would mean decoding N frames into N full-size cell
 canvases (~8.3 MB each at 1920×1080), which is exactly the memory the 1× document-scale work went to
 some length to avoid. If it is ever wanted, that memory profile is the thing to weigh first.
+
+**The layer panel is drag-resizable (2026-08-16).** Mirrors the timeline's height grip rather than
+inventing anything: pure `clampPanelWidth` (`src/anim/panel-layout.ts`, unit-tested) clamps to
+[`MIN_PANEL_WIDTH` 180, 50% of the viewport] with MIN always winning, `state.layerPanelWidth` rides
+the existing `gatherPreferences`/`applyPreferences` pair exactly as `timelineHeight` does, and a
+window-resize handler re-clamps so a shrunk window cannot strand the panel wider than the screen.
+`DEFAULT_PANEL_WIDTH` is **224 — Tailwind `w-56`, the width it had when fixed** — so first run and
+every existing preferences blob look identical; the test pins that number for the same reason.
+**The grip is on the LEFT edge because the panel is docked right**, so dragging left WIDENS —
+`gripStartW + (gripStartX - e.clientX)`, the same inversion the timeline uses for drag-up-to-grow.
+It overlays the panel edge rather than taking a column, so it costs no width, and carries the same
+`touch-action: none` + pointer-capture + `pointercancel` trio every drag surface here needs.
+This is only safe because the layer detail row is already `flex-wrap` (the 2026-08-11 de-crowding
+work): a narrower panel wraps to more lines rather than clipping, and a wider one un-wraps. Any
+future per-layer control must keep that property or the minimum width becomes a real constraint.
+Not done, and previously deferred for its own reasons: the **timeline gutter** width, which would
+need `LABEL_W` to become reactive state threaded through four consumers plus persistence.
+**Owed a browser pass:** drag wider/narrower and watch the detail row wrap and un-wrap; the canvas
+re-fits as the panel changes; reload keeps the width; shrink the window past 2× the panel width and
+see it re-clamp; iPad drag (touch-action).

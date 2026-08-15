@@ -67,6 +67,7 @@
   } from "../anim/document";
   import type { Layer, LayerGroup, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
+  import { clampPanelWidth } from "../anim/panel-layout";
 
   let listEl: HTMLDivElement;
   let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
@@ -120,6 +121,35 @@
 
   function addLayer() {
     addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
+  }
+
+  // Panel resize, mirroring Timeline's grip. The panel is docked RIGHT, so dragging the left-edge
+  // grip LEFT makes it wider — hence (gripStartX - e.clientX), the same inversion the timeline uses
+  // for drag-up-to-grow. The prefs $effect persists the result.
+  let gripStartX = 0;
+  let gripStartW = 0;
+  function gripDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    gripStartX = e.clientX;
+    gripStartW = appState.layerPanelWidth;
+  }
+  function gripMove(e: PointerEvent) {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    appState.layerPanelWidth = clampPanelWidth(
+      gripStartW + (gripStartX - e.clientX),
+      window.innerWidth,
+    );
+  }
+  function gripUp(e: PointerEvent) {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
+  // Keep the panel within half the viewport if the window shrinks.
+  function onWindowResize() {
+    appState.layerPanelWidth = clampPanelWidth(appState.layerPanelWidth, window.innerWidth);
   }
 
   // A button that silently no-ops explains nothing, so the three actions that can refuse dim and say
@@ -463,7 +493,29 @@
   </div>
 {/snippet}
 
-<div class="w-56 border-l border-border bg-surface flex flex-col text-text">
+<svelte:window onresize={onWindowResize} />
+
+<div
+  class="relative border-l border-border bg-surface flex flex-col text-text shrink-0"
+  style="width: {appState.layerPanelWidth}px"
+>
+  <!-- Resize grip on the LEFT edge, since the panel is docked right: dragging left WIDENS, the same
+       inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
+       column, so it costs no width. -->
+  <div
+    class="absolute inset-y-0 left-0 z-30 flex w-2 items-center justify-center cursor-col-resize text-text-muted hover:text-text"
+    style="touch-action: none"
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize layer panel"
+    title="Drag to resize the layer panel"
+    onpointerdown={gripDown}
+    onpointermove={gripMove}
+    onpointerup={gripUp}
+    onpointercancel={gripUp}
+  >
+    <div class="h-8 w-0.5 rounded bg-current opacity-60"></div>
+  </div>
   <input
     bind:this={relinkInput}
     type="file"
