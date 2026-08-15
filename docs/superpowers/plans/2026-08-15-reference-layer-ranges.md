@@ -116,10 +116,11 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
     expect(refVisibleSpan(l, 12)).toBeNull();
   });
 
-  it("an empty derived span is visible at NO frame", () => {
-    // spanFrames 0 -> end < start; no special case needed
-    const l = videoRef(2, { speed: 1, offsetFrames: 0 });
-    (l.media as { el: { duration: number } }).el.duration = 0.0001; // ceil -> 1 frame at 12fps
+  it("a sub-frame video still spans exactly one frame", () => {
+    // An EMPTY span is unreachable: dur <= 0 returns null before deriving, and ceil() of any
+    // positive duration is >= 1. So the floor is one frame, not zero.
+    const l = videoRef(0.0001);
+    expect(refVisibleSpan(l, 12)).toEqual({ start: 0, end: 0 });
     expect(isRefVisibleAtFrame(l, 0, 12)).toBe(true);
     expect(isRefVisibleAtFrame(l, 1, 12)).toBe(false);
   });
