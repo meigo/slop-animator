@@ -198,25 +198,42 @@ export function hexToRgba(
 }
 
 /**
- * Fill every region the ink encloses, in one pass, BEHIND existing content — the animator's
- * white-under-black-outline. Returns the area painted; 0 means nothing was enclosed (an open
- * outline, or art that is already solid), which the caller must report rather than silently no-op:
- * a no-op and a successful fill of an already-white interior look identical.
+ * Every region the ink on `canvas` encloses, as a device-px mask — READ-ONLY, so the caller can ask
+ * "is there anything to fill?" before it touches the document. `area` 0 means nothing was enclosed
+ * (an open outline, or art that is already solid), which the caller must report rather than
+ * silently no-op: a no-op and a successful fill of an already-white interior look identical.
+ *
+ * Split from the paint step on purpose. `fillAllEnclosed` used to do both, which forced the caller
+ * to materialise a keyframe (and, past a layer's end, EXTEND the layer) before it could know the
+ * answer — leaving the model mutated on the nothing-to-fill path.
+ */
+export function enclosedFillRegion(
+  canvas: HTMLCanvasElement,
+  opts: { gap?: number; expand?: number } = {},
+): { region: Uint8Array; area: number } {
+  const w = canvas.width,
+    h = canvas.height;
+  if (w === 0 || h === 0) return { region: new Uint8Array(0), area: 0 };
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  const { data } = ctx.getImageData(0, 0, w, h);
+  return enclosedRegion(data, w, h, { gap: opts.gap, expand: opts.expand });
+}
+
+/**
+ * Paint `region` (device px, sized to the ctx's canvas) in one pass BEHIND existing content — the
+ * animator's white-under-black-outline.
  *
  * Always composites with destination-over, unlike `floodFill`, which only takes that path when
  * `expand > 0`. Painting behind is the point here, not an artefact of the expand pass.
  */
-export function fillAllEnclosed(
+export function fillRegionBehind(
   ctx: CanvasRenderingContext2D,
+  region: Uint8Array,
   fillColor: { r: number; g: number; b: number; a: number },
-  opts: { gap?: number; expand?: number } = {},
-): number {
+): void {
   const w = ctx.canvas.width,
     h = ctx.canvas.height;
-  if (w === 0 || h === 0) return 0;
-  const { data } = ctx.getImageData(0, 0, w, h);
-  const { region, area } = enclosedRegion(data, w, h, { gap: opts.gap, expand: opts.expand });
-  if (area === 0) return 0;
+  if (w === 0 || h === 0 || region.length < w * h) return;
 
   const temp = document.createElement("canvas");
   temp.width = w;
@@ -239,5 +256,4 @@ export function fillAllEnclosed(
   ctx.globalCompositeOperation = "destination-over";
   ctx.drawImage(temp, 0, 0);
   ctx.restore();
-  return area;
 }
