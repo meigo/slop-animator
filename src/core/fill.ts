@@ -4,6 +4,7 @@
  */
 
 import { dilateMask } from "./mask-ops";
+import { enclosedRegion } from "./fill-holes";
 
 export interface FillOptions {
   /** Color tolerance for matching the clicked pixel's color (0-255) */
@@ -194,4 +195,49 @@ export function hexToRgba(
   const b = parseInt(hex.slice(5, 7), 16);
   const a = Math.round((opacity / 100) * 255);
   return { r, g, b, a };
+}
+
+/**
+ * Fill every region the ink encloses, in one pass, BEHIND existing content — the animator's
+ * white-under-black-outline. Returns the area painted; 0 means nothing was enclosed (an open
+ * outline, or art that is already solid), which the caller must report rather than silently no-op:
+ * a no-op and a successful fill of an already-white interior look identical.
+ *
+ * Always composites with destination-over, unlike `floodFill`, which only takes that path when
+ * `expand > 0`. Painting behind is the point here, not an artefact of the expand pass.
+ */
+export function fillAllEnclosed(
+  ctx: CanvasRenderingContext2D,
+  fillColor: { r: number; g: number; b: number; a: number },
+  opts: { gap?: number; expand?: number } = {},
+): number {
+  const w = ctx.canvas.width,
+    h = ctx.canvas.height;
+  if (w === 0 || h === 0) return 0;
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const { region, area } = enclosedRegion(data, w, h, { gap: opts.gap, expand: opts.expand });
+  if (area === 0) return 0;
+
+  const temp = document.createElement("canvas");
+  temp.width = w;
+  temp.height = h;
+  const tctx = temp.getContext("2d")!;
+  const img = tctx.createImageData(w, h);
+  const td = img.data;
+  for (let i = 0; i < w * h; i++) {
+    if (!region[i]) continue;
+    const pi = i * 4;
+    td[pi] = fillColor.r;
+    td[pi + 1] = fillColor.g;
+    td[pi + 2] = fillColor.b;
+    td[pi + 3] = fillColor.a;
+  }
+  tctx.putImageData(img, 0, 0);
+
+  ctx.save();
+  ctx.resetTransform(); // the region is in device px; the caller's CTM must not scale it
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.drawImage(temp, 0, 0);
+  ctx.restore();
+  return area;
 }
