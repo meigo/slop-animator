@@ -11,6 +11,8 @@ import {
   ensureDrawableKeyframe,
   insertFrameAllLayers,
   deleteFrameAllLayers,
+  shiftSpan,
+  shiftStartFrame,
   moveKeyframe,
   setHoldSpan,
   planMergeDown,
@@ -395,5 +397,133 @@ describe("planMergeDown", () => {
     const plan = planMergeDown(below, upper);
     expect(plan[0]).toEqual({ kind: "hold" }); // nothing shown yet
     expect(plan[1]).toEqual({ kind: "key", below: null, upper: ucanvas });
+  });
+});
+
+describe("shiftSpan (how a reference range reacts to a ripple insert/delete)", () => {
+  it("moves a span that starts at or after the inserted frame", () => {
+    expect(shiftSpan({ start: 10, end: 20 }, 5, 1)).toEqual({ start: 11, end: 21 });
+    expect(shiftSpan({ start: 5, end: 20 }, 5, 1)).toEqual({ start: 6, end: 21 }); // boundary
+  });
+
+  it("GROWS a span that straddles the inserted frame — the frame lands inside the shot", () => {
+    expect(shiftSpan({ start: 4, end: 20 }, 5, 1)).toEqual({ start: 4, end: 21 });
+    expect(shiftSpan({ start: 4, end: 5 }, 5, 1)).toEqual({ start: 4, end: 6 }); // at == end
+  });
+
+  it("leaves a span entirely before the inserted frame alone", () => {
+    expect(shiftSpan({ start: 0, end: 4 }, 5, 1)).toEqual({ start: 0, end: 4 });
+  });
+
+  it("moves a span that starts after the deleted frame", () => {
+    expect(shiftSpan({ start: 10, end: 20 }, 5, -1)).toEqual({ start: 9, end: 19 });
+  });
+
+  it("SHRINKS a span that straddles the deleted frame", () => {
+    expect(shiftSpan({ start: 4, end: 20 }, 5, -1)).toEqual({ start: 4, end: 19 });
+    expect(shiftSpan({ start: 5, end: 20 }, 5, -1)).toEqual({ start: 5, end: 19 }); // at == start
+  });
+
+  it("never inverts a span — deleting its only frame floors it at one frame", () => {
+    expect(shiftSpan({ start: 7, end: 7 }, 7, -1)).toEqual({ start: 7, end: 7 });
+  });
+
+  it("leaves a span entirely before the deleted frame alone", () => {
+    expect(shiftSpan({ start: 0, end: 4 }, 5, -1)).toEqual({ start: 0, end: 4 });
+  });
+});
+
+describe("shiftStartFrame (audio/video, which have no end to grow)", () => {
+  it("moves a clip starting at or after the inserted frame", () => {
+    expect(shiftStartFrame(10, 5, 1)).toBe(11);
+    expect(shiftStartFrame(5, 5, 1)).toBe(6); // boundary
+  });
+
+  it("leaves a clip that starts before the inserted frame — footage cannot stretch", () => {
+    expect(shiftStartFrame(4, 5, 1)).toBe(4);
+  });
+
+  it("moves a clip starting after the deleted frame, leaves one at or before it", () => {
+    expect(shiftStartFrame(10, 5, -1)).toBe(9);
+    expect(shiftStartFrame(5, 5, -1)).toBe(5);
+    expect(shiftStartFrame(4, 5, -1)).toBe(4);
+  });
+});
+
+describe("ripple insert/delete shift document-space clips", () => {
+  const imageRef = (range?: { start: number; end: number }) =>
+    ({
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      range,
+    }) as unknown as never;
+
+  const proj = (layers: unknown[], audio: unknown = null) =>
+    ({
+      name: "t",
+      width: 10,
+      height: 10,
+      fps: 12,
+      bgColor: "#fff",
+      frameCount: 10,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers,
+      audio,
+    }) as unknown as Project;
+
+  it("shifts an image reference's range on insert", () => {
+    const ref = imageRef({ start: 4, end: 8 }) as unknown as {
+      range: { start: number; end: number };
+    };
+    insertFrameAllLayers(proj([ref]), 2);
+    expect(ref.range).toEqual({ start: 5, end: 9 });
+  });
+
+  it("grows a straddling range rather than moving it", () => {
+    const ref = imageRef({ start: 2, end: 8 }) as unknown as {
+      range: { start: number; end: number };
+    };
+    insertFrameAllLayers(proj([ref]), 4);
+    expect(ref.range).toEqual({ start: 2, end: 9 });
+  });
+
+  it("leaves an UNTRIMMED reference alone — it has no range to shift", () => {
+    const ref = imageRef() as unknown as { range?: unknown };
+    insertFrameAllLayers(proj([ref]), 2);
+    expect(ref.range).toBeUndefined();
+  });
+
+  it("REPLACES the range object rather than mutating it (undo snapshots share refs)", () => {
+    const range = { start: 4, end: 8 };
+    const ref = imageRef(range) as unknown as { range: { start: number; end: number } };
+    insertFrameAllLayers(proj([ref]), 2);
+    expect(range).toEqual({ start: 4, end: 8 }); // the original object is untouched
+    expect(ref.range).not.toBe(range);
+  });
+
+  it("shifts the audio track's start on insert and delete", () => {
+    const audio = { offsetFrames: 6 };
+    insertFrameAllLayers(proj([], audio), 2);
+    expect(audio.offsetFrames).toBe(7);
+    deleteFrameAllLayers(proj([], audio), 2);
+    expect(audio.offsetFrames).toBe(6);
+  });
+
+  it("shrinks a straddling range on delete", () => {
+    const ref = imageRef({ start: 2, end: 8 }) as unknown as {
+      range: { start: number; end: number };
+    };
+    deleteFrameAllLayers(proj([ref]), 4);
+    expect(ref.range).toEqual({ start: 2, end: 7 });
   });
 });

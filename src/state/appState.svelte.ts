@@ -241,6 +241,11 @@ export interface StructSnapshot {
   height: number;
   activeLayerId: number;
   playhead: number;
+  /** The audio track's start frame. Audio is otherwise OUTSIDE undo on purpose (set/remove-track,
+   *  mute and the waveform drag are all non-undoable, matching opacity). This one field is in
+   *  because a ripple insert/delete MOVES it programmatically: without it, undoing a ripple would
+   *  restore every layer and range but leave the audio shifted — worse than not shifting at all. */
+  audioOffsetFrames: number | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -265,6 +270,7 @@ function snapshotStructure(): StructSnapshot {
     height: state.project.height,
     activeLayerId: state.activeLayerId,
     playhead: state.playhead,
+    audioOffsetFrames: state.project.audio?.offsetFrames ?? null,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -311,6 +317,10 @@ function restoreStructure(s: StructSnapshot) {
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
+  // Only when the track still exists AND the snapshot had one: a set/remove-track between the
+  // snapshot and now is not undoable, so this must not resurrect or zero an offset out of nowhere.
+  if (state.project.audio && s.audioOffsetFrames !== null)
+    state.project.audio.offsetFrames = s.audioOffsetFrames;
   state.version++;
 }
 
