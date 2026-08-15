@@ -295,7 +295,9 @@
           class="shrink-0"
           class:text-text-muted={layer.media.type === "missing"}
           class:text-text-secondary={layer.media.type !== "missing"}
-          title={layer.media.type === "missing" ? "Missing — re-link below" : t}
+          title={layer.media.type === "missing"
+            ? "Missing — re-link below"
+            : `${t} reference — a guide only, not included in exports`}
         >
           {#if t === "image"}<Image size={13} />{:else}<Film size={13} />{/if}
         </span>

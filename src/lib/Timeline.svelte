@@ -1223,7 +1223,13 @@
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x. -->
-            <span class="flex w-3.5 shrink-0 justify-center" role="presentation">
+            <span
+              class="flex w-3.5 shrink-0 justify-center"
+              role="presentation"
+              title={layer.kind === "ref"
+                ? "Reference layer — a guide only, not included in exports"
+                : ""}
+            >
               {#if layer.kind === "ref"}
                 {#if layer.media.type === "video" || (layer.media.type === "missing" && layer.media.was === "video")}
                   <Film size={13} />

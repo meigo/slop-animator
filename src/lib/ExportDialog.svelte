@@ -9,6 +9,9 @@
   let busy = $state(false);
   const videoOk = isVideoExportSupported();
   const stem = $derived(sanitizeFilename(appState.project.name));
+  // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
+  // point of the note is "these are guides", not "these would otherwise have shown".
+  const refCount = $derived(appState.project.layers.filter((l) => l.kind === "ref").length);
 
   async function run(kind: "png" | VideoFormat) {
     if (busy) return;
@@ -71,6 +74,18 @@
         disabled={busy || !videoOk}
         onclick={() => run("webm")}>WebM video — {stem}.webm</button
       >
+      {#if refCount > 0}
+        <!-- Both exporters hardcode includeReference:false, so references are visible while you
+             work and silently absent from every output. Said here because this is the moment it
+             matters, and nothing else in the app says it. -->
+        <span class="text-xs text-text-secondary">
+          {refCount === 1
+            ? "1 reference layer is a guide"
+            : `${refCount} reference layers are guides`}
+          and will not appear in the export. To include an image reference, use “Rasterize to drawing
+          layer” on its layer row first.
+        </span>
+      {/if}
       {#if !videoOk}
         <span class="text-xs text-text-secondary"
           >Video export needs WebCodecs (Chrome/Edge or Safari 16.4+).</span
