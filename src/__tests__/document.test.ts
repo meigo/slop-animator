@@ -3,6 +3,7 @@ import {
   groupHasLockedLayer,
   isLayerEditable,
   isLayerLocked,
+  whyNotEditable,
   resolveKeyframeIndex,
   buildFrameDrawList,
   containRect,
@@ -509,6 +510,15 @@ describe("isLayerEditable", () => {
       transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
     };
     expect(isLayerEditable(ref, [])).toBe(false);
+    expect(whyNotEditable(ref, [])).toBe("not-draw");
+  });
+
+  it("whyNotEditable names the block, lock before hidden", () => {
+    const base = layer(1, [makeKey()]);
+    expect(whyNotEditable(base, [])).toBeNull();
+    expect(whyNotEditable({ ...base, locked: true }, [])).toBe("locked");
+    expect(whyNotEditable({ ...base, visible: false }, [])).toBe("hidden");
+    expect(whyNotEditable({ ...base, locked: true, visible: false }, [])).toBe("locked");
   });
 });
 

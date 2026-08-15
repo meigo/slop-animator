@@ -4,6 +4,9 @@
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
   import { computeAnchor } from "../core/selection-anchor";
+  import { state as appState, activeLayer } from "../state/appState.svelte";
+  import { whyNotEditable } from "../anim/document";
+  import { editBlockLabel } from "./status-hint";
 
   // Selection/viewport are read through getters and polled each frame — they are created
   // in the parent's onMount (after this child mounts), so direct props would be undefined.
@@ -82,6 +85,10 @@
 
   const distortActive = $derived(mode === "warping" && warp.rows === 2 && warp.cols === 2);
   const meshActive = $derived(mode === "warping" && (warp.rows !== 2 || warp.cols !== 2));
+  const liftBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
+  // Only the lift tools (transform / distort / mesh) are blocked. Deselect stays live.
+  const liftBlocked = $derived(liftBlock !== null && mode === "selected");
+  const liftBlockLabel = $derived(liftBlock ? editBlockLabel(liftBlock) : "");
 
   // stopPropagation is not enough on its own: Svelte 5 delegates pointerdown to the
   // document, so the stage's native bubble listener in setupInput fires first and
@@ -98,106 +105,120 @@
 
 <div
   bind:this={panelEl}
-  class="selection-actions-panel absolute z-30 flex items-center gap-1 p-1 rounded-lg bg-surface border border-border shadow-md"
+  class="selection-actions-panel absolute z-30 flex flex-col items-stretch gap-1 p-1 rounded-lg bg-surface border border-border shadow-md"
   style="left: {pos.x}px; top: {pos.y}px; opacity: {visible ? 1 : 0}; pointer-events: {visible
     ? 'auto'
     : 'none'}; touch-action: none;"
 >
-  {#if mode === "selected"}
+  <div class="flex items-center gap-1">
+    {#if mode === "selected"}
+      <button
+        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+        aria-disabled={liftBlocked}
+        onpointerdown={tap(() => {
+          if (!liftBlocked) onTransform();
+        })}
+        title={liftBlocked ? liftBlockLabel : "Free transform"}
+      >
+        <Move size={18} />
+      </button>
+    {/if}
     <button
-      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onTransform)}
-      title="Free transform"
+      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class:bg-accent={distortActive}
+      class:text-accent-text={distortActive}
+      class:border-accent={distortActive}
+      class:bg-surface={!distortActive}
+      class:text-text-secondary={!distortActive}
+      class:border-border={!distortActive}
+      aria-disabled={liftBlocked}
+      onpointerdown={tap(() => {
+        if (!liftBlocked) onDistort();
+      })}
+      title={liftBlocked ? liftBlockLabel : "Distort (4-corner)"}
     >
-      <Move size={18} />
+      <SquareDashed size={18} />
     </button>
-  {/if}
-  <button
-    class="size-10 rounded-md border flex items-center justify-center"
-    class:bg-accent={distortActive}
-    class:text-accent-text={distortActive}
-    class:border-accent={distortActive}
-    class:bg-surface={!distortActive}
-    class:text-text-secondary={!distortActive}
-    class:border-border={!distortActive}
-    onpointerdown={tap(onDistort)}
-    title="Distort (4-corner)"
-  >
-    <SquareDashed size={18} />
-  </button>
-  <button
-    class="size-10 rounded-md border flex items-center justify-center"
-    class:bg-accent={meshActive}
-    class:text-accent-text={meshActive}
-    class:border-accent={meshActive}
-    class:bg-surface={!meshActive}
-    class:text-text-secondary={!meshActive}
-    class:border-border={!meshActive}
-    onpointerdown={tap(onMesh)}
-    title="Mesh warp (3×3)"
-  >
-    <Grid3x3 size={18} />
-  </button>
-  {#if mode === "warping"}
     <button
-      class="px-2 py-1 text-xs border border-border rounded bg-surface"
-      title="Less detail"
-      onpointerdown={tap(() => onDensify(-1))}>−</button
+      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class:bg-accent={meshActive}
+      class:text-accent-text={meshActive}
+      class:border-accent={meshActive}
+      class:bg-surface={!meshActive}
+      class:text-text-secondary={!meshActive}
+      class:border-border={!meshActive}
+      aria-disabled={liftBlocked}
+      onpointerdown={tap(() => {
+        if (!liftBlocked) onMesh();
+      })}
+      title={liftBlocked ? liftBlockLabel : "Mesh warp (3×3)"}
     >
-    <span class="text-xs text-text-secondary tabular-nums">{warp.rows}×{warp.cols}</span>
-    <button
-      class="px-2 py-1 text-xs border border-border rounded bg-surface"
-      title="More detail"
-      onpointerdown={tap(() => onDensify(1))}>+</button
-    >
-    <div class="flex rounded border border-border overflow-hidden text-xs">
-      <button
-        class="px-2 py-1"
-        class:bg-surface-active={deformMode === "ffd"}
-        onpointerdown={tap(() => onSetDeformMode("ffd"))}>FFD</button
-      >
-      <button
-        class="px-2 py-1"
-        class:bg-surface-active={deformMode === "rigid"}
-        onpointerdown={tap(() => onSetDeformMode("rigid"))}>Rigid</button
-      >
-    </div>
-    {#if deformMode === "rigid"}
+      <Grid3x3 size={18} />
+    </button>
+    {#if mode === "warping"}
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-surface"
-        title="Clear pinned handles"
-        onpointerdown={tap(onResetPins)}>Reset pins</button
+        title="Less detail"
+        onpointerdown={tap(() => onDensify(-1))}>−</button
       >
+      <span class="text-xs text-text-secondary tabular-nums">{warp.rows}×{warp.cols}</span>
+      <button
+        class="px-2 py-1 text-xs border border-border rounded bg-surface"
+        title="More detail"
+        onpointerdown={tap(() => onDensify(1))}>+</button
+      >
+      <div class="flex rounded border border-border overflow-hidden text-xs">
+        <button
+          class="px-2 py-1"
+          class:bg-surface-active={deformMode === "ffd"}
+          onpointerdown={tap(() => onSetDeformMode("ffd"))}>FFD</button
+        >
+        <button
+          class="px-2 py-1"
+          class:bg-surface-active={deformMode === "rigid"}
+          onpointerdown={tap(() => onSetDeformMode("rigid"))}>Rigid</button
+        >
+      </div>
+      {#if deformMode === "rigid"}
+        <button
+          class="px-2 py-1 text-xs border border-border rounded bg-surface"
+          title="Clear pinned handles"
+          onpointerdown={tap(onResetPins)}>Reset pins</button
+        >
+      {/if}
     {/if}
-  {/if}
-  {#if mode === "selected"}
-    <!-- Deselect: the bar is the ONLY reachable deselect while a paint tool is active (the
+    {#if mode === "selected"}
+      <!-- Deselect: the bar is the ONLY reachable deselect while a paint tool is active (the
          ToolOptions Deselect shows for select/lasso, tap-outside draws instead, Esc needs a
          keyboard) — and a selection clips brush/eraser/fill, so a forgotten one is confusing. -->
-    <div class="w-px h-6 bg-border mx-0.5"></div>
-    <button
-      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onCancel)}
-      title="Deselect (Esc)"
-    >
-      <X size={18} />
-    </button>
-  {/if}
-  {#if mode !== "selected"}
-    <div class="w-px h-6 bg-border mx-0.5"></div>
-    <button
-      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onCommit)}
-      title="Commit"
-    >
-      <Check size={18} />
-    </button>
-    <button
-      class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
-      onpointerdown={tap(onCancel)}
-      title="Cancel"
-    >
-      <X size={18} />
-    </button>
+      <div class="w-px h-6 bg-border mx-0.5"></div>
+      <button
+        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        onpointerdown={tap(onCancel)}
+        title="Deselect (Esc)"
+      >
+        <X size={18} />
+      </button>
+    {/if}
+    {#if mode !== "selected"}
+      <div class="w-px h-6 bg-border mx-0.5"></div>
+      <button
+        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        onpointerdown={tap(onCommit)}
+        title="Commit"
+      >
+        <Check size={18} />
+      </button>
+      <button
+        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        onpointerdown={tap(onCancel)}
+        title="Cancel"
+      >
+        <X size={18} />
+      </button>
+    {/if}
+  </div>
+  {#if liftBlocked}
+    <p class="text-xs text-amber-500 px-1 pb-0.5 text-center max-w-56">{liftBlockLabel}</p>
   {/if}
 </div>

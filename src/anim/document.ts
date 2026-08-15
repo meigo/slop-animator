@@ -92,6 +92,16 @@ export function isLayerEditable(layer: Layer, groups: LayerGroup[]): layer is Dr
   return layer.kind === "draw" && !isLayerLocked(layer, groups) && isLayerVisible(layer, groups);
 }
 
+/** Why `isLayerEditable` is false — lock wins over hidden (same precedence as the status hint). */
+export type LayerEditBlock = "locked" | "hidden" | "not-draw";
+
+export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlock | null {
+  if (layer.kind !== "draw") return "not-draw";
+  if (isLayerLocked(layer, groups)) return "locked";
+  if (!isLayerVisible(layer, groups)) return "hidden";
+  return null;
+}
+
 /** Effective lock: the layer's own flag OR its group's. Derived (never cascaded) — same contract as
  *  `isLayerVisible`, so toggling a group's lock needs no per-child state to save and restore. */
 export function isLayerLocked(layer: Layer, groups: LayerGroup[]): boolean {

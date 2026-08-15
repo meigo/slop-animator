@@ -4,6 +4,20 @@
  * always wins. Content rule (2026-08-11 spec): only what a first-time user CANNOT see — no
  * keyboard-shortcut lists, nothing that restates a visible button.
  */
+import type { LayerEditBlock } from "../anim/document";
+
+/** On-canvas / tool-options copy for a layer that refuses edits. General — paint and transform. */
+export function editBlockLabel(block: LayerEditBlock): string {
+  switch (block) {
+    case "locked":
+      return "Layer locked — unlock it to edit";
+    case "hidden":
+      return "Layer hidden — show it to edit";
+    case "not-draw":
+      return "Switch to a drawing layer to edit";
+  }
+}
+
 export interface HintContext {
   tool: string;
   /** Active layer is a locked drawing layer → every content op silently refuses. */
@@ -20,8 +34,8 @@ export interface HintContext {
 
 export function contextHint(c: HintContext): string {
   // A hint for a gesture that currently does nothing is worse than no hint: explain the block first.
-  if (c.locked) return "Layer locked — unlock it in the layer list to edit";
-  if (c.hiddenLayer) return "Layer hidden — show it to edit";
+  if (c.locked) return editBlockLabel("locked");
+  if (c.hiddenLayer) return editBlockLabel("hidden");
 
   switch (c.tool) {
     case "select":

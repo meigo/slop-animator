@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contextHint, type HintContext } from "../lib/status-hint";
+import { contextHint, editBlockLabel, type HintContext } from "../lib/status-hint";
 
 const base: HintContext = {
   tool: "brush",
@@ -26,6 +26,14 @@ describe("hidden layers", () => {
     expect(contextHint(ctx({ tool: "select", locked: true, hiddenLayer: true }))).toMatch(
       /Layer locked/,
     );
+  });
+});
+
+describe("editBlockLabel", () => {
+  it("is tool-agnostic (edit, not transform)", () => {
+    expect(editBlockLabel("locked")).toBe("Layer locked — unlock it to edit");
+    expect(editBlockLabel("hidden")).toBe("Layer hidden — show it to edit");
+    expect(editBlockLabel("not-draw")).toBe("Switch to a drawing layer to edit");
   });
 });
 
