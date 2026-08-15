@@ -1614,3 +1614,27 @@ need `LABEL_W` to become reactive state threaded through four consumers plus per
 **Owed a browser pass:** drag wider/narrower and watch the detail row wrap and un-wrap; the canvas
 re-fits as the panel changes; reload keeps the width; shrink the window past 2× the panel width and
 see it re-clamp; iPad drag (touch-action).
+
+**The timeline gutter's name column is drag-resizable (2026-08-16) — the deferral is closed.** It was
+put off once because "`LABEL_W` would have to become reactive state threaded through four consumers
+plus prefs persistence". That is exactly what happened, and it was the whole job: `LABEL_W` and
+`GUTTER_W` went from module consts to `$derived`, after which every consumer — the ruler spacer, both
+playhead offsets, the full-height sticky plate, `stripMinW`, `AudioLane`'s `labelW` prop and
+`TimelineSelectionBar`'s `labelW` — follows for free, because they already read those two names
+rather than hardcoding 120. **That is why the earlier gutter-geometry work mattered:** collapsing the
+three ad-hoc offsets into `LABEL_W`/`MARKER_W`/`GUTTER_W` is what made this a two-line change instead
+of a hunt. Anything new in the gutter must keep reading them.
+`MARKER_W` stays FIXED at 22 — it holds one 11px glyph and has nothing to gain from resizing; only
+the name column moves. `clampGutterLabelWidth` (pure, unit-tested) clamps to [80, **40%** of the
+viewport], tighter than the layer panel's 50% because this column eats horizontally into the frame
+strip, which is the timeline's actual content. `DEFAULT_GUTTER_LABEL_WIDTH` is 120, the old constant,
+so nothing moves on first run; persisted as `timelineLabelWidth` through the existing prefs pair.
+**The grip's z-index is the non-obvious part:** it is `z-25`, above the PER-ROW sticky labels at
+z-20. At z-15 (beside the plate) or lower, whichever row you pressed would swallow the gesture with
+its own label. It straddles the divider (`left: GUTTER_W - 3`, 6px wide), is sticky so it rides that
+edge through horizontal scroll, and is pulled out of flow with the same negative margin the plate
+uses so it adds no height. Dragging RIGHT widens — not inverted, unlike the layer panel's grip, whose
+panel is docked on the other side.
+**Owed a browser pass:** drag the divider and watch names, marker column, ruler, playhead, clips and
+the selection bar all stay aligned; scroll horizontally while narrow (the grip and gutter stay
+pinned); reload keeps the width; a very narrow name column still truncates cleanly; iPad drag.

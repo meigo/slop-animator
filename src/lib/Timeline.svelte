@@ -54,6 +54,7 @@
     playheadFollowScroll,
     timelineStripFrames,
   } from "../anim/timeline-layout";
+  import { clampGutterLabelWidth } from "../anim/panel-layout";
   import { audioFrameSpan } from "../audio/peaks";
   import { pixelCommand } from "../anim/history";
   import {
@@ -80,10 +81,14 @@
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
 
   const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
-  const LABEL_W = 120; // px, layer-name column (80 truncated most names)
+  // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
+  // every consumer below — the ruler spacer, both playhead offsets, the sticky plate, the strip
+  // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be
+  // $derived rather than the consts they used to be, or the gutter and the cells drift apart.
+  const LABEL_W = $derived(appState.timelineLabelWidth);
   const MARKER_W = 22; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
-  //                      frame cells don't butt against the name
-  const GUTTER_W = LABEL_W + MARKER_W; // total sticky width before the first frame cell
+  //                      frame cells don't butt against the name. Fixed: it holds one 11px glyph.
+  const GUTTER_W = $derived(LABEL_W + MARKER_W); // total sticky width before the first frame cell
 
   // Sticky gutters live inside each row's box. A video/audio clip past the last frame
   // widens THAT row only; shorter rows unstick when you scroll to the tail. Share one
@@ -414,9 +419,37 @@
       /* already released */
     }
   }
-  // Keep the panel within 60% of the viewport if the window shrinks.
+  // Gutter name-column resize. Unlike the panel's grip this one is NOT inverted: the gutter is on
+  // the left, so dragging right widens it.
+  let gutterStartX = 0;
+  let gutterStartW = 0;
+  function gutterGripDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    gutterStartX = e.clientX;
+    gutterStartW = appState.timelineLabelWidth;
+  }
+  function gutterGripMove(e: PointerEvent) {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    appState.timelineLabelWidth = clampGutterLabelWidth(
+      gutterStartW + (e.clientX - gutterStartX),
+      window.innerWidth,
+    );
+  }
+  function gutterGripUp(e: PointerEvent) {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
+
+  // Keep both resizable dimensions within their share of the viewport if the window shrinks.
   function onWindowResize() {
     appState.timelineHeight = clampTimelineHeight(appState.timelineHeight, window.innerHeight);
+    appState.timelineLabelWidth = clampGutterLabelWidth(
+      appState.timelineLabelWidth,
+      window.innerWidth,
+    );
   }
 
   // Cell-strip pointer interaction: drag a ◆ to move it, drag a span's right edge to resize
@@ -1095,6 +1128,23 @@
     <div
       class="pointer-events-none sticky top-0 left-0 z-15 bg-surface"
       style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
+    ></div>
+    <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
+         it stays on that edge through horizontal scroll. z-25 to sit above the per-row sticky labels
+         (z-20) — otherwise a row's own label would swallow the press. Pulled out of flow the same
+         way the plate is, so it adds no height. -->
+    <div
+      class="sticky top-0 z-25 cursor-col-resize"
+      style="left: {GUTTER_W -
+        3}px; width: 6px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the timeline name column"
+      title="Drag to resize the name column"
+      onpointerdown={gutterGripDown}
+      onpointermove={gutterGripMove}
+      onpointerup={gutterGripUp}
+      onpointercancel={gutterGripUp}
     ></div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
