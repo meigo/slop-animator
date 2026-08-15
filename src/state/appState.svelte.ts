@@ -3,6 +3,8 @@ import {
   createCellCanvas,
   cloneCanvas,
   isDrawingLayer,
+  canRemoveLayer,
+  whyNotMergeDown,
   createDrawingLayer,
   createReferenceLayer,
   resolveLayerName,
@@ -407,8 +409,7 @@ export function removeLayer(id: number) {
   const layers = state.project.layers;
   const idx = layers.findIndex((l) => l.id === id);
   if (idx === -1) return;
-  const drawingCount = layers.filter(isDrawingLayer).length;
-  if (isDrawingLayer(layers[idx]) && drawingCount <= 1) return; // keep one drawing layer
+  if (!canRemoveLayer(layers, id)) return; // keep one drawing layer
   commitStructural(() => {
     const removed = layers[idx];
     layers.splice(idx, 1);
@@ -433,7 +434,7 @@ export function duplicateLayer(id: number) {
   const idx = layers.findIndex((l) => l.id === id);
   if (idx === -1) return;
   const src = layers[idx];
-  if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels)
+  if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels); see canDuplicateLayer
   commitStructural(() => {
     const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
     dup.visible = src.visible;
@@ -545,18 +546,13 @@ export function resetGroupTransform(groupId: number): void {
 /** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */
 export function mergeDown(id: number) {
   const layers = state.project.layers;
+  // Single authority for "can this merge happen" — the LayerList button reads the same predicate to
+  // decide whether to dim itself and what reason to show.
+  if (whyNotMergeDown(layers, state.project.groups, id)) return;
   const idx = layers.findIndex((l) => l.id === id);
-  if (idx <= 0) return; // nothing below
   const upper = layers[idx];
   const below = layers[idx - 1];
-  if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return;
-  // Merging REPLACES the lower layer's whole cell track, so it is a content edit on both layers —
-  // refuse if either is locked or hidden (every other content op on them already does).
-  if (
-    !isLayerEditable(upper, state.project.groups) ||
-    !isLayerEditable(below, state.project.groups)
-  )
-    return;
+  if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return; // unreachable; narrows for TS
 
   liftGuard.discard?.(); // merge replaces both cell tracks; a live lift would bake into a detached canvas
   commitStructural(() => {

@@ -61,8 +61,11 @@
     isIdentityTransform,
     cellTransform,
     resolvedKeyCell,
+    canRemoveLayer,
+    canDuplicateLayer,
+    whyNotMergeDown,
   } from "../anim/document";
-  import type { Layer, LayerGroup } from "../anim/document";
+  import type { Layer, LayerGroup, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
 
   let listEl: HTMLDivElement;
@@ -118,6 +121,24 @@
   function addLayer() {
     addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
   }
+
+  // A button that silently no-ops explains nothing, so the three actions that can refuse dim and say
+  // why. aria-disabled (not disabled) per the app-wide rule: a disabled button dispatches no pointer
+  // events, so App.svelte's delegated status-hint listener could never read the title — and on iPad
+  // there is no hover at all. The predicates are the same ones the actions themselves guard on.
+  const canDelete = $derived(canRemoveLayer(appState.project.layers, appState.activeLayerId));
+  const canDuplicate = $derived(canDuplicateLayer(appState.project.layers, appState.activeLayerId));
+  const mergeBlock = $derived(
+    whyNotMergeDown(appState.project.layers, appState.project.groups, appState.activeLayerId),
+  );
+  const MERGE_BLOCK_REASON: Record<MergeDownBlock, string> = {
+    "no-layer-below": "no layer below to merge into",
+    "not-drawing": "only drawing layers can be merged",
+    "read-only": "a layer is locked or hidden",
+  };
+  const mergeTitle = $derived(
+    mergeBlock ? `Merge down — ${MERGE_BLOCK_REASON[mergeBlock]}` : "Merge down",
+  );
 
   // Show Apply/Reset when the layer transform, the active frame's resolved key cell transform,
   // or the containing group's transform is non-identity (draw layers only).
@@ -456,14 +477,20 @@
       onclick={addLayer}><Plus size={16} /></button
     >
     <button
-      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
-      title="Duplicate layer"
-      onclick={() => duplicateLayer(appState.activeLayerId)}><Copy size={16} /></button
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+      title={canDuplicate ? "Duplicate layer" : "Duplicate layer — only drawing layers duplicate"}
+      aria-disabled={!canDuplicate}
+      onclick={() => {
+        if (canDuplicate) duplicateLayer(appState.activeLayerId);
+      }}><Copy size={16} /></button
     >
     <button
-      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
-      title="Merge down"
-      onclick={() => mergeDown(appState.activeLayerId)}><ArrowDownToLine size={16} /></button
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+      title={mergeTitle}
+      aria-disabled={!!mergeBlock}
+      onclick={() => {
+        if (!mergeBlock) mergeDown(appState.activeLayerId);
+      }}><ArrowDownToLine size={16} /></button
     >
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
@@ -471,9 +498,14 @@
       onclick={groupActiveLayer}><FolderPlus size={16} /></button
     >
     <button
-      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
-      title="Delete layer"
-      onclick={() => removeLayer(appState.activeLayerId)}><Trash2 size={16} /></button
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+      title={canDelete
+        ? "Delete layer"
+        : "Delete layer — a project needs at least one drawing layer"}
+      aria-disabled={!canDelete}
+      onclick={() => {
+        if (canDelete) removeLayer(appState.activeLayerId);
+      }}><Trash2 size={16} /></button
     >
   </div>
 
