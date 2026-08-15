@@ -503,7 +503,7 @@
        inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
        column, so it costs no width. -->
   <div
-    class="absolute inset-y-0 left-0 z-30 flex w-2 items-center justify-center cursor-col-resize text-text-muted hover:text-text"
+    class="absolute inset-y-0 left-0 z-30 flex w-3 items-center justify-center cursor-col-resize text-text-muted hover:text-text"
     style="touch-action: none"
     role="separator"
     aria-orientation="vertical"
@@ -523,7 +523,10 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <div class="flex items-center gap-1 p-1 border-b border-border">
+  <!-- pl-3 on BOTH direct children, not on the panel root: padding the root would inset the header's
+       bottom border too, leaving it short of the left edge. This reserves the grip's 12px strip so
+       it no longer overlays the rows' drag handles. -->
+  <div class="flex items-center gap-1 py-1 pr-1 pl-3 border-b border-border">
     <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
@@ -563,7 +566,7 @@
     >
   </div>
 
-  <div bind:this={listEl} class="flex-1 overflow-y-auto">
+  <div bind:this={listEl} class="flex-1 overflow-y-auto pl-3">
     {#key dragNonce}
       {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
         {#if "layer" in seg}
