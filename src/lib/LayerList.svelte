@@ -503,7 +503,7 @@
        inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
        column, so it costs no width. -->
   <div
-    class="absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize hover:bg-text/10"
+    class="absolute inset-y-0 left-0 z-30 w-3 cursor-col-resize hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="vertical"

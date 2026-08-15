@@ -1664,6 +1664,15 @@ a bare edge on one and a mark on the other was the actual inconsistency.
 The timeline's own top grip (height) followed the same day, for consistency: its hit area was
 ALREADY the same 8px as the other two (`h-2` vs `w-2`) — the only thing making it look like a bigger
 target was the bar it still drew. Measure before resizing a hit area; the difference was chrome.
+**All three are 12px** (bumped from 8px on 2026-08-16), and each needed its own accommodation to get
+there without covering a real control — worth knowing before anyone resizes them again:
+the LAYER PANEL's grip abuts the drag-handle icon exactly (8px reserved strip + the row's own 4px
+`p-1` = 12), so it needed no extra room; the TIMELINE's height grip sits in the panel's top padding,
+which went `p-2` → `px-2 pt-3 pb-2` so the thicker strip still lands on empty space instead of the
+top 4px of the frame-tool buttons (`p-2 pt-3` would be a conflicting-classes lint ERROR here, hence
+the split); and the GUTTER's is deliberately ASYMMETRIC — `left: GUTTER_W - 10` with width 12, so 10
+of its 12px fall inside the gutter and only 2 reach the first frame cell, which is interactive at
+24px wide and would otherwise lose a quarter of itself to resizing.
 **Known trade, accepted:** hover does not exist on iPad, so there is no visual affordance there at
 all; the edges are discoverable only by trying them. Both still carry `title=`, which the status bar
 surfaces on tap, so the hint route survives even though the tint does not.
