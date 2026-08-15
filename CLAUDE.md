@@ -1604,8 +1604,15 @@ window-resize handler re-clamps so a shrunk window cannot strand the panel wider
 every existing preferences blob look identical; the test pins that number for the same reason.
 **The grip is on the LEFT edge because the panel is docked right**, so dragging left WIDENS —
 `gripStartW + (gripStartX - e.clientX)`, the same inversion the timeline uses for drag-up-to-grow.
-It overlays the panel edge rather than taking a column, so it costs no width, and carries the same
-`touch-action: none` + pointer-capture + `pointercancel` trio every drag surface here needs.
+It carries the same `touch-action: none` + pointer-capture + `pointercancel` trio every drag surface
+here needs. **It RESERVES a 12px strip rather than overlaying the rows** (corrected 2026-08-16 from a
+screenshot): overlaying put it directly on top of each row's `layer-drag-handle`, so the two
+grab targets sat on the same pixels. The strip comes from `pl-3` on the panel's TWO direct children,
+not on the root — padding the root would inset the header's bottom border and leave it short of the
+left edge. `MIN_PANEL_WIDTH` rose 180 → 192 to match, since the floor is a guarantee about CONTENT
+width and reserving space had to raise it by the same amount. `DEFAULT_PANEL_WIDTH` stays 224 so the
+panel's overall width is unchanged; that costs stored preferences 12px of content, which the row's
+`flex-wrap` absorbs and the drag itself remedies.
 This is only safe because the layer detail row is already `flex-wrap` (the 2026-08-11 de-crowding
 work): a narrower panel wraps to more lines rather than clipping, and a wider one un-wraps. Any
 future per-layer control must keep that property or the minimum width becomes a real constraint.
