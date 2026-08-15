@@ -34,6 +34,7 @@ import {
   type DrawingLayer,
   type ReferenceMedia,
   type ReferenceLayer,
+  type Layer,
 } from "../anim/document";
 
 const makeKey = (): Cell => ({ kind: "key", canvas: {} as HTMLCanvasElement });
@@ -170,6 +171,48 @@ describe("buildFrameDrawList", () => {
     expect(buildFrameDrawList(p, 0, false)).toEqual([
       { kind: "draw", layerId: 2, keyframeIndex: 0, opacity: 100 },
     ]);
+  });
+
+  it("omits a reference outside its range, keeps it inside", () => {
+    const ref = {
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      range: { start: 2, end: 4 },
+    } as unknown as Layer;
+    const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
+
+    expect(buildFrameDrawList(p, 1).length).toBe(0);
+    expect(buildFrameDrawList(p, 2).map((o) => o.kind)).toEqual(["ref"]);
+    expect(buildFrameDrawList(p, 4).map((o) => o.kind)).toEqual(["ref"]);
+    expect(buildFrameDrawList(p, 5).length).toBe(0);
+  });
+
+  it("an untrimmed reference still draws on every frame", () => {
+    const ref = {
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    } as unknown as Layer;
+    const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
+    expect(buildFrameDrawList(p, 0).length).toBe(1);
+    expect(buildFrameDrawList(p, 500).length).toBe(1);
   });
 });
 

@@ -271,6 +271,7 @@ export function buildFrameDrawList(
       ops.push({ kind: "draw", layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
     } else {
       if (!includeReference) continue;
+      if (!isRefVisibleAtFrame(layer, frame, project.fps)) continue;
       ops.push({ kind: "ref", layerId: layer.id, opacity: layer.opacity });
     }
   }
