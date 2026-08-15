@@ -133,9 +133,14 @@ will not be drawn — the same reasoning that made scrubbing over a video ref ch
 Image ref rows render a clip block using the `media-clip` tokens introduced for the audio/video
 clips, in two visual states:
 
-- **Untrimmed ("always")** — a full-strip block with a **dashed** border and the default cursor.
-  It must not read as a block someone happened to drag to full width; it spans everything by
-  definition, and its edges are not meaningful positions.
+- **Untrimmed ("always")** — a block spanning the whole project (`0..frameCount-1`) with a
+  **dashed** border and the default cursor. It must not read as a block someone happened to drag
+  to full width; it spans everything by definition, and its edges are not meaningful positions.
+  It deliberately does NOT span the full `stripFrames` width: the strip is wider only when a
+  neighbouring row's video clip hangs past the last frame, which is a shared-strip layout
+  artifact rather than a fact about this image — and rendering to it would claim visibility over
+  frames that do not exist. The rendered end mirrors what an edge drag materialises, so display
+  and materialisation cannot drift apart (amended during implementation, 2026-08-15).
 - **Trimmed** — a concrete block, solid border, body drags to slide, **edge handles trim**.
 
 Video blocks keep their current geometry and body-slide gesture, now truthful. They are **not**
