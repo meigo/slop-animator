@@ -1480,17 +1480,21 @@ cannot resurrect or zero an offset. The ripple ops are **not** gated on the acti
 editable, unlike the per-layer tools: this is a document op, and skipping locked rows would destroy
 the very alignment it exists to preserve (same treatment a document resize gives them).
 
-**One known gap, deferred as a product decision, not a bug:** (3) The per-layer frame tools still do not shift ranges,
-which is correct — see the entry above for why a per-layer op has no single right answer for a
-document-space span. Recorded here only so the question is not re-opened from scratch. Previously (4): so an image ref aligned to a shot
-desyncs by the inserted/deleted count. Consistent with the video clip's `offsetFrames`, which is also
-left unshifted — but an image ref was structurally immune to this class of bug before this feature,
-so the exposure is new. (4) `replaceProject` calls `liftGuard.discard?.()` but never
-`transformDragGuard.settle?.()` alongside it, so an in-flight transform drag surviving an Open/New
-would commit a snapshot built from the outgoing document. Pre-existing and practically unreachable
-(Open requires releasing the pointer first) — this feature just adds a second client
-(`rangeDown`/`settleRangeDrag`) to a hook that already had the same latent gap. The one-line addition
-belongs next to `liftGuard.discard?.()` whenever that function is next touched.
+**`replaceProject` settles in-flight drags (2026-08-15, closes gap 4).** It called
+`liftGuard.discard?.()` but never `transformDragGuard.settle?.()`, so a drag surviving an Open/New
+would, on release, push `restoreStructure(before)` — a snapshot of the OUTGOING document — into the
+incoming one's history. Pre-existing and practically unreachable (Open requires releasing the
+pointer first); the range drag had just become its second client. **The placement is the whole
+fix and must not be "tidied":** the settle sits above `history.clear()`, because settling COMMITS,
+and the clear immediately after is what makes that commit harmless. Moved below the clear, it would
+create precisely the stale entry it exists to prevent. Note both guards are declared _below_
+`replaceProject` in the file and read only at call time — an established pattern here, not an
+oversight.
+
+**All four review gaps from this feature are now closed.** The only thing deliberately left alone is
+that the PER-LAYER frame tools do not shift reference ranges — which is correct, not a gap: a
+per-layer op has no single right answer for a document-space span (see the ripple entry above).
+Recorded so the question is not re-opened from scratch.
 
 **Owed a browser pass:** an image ref shows a dashed block spanning `0..frameCount-1` while
 untrimmed; trimming an edge converts it to a solid block and the image disappears outside the span

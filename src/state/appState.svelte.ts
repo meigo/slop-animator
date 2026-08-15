@@ -907,6 +907,11 @@ export function replaceProject(project: Project) {
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
+  // Settle any in-flight transform/range/hold drag too. Without this its release would push
+  // restoreStructure(before) — a snapshot of the OUTGOING document — into the incoming one's
+  // history. MUST stay above history.clear(): settling commits, and clearing right after is what
+  // makes that commit harmless. Below the clear, it would be the very entry we are trying to avoid.
+  transformDragGuard.settle?.();
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
   for (const l of state.project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
