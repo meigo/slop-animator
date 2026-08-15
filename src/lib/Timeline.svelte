@@ -53,6 +53,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    refVisibleSpan,
     type DrawingLayer,
     type ReferenceLayer,
   } from "../anim/document";
@@ -80,7 +81,12 @@
     const audio = appState.project.audio;
     if (audio) ends.push(audio.offsetFrames + audioFrameSpan(audio.buffer.duration, fps));
     for (const l of appState.project.layers) {
-      if (l.kind !== "ref" || l.media.type !== "video") continue;
+      if (l.kind !== "ref") continue;
+      if (l.media.type === "image") {
+        if (l.range) ends.push(l.range.end + 1); // +1: `end` is inclusive, `ends` are exclusive
+        continue;
+      }
+      if (l.media.type !== "video") continue;
       const dur = l.media.el.duration;
       if (!Number.isFinite(dur) || dur <= 0) continue;
       const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
@@ -1139,6 +1145,27 @@
                 class:opacity-70={ref.id !== appState.activeLayerId}
                 title="Media missing — re-link from the layer panel">re-link</span
               >
+            {:else if ref.media.type === "image"}
+              {@const span = refVisibleSpan(ref, appState.project.fps)}
+              {@const s = span ?? { start: 0, end: stripFrames - 1 }}
+              <div
+                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text-secondary"
+                class:border-media-clip-border={span !== null}
+                class:cursor-grab={span !== null}
+                class:border-dashed={span === null}
+                class:border-text-muted={span === null}
+                class:opacity-70={ref.id !== appState.activeLayerId}
+                style="touch-action: none; margin-left: {s.start * CELL_W}px; width: {(s.end -
+                  s.start +
+                  1) *
+                  CELL_W}px"
+                role="presentation"
+                title={span === null
+                  ? "Visible on every frame — drag an edge to trim"
+                  : "Drag to move, drag an edge to trim"}
+              >
+                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+              </div>
             {:else}
               <span
                 class="ml-1 text-xs text-text-muted"
