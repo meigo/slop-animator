@@ -62,6 +62,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    isRefVisibleAtFrame,
     groupTransform,
     type Layer,
     type Cell,
@@ -835,8 +836,12 @@
       // A pinned reference: its gizmo is live under EVERY tool, so this is the one guard that stops
       // a stray canvas drag from nudging an aligned reference. Derived, so a locked/hidden GROUP
       // pins its refs too (the gizmo already used the derived form — these must agree).
+      // Outside its frame span the ref draws nothing, so a drag would move something invisible —
+      // and the gizmo hides there, which would otherwise leave the drag reachable with no handles.
       const refPinned =
-        isLayerLocked(al, appState.project.groups) || !isLayerVisible(al, appState.project.groups);
+        isLayerLocked(al, appState.project.groups) ||
+        !isLayerVisible(al, appState.project.groups) ||
+        !isRefVisibleAtFrame(al, appState.playhead, appState.project.fps);
       if (!refPinned) onTransformDrag(al, points, done);
       return;
     }
