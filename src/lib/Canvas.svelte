@@ -4,7 +4,7 @@
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
-  import { floodFill, hexToRgba, rgbToHex } from "../core/fill";
+  import { floodFill, fillAllEnclosed, hexToRgba, rgbToHex } from "../core/fill";
   import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
   import { ensureDrawableKeyframe } from "../anim/timeline";
@@ -29,6 +29,7 @@
     selectionRef,
     selectionActions,
     viewActions,
+    fillActions,
     poseActions,
     liftGuard,
     transformDragGuard,
@@ -431,6 +432,66 @@
       });
     }
 
+    const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    history.push(
+      pixelCommand(
+        () => {
+          ctx.putImageData(before, 0, 0);
+          recomposite();
+        },
+        () => {
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
+    bump();
+    recomposite();
+  }
+
+  /** Fill every ink-enclosed region on the current cell, behind the strokes. Unlike the click fill
+   *  this needs no pointer, so no compose inverse — it works on the cell's own pixels. */
+  function fillAllEnclosedOnCell() {
+    const layer = activeLayer();
+    if (!isLayerEditable(layer, appState.project.groups)) return;
+    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const color = hexToRgba(appState.brush.color, appState.brush.opacity);
+    let painted: number;
+    if (selection && selection.state === "selected") {
+      // Same shape as the click fill: paint a temp copy, composite back through the clip.
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
+      tctx.drawImage(canvas, 0, 0);
+      painted = fillAllEnclosed(tctx, color, {
+        gap: appState.fill.gap,
+        expand: appState.fill.expand,
+      });
+      if (painted > 0) {
+        ctx.save();
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection.applyClip(ctx);
+        ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+        ctx.restore();
+      }
+    } else {
+      painted = fillAllEnclosed(ctx, color, {
+        gap: appState.fill.gap,
+        expand: appState.fill.expand,
+      });
+    }
+
+    if (painted === 0) {
+      // Must not silently no-op: this looks identical to filling an already-white interior.
+      appState.statusHint = "Nothing enclosed — the outline isn't closed, or is already filled";
+      return;
+    }
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push(
       pixelCommand(
@@ -1502,6 +1563,7 @@
     // Same as the `0` key. Exposed because iPad has no keyboard: without a UI route, a canvas
     // flung off-screen by a stray two-finger drag can only be recovered by reloading the page.
     viewActions.fitView = () => viewport?.fitView(appState.project.width, appState.project.height);
+    fillActions.allEnclosed = fillAllEnclosedOnCell;
 
     return () => {
       overlayRo.disconnect();
@@ -1528,6 +1590,7 @@
       selectionActions.paste = null;
       selectionActions.deselect = null;
       viewActions.fitView = null;
+      fillActions.allEnclosed = null;
       appState.selectionActive = false;
       appState.selectionFloating = false;
       appState.poseActive = false;
