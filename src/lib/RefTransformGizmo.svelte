@@ -373,7 +373,7 @@
       role="button"
       tabindex="-1"
       aria-label="Rotate reference"
-      class="pointer-events-auto cursor-grab"
+      class="pointer-events-auto cursor-rotate"
       data-ref-handle=""
       cx={rotatePt.x}
       cy={rotatePt.y}
