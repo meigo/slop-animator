@@ -2,9 +2,9 @@
 
 /** Below this the layer detail row wraps to several lines and the name column stops being useful.
  *  It is a floor, not a target — the row is `flex-wrap` by design, so narrower degrades rather than
- *  clips. 180 of usable content PLUS the 8px strip reserved for the resize grip — the guarantee is
+ *  clips. 180 of usable content PLUS the 4px strip reserved for the resize grip — the guarantee is
  *  about content width, so the reserved strip has to be added on top of it. */
-export const MIN_PANEL_WIDTH = 188;
+export const MIN_PANEL_WIDTH = 184;
 /** Tailwind `w-56`, the fixed width the panel had before it became resizable, so an existing
  *  project opens looking identical. */
 export const DEFAULT_PANEL_WIDTH = 224;

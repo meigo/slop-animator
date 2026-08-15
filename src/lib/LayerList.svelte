@@ -503,7 +503,7 @@
        inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
        column, so it costs no width. -->
   <div
-    class="absolute inset-y-0 left-0 z-30 w-3 cursor-col-resize hover:bg-text/10"
+    class="absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="vertical"
@@ -521,11 +521,12 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <!-- pl-2 on BOTH direct children, not on the panel root: padding the root would inset the header's
-       bottom border too, leaving it short of the left edge. This reserves the grip's 8px strip so it
-       does not overlay the rows' drag handles — 8px is the whole budget, since the grip draws no
-       mark of its own and only needs to not collide. -->
-  <div class="flex items-center gap-1 py-1 pr-1 pl-2 border-b border-border">
+  <!-- The grip's strip is reserved on BOTH direct children (the header's own `p-1`, and `pl-1` on the
+       list), never on the panel root: padding the root would inset the header's bottom border too and
+       leave it short of the left edge. 4px there plus each row's own 4px `p-1` puts the drag-handle
+       icon at 8px — exactly where the 8px grip ends, so the two abut without overlapping and no
+       space is wasted between them. -->
+  <div class="flex items-center gap-1 p-1 border-b border-border">
     <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
@@ -565,7 +566,7 @@
     >
   </div>
 
-  <div bind:this={listEl} class="flex-1 overflow-y-auto pl-2">
+  <div bind:this={listEl} class="flex-1 overflow-y-auto pl-1">
     {#key dragNonce}
       {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
         {#if "layer" in seg}

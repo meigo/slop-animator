@@ -86,7 +86,7 @@
   // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be
   // $derived rather than the consts they used to be, or the gutter and the cells drift apart.
   const LABEL_W = $derived(appState.timelineLabelWidth);
-  const MARKER_W = 22; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
+  const MARKER_W = 28; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
   //                      frame cells don't butt against the name. Fixed: it holds one 11px glyph.
   const GUTTER_W = $derived(LABEL_W + MARKER_W); // total sticky width before the first frame cell
 
@@ -892,7 +892,7 @@
 <svelte:window onresize={onWindowResize} />
 
 <div
-  class="border-t border-border bg-surface text-text px-2 pt-3 pb-2 text-sm flex flex-col min-h-0 relative"
+  class="border-t border-border bg-surface text-text p-2 text-sm flex flex-col min-h-0 relative"
   style="height: {appState.timelineHeight}px"
 >
   <!-- accept mirrors LayerList's: image/* and video/* both resolve correctly on iOS (unlike
@@ -906,7 +906,7 @@
   />
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
-    class="absolute top-0 inset-x-0 h-3 z-30 cursor-row-resize hover:bg-text/10"
+    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -916,7 +916,13 @@
     onpointermove={gripMove}
     onpointerup={gripUp}
     onpointercancel={gripUp}
-  ></div>
+  >
+    <!-- This one KEEPS a visual hint, unlike the two vertical grips. Those sit on a panel EDGE,
+         where drag-to-resize is a learned convention that needs no badge; this is an INTERIOR
+         divider between the canvas and the timeline, so nothing about its position suggests it can
+         be dragged. -->
+    <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
+  </div>
   <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
     <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
       ><Plus size={16} /></button
@@ -1134,7 +1140,7 @@
     <div
       class="sticky top-0 z-25 cursor-col-resize hover:bg-text/10"
       style="left: {GUTTER_W -
-        10}px; width: 12px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
+        6}px; width: 8px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize the timeline name column"
