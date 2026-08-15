@@ -436,3 +436,28 @@ describe("group lock persistence", () => {
     expect(loaded2.groups[0].locked).toBe(false);
   });
 });
+
+describe("reference range persistence", () => {
+  const projWith = (ref: ReferenceLayer): Project => ({
+    name: "t",
+    width: 800,
+    height: 600,
+    fps: 8,
+    bgColor: "#eee",
+    frameCount: 2,
+    boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+    groups: [],
+    layers: [dlayer(1, [key(), hold()]), ref],
+    audio: null,
+  });
+
+  it("round-trips a trimmed image range", () => {
+    const l = rlayer(2);
+    l.range = { start: 6, end: 14 };
+    expect(projectToJson(projWith(l)).references[0].range).toEqual({ start: 6, end: 14 });
+  });
+
+  it("an untrimmed reference writes no range", () => {
+    expect(projectToJson(projWith(rlayer(2))).references[0].range).toBeUndefined();
+  });
+});

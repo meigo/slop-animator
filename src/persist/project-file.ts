@@ -47,6 +47,7 @@ export interface ReferenceJson {
   speed?: number;
   audioEnabled?: boolean;
   locked?: boolean;
+  range?: { start: number; end: number }; // absent = always visible
   mediaId?: string;
   mediaMime?: string;
   embedMedia?: boolean;
@@ -212,6 +213,7 @@ export function projectToJson(project: Project): ProjectJson {
         speed: l.speed,
         audioEnabled: l.audioEnabled,
         locked: l.locked,
+        range: l.range,
         mediaId: l.mediaId,
         mediaMime: l.mediaMime,
         embedMedia: l.embedMedia,
@@ -375,6 +377,7 @@ export async function loadProjectBlob(
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
       locked: rj.locked ?? false,
+      range: rj.range,
       mediaId: rj.mediaId,
       mediaMime: rj.mediaMime,
       embedMedia: rj.embedMedia,
