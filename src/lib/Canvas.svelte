@@ -1312,6 +1312,11 @@
       recomposite();
       return;
     }
+    // A gapped outline lets the flood escape, silently producing the old thin web. Say so, and name
+    // the remedy — compare against the GROWN mask, since dilation bloat alone can look like success.
+    const f = meshPose.fill;
+    if (f && f.inkArea > 0 && f.insideArea < f.grownArea * 1.1)
+      appState.statusHint = "Outline isn't closed — raise Gap, or fill the shape";
     recomposite(); // show the hole where the content lifted out
     posePaint(); // draw the deformed raster + wireframe on the overlay
     bump(); // bump version so the reactive pose bar mounts
@@ -1366,10 +1371,10 @@
     bump(); // bump version so the reactive pose bar unmounts
   }
 
-  function poseDensity(delta: number) {
+  // Shared by the density buttons and the fill-outlines controls: any setting that changes the
+  // mesh has to rebuild from the SAME lifted bitmap and reset handles — vertex indices change.
+  function rebuildPoseMesh() {
     if (!meshPose) return;
-    poseSpacing = Math.max(4, poseSpacing + delta * 4);
-    // rebuild from the SAME lifted img (resets handles — vertex indices change)
     meshPose =
       MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
         fillHoles: appState.pose.fillHoles,
@@ -1380,6 +1385,17 @@
     activeHandle = null;
     poseAdjusting = false;
     posePaint();
+    // A gapped outline lets the flood escape, silently producing the old thin web. Say so, and name
+    // the remedy — compare against the GROWN mask, since dilation bloat alone can look like success.
+    const f = meshPose?.fill;
+    if (f && f.inkArea > 0 && f.insideArea < f.grownArea * 1.1)
+      appState.statusHint = "Outline isn't closed — raise Gap, or fill the shape";
+  }
+
+  function poseDensity(delta: number) {
+    if (!meshPose) return;
+    poseSpacing = Math.max(4, poseSpacing + delta * 4);
+    rebuildPoseMesh();
   }
 
   function enterWarp(rows: number, cols: number) {
@@ -1704,6 +1720,29 @@
           posePaint();
         }}>Reset</button
       >
+      <label
+        class="flex items-center gap-1 text-xs"
+        title="Treat space enclosed by the outline as part of the shape"
+      >
+        <input type="checkbox" bind:checked={appState.pose.fillHoles} onchange={rebuildPoseMesh} /> Fill
+        outlines
+      </label>
+      {#if appState.pose.fillHoles}
+        <label
+          class="flex items-center gap-1 text-xs"
+          title="Bridge breaks in the outline, up to about twice this many pixels"
+        >
+          Gap
+          <input
+            class="w-10 text-xs bg-surface border border-border rounded px-1 text-text"
+            type="number"
+            min="0"
+            max="8"
+            bind:value={appState.pose.gap}
+            onchange={rebuildPoseMesh}
+          />
+        </label>
+      {/if}
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
         title="Apply pose"

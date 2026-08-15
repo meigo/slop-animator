@@ -185,11 +185,9 @@ affected-region tint; context-aware default reach); **transparent background** (
   mirror each other in shape (per Phase B spec), ready for a `RefTransform → KeyframedTransform`
   migration. Cells stay static-only (they're already the frame-level keyframe).
 - **Mesh-deform / Pose tool — SHIPPED** (FFD + Rigid Deform, and the geodesic-MLS Pose tool with the
-  unified rotation+reach gizmo). Still deferred: **true Igarashi ARAP** (a real sparse solver, chosen
-  against for now — geodesic-MLS is closed-form/no-solver); **outline-only drawings** pose as a thin
-  web (the silhouette mesh needs a filled region) — a **manual** fill (not auto — the user declined
-  auto fill-holes, see `prefers-manual-over-auto-altering-art` memory) or an opt-in fill-holes pass is
-  the path; and **animated/keyframed** poses (per-frame + destructive only today).
+  unified rotation+reach gizmo, plus fill-outlines — see the 2026-08-15 entry below). Still deferred:
+  **true Igarashi ARAP** (a real sparse solver, chosen against for now — geodesic-MLS is
+  closed-form/no-solver); and **animated/keyframed** poses (per-frame + destructive only today).
 - **Group transform Apply (full pixel flatten)**: deferred — Phase B is Reset-only. The math for a
   clean per-layer fold-down doesn't exist (group rotates about group bbox center, layers about doc
   center); only a full flatten of all member key cells is correct. Add when there's demand.
@@ -1194,3 +1192,38 @@ bitmap sit on the ink, and a handle drag tracks the pointer 1:1 — the regressi
 **lift → commit without moving on a scaled-down layer** (how much detail the double resample
 actually costs); a **2-point lasso flick** on a transformed layer (falls back to the rect, does
 not clip everything away); **delete / cut of a ROTATED marquee** (the mapped AABB + clip path).
+
+**Pose: fill outlines (2026-08-15):** closes the roadmap item above. The "web" was two failures, and
+only the second was obvious: an outline-only drawing's alpha clears the inside-threshold only ON the
+ink, so `triangulateSilhouette` finds no interior and keeps only a thin ribbon of triangles along the
+strokes — but the worse part is that **geodesic weighting then travels ALONG that ribbon**: moving a
+hand propagates down the arm outline, around the shoulder, and can drag the far side of the head,
+because that is the shortest path through the mesh. "Far away" stopped meaning what the artist
+expected. The fix (`src/core/fill-holes.ts`, `fillEnclosed`) **changes no pixels** — it reads the
+lifted bitmap's alpha and returns a `mask`/`inkArea`/`grownArea`/`insideArea`, and `MeshPose.fromLift`
+(`src/core/mesh-pose.ts`) builds its `inside` predicate from that mask instead of raw alpha when
+`fillHoles` is on; the artwork, the saved cell and the lift are untouched. The morphology
+(`dilateMask`/`erodeMask`, moved to shared `src/core/mask-ops.ts` — the Fill tool's `expand` uses the
+same functions) runs in a **load-bearing order**: dilate the ink → flood-fill the outside → erode the
+solid filled result. The intuitive order — close the ink itself (dilate → erode) — was tried and
+**measured to fail**: it cannot bridge a break in a 1px line at any radius, because the erosion eats
+the join straight back out (the joint is never thicker than the structuring element); only eroding the
+already-solid flood-filled mask survives. The bitmap is padded by `gap + 1` on every side before any
+of this, because the pose lift is a TIGHT content bbox — ink routinely touches all four edges, and
+without a guaranteed clear ring the border flood has nowhere to start and everything reads as inside.
+Net effect: **`gap: r` bridges a break of roughly `2r` px** (the dilated discs on either side of the
+gap have to meet). The failure report (`rebuildPoseMesh` in `Canvas.svelte`, and once more after the
+initial lift in `enterPose`) compares `insideArea` against **`grownArea`, not `inkArea`** — dilation
+alone inflates the ink area even when the flood never escapes, so an ink-based threshold would call a
+real failure a success; `grownArea` isolates enclosure from bloat. `state.pose = { fillHoles: true,
+gap: 0 }` is **session-only, not persisted** — same convention as `onion`. The two pose-bar controls
+and the density buttons now share one `rebuildPoseMesh()` (extracted from what was `poseDensity`'s
+body) so every mesh-changing setting resets `poseDrag`/`activeHandle`/`poseAdjusting` the same way —
+vertex indices change on any rebuild, so stale handle indices must be dropped every time, not just on
+density changes. `fillEnclosed` and the mask ops are unit-tested (pure, node-testable); the
+`fromLift` wiring and the bar controls are canvas/DOM and are build+review-verified only, per project
+convention. **Owed a browser pass:** an outline-only drawing meshing as a body rather than a web; a
+handle drag falling off through the shape instead of along the lines; a **donut** with the checkbox
+OFF keeping its hole; a deliberately gapped outline producing the status hint; raising Gap closing it;
+a filled drawing unchanged throughout; and a very thin appendage (thinner than the gap radius)
+surviving — the reason Gap defaults to 0. Spec/plan: `…/2026-08-15-pose-fill-outlines*.md`.

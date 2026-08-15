@@ -31,6 +31,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Painting on a transformed layer shows its paintable edge as a hairline, so a scaled-down layer no longer cuts strokes off without warning
 - **Deform tool** — FFD grid warp plus a rigid (MLS) mode
 - **Pose tool** — silhouette triangulation + geodesic-weighted MLS with per-handle rotation/reach gizmos, for posing a character drawing without redrawing it
+- Outline-only drawings pose as a body, not a thin web — space enclosed by the outline counts as part of the shape, with no change to the artwork
 
 **Reference & audio**
 
@@ -64,7 +65,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (458); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (476); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
