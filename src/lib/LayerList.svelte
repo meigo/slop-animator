@@ -503,7 +503,7 @@
        inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
        column, so it costs no width. -->
   <div
-    class="absolute inset-y-0 left-0 z-30 flex w-3 items-center justify-center cursor-col-resize text-text-muted hover:text-text"
+    class="absolute inset-y-0 left-0 z-30 w-3 cursor-col-resize hover:bg-text/10"
     style="touch-action: none"
     role="separator"
     aria-orientation="vertical"
@@ -513,9 +513,7 @@
     onpointermove={gripMove}
     onpointerup={gripUp}
     onpointercancel={gripUp}
-  >
-    <div class="h-8 w-0.5 rounded bg-current opacity-60"></div>
-  </div>
+  ></div>
   <input
     bind:this={relinkInput}
     type="file"
