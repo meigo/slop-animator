@@ -33,6 +33,7 @@
     setTimelineSelection,
     moveTimelineSelection,
     clearTimelineSelection,
+    relinkReference,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -47,6 +48,7 @@
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
+  import { loadReferenceMedia } from "../anim/reference";
   import {
     clampTimelineHeight,
     playheadFollowScroll,
@@ -178,7 +180,30 @@
     return true;
   }
   function touchPanUp() {
+    // Remember whether the gesture actually PANNED, for controls that must not fire on a scroll that
+    // happens to end on them. A click still fires when a drag ends on its element, and while
+    // selecting a layer that way is harmless, opening a file picker mid-scroll is not.
+    panEndedWithMovement = touchPan?.panning ?? false;
     touchPan = null;
+  }
+  let panEndedWithMovement = false;
+
+  // Re-link a missing reference straight from its timeline row. Mirrors LayerList's picker (the two
+  // are ~12 lines each; not worth a shared component for two call sites). NOTE this deliberately
+  // reverses the 2026-08-14 clip spec's "no second file picker on the row" non-goal.
+  let relinkInput: HTMLInputElement;
+  let relinkTargetId: number | null = null;
+  function startRelink(id: number) {
+    if (panEndedWithMovement) return; // a finger scroll that ended on the button, not a tap
+    relinkTargetId = id;
+    relinkInput.value = "";
+    relinkInput.click();
+  }
+  async function onRelinkFile() {
+    const file = relinkInput.files?.[0];
+    const id = relinkTargetId;
+    if (!file || id == null) return;
+    relinkReference(id, await loadReferenceMedia(file, () => repaint()), file);
   }
 
   // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
@@ -837,6 +862,15 @@
   class="border-t border-border bg-surface text-text p-2 text-sm flex flex-col min-h-0 relative"
   style="height: {appState.timelineHeight}px"
 >
+  <!-- accept mirrors LayerList's: image/* and video/* both resolve correctly on iOS (unlike
+       audio/*, which needs explicit extensions there — see the 2026-08-11 picker note). -->
+  <input
+    bind:this={relinkInput}
+    type="file"
+    accept="image/*,video/*"
+    class="hidden"
+    onchange={onRelinkFile}
+  />
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
     class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
@@ -1290,10 +1324,14 @@
                 {/if}
               </div>
             {:else if ref.media.type === "missing"}
-              <span
-                class="ml-1 text-xs text-text-muted"
+              <!-- A call to action, not a label. Plain onclick, NOT onpointerdown + stopPropagation:
+                   the window-level status-hint listener reads this title on press, and stopping
+                   propagation would kill the hint for the very pointer performing the gesture. -->
+              <button
+                class="ml-1 rounded px-1 text-xs text-text-muted underline decoration-dotted underline-offset-2 hover:bg-surface-hover hover:text-text"
                 class:opacity-70={ref.id !== appState.activeLayerId}
-                title="Media missing — re-link from the layer panel">re-link</span
+                title="Media missing — click to re-link the file"
+                onclick={() => startRelink(ref.id)}>re-link</button
               >
             {:else if ref.media.type === "image"}
               {@const span = refVisibleSpan(ref, appState.project.fps)}

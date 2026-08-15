@@ -1067,7 +1067,14 @@ it; a no-op drops. An in-flight move-block has not written yet, so settle just c
 
 **Video-ref clip drag (2026-08-14):** a linked video reference draws as a draggable block on its
 timeline row (`videoClipLayout` — inverted offset mapping so dragging the clip right advances
-start later in the project). Missing media shows a "re-link" label (no file picker on the row).
+start later in the project). Missing media shows a **re-link BUTTON** that opens the file picker
+directly (2026-08-15 — this reverses the original "no file picker on the row" non-goal below; it was
+a maintenance argument, not a correctness one, and the label was a call to action pointing somewhere
+else). It mirrors LayerList's picker rather than sharing a component — ~12 lines each, two call
+sites. Plain `onclick`, never `onpointerdown` + `stopPropagation`, so the window-level status-hint
+listener still reads its title on press; and `startRelink` bails when the gesture actually PANNED
+(`panEndedWithMovement`, latched in `touchPanUp`), because a click still fires when a finger scroll
+ends on the button — selecting a layer that way is harmless, opening a file picker is not.
 Image / unknown-duration refs keep a type label only. The LayerList offset number is gone; speed
 stays. Audio lane got a matching clip fill under the waveform. No filmstrip, trim, or model
 change; drag is not undoable (same as the old number field). Every row shares
