@@ -10,6 +10,7 @@ export interface Preferences {
   loop: boolean;
   timelineHeight?: number; // px height of the resizable timeline panel
   layerPanelWidth?: number; // px width of the resizable layer panel
+  timelineLabelWidth?: number; // px width of the timeline gutter's name column
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
   // Legacy (read-only back-compat; older versions wrote these at the top level).
   brushType?: BrushKind;

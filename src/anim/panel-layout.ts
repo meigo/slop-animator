@@ -15,3 +15,17 @@ export function clampPanelWidth(px: number, viewportW: number): number {
   const max = Math.max(MIN_PANEL_WIDTH, Math.round(viewportW * 0.5));
   return Math.max(MIN_PANEL_WIDTH, Math.min(px, max));
 }
+
+/** Below this the layer-name column stops fitting a useful number of characters. */
+export const MIN_GUTTER_LABEL_WIDTH = 80;
+/** The width the timeline's name column had when it was the fixed `LABEL_W` constant. */
+export const DEFAULT_GUTTER_LABEL_WIDTH = 120;
+
+/** Clamp the timeline gutter's NAME column (px) to [MIN, 40% of the viewport], MIN always winning.
+ *  40% rather than the panel's 50%: this column eats horizontally into the frame strip, which is the
+ *  timeline's actual content, so it earns a tighter ceiling. Excludes the fixed marker column —
+ *  callers add `MARKER_W` themselves, as `GUTTER_W` does. */
+export function clampGutterLabelWidth(px: number, viewportW: number): number {
+  const max = Math.max(MIN_GUTTER_LABEL_WIDTH, Math.round(viewportW * 0.4));
+  return Math.max(MIN_GUTTER_LABEL_WIDTH, Math.min(px, max));
+}
