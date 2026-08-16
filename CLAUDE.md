@@ -1895,9 +1895,18 @@ into a single event handler without removing it from the autoscroll registry.
 precisely, a large one races, and deflection past the edge counts as full speed rather than growing
 without bound, or the scroll becomes impossible to steer. The tick also skips re-applying when
 `scrollLeft` did not actually move, so sitting at either end costs nothing.
+**The timeline ROW drag joins them (marquee, move-block and hold-span resize).** All three live in
+one handler, so wiring `rowDown` covers the set. Two things it needed that the other six did not:
+the apply callback grew a Y (the marquee hit-tests which TRACK the pointer is over, via
+`layerIdAtPoint`), and the column maths had to lose its dependence on `e.currentTarget` — `rowOffset`
+measured the row element from the event, which a re-applied call does not have. `dragRowEl` is
+captured at grab and `rowColumnAt`/`rowBoundaryAt` measure from it; every row shares the strip's
+horizontal geometry, so any one of them is the right ruler.
+The IDLE HOVER tail of `rowMove` deliberately stayed on the event path as `rowHover`: it measures
+`currentTarget` and there is no drag to re-apply when nothing is being dragged.
 `AudioLane` does not own the scroller, so Timeline passes it `onEdgeScrollStart/Stop/PointerX`
 alongside the existing touch-pan callbacks. Every start is paired with a stop on the settle path, not
 on `pointerup` alone — the settles are also what undo/Open call through `transformDragGuard`.
-**Owed a browser pass:** drag each of the six past both edges and back; that a trim edge keeps
+**Owed a browser pass:** drag each of the seven past both edges and back; a marquee extending across pages while the tracks scroll; that a trim edge keeps
 following while the content scrolls; that it stops at either end without spinning; release outside
 the viewport; ⌘Z mid-autoscroll; iPad with a Pencil.
