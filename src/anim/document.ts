@@ -369,8 +369,15 @@ export function resizeCells(cells: Cell[], n: number): Cell[] {
 
 /** Count keyframes at index >= n across all drawing layers (those a shorten-to-n would drop). */
 export function countKeyframesPastLength(project: Project, n: number): number {
+  return countKeyframesPastLengthIn(project.layers, n);
+}
+
+/** Same count against a bare layer list. A LIVE drag has already truncated the cells by the time it
+ *  wants to ask "how many would this drop?", so it must count against the grab-time SNAPSHOT
+ *  instead — which is a layer array, not a Project. */
+export function countKeyframesPastLengthIn(layers: Layer[], n: number): number {
   let count = 0;
-  for (const layer of project.layers) {
+  for (const layer of layers) {
     if (layer.kind !== "draw") continue;
     for (let i = n; i < layer.cells.length; i++) {
       if (layer.cells[i].kind === "key") count++;

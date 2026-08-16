@@ -21,6 +21,7 @@ import {
   resolveLayerName,
   resizeCells,
   countKeyframesPastLength,
+  countKeyframesPastLengthIn,
   mediaIntrinsicSize,
   isLayerVisible,
   groupOf,
@@ -429,6 +430,42 @@ function drawLayers(...layerCells: Cell[][]): Project {
     })),
   } as unknown as Project;
 }
+
+describe("countKeyframesPastLengthIn (snapshot-based count)", () => {
+  it("counts keys past the length in a bare layer list", () => {
+    const layers = [layer(1, [makeKey(), makeHold(), makeKey(), makeKey()])];
+    expect(countKeyframesPastLengthIn(layers, 2)).toBe(2);
+    expect(countKeyframesPastLengthIn(layers, 4)).toBe(0);
+  });
+
+  it("is what makes a LIVE shrink able to warn at all", () => {
+    // The drag applies each step immediately, and resizeCells SLICES, so by the time it asks
+    // "how many would this drop?" the live cells no longer have them — counting there returns 0
+    // and the warning never fires. The grab-time snapshot still holds the originals.
+    const original = [layer(1, [makeKey(), makeHold(), makeKey(), makeKey()])];
+    const afterLiveShrink = [layer(1, resizeCells(original[0].cells, 2))];
+
+    expect(countKeyframesPastLengthIn(afterLiveShrink, 2)).toBe(0); // the trap
+    expect(countKeyframesPastLengthIn(original, 2)).toBe(2); // the answer the user needs
+  });
+
+  it("ignores reference layers, which have no cells to drop", () => {
+    const ref = {
+      kind: "ref",
+      id: 9,
+      name: "R",
+      visible: true,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "missing", was: "image", name: "x" },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    } as unknown as Layer;
+    expect(countKeyframesPastLengthIn([ref], 0)).toBe(0);
+  });
+});
 
 describe("countKeyframesPastLength", () => {
   it("counts keyframes at index >= n across layers", () => {

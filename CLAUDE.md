@@ -1860,6 +1860,23 @@ the timeline's playhead badge shows the current frame as well; three places for 
 transport you flip — the same rule that moved loop the other way. (3) **The ruler's right edge is a
 drag handle for the animation's length**, the direct manipulation the clip trim handles established;
 the popover field is now the type-an-exact-number path.
+**Three bugs in the first version of this drag, all found by asking "does the warning actually
+fire?" (2026-08-16, fixed same day).** Worth reading before writing another live drag over
+destructive state:
+
+1. **The warning could never fire.** It counted dropped keyframes against the LIVE project — but the
+   drag had already applied the shrink, and `resizeCells` SLICES, so the cells were gone and the
+   count was always 0. Both the live hint and the release confirm were dead code. Counting must use
+   the grab-time SNAPSHOT (`countKeyframesPastLengthIn(undo.layers, n)`), which still holds them.
+2. **The history was flooded.** `setAnimationLength` wraps itself in `commitStructural`, so calling
+   it per `pointermove` pushed one undo entry per frame of travel. Split out `applyAnimationLength`
+   (mutation + `bump`, no history) for gestures that bracket themselves.
+3. **Declining the confirm did not undo the damage.** It called `setAnimationLength(startLen)`, which
+   only pads holds back — the sliced keyframes were already lost. It now calls `revertStructural`,
+   restoring the grab-time snapshot, which is the only thing that still has them.
+   **The general rule: a live drag over destructive state must measure against the snapshot, mutate
+   without committing, and abandon by restoring — not by re-applying the old value.**
+
 **The confirm is the interesting part.** Shortening past a keyframe asks "removes N keyframe(s)?" —
 a drag CANNOT ask per-frame, that is a modal per `pointermove`. So the drag writes the length live and
 defers the question to RELEASE, warning in the STATUS BAR throughout ("Length 20 — releasing here
