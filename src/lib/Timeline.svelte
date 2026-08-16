@@ -904,6 +904,12 @@
     const editable = isLayerEditable(layer, appState.project.groups);
     const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
     if (plan.kind === "resize" && editable) {
+      // `setHoldSpan` splices the cell track, which a live lift/stroke holds a whole-track undo rider
+      // against — undoing that lift would then also revert this resize. Must run BEFORE
+      // `beginStructuralEdit`, since the discard reverts any keyframe the lift materialised and that
+      // has to be part of the before-state. (Reachable without a layer/frame change: pressing this
+      // row re-selects the SAME layer, so nothing banks the lift for us.)
+      liftGuard.discard?.();
       dragMode = "resize";
       dragKey = plan.keyIndex;
       dragStartBoundary = rowBoundary(e);

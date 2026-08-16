@@ -2264,6 +2264,25 @@ Three things this needed, none of them obvious:
   it the COMMON case, including one junk entry per frame step while scrubbing with Deform active.
   Both bake sites (the tool switch and `bankActiveEdits`) check it.
 
+**Two more the re-review caught, both created by moving entry to the tool switch.** (a) `enterPose`
+ended with `bump()`, so merely SELECTING the tool armed the 3s autosave debounce over a cell whose
+content `liftPixels` had punched out — the float lives on the overlay, which autosave never sees, so
+a tab killed inside that window reloaded to an empty keyframe. It is `repaint()` now (version only):
+**a lift is not a document edit**, and the pose bar only ever needed `version`. Same in `cancelPose`.
+(b) The tool `$effect` does not commit an open stroke the way `bankActiveEdits` does, so on iPad a
+finger tapping the tool button mid-Pencil-stroke would capture `selBefore` and punch the hole while
+`paintStroke` kept writing the same ctx — entry is gated on `!strokeCanvas`, and the press-time
+fallback picks it up once the stroke ends. Also: the hold-span resize was the LAST track-splicing op
+without a `liftGuard.discard` (it must sit above `beginStructuralEdit`, since the discard's revert
+belongs in the before-state), and a pose mesh rebuild resets `poseDirty` — it drops every handle, so
+the picture is back at rest.
+
+**Deliberately NOT done: re-entering after a frame or layer step.** `bankActiveEdits` cancels the
+untouched lift and nothing re-enters, so scrubbing with Deform selected leaves the grid gone until
+the next press. Auto-re-entry would mean every frame step lifts — and on a hold, MATERIALISES a
+keyframe — turning a scrub into a document-wide mutation. The press fallback keeps it usable; revisit
+only if the missing grid actually bites.
+
 **Owed a browser pass:** the grid appears on selecting Deform and the first press grabs a handle;
 same for Pose; an empty cell or a locked/hidden layer still enters nothing; select Deform then switch
 away without touching it (no undo entry — ⌘Z should hit the edit BEFORE it); step a frame with Deform

@@ -24,6 +24,7 @@
     activeLayer,
     activeStroke,
     bump,
+    repaint,
     pressureCurve,
     toggleEraser,
     applyEyedropper,
@@ -1519,7 +1520,12 @@
     reportPoseFill();
     recomposite(); // show the hole where the content lifted out
     posePaint(); // draw the deformed raster + wireframe on the overlay
-    bump(); // bump version so the reactive pose bar mounts
+    // `repaint`, NOT `bump`: a LIFT is not a document edit. `liftPixels` punches the content out of
+    // the cell canvas and holds it on the overlay, which autosave never sees — so bumping
+    // `persistTick` here armed the 3s debounce to persist a HOLED cell (plus any ◆ the entry
+    // materialised). Merely selecting the tool did that, once entry moved to the tool switch. The
+    // pose bar only needs `version`, which is what `repaint` increments.
+    repaint();
   }
 
   function applyPose() {
@@ -1574,7 +1580,7 @@
     clearLiftTarget();
     posePaint();
     recomposite();
-    bump(); // bump version so the reactive pose bar unmounts
+    repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
   }
 
   // Shared by the density buttons and the fill-outlines controls: any setting that changes the
@@ -1590,6 +1596,7 @@
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
+    poseDirty = false; // a rebuild drops every handle: the picture is back at rest, nothing to bake
     posePaint();
     reportPoseFill();
   }
@@ -1738,7 +1745,13 @@
     // transform bracket, or it leaks into the next gesture and one undo reverts both (gotcha #6).
     void appState.transformScope;
     transformDragGuard.settle?.();
-    if (!selection) return;
+    if (!selection) {
+      // Prime here too: leaving the flag false on an early first run would cost the artist TWO tool
+      // switches before the first lift, for a guard that only exists to skip the restored preference.
+      toolEntryPrimed = true;
+      prevTool = appState.tool;
+      return;
+    }
     // Only bank when the TOOL actually changes. This effect also re-runs when hasFloating
     // flips (the reads below), and committing then would bake+clear a lift the user just started
     // from the on-canvas bar (Select → Free transform).
@@ -1769,7 +1782,12 @@
     // no gesture behind it and possibly before the project has finished restoring. Arriving with
     // Deform already selected therefore still waits for the first press, which is what the fallback
     // in `onStroke` is for.
-    if (toolChanged && toolEntryPrimed) {
+    // `!strokeCanvas`: on iPad a finger can tap the tool button while the Pencil is mid-stroke.
+    // Entering would capture `selBefore` mid-stroke and punch the hole while `paintStroke` keeps
+    // writing the same ctx — the smooth brush redraws from its own snapshot, so the lifted content
+    // gets painted back into the cell while the float still holds it. The press-time fallback then
+    // enters normally once the stroke ends.
+    if (toolChanged && toolEntryPrimed && !strokeCanvas) {
       if (t === "deform" && selection.state !== "warping") enterDeform();
       else if (t === "pose" && !meshPose) enterPose();
     }
