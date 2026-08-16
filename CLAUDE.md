@@ -1823,3 +1823,16 @@ drag materialises. `aria-disabled`, not `disabled`, so the dimmed state can expl
 **Owed a browser pass:** trim start/end to playhead on an audio clip and on an image ref; the title
 naming the right target as the active layer changes; both dim with a reason when neither applies;
 undo restores in one step; a playhead outside the clip clamping instead of inverting; iPad tap.
+
+**Clip palette is NEUTRAL, separated by value (2026-08-16, replaces the blue-grey).** The tint existed
+because the greys BETWEEN `surface` and `border` are too close to read as a separate object under the
+ruler — true, so the new values sit OUTSIDE that range instead of inside it: `#d6d6d6` light (well
+below the ruler's `#ebebeb`) and `#474747` dark (well above its `#333`). Staying neutral keeps clips
+from competing with the selection blue or the amber locked/hidden state, and leaves the waveform the
+loudest thing in the lane.
+`-dim` moved much further from `-clip` (`#f6f6f6` / `#242424`, roughly five steps) so a trimmed head
+or tail reads as OFF rather than merely different — the old half-step was the actual complaint.
+**Knock-on that had to move with it:** the video-ref clip's label was `text-text-secondary`, which on
+the darker plate falls to ~4.0:1 — under the 4.5 floor the 2026-08-11 contrast pass set for this
+codebase. It is `text-text` now (~10.8:1 light, ~6.7:1 dark). Any future change to `--color-media-clip`
+must re-check that label; the waveform peaks are a graphic and only need 3:1, so they are unaffected.

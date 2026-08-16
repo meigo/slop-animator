@@ -13,14 +13,19 @@
   --color-accent: #222222;
   --color-accent-text: #ffffff;
   --color-selection: #6688cc;
-  /* Timeline media clips (audio waveform block, video-ref block). Deliberately TINTED rather than
-     another step on the grey scale: the clips sit directly under the ruler, which is
-     surface-active, and the greys between surface and border are too close together in light mode
-     to read as a separate object. The hue is what separates content from chrome.
+  /* Timeline media clips (audio waveform block, video-ref block). NEUTRAL, and separated from the
+     chrome by VALUE rather than hue: the clip sits well below the ruler (surface-active) in light
+     and well above it in dark, far enough that no tint is needed. An earlier version was blue-grey,
+     on the reasoning that the greys BETWEEN surface and border are too close to read as a separate
+     object — true, which is why these values sit OUTSIDE that range rather than inside it. Staying
+     neutral also keeps clips from competing with the selection blue or the amber locked/hidden
+     state, and leaves the waveform the loudest thing in the lane.
+     `-dim` is the trimmed head/tail and the tail past the last frame; it is deliberately a long way
+     from `-clip` (roughly five steps) so trimmed regions read as OFF, not merely different.
      Named media-clip, not clip — bg-clip-* is Tailwind's background-clip namespace. */
-  --color-media-clip: #e3e8f4;
-  --color-media-clip-dim: #f1f4fa; /* the tail past the last frame — toward the lane background */
-  --color-media-clip-border: #c3cee6;
+  --color-media-clip: #d6d6d6;
+  --color-media-clip-dim: #f6f6f6;
+  --color-media-clip-border: #b8b8b8;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
@@ -45,9 +50,9 @@
   --color-accent: #e0e0e0;
   --color-accent-text: #1e1e1e;
   --color-selection: #6688cc;
-  --color-media-clip: #2b3240;
-  --color-media-clip-dim: #24272f;
-  --color-media-clip-border: #3d4759;
+  --color-media-clip: #474747;
+  --color-media-clip-dim: #242424;
+  --color-media-clip-border: #5c5c5c;
 }
 
 html,
