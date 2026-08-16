@@ -2388,7 +2388,17 @@ fixed root to get there, not the document `overflow` rules.
   the ◆ goes with the drawing.
 - **Export has no streaming/progress/cancel**, and materialises the whole encode in memory (the
   end-of-render spike). Too large for a defect wave; needs its own design pass.
-- **"New" has no confirmation** — it replaces the document and clears the autosave slot on one tap.
+- ~~"New" has no confirmation.~~ **FIXED 2026-08-17.** It was the last irreversible action reachable
+  in one tap, and worse than it looked: `replaceProject` clears history, `clearAutosave` drops the
+  only restorable copy and `clearAllMedia` discards the stored reference bytes, so there is nothing
+  left to undo it WITH. The dialog read as a size picker — Create looked as harmless as Resize's
+  button. Now `SizeDialog` forewarns inline in `new` mode and gates Create behind a native
+  `confirm`, which is the pattern the destructive length-shorten already uses (Playbar/Timeline)
+  rather than a second one. Declining leaves the dialog OPEN: cancelling the guard must not also
+  cancel the intent. Deliberately UNCONDITIONAL — suppressing it on an "empty" project needs an
+  emptiness test, and the only safe one has to inspect cell INK (a restored single blank-looking
+  keyframe can still hold a drawing with no undo history behind it), which is more machinery than a
+  rare action warrants and fails in the dangerous direction if it is wrong.
 - **The play In/Out range is ignored by export** (always frame 0..frameCount-1), which reads as a
   bug once you've set a range.
 - **`evenDimensions` crops video but not PNG**, so an odd-width project's two exports disagree by a

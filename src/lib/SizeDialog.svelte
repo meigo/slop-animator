@@ -46,6 +46,18 @@
     const cw = Math.max(16, Math.min(8192, Math.round(w)));
     const ch = Math.max(16, Math.min(8192, Math.round(h)));
     if (appState.sizeDialog.mode === "new") {
+      // The one remaining irreversible action reachable in a single tap: `replaceProject` clears
+      // history, `clearAutosave` drops the only restorable copy, and `clearAllMedia` discards the
+      // stored reference bytes — so there is nothing to undo it WITH afterwards. Until now this
+      // dialog read as a size picker, and Create looked as harmless as Resize's. Native `confirm`
+      // matches the existing destructive gate on shortening the animation (Playbar/Timeline), rather
+      // than inventing a second pattern.
+      if (
+        !window.confirm(
+          "Start a new project?\n\nThe current project, its autosave and any stored reference media are discarded. This can't be undone.",
+        )
+      )
+        return; // dialog stays open — cancelling the guard must not also cancel the intent
       replaceProject(createProject({ width: cw, height: ch }));
       clearAutosave();
       void clearAllMedia();
@@ -134,6 +146,16 @@
             {/each}
           </div>
         </div>
+      {/if}
+
+      <!-- Forewarn here, ask once on Create — the same shape the destructive length drag uses, so the
+           prompt is never a surprise. Amber, not red: red is reserved but unused in this codebase and
+           would need its own contrast pass; the native confirm is the actual gate. -->
+      {#if appState.sizeDialog.mode === "new"}
+        <p class="text-xs/snug text-amber-500">
+          Replaces the current project and clears its autosave. Save it first if you want to keep
+          it.
+        </p>
       {/if}
 
       <div class="flex justify-end gap-2 mt-1">
