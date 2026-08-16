@@ -83,6 +83,18 @@
     <button class={btn} title="Last frame" onclick={() => go(appState.project.frameCount - 1)}
       ><SkipForward size={16} /></button
     >
+    <!-- Loop is a transport MODE, not a project setting: it is flipped constantly while working,
+         where fps is set once. It sits LAST in transport, where media players put it, and uses the
+         same on-state treatment as the onion and boil toggles — visible toggle on the bar, params
+         behind the gear. It lived in the settings popover until 2026-08-16. -->
+    <button
+      class={btn}
+      class:bg-surface-active={appState.playback.loop}
+      title={appState.playback.loop ? "Looping — click to play once" : "Play once — click to loop"}
+      aria-pressed={appState.playback.loop}
+      onclick={() => (appState.playback.loop = !appState.playback.loop)}
+      ><Repeat size={16} /></button
+    >
   </div>
 
   <span class={divider}></span>
@@ -118,18 +130,6 @@
       <span class="tabular-nums">{er.start + 1}–{er.end + 1}</span>
       <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
-    <!-- Loop is a transport MODE, not a project setting: it is flipped constantly while working,
-         where fps is set once. It sits with In/Out because looping a range is one workflow, and it
-         uses the same on-state treatment as the onion and boil toggles — visible toggle on the bar,
-         params behind the gear. It lived in the settings popover until 2026-08-16. -->
-    <button
-      class={btn}
-      class:bg-surface-active={appState.playback.loop}
-      title={appState.playback.loop ? "Looping — click to play once" : "Play once — click to loop"}
-      aria-pressed={appState.playback.loop}
-      onclick={() => (appState.playback.loop = !appState.playback.loop)}
-      ><Repeat size={16} /></button
-    >
   </div>
 
   <div class="ml-auto flex items-center gap-1">
