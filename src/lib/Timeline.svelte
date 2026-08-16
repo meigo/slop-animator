@@ -55,6 +55,7 @@
     restoreCellTrack,
     setHoldSpan,
   } from "../anim/timeline";
+  import { flingVelocity, decayVelocity, flingSpent, type PanSample } from "../anim/kinetic-scroll";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { loadReferenceMedia } from "../anim/reference";
   import {
@@ -191,14 +192,44 @@
     return e.pointerType !== "touch"; // finger/palm navigate; Pencil/mouse edit
   }
 
+  // A fling started by `touchPanUp`, coasting in rAF. Native touch scrolling (with its inertia) is
+  // unavailable here: the rows set `touch-action: none` so a Pencil drag edits instead of scrolling,
+  // which switches it off for fingers too. Without this a drag from a ROW stopped dead while one
+  // from empty space still glided — the same surface behaving two different ways.
+  let fling: { vx: number; vy: number; t: number; raf: number } | null = null;
+  function stopFling() {
+    if (fling) cancelAnimationFrame(fling.raf);
+    fling = null;
+  }
+  function stepFling() {
+    if (!fling || !gridWrapper) return;
+    const now = performance.now();
+    const dt = now - fling.t;
+    fling.t = now;
+    // Velocity is pointer travel; the content moves the other way.
+    const left = gridWrapper.scrollLeft - fling.vx * dt;
+    const top = gridWrapper.scrollTop - fling.vy * dt;
+    gridWrapper.scrollLeft = left;
+    gridWrapper.scrollTop = top;
+    // Hitting an edge kills that axis instead of coasting against the clamp for a second.
+    if (gridWrapper.scrollLeft !== left) fling.vx = 0;
+    if (gridWrapper.scrollTop !== top) fling.vy = 0;
+    fling.vx = decayVelocity(fling.vx, dt);
+    fling.vy = decayVelocity(fling.vy, dt);
+    if (flingSpent(fling.vx, fling.vy)) return stopFling();
+    fling.raf = requestAnimationFrame(stepFling);
+  }
+
   function touchPanDown(e: PointerEvent) {
     if (!gridWrapper) return;
+    stopFling(); // a finger down catches the glide, as native scrolling does
     touchPan = {
       x: e.clientX,
       y: e.clientY,
       left: gridWrapper.scrollLeft,
       top: gridWrapper.scrollTop,
       panning: false,
+      samples: [{ t: performance.now(), x: e.clientX, y: e.clientY }],
     };
   }
   function touchPanMove(e: PointerEvent): boolean {
@@ -207,6 +238,9 @@
     const dy = e.clientY - touchPan.y;
     if (!touchPan.panning && Math.hypot(dx, dy) > MOVE_CANCEL_PX) touchPan.panning = true;
     if (!touchPan.panning) return false;
+    touchPan.samples.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+    // Only the last window's worth is ever read; trimming keeps a long drag from growing unbounded.
+    if (touchPan.samples.length > 16) touchPan.samples.shift();
     gridWrapper.scrollLeft = touchPan.left - dx;
     gridWrapper.scrollTop = touchPan.top - dy;
     return true;
@@ -232,6 +266,7 @@
   let edgeOriginY = 0;
 
   function startEdgeScroll(apply: (clientX: number, clientY: number) => void, owner: string) {
+    stopFling(); // a drag's edge scroll owns the scroller; a leftover glide would fight it
     edgeApply = apply;
     edgeOwner = owner;
     edgeOriginX = edgePointerX;
@@ -280,11 +315,22 @@
     edgeOwner = null;
   }
 
-  function touchPanUp() {
+  /** `e` is passed straight through from the `pointerup` / `pointercancel` bindings, so the type is
+   *  what tells a real lift from an aborted stream (an OS edge swipe, palm rejection). A cancelled
+   *  gesture must not fling: the artist never released, so there is no throw to honour. Zero-arg
+   *  callers are settle paths, i.e. an ordinary lift. */
+  function touchPanUp(e?: PointerEvent) {
     // Remember whether the gesture actually PANNED, for controls that must not fire on a scroll that
     // happens to end on them. A click still fires when a drag ends on its element, and while
     // selecting a layer that way is harmless, opening a file picker mid-scroll is not.
     panEndedWithMovement = touchPan?.panning ?? false;
+    if (touchPan?.panning && gridWrapper && e?.type !== "pointercancel") {
+      const { vx, vy } = flingVelocity(touchPan.samples, performance.now());
+      if (!flingSpent(vx, vy)) {
+        stopFling();
+        fling = { vx, vy, t: performance.now(), raf: requestAnimationFrame(stepFling) };
+      }
+    }
     touchPan = null;
   }
   let panEndedWithMovement = false;
@@ -741,7 +787,24 @@
     const x = GUTTER_W + ph * CELL_W + CELL_W / 2;
     const next = playheadFollowScroll(x, el.scrollLeft, el.clientWidth, GUTTER_W, 8, followPrevX);
     followPrevX = x;
-    if (next !== null) el.scrollLeft = next;
+    if (next !== null) {
+      stopFling(); // playback is paging the view; a glide would drag it straight back
+      el.scrollLeft = next;
+    }
+  });
+
+  // A press anywhere in the timeline catches a glide, exactly as native scrolling does — and a
+  // Pencil press must too, or you would start editing while the view slides under you. Capture
+  // phase and one listener, rather than a stopFling() in every gesture entry point (there are six).
+  $effect(() => {
+    const el = gridWrapper;
+    if (!el) return;
+    const onDown = () => stopFling();
+    el.addEventListener("pointerdown", onDown, { capture: true });
+    return () => {
+      el.removeEventListener("pointerdown", onDown, { capture: true });
+      stopFling(); // teardown: never leave a rAF running against a detached element
+    };
   });
 
   // moveblock: the grabbed key's frame and the live (clamped) frame offset for the ghost.
@@ -754,7 +817,14 @@
   // ref rows and empty space could scroll. Matches the canvas convention (Canvas.svelte: finger
   // navigates, Pencil edits). Pen/mouse are untouched; tap, long-press-marquee, resize and
   // move-block still work with a finger.
-  let touchPan: { x: number; y: number; left: number; top: number; panning: boolean } | null = null;
+  let touchPan: {
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    panning: boolean;
+    samples: PanSample[]; // recent positions, for the release velocity
+  } | null = null;
   let armedOutside = false; // pressed OUTSIDE the selection: tap selects/deselects, drag → marquee
   let armedOnKey = false; // …and the pressed cell was a key (tap selects it) vs empty (tap deselects)
   let pressFrame = -1;

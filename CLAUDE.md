@@ -2288,6 +2288,45 @@ same for Pose; an empty cell or a locked/hidden layer still enters nothing; sele
 away without touching it (no undo entry — ⌘Z should hit the edit BEFORE it); step a frame with Deform
 active; reload with Deform as the saved tool (no lift until you press, and no ◆ appears on a hold).
 
+**The timeline's finger pan has momentum (2026-08-16).** Reported as "iPad timeline scrolling is
+kinetic only when initiated from empty areas". Exactly right, and the cause is structural rather
+than a bug: the rows set `touch-action: none` so a Pencil drag EDITS instead of scrolling
+(gotcha #10) — which also switches off the browser's own scrolling, and its inertia, for fingers.
+So `touchPan` hand-rolls the pan by writing `scrollLeft`/`scrollTop` per pointermove, which is 1:1
+and stops dead, while a drag starting on empty space still fell through to native scrolling and
+glided. One surface, two behaviours.
+
+Native scrolling cannot be handed back (that is what would break Pencil editing), so the fling is
+now ours: `src/anim/kinetic-scroll.ts` (pure, unit-tested, 11 cases) plus a small rAF loop in
+`Timeline.svelte`. Three things worth knowing.
+
+- **Release velocity is measured over a WINDOW (80 ms), not the last two events.** That is what
+  makes a hold-then-release stop dead: if the finger rested before lifting, every sample in the
+  window sits at the same place, so the velocity is zero and nothing is thrown. Sampling the final
+  pair would divide a one-pixel jitter by a couple of milliseconds and fling hard — the classic
+  "it flew off when I let go" bug. A speed cap covers the same hazard from the other end.
+- **Decay is exponential in ELAPSED TIME (`exp(-k·dt)`), not a per-frame multiplier**, so a dropped
+  frame lengthens the step instead of shortening the glide. Unit-tested as "one 32 ms step equals
+  two 16 ms steps".
+- **Everything else that drives the scroller stops it**, or two things fight over `scrollLeft`: a
+  pointerdown anywhere in the timeline (one CAPTURE-phase listener on the wrapper, rather than a
+  `stopFling()` in each of the six gesture entry points — and a Pencil press counts, or you would
+  start drawing while the view slides), edge auto-scroll arming, the playback playhead-follow, and
+  teardown. Hitting a scroll bound kills that axis rather than coasting against the clamp.
+
+**A cancelled pointer does not fling.** `touchPanUp` is bound to BOTH `pointerup` and
+`pointercancel`, so it reads `e?.type` to tell them apart — the artist never released on a cancel
+(OS edge swipe, palm rejection), so there is no throw to honour. Note the binding passes the event
+positionally: a `cancelled = false` boolean parameter would have been silently true on the
+`pointerup` path too. `AudioLane` routes through the same three functions and gets the momentum for
+free.
+
+**Owed an iPad pass** (this is a FEEL change and no unit test can judge it): a flick from a drawing
+row glides and settles like the empty-space scroll always did; a slow drag ending stationary stops
+dead; a press mid-glide catches it; the glide stops at both ends without juddering; a Pencil press
+mid-glide stops it rather than drawing on a moving view; the audio lane behaves the same; and
+scrubbing/edge-scroll/playback-follow never fight it.
+
 **Deferred by this wave — decided, not forgotten:**
 
 - ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —
