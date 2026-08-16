@@ -132,7 +132,13 @@ export interface ProjectJson {
   }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
-  audio: { name: string; offsetFrames: number; muted: boolean } | null;
+  audio: {
+    name: string;
+    offsetFrames: number;
+    muted: boolean;
+    trimInFrames?: number;
+    trimLenFrames?: number;
+  } | null;
 }
 
 /** Normalise a persisted boil blob. Old saves used `scale`; weight has a different meaning, so old
@@ -226,6 +232,8 @@ export function projectToJson(project: Project): ProjectJson {
           name: project.audio.name,
           offsetFrames: project.audio.offsetFrames,
           muted: project.audio.muted,
+          trimInFrames: project.audio.trimInFrames,
+          trimLenFrames: project.audio.trimLenFrames,
         }
       : null,
   };
@@ -438,6 +446,8 @@ export async function loadProjectBlob(
         buffer,
         offsetFrames: aj.offsetFrames,
         muted: aj.muted,
+        trimInFrames: aj.trimInFrames,
+        trimLenFrames: aj.trimLenFrames,
       };
     } catch {
       project.audio = null; // corrupt/unsupported audio → open the project without it

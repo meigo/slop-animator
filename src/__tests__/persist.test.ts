@@ -144,6 +144,52 @@ describe("projectToJson", () => {
   });
 });
 
+describe("audio trim persistence", () => {
+  const audio = (over = {}) =>
+    ({
+      name: "take.wav",
+      bytes: new Uint8Array(0),
+      buffer: { duration: 10 } as unknown as AudioBuffer,
+      offsetFrames: 0,
+      muted: false,
+      ...over,
+    }) as unknown as Project["audio"];
+
+  it("round-trips a trimmed clip", () => {
+    const p = {
+      name: "t",
+      width: 800,
+      height: 600,
+      fps: 8,
+      bgColor: "#eee",
+      frameCount: 2,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [dlayer(1, [key(), hold()])],
+      audio: audio({ trimInFrames: 24, trimLenFrames: 96 }),
+    } as unknown as Project;
+    expect(projectToJson(p).audio).toMatchObject({ trimInFrames: 24, trimLenFrames: 96 });
+  });
+
+  it("an untrimmed clip writes no trim fields", () => {
+    const p = {
+      name: "t",
+      width: 800,
+      height: 600,
+      fps: 8,
+      bgColor: "#eee",
+      frameCount: 2,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [dlayer(1, [key(), hold()])],
+      audio: audio(),
+    } as unknown as Project;
+    const j = projectToJson(p).audio!;
+    expect(j.trimInFrames).toBeUndefined();
+    expect(j.trimLenFrames).toBeUndefined();
+  });
+});
+
 describe("migrateBoil", () => {
   it("an old save with `scale` loads with a default weight (scale dropped)", () => {
     const m = migrateBoil({
