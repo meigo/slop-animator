@@ -61,6 +61,28 @@ body,
   height: 100%;
   margin: 0;
 }
+/* `100%` resolves against iOS's LAYOUT viewport, which is taller than the visible area whenever
+   Safari's dynamic toolbars are showing — so the app shell ends up taller than the screen and the
+   spare height reads as blank space below the UI once the page is dragged. `dvh` is the visible
+   area, and it is stable here precisely because the page cannot scroll (see below), so the
+   toolbars never hide/show underneath us. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #app {
+    height: 100dvh;
+  }
+}
+/* The PAGE never scrolls — only the panes inside it do. Without this, any content that overflows
+   the viewport (the layer panel, or a tall timeline against a short window) makes the DOCUMENT
+   scrollable, and on iPad a drag starting on the layer panel or a toolbar — neither of which sets
+   `touch-action` — pans the whole app: the toolbar scrolls out of view and blank space appears
+   under the UI. `overscroll-behavior` alone does NOT cover this; it governs chaining and
+   rubber-banding, not a document that genuinely has somewhere to scroll to. */
+html,
+body {
+  overflow: hidden;
+}
 body {
   overscroll-behavior: none;
   font-family: system-ui, sans-serif;

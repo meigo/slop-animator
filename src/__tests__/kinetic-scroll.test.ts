@@ -3,6 +3,7 @@ import {
   flingVelocity,
   decayVelocity,
   flingSpent,
+  stepFlingAxis,
   FLING_MIN_V,
   FLING_MAX_V,
   type PanSample,
@@ -84,5 +85,44 @@ describe("decayVelocity / flingSpent", () => {
     expect(flingSpent(0, FLING_MIN_V * 2)).toBe(false);
     expect(flingSpent(FLING_MIN_V * 2, 0)).toBe(false);
     expect(flingSpent(FLING_MIN_V / 2, FLING_MIN_V / 2)).toBe(true);
+  });
+});
+
+describe("stepFlingAxis", () => {
+  it("moves opposite the pointer travel", () => {
+    expect(stepFlingAxis(500, 1, 10, 2000).pos).toBe(490); // finger went right → scroll back
+    expect(stepFlingAxis(500, -1, 10, 2000).pos).toBe(510);
+  });
+
+  it("keeps the velocity while inside the bounds", () => {
+    expect(stepFlingAxis(500, 1, 10, 2000).v).toBe(1);
+  });
+
+  // The bug this function exists for: an `!==` test against the WRITTEN value fires on rounding,
+  // not just at an edge, so the glide died on its first frame under WebKit's pixel snapping.
+  // Sub-pixel steps must survive, and mid-range motion must never look like a bound.
+  it("advances by a sub-pixel step instead of stalling", () => {
+    const a = stepFlingAxis(500, 0.02, 16, 2000); // 0.32px
+    expect(a.pos).toBeCloseTo(499.68, 5);
+    expect(a.v).toBe(0.02); // still moving — NOT treated as an edge
+  });
+
+  it("zeroes the axis at the start bound", () => {
+    const a = stepFlingAxis(5, 1, 100, 2000); // would land at -95
+    expect(a.pos).toBe(0);
+    expect(a.v).toBe(0);
+  });
+
+  it("zeroes the axis at the end bound", () => {
+    const a = stepFlingAxis(1990, -1, 100, 2000); // would overshoot 2000
+    expect(a.pos).toBe(2000);
+    expect(a.v).toBe(0);
+  });
+
+  it("treats a non-scrollable axis as pinned at 0", () => {
+    const a = stepFlingAxis(0, 1, 16, 0); // content fits: max is 0 (or negative)
+    expect(a.pos).toBe(0);
+    expect(a.v).toBe(0);
+    expect(stepFlingAxis(0, -1, 16, -50).pos).toBe(0);
   });
 });

@@ -59,3 +59,28 @@ export function decayVelocity(v: number, dtMs: number): number {
 export function flingSpent(vx: number, vy: number): boolean {
   return Math.abs(vx) < FLING_MIN_V && Math.abs(vy) < FLING_MIN_V;
 }
+
+/**
+ * Advance one axis by `dt`, clamped to `[0, max]`, reporting whether it hit a bound.
+ *
+ * The caller must keep this returned `pos` and feed it back next frame rather than re-reading
+ * `element.scrollLeft`. **`scrollLeft` is not a faithful round trip**: WebKit snaps it to whole
+ * device pixels, so a written 123.4 reads back 123. Accumulating from the readback loses the
+ * fraction every frame — and a slow glide, whose per-frame step is under a pixel, stalls outright.
+ * It also means an `!==` comparison against the written value is NOT an edge test: it fires on the
+ * very first frame from rounding alone, which silently killed the whole fling on iPad while looking
+ * fine on desktop Chrome (which keeps scroll offsets fractional). Compare against the BOUND instead,
+ * which is what this does.
+ */
+export function stepFlingAxis(
+  pos: number,
+  v: number,
+  dt: number,
+  max: number,
+): { pos: number; v: number } {
+  const limit = Math.max(0, max);
+  const next = pos - v * dt; // velocity is POINTER travel; the content moves the other way
+  const clamped = Math.max(0, Math.min(limit, next));
+  // Hitting an end stops that axis rather than coasting against the clamp for the rest of the glide.
+  return { pos: clamped, v: clamped === next ? v : 0 };
+}

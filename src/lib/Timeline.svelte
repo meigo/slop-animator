@@ -55,7 +55,13 @@
     restoreCellTrack,
     setHoldSpan,
   } from "../anim/timeline";
-  import { flingVelocity, decayVelocity, flingSpent, type PanSample } from "../anim/kinetic-scroll";
+  import {
+    flingVelocity,
+    decayVelocity,
+    flingSpent,
+    stepFlingAxis,
+    type PanSample,
+  } from "../anim/kinetic-scroll";
   import { resolveSelectionRect } from "../anim/timeline-selection";
   import { loadReferenceMedia } from "../anim/reference";
   import {
@@ -196,26 +202,28 @@
   // unavailable here: the rows set `touch-action: none` so a Pencil drag edits instead of scrolling,
   // which switches it off for fingers too. Without this a drag from a ROW stopped dead while one
   // from empty space still glided — the same surface behaving two different ways.
-  let fling: { vx: number; vy: number; t: number; raf: number } | null = null;
+  // `left`/`top` are the glide's OWN float position, never a readback: WebKit snaps `scrollLeft` to
+  // whole device pixels, so re-reading it each frame drops the fraction and a slow glide stalls.
+  let fling: { vx: number; vy: number; left: number; top: number; t: number; raf: number } | null =
+    null;
   function stopFling() {
     if (fling) cancelAnimationFrame(fling.raf);
     fling = null;
   }
   function stepFling() {
     if (!fling || !gridWrapper) return;
+    const el = gridWrapper;
     const now = performance.now();
     const dt = now - fling.t;
     fling.t = now;
-    // Velocity is pointer travel; the content moves the other way.
-    const left = gridWrapper.scrollLeft - fling.vx * dt;
-    const top = gridWrapper.scrollTop - fling.vy * dt;
-    gridWrapper.scrollLeft = left;
-    gridWrapper.scrollTop = top;
-    // Hitting an edge kills that axis instead of coasting against the clamp for a second.
-    if (gridWrapper.scrollLeft !== left) fling.vx = 0;
-    if (gridWrapper.scrollTop !== top) fling.vy = 0;
-    fling.vx = decayVelocity(fling.vx, dt);
-    fling.vy = decayVelocity(fling.vy, dt);
+    const x = stepFlingAxis(fling.left, fling.vx, dt, el.scrollWidth - el.clientWidth);
+    const y = stepFlingAxis(fling.top, fling.vy, dt, el.scrollHeight - el.clientHeight);
+    fling.left = x.pos;
+    fling.top = y.pos;
+    fling.vx = decayVelocity(x.v, dt);
+    fling.vy = decayVelocity(y.v, dt);
+    el.scrollLeft = fling.left;
+    el.scrollTop = fling.top;
     if (flingSpent(fling.vx, fling.vy)) return stopFling();
     fling.raf = requestAnimationFrame(stepFling);
   }
@@ -328,7 +336,14 @@
       const { vx, vy } = flingVelocity(touchPan.samples, performance.now());
       if (!flingSpent(vx, vy)) {
         stopFling();
-        fling = { vx, vy, t: performance.now(), raf: requestAnimationFrame(stepFling) };
+        fling = {
+          vx,
+          vy,
+          left: gridWrapper.scrollLeft,
+          top: gridWrapper.scrollTop,
+          t: performance.now(),
+          raf: requestAnimationFrame(stepFling),
+        };
       }
     }
     touchPan = null;
@@ -1534,7 +1549,10 @@
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
-  <div class="relative flex-1 min-h-0 overflow-auto" bind:this={gridWrapper}>
+  <!-- `overscroll-contain`: reaching either end must not hand the scroll to an ancestor. Chaining is
+       what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
+       which both aborts the custom pan and (correctly) suppresses its fling. -->
+  <div class="relative flex-1 min-h-0 overflow-auto overscroll-contain" bind:this={gridWrapper}>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
