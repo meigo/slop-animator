@@ -1836,3 +1836,16 @@ or tail reads as OFF rather than merely different — the old half-step was the 
 the darker plate falls to ~4.0:1 — under the 4.5 floor the 2026-08-11 contrast pass set for this
 codebase. It is `text-text` now (~10.8:1 light, ~6.7:1 dark). Any future change to `--color-media-clip`
 must re-check that label; the waveform peaks are a graphic and only need 3:1, so they are unaffected.
+
+**Loop moved out of the settings popover onto the playbar (2026-08-16).** Asked as "is hiding loop
+playback in settings a good idea?" — no, and the app's own convention already said so. **Loop is a
+transport MODE, not a project parameter:** it is flipped constantly while working (loop a section to
+judge timing, then play through), where fps is set once. The pattern to copy was already here — the
+onion skin and line boil each have a VISIBLE TOGGLE on the bar plus a gear for their PARAMS. Putting
+loop behind the gear flattened that distinction. It also pairs with In/Out, which was already visible,
+so looping a range meant setting the range on the bar and then opening a popover to act on it.
+It is now a `Repeat` toggle in the playbar's range group, using the same `bg-surface-active` on-state
+as the other toggles, with `aria-pressed` and a title that states the CURRENT mode rather than naming
+the control. fps stays in the popover, which is now coherently "project settings" rather than a mixed
+bag. **The rule this sets: a popover is for parameters you set and forget; anything you toggle during
+playback belongs on the bar.**
