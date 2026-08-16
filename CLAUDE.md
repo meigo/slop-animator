@@ -1844,8 +1844,11 @@ judge timing, then play through), where fps is set once. The pattern to copy was
 onion skin and line boil each have a VISIBLE TOGGLE on the bar plus a gear for their PARAMS. Putting
 loop behind the gear flattened that distinction. It also pairs with In/Out, which was already visible,
 so looping a range meant setting the range on the bar and then opening a popover to act on it.
-It is now a `Repeat` toggle in the playbar's range group, using the same `bg-surface-active` on-state
-as the other toggles, with `aria-pressed` and a title that states the CURRENT mode rather than naming
-the control. fps stays in the popover, which is now coherently "project settings" rather than a mixed
+It is now a `Repeat` toggle as the LAST item of the playbar's transport group — where media players
+put it, and where it reads as part of "how playback runs" rather than as a range operation (it was
+briefly grouped with In/Out, on the reasoning that looping a range is one workflow; sitting with
+transport felt more natural in use, and loop applies with or without a range). Same
+`bg-surface-active` on-state as the other toggles, with `aria-pressed` and a title that states the
+CURRENT mode rather than naming the control. fps stays in the popover, which is now coherently "project settings" rather than a mixed
 bag. **The rule this sets: a popover is for parameters you set and forget; anything you toggle during
 playback belongs on the bar.**
