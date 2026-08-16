@@ -26,6 +26,7 @@ import {
   type DrawingLayer,
   type Cell,
   type AudioTrack,
+  type UndecodedAudio,
   type ReferenceLayer,
   type ReferenceMedia,
   type LayerGroup,
@@ -109,6 +110,11 @@ interface AnimState {
   /** Bumped when the pressure curve is edited (it's an imperative widget, not reactive state). */
   curveVersion: number;
   exportOpen: boolean;
+  /** An export render is in flight. The frame loop `await`s per frame and `renderFrame` re-reads the
+   *  LIVE project each iteration, so a keystroke landing between frames (⌘Z, or Space/Enter/k
+   *  restarting playback onto the shared boil GL surface) splices two different documents into one
+   *  file. The dialog's backdrop stops pointers only, so the global key handler reads this instead. */
+  exportBusy: boolean;
   settingsOpen: boolean;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   theme: "dark" | "light";
@@ -117,6 +123,18 @@ interface AnimState {
   pose: { fillHoles: boolean; gap: number };
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
   statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
+  /** STICKY data-safety warning: the startup restore failed (so autosave is disarmed), an autosave
+   *  write failed, or an explicit save didn't produce a file. Deliberately NOT `statusHint` — that
+   *  field is the hovered control's `title=` and a window-level `pointerdown`/`pointerover` writer
+   *  overwrites it on the next pointer move, which is no way to carry a condition that lasts the
+   *  session. Same carve-out, same reason, as `poseFillWarning`. Set by App.svelte/Toolbar; cleared
+   *  only by a subsequent success. */
+  persistAlert: string;
+  /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
+   *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
+   *  clearing on a save is how the "worked for hours believing they were saved" failure gets back
+   *  in through the side door. Written once, by App.svelte's restore catch. */
+  autosaveOff: boolean;
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
@@ -189,6 +207,7 @@ export const state: AnimState = $state({
   persistTick: 0,
   curveVersion: 0,
   exportOpen: false,
+  exportBusy: false,
   settingsOpen: false,
   sizeDialog: { open: false, mode: "new" },
   theme: "dark",
@@ -203,6 +222,8 @@ export const state: AnimState = $state({
   pose: { fillHoles: true, gap: 0 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
+  persistAlert: "",
+  autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
@@ -281,6 +302,14 @@ export interface StructSnapshot {
    *  shared `audio` object, so the reference cannot carry their before-state. */
   audioTrimInFrames: number | null;
   audioTrimLenFrames: number | null;
+  /** Audio whose bytes this device could not decode, held by REFERENCE for the same reason `audio`
+   *  is: it carries the only copy of those bytes, and the save path writes them back verbatim so a
+   *  device that cannot decode never destroys them. It MUST be captured, because both writers that
+   *  clear it (`setAudioTrack`/`removeAudioTrack`) run inside `commitStructural` — without it,
+   *  import-then-undo left `audio` null AND `audioUndecoded` null, and the next autosave wrote a
+   *  project with no audio at all. Nothing writes its fields in place (it has no UI), so unlike the
+   *  decoded track it needs no separate scalars. */
+  audioUndecoded: UndecodedAudio | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -310,6 +339,7 @@ function snapshotStructure(): StructSnapshot {
     audioMuted: state.project.audio?.muted ?? null,
     audioTrimInFrames: state.project.audio?.trimInFrames ?? null,
     audioTrimLenFrames: state.project.audio?.trimLenFrames ?? null,
+    audioUndecoded: state.project.audioUndecoded ?? null,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -325,9 +355,14 @@ function restoreStructure(s: StructSnapshot) {
         live.cells = snap.cells.slice();
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
-      if (live.kind === "ref" && snap.kind === "ref")
+      if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
         live.range = snap.range ? { ...snap.range } : undefined;
+        // …and so is WHERE the clip starts: `rippleDocumentFrames` shifts `offsetFrames` inside
+        // commitStructural, so leaving it out let a ripple-insert + undo drift an aligned video one
+        // frame later every time, silently. Third member of the range/audioOffsetFrames trio.
+        live.offsetFrames = snap.offsetFrames;
+      }
       return live;
     }
     // Layer was removed, OR its kind changed since the snapshot (e.g. rasterize ref→draw, same id) →
@@ -368,6 +403,11 @@ function restoreStructure(s: StructSnapshot) {
   const audioChanged = state.project.audio !== s.audio;
   const wasMuted = state.project.audio?.muted ?? null;
   state.project.audio = s.audio;
+  // Undecodable bytes are restored alongside the track, never left behind: an import or a remove
+  // clears them INSIDE commitStructural, so undoing one has to hand them back or the only copy is
+  // gone at the next autosave. `audio` and `audioUndecoded` are never both set, and restoring both
+  // from the same snapshot preserves that.
+  state.project.audioUndecoded = s.audioUndecoded;
   if (state.project.audio) {
     if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
     if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
@@ -458,13 +498,14 @@ export async function pasteImageReference(blob: Blob): Promise<void> {
 
 /** Replace an image reference layer in place with a drawing layer baked at its current transform. */
 export function rasterizeReference(layerId: number): void {
+  // Guards ABOVE the commit — returning from the mutate callback still leaves commitStructural
+  // pushing a before/after pair that are identical, i.e. a dead undo step.
+  const layers = state.project.layers;
+  const idx = layers.findIndex((l) => l.id === layerId);
+  const ref = layers[idx];
+  if (!ref || ref.kind !== "ref" || ref.media.type !== "image") return; // image refs only
+  if (mediaIntrinsicSize(ref.media).w === 0) return; // media not loaded
   commitStructural(() => {
-    const layers = state.project.layers;
-    const idx = layers.findIndex((l) => l.id === layerId);
-    const ref = layers[idx];
-    if (!ref || ref.kind !== "ref" || ref.media.type !== "image") return; // image refs only
-    if (mediaIntrinsicSize(ref.media).w === 0) return; // media not loaded
-
     const cell = createCellCanvas(state.project.width, state.project.height, DPR);
     const ctx = cell.getContext("2d")!;
     ctx.setTransform(1, 0, 0, 1, 0, 0); // helper draws in device pixels
@@ -502,6 +543,9 @@ export function removeLayer(id: number) {
   const idx = layers.findIndex((l) => l.id === id);
   if (idx === -1) return;
   if (!canRemoveLayer(layers, id)) return; // keep one drawing layer
+  // `setActiveLayer` below banks a live lift AFTER the layer is gone, i.e. into the removed layer's
+  // canvas — so undoing twice brought the layer back with the lifted region still punched out.
+  liftGuard.discard?.();
   commitStructural(() => {
     const removed = layers[idx];
     layers.splice(idx, 1);
@@ -527,6 +571,9 @@ export function duplicateLayer(id: number) {
   if (idx === -1) return;
   const src = layers[idx];
   if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels); see canDuplicateLayer
+  // Every key canvas is cloned below, and `setActiveLayer(dup.id)` then banks any live lift back
+  // into the SOURCE — so the copy would be missing exactly the pixels that were floating.
+  liftGuard.discard?.();
   commitStructural(() => {
     const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
     dup.visible = src.visible;
@@ -813,6 +860,7 @@ export async function toggleEmbedMedia(id: number): Promise<void> {
 export function setAudioTrack(track: AudioTrack) {
   commitStructural(() => {
     state.project.audio = track;
+    state.project.audioUndecoded = null; // an import replaces an undecodable track; never keep both
     // Hand the engine the $state PROXY (read back after assignment), never the raw object: UI writes
     // (offset drag, mute) go through the proxy, and the raw target does not see them — a raw ref
     // left the engine reading offsetFrames 0 forever. Same fix in replaceProject.
@@ -851,6 +899,7 @@ export function toggleAudioMute(): void {
 export function removeAudioTrack() {
   commitStructural(() => {
     state.project.audio = null;
+    state.project.audioUndecoded = null; // "Remove" means remove — including bytes we couldn't decode
     audioEngine.setTrack(null);
   });
 }
@@ -965,7 +1014,12 @@ export function trimToPlayhead(edge: "start" | "end"): void {
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the
  *  last frame; shortens by trimming trailing cells. Undoable. */
 export function setAnimationLength(n: number) {
-  commitStructural(() => applyAnimationLength(n));
+  // The no-op guard has to sit ABOVE the commit: inside `applyAnimationLength` it returns from the
+  // mutate callback, but commitStructural has already snapshotted and still pushes — an undo entry
+  // that restores the state it was taken in, i.e. a ⌘Z that visibly does nothing.
+  const target = Math.max(1, Math.min(9999, Math.floor(n)));
+  if (target === state.project.frameCount) return;
+  commitStructural(() => applyAnimationLength(target));
 }
 
 /** The length mutation WITHOUT an undo entry, for a drag that brackets the whole gesture itself.

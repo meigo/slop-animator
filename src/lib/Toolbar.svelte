@@ -59,32 +59,48 @@
     fileInput.click();
   }
 
+  function errText(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+  }
+
   async function onFile() {
     const file = fileInput.files?.[0];
     if (!file) return;
-    if (pendingKind === "project") {
-      const project = await loadProjectBlob(
-        file,
-        DPR,
-        () => repaint(),
-        () => (appState.statusHint = "Storage full — references won't survive a reload"),
-      );
-      // Pre-name-field saves carry no name — adopt the picked file's basename.
-      if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
-      replaceProject(project);
-      void pruneMedia(referencedMediaIds(appState.project.layers));
-      return;
+    // Every branch awaits a decode that can fail on real input (a corrupt/truncated zip, an
+    // unsupported codec, an OOM on a large project). Unhandled, that produced ZERO user-visible
+    // feedback — the file simply never opened.
+    try {
+      if (pendingKind === "project") {
+        const project = await loadProjectBlob(
+          file,
+          DPR,
+          () => repaint(),
+          () => (appState.statusHint = "Storage full — references won't survive a reload"),
+        );
+        // Pre-name-field saves carry no name — adopt the picked file's basename.
+        if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
+        replaceProject(project);
+        void pruneMedia(referencedMediaIds(appState.project.layers));
+        // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.
+        if (appState.project.audioUndecoded)
+          appState.persistAlert =
+            "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+        return;
+      }
+      if (pendingKind === "audio") {
+        setAudioTrack(await loadAudioTrack(file));
+        return;
+      }
+      const layer =
+        pendingKind === "image"
+          ? await loadImageLayer(file)
+          : await loadVideoLayer(file, () => repaint());
+      if (pendingKind === "image") persistReferenceMedia(layer, file, file.name);
+      addLayerToProject(layer);
+    } catch (e) {
+      console.error("open failed", e);
+      appState.statusHint = `Couldn't open ${file.name}: ${errText(e)}`;
     }
-    if (pendingKind === "audio") {
-      setAudioTrack(await loadAudioTrack(file));
-      return;
-    }
-    const layer =
-      pendingKind === "image"
-        ? await loadImageLayer(file)
-        : await loadVideoLayer(file, () => repaint());
-    if (pendingKind === "image") persistReferenceMedia(layer, file, file.name);
-    addLayerToProject(layer);
   }
 
   async function pasteImage() {
@@ -112,14 +128,27 @@
   }
 
   async function saveProject() {
-    downloadBlob(
-      await saveProjectBlob(
-        appState.project,
-        true,
-        () => (appState.statusHint = "Couldn't embed a reference — saved without it"),
-      ),
-      `${sanitizeFilename(appState.project.name)}.zip`,
-    );
+    // This is the user's backup. A failure here (OOM zipping a large project on iPad) used to be an
+    // unhandled rejection with no message at all — no file appeared and nothing said why, which is
+    // exactly the state in which someone closes the tab believing they are saved.
+    try {
+      appState.statusHint = "Saving…";
+      const name = `${sanitizeFilename(appState.project.name)}.zip`;
+      let embedFailed = false; // latched, not written straight to the hint: the success line below
+      const blob = await saveProjectBlob(appState.project, true, () => (embedFailed = true));
+      downloadBlob(blob, name);
+      // The work is on disk, so retire any autosave warning — EXCEPT the one saying autosave is off
+      // for the session, which a save does not fix: everything drawn after this is still unprotected.
+      if (!appState.autosaveOff) appState.persistAlert = "";
+      appState.statusHint = embedFailed
+        ? `Saved ${name} — a reference couldn't be embedded, so it's saved without it`
+        : `Saved ${name}`;
+    } catch (e) {
+      console.error("save failed", e);
+      // Sticky, not a hover hint: "no file appeared" is precisely the state in which someone closes
+      // the tab believing they are saved.
+      appState.persistAlert = `Save failed: ${errText(e)} — the project was NOT written to a file.`;
+    }
   }
 
   function toggleTheme() {

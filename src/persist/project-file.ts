@@ -227,15 +227,22 @@ export function projectToJson(project: Project): ProjectJson {
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
       })),
-    audio: project.audio
-      ? {
-          name: project.audio.name,
-          offsetFrames: project.audio.offsetFrames,
-          muted: project.audio.muted,
-          trimInFrames: project.audio.trimInFrames,
-          trimLenFrames: project.audio.trimLenFrames,
-        }
-      : null,
+    // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
+    // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
+    // only copy of the project on the first autosave after opening it.
+    audio: audioJson(project),
+  };
+}
+
+function audioJson(project: Project): ProjectJson["audio"] {
+  const a = project.audio ?? project.audioUndecoded;
+  if (!a) return null;
+  return {
+    name: a.name,
+    offsetFrames: a.offsetFrames,
+    muted: a.muted,
+    trimInFrames: a.trimInFrames,
+    trimLenFrames: a.trimLenFrames,
   };
 }
 
@@ -276,6 +283,44 @@ function decodePng(bytes: Uint8Array): Promise<HTMLImageElement> {
   });
 }
 
+/** One key cell's zip path and the canvas whose pixels go there. */
+export interface FrameAsset {
+  path: string;
+  canvas: HTMLCanvasElement;
+}
+
+/** Every key cell's `{ path, canvas }`, in one pass over the model.
+ *
+ *  Must be called in the SAME TICK as `projectToJson`: the JSON records each layer's cell KINDS,
+ *  and the two together describe one document. `saveProjectBlob` used to walk the live `$state`
+ *  arrays across hundreds of `await`s (one per PNG encode, seconds in total, with input unblocked),
+ *  so deleting a frame or a layer mid-save produced a zip whose JSON and PNG set disagreed —
+ *  restoring with shifted drawings, or a layer that came back completely blank. */
+export function collectFrameAssets(project: Project): FrameAsset[] {
+  const out: FrameAsset[] = [];
+  for (const layer of project.layers) {
+    if (!isDrawingLayer(layer)) continue;
+    for (let i = 0; i < layer.cells.length; i++) {
+      const cell = layer.cells[i];
+      if (cell.kind !== "key") continue;
+      out.push({ path: frameAssetPath(layer.id, i), canvas: cell.canvas });
+    }
+  }
+  return out;
+}
+
+/** Reference media to embed, as `{ path, src }` — captured synchronously with the frame list so a
+ *  re-link or a layer delete mid-save can't change which entries are written. */
+function collectMediaAssets(project: Project): { path: string; src: string }[] {
+  const out: { path: string; src: string }[] = [];
+  for (const id of mediaIdsToEmbed(project.layers)) {
+    const layer = project.layers.find((l) => l.kind === "ref" && l.mediaId === id);
+    if (!layer || layer.kind !== "ref" || layer.media.type === "missing") continue;
+    out.push({ path: mediaAssetPath(id), src: layer.media.el.src });
+  }
+  return out;
+}
+
 /** Zip the project: `project.json` + one PNG per key cell. Reference layers are not saved.
  *  `includeMedia` additionally embeds reference media bytes (explicit "Save Project" only —
  *  autosave never sets it, keeping the debounced save cheap). `onMediaEmbedFailed` fires (once
@@ -286,33 +331,32 @@ export async function saveProjectBlob(
   includeMedia = false,
   onMediaEmbedFailed?: () => void,
 ): Promise<Blob> {
-  const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {
-    "project.json": strToU8(JSON.stringify(projectToJson(project))),
-  };
-  for (const layer of project.layers) {
-    if (!isDrawingLayer(layer)) continue;
-    for (let i = 0; i < layer.cells.length; i++) {
-      const cell = layer.cells[i];
-      if (cell.kind !== "key") continue;
-      // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
-      // CPU re-compressing it for ~nothing — the same treatment the audio entry gets below.
-      // Autosave re-encodes every key cell on a 3s debounce, so this pass is paid repeatedly.
-      files[frameAssetPath(layer.id, i)] = [await canvasToPngBytes(cell.canvas), { level: 0 }];
-    }
+  // ─── ONE synchronous read of the model ────────────────────────────────────────────────────────
+  // Everything the zip will contain is decided here, before the first `await`. Nothing below may
+  // touch `project` again: every PNG encode is a yield point at which the user can delete a frame
+  // or a layer, and a JSON captured from a different read of the model than the PNG set is a
+  // silently corrupt save (see collectFrameAssets).
+  const json = strToU8(JSON.stringify(projectToJson(project)));
+  const frames = collectFrameAssets(project);
+  const audioBytes = project.audio?.bytes ?? project.audioUndecoded?.bytes ?? null;
+  const media = includeMedia ? collectMediaAssets(project) : [];
+  // ──────────────────────────────────────────────────────────────────────────────────────────────
+
+  const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = { "project.json": json };
+  for (const { path, canvas } of frames) {
+    // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
+    // CPU re-compressing it for ~nothing — the same treatment the audio entry gets below.
+    // Autosave re-encodes every key cell on a 3s debounce, so this pass is paid repeatedly.
+    files[path] = [await canvasToPngBytes(canvas), { level: 0 }];
   }
   // Audio is already-compressed media (mp3/aac); store it (level 0) so autosave doesn't re-DEFLATE it.
-  if (project.audio) files["audio/track"] = [project.audio.bytes, { level: 0 }];
-  if (includeMedia) {
-    // Original media formats are already compressed — store at level 0, like audio/track.
-    for (const id of mediaIdsToEmbed(project.layers)) {
-      const layer = project.layers.find((l) => l.kind === "ref" && l.mediaId === id);
-      if (!layer || layer.kind !== "ref" || layer.media.type === "missing") continue;
-      try {
-        const bytes = new Uint8Array(await (await fetch(layer.media.el.src)).arrayBuffer());
-        files[mediaAssetPath(id)] = [bytes, { level: 0 }];
-      } catch {
-        onMediaEmbedFailed?.();
-      }
+  if (audioBytes) files["audio/track"] = [audioBytes, { level: 0 }];
+  // Original media formats are already compressed — store at level 0, like audio/track.
+  for (const { path, src } of media) {
+    try {
+      files[path] = [new Uint8Array(await (await fetch(src)).arrayBuffer()), { level: 0 }];
+    } catch {
+      onMediaEmbedFailed?.();
     }
   }
   return new Blob([zipSync(files)], { type: "application/zip" });
@@ -450,7 +494,19 @@ export async function loadProjectBlob(
         trimLenFrames: aj.trimLenFrames,
       };
     } catch {
-      project.audio = null; // corrupt/unsupported audio → open the project without it
+      // Unsupported/corrupt encoding (a desktop-Chrome m4a opened in WebKit is the common one).
+      // The project opens WITHOUT audio — playback and export need a decoded buffer — but the
+      // encoded bytes are kept so the next save writes them back unchanged. Clearing them here is
+      // what used to make one edit + autosave delete the audio from the only copy.
+      project.audio = null;
+      project.audioUndecoded = {
+        name: aj.name,
+        bytes: audioBytes,
+        offsetFrames: aj.offsetFrames,
+        muted: aj.muted,
+        trimInFrames: aj.trimInFrames,
+        trimLenFrames: aj.trimLenFrames,
+      };
     }
   }
   return project;

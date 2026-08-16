@@ -1101,6 +1101,9 @@
   function keyTool() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    // The new key CLONES the resolved key canvas, which a live lift has a hole punched in; the
+    // playhead move then banks the lift back into the ORIGINAL, so the clone keeps the hole forever.
+    liftGuard.discard?.();
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;
@@ -1109,6 +1112,7 @@
   function dupTool() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    liftGuard.discard?.(); // clones the resolved key — same lift-hole hazard as keyTool above
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
       appState.playhead += 1;

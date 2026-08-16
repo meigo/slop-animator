@@ -105,14 +105,25 @@ export async function exportVideo(
 
   const dt = 1 / project.fps;
   for (let f = 0; f < project.frameCount; f++) {
-    renderFrame(ctx, project, f, dpr, {
-      // Video has no alpha codec here (MP4/H.264); a transparent project is intentionally
-      // flattened onto project.bgColor.
-      drawBg: true,
-      includeReference: false,
-      boil: project.boil.enabled ? project.boil : undefined,
-    });
-    await source.add(f * dt, dt);
+    // Export is the only code that renders EVERY frame, so it is where a defect that fires on one
+    // frame surfaces — after minutes of encoding, and with nothing saying which frame. Name it.
+    // Deliberately not skip-and-continue: a file that is quietly short (or missing a drawing) is
+    // worse than no file, because it looks finished.
+    try {
+      renderFrame(ctx, project, f, dpr, {
+        // Video has no alpha codec here (MP4/H.264); a transparent project is intentionally
+        // flattened onto project.bgColor.
+        drawBg: true,
+        includeReference: false,
+        boil: project.boil.enabled ? project.boil : undefined,
+      });
+      await source.add(f * dt, dt);
+    } catch (e) {
+      throw new Error(
+        `frame ${f + 1} of ${project.frameCount} could not be encoded — ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }
   }
 
   await output.finalize();

@@ -41,6 +41,11 @@
   let cellPasteHandled = false;
 
   function onKey(e: KeyboardEvent) {
+    // An export renders every frame from the LIVE project, one awaited frame at a time. Undoing (or
+    // restarting playback onto the shared boil GL surface) between frames splices two documents into
+    // one file with no warning, so no shortcut is live for the duration of the render — including
+    // ⌘Z, which is handled above the INPUT/TEXTAREA guard below.
+    if (state.exportBusy) return;
     const meta = e.ctrlKey || e.metaKey;
     // Never leave the cell-paste guard stuck true if a `paste` event didn't follow a prior Cmd+V
     // (browser/platform variance) — reset it on any keydown that isn't itself a Cmd+V.
@@ -200,6 +205,27 @@
   let autosaveReady = false;
   let autosaveDirty = false;
 
+  function errText(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+  }
+
+  // A write that succeeds retires the warning — otherwise one transient quota blip would nag for
+  // the rest of the session.
+  function onAutosaveOk() {
+    if (state.persistAlert) state.persistAlert = "";
+  }
+
+  // Autosave failures used to be swallowed entirely (`.catch(() => (autosaveDirty = true))`), so a
+  // DETERMINISTIC failure — iPad quota exhaustion, or the documented stale-tab VersionError after a
+  // deploy — let the user work for hours believing they were saved. Restoring the dirty flag (so a
+  // later hide-flush retries) is kept; the message is the new part. `persistReferenceMedia` already
+  // reports its own quota failures this way.
+  function onAutosaveFailed(e: unknown) {
+    autosaveDirty = true;
+    console.error("autosave failed", e);
+    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save Project) so this work isn't lost.`;
+  }
+
   onMount(async () => {
     applyPreferences(loadPreferences());
     document.documentElement.classList.toggle("dark", state.theme === "dark");
@@ -212,9 +238,24 @@
       if (await hydrateFromStore(state.project, () => repaint())) repaint();
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
       void pruneMedia(referencedMediaIds(state.project.layers));
-    } finally {
-      autosaveReady = true;
+    } catch (e) {
+      // The restore failed (a truncated blob, a decode OOM on a large project, an IndexedDB open
+      // that never settled). `state.project` is still the BLANK startup document while the single
+      // autosave slot still holds the user's work — so arming autosave here would let the first
+      // stroke's 3s debounce overwrite it with nothing. Leave the gate shut for the session and say
+      // so; a manual "Save Project" and a reload are both still available.
+      console.error("startup restore failed", e);
+      state.autosaveOff = true; // stops a later manual save retiring the warning below
+      state.persistAlert = `Couldn't load your saved project (${errText(e)}). Autosave is OFF so the saved copy isn't overwritten — reload to retry, or use File ▸ Open.`;
+      return; // autosaveReady stays false — deliberately NOT a `finally`
     }
+    // A CONDITION, not a control's tooltip — so `persistAlert`, not `statusHint`, which the
+    // window-level title writer wipes on the next pointer move. There is no UI for an undecoded
+    // track (the lane renders only a decoded one), so this line is its only announcement.
+    if (state.project.audioUndecoded)
+      state.persistAlert =
+        "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+    autosaveReady = true;
   });
 
   let autosaveTimer: ReturnType<typeof setTimeout>;
@@ -228,7 +269,7 @@
       autosaveDirty = false;
       // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
       // next hide-event can retry rather than skipping the save on a stale "clean" status.
-      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
+      void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
     }, 3000);
   });
 
@@ -241,7 +282,7 @@
       if (!autosaveReady || !autosaveDirty) return;
       clearTimeout(autosaveTimer);
       autosaveDirty = false;
-      void saveAutosave(state.project).catch(() => (autosaveDirty = true));
+      void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();

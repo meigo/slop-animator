@@ -2036,3 +2036,155 @@ stop is ignored unless that drag armed it; `resetRowDrag` clears `transformDragG
 still holds its own hook. Four `ref.id !== activeLayerId` comparisons in the clip rows were left behind
 by the `activeRow` refactor and now use `isRowSelected` (selecting the audio lane left a reference row's
 gutter label dim while its clip body stayed lit).
+
+**Data-loss audit wave (2026-08-16, `fix/audit-wave`):** a three-subsystem audit (export /
+persistence / undo-lifecycle) found three CRITICAL data-loss paths and eight smaller ones. All
+fixed in one commit. The three criticals share a shape worth naming: **an operation that reads the
+document across an `await`, while something else is allowed to change it** — an uncommitted lift, a
+blank startup document, a live `$state` array.
+
+1. **Export never banked or discarded an active lift, so it encoded HOLES.** `liftPixels` CLEARS the
+   region from the cell canvas — the pixels live only on the overlay, which `renderFrame` never
+   composites (`Canvas.svelte` literally comments "show the hole where the content lifted out").
+   ~19 call sites in the app call `liftGuard.discard?.()` for exactly this hazard; the export path
+   had none, so marquee-a-head-and-drag-it → Export MP4 wrote a head-shaped hole into every frame
+   resolving to that key, and a POSE lift (whole content bbox) blanked the layer for the hold span.
+   `ExportDialog.run()` now discards beside the existing `playbackController.pause()`. **Discard,
+   not bank:** an export must not silently commit an edit the artist hasn't.
+2. **A failed startup restore silently armed autosave over the BLANK document.** `App.svelte`'s
+   restore was `try { … } finally { autosaveReady = true }` with no `catch`, so anything throwing
+   inside (a truncated blob, an OOM decoding a large project on iPad, an IndexedDB open that never
+   settled — see #6) left `state.project` as the empty `createProject()` **and opened the autosave
+   gate anyway**. First stroke → 3s debounce → the blank project overwrote the single autosave slot.
+   Total, irrecoverable loss. Now: `catch` → **leave `autosaveReady` false for the session** (the
+   `finally` is gone; arming is the last statement of the success path) + a sticky warning. The
+   inversion is the point — a restore that failed is exactly when autosave must NOT run.
+3. **`saveProjectBlob` raced concurrent edits and wrote a structurally inconsistent zip.**
+   `projectToJson` snapshots each layer's cell KINDS synchronously, then the PNG loop `await`ed
+   `canvasToPngBytes` once per key cell **while walking the live `$state` arrays** — hundreds of
+   yield points over seconds, with input unblocked. Delete a frame mid-autosave and the JSON
+   described 10 cells while the loop walked 9: on restore, frames shifted onto the wrong drawings
+   and the last key had no PNG (indistinguishable from a deliberately blank key). Deleting a LAYER
+   the loop hadn't reached yet was worse — JSON keeps it, no PNGs, restores blank. Hits explicit
+   "Save Project" too, i.e. the backup. Fixed by capturing **everything in one tick**: new exported
+   `collectFrameAssets(project)` → `{path, canvas}[]`, plus the audio bytes and a `{path, src}` media
+   list, all before the first `await`; nothing below that line reads `project` again. **Keep that
+   boundary comment** — the whole defect is one model read vs. many. Canvases are shared objects, so
+   a later stroke landing in an already-captured canvas is accepted and out of scope; the STRUCTURAL
+   mismatch was the bug. Two regression tests drive a fake canvas whose `toBlob` deletes a frame /
+   a not-yet-encoded layer mid-encode; both were confirmed to FAIL against the old interleaved walk.
+4. **`restoreStructure` never restored a ref's `offsetFrames`** — the third member of the
+   `range`/`audioOffsetFrames` trio, and missed for the same reason both of those were added:
+   `rippleDocumentFrames` shifts it INSIDE `commitStructural`, so ripple-insert + ⌘Z reverted cells,
+   range and audio while the video clip stayed one frame late, drifting silently on repeat.
+5. **Three ops cloned a cell canvas with a lift's hole punched in it.** `Timeline.keyTool`/`dupTool`
+   (`insertKeyframe`/`duplicateKeyframe` clone the resolved key, then `playhead += 1` banks the lift
+   into the ORIGINAL → the new key keeps the hole permanently), `duplicateLayer` (clones every key,
+   then `setActiveLayer(dup.id)` banks into the SOURCE → the copy is missing the floating art), and
+   `removeLayer` (banks AFTER the structural command → undo twice brings the layer back holed). All
+   now `liftGuard.discard?.()` first, matching `mergeDown`/`applyLayerTransform`/`clearFrame`.
+6. **`openDb` could hang forever, silently disabling autosave for the whole session.** It handled
+   `onupgradeneeded`/`onsuccess`/`onerror` only — a v2 upgrade BLOCKED by another open tab fires
+   none of them, so the promise never settled: at startup the restore `await` hung, `autosaveReady`
+   never flipped, and the app looked completely normal on a blank canvas with saving off. Now
+   `onblocked` rejects with a readable message and a **10s timeout guarantees the promise settles**;
+   a success arriving after the timeout closes its connection rather than leaking it (piled-up
+   connections eventually make WebKit refuse new opens). Startup surfaces it through #2.
+7. **Every autosave failure was completely silent** (`.catch(() => (autosaveDirty = true))`) — so a
+   DETERMINISTIC failure (iPad quota, or the documented stale-tab `VersionError` after a deploy)
+   let the user work for hours believing they were saved. Now reported; a later successful write
+   retires the message.
+8. **A failed audio decode destroyed the stored audio bytes.** The loader set `project.audio = null`
+   on a decode throw, discarding the encoded `bytes` — so a project saved on desktop Chrome and
+   opened on iPad (WebKit can't decode that format) lost its audio, and ONE edit + autosave removed
+   it from the only copy. Of the two fixes offered, the **save path preserves it**: new
+   `Project.audioUndecoded` (`UndecodedAudio` = `AudioTrack` minus `buffer`) holds name/bytes/offset/
+   mute/trim, `projectToJson` writes that metadata when there is no decoded track and
+   `saveProjectBlob` re-writes the bytes unchanged. Chosen over making `AudioTrack.buffer` nullable,
+   which would have rippled into the engine, `audio-mix` and `AudioLane` and put a track with no
+   buffer inside every playback/export invariant. `audio` and `audioUndecoded` are **never both
+   set** — `setAudioTrack`/`removeAudioTrack` clear it. A missing `audio/track` ZIP ENTRY still just
+   drops the track: there are no bytes to preserve.
+9. **Save and Open had no error handling at all** — a corrupt zip or an OOM in `saveProjectBlob` was
+   an unhandled rejection with ZERO feedback: no file appeared and nothing said why, which is
+   exactly the state in which someone closes the tab believing they're saved. Both wrapped; Save
+   also reports success by name (and latches the embed-failure callback instead of writing it
+   straight to the hint, so the success line can't stomp the warning).
+10. **Global shortcuts stayed live during a multi-minute export.** `ExportDialog`'s backdrop blocks
+    POINTERS only, and the frame loop `await`s per frame while `renderFrame` re-reads the LIVE
+    project each iteration — so ⌘Z 90 seconds into a 300-frame render spliced pre-edit and post-edit
+    art into one file, and Space/Enter/k restarted playback onto the shared boil GL surface that the
+    existing `pause()` exists to keep clear. New `state.exportBusy` (set for the WHOLE render, not
+    just while the dialog is open) makes `App.svelte`'s `onKey` return immediately — placed above
+    the ⌘Z branch, which sits above the INPUT/TEXTAREA guard.
+11. **One bad frame discarded the whole render with no clue which frame.** Export is the only code
+    that renders EVERY frame, so a defect firing on frame 240 is invisible while authoring and costs
+    a multi-minute encode (a concrete reachable one: `render.ts` does `scaleRect(cell.transformBox!,
+dpr)` while the save format allows a non-identity `transform` with `transformBox: null`). Both
+    exporters now catch per frame and rethrow naming the frame (with `cause`). Deliberately NOT
+    skip-and-continue: a quietly short file looks finished.
+12. `download.ts` revoked the object URL in the same tick as `a.click()`. The browser only has to
+    have STARTED the fetch by then, and this is the lifeline path for a large zip on iPad — revoke
+    is now deferred 60s.
+13. `setAnimationLength` and `rasterizeReference` pushed EMPTY undo entries: their no-op guards sat
+    INSIDE the `commitStructural` callback, where returning early still leaves identical before/after
+    snapshots pushed (a ⌘Z that visibly does nothing). Guards moved above the commit. **General
+    rule: a `commitStructural` callback must never be the place a no-op is decided.**
+
+**New `state.persistAlert` (from 2, 7, 9).** A STICKY data-safety condition ("autosave is OFF",
+"autosave is failing", "save failed"), rendered amber in its own slot in the status bar. It is not
+`statusHint` for the reason `poseFillWarning` isn't either: `App.svelte` has a window-level
+`pointerover`/`pointerdown` writer that overwrites `statusHint` from the hovered element's `title=`,
+so the most important message in the app would vanish on the next pointer move. Cleared only by a
+subsequent success (an autosave that lands, or an explicit Save). **Any future message that
+describes a CONDITION rather than a control needs its own field.**
+
+**Re-review follow-ups (2026-08-16, same branch).** The scoped re-review confirmed all 13 and found
+four more, all fixed here.
+
+- **`audioUndecoded` was not in `StructSnapshot`, while both writers that clear it are inside
+  `commitStructural`.** Open a project whose audio this device can't decode → import a new track →
+  ⌘Z: `restoreStructure` set `audio` back to null and left `audioUndecoded` null too, so the next
+  autosave wrote a project with no audio at all — the preserved bytes destroyed by the very undo
+  meant to bring them back. It is captured **by reference**, exactly like `audio`, and for the same
+  reason (it holds the only copy of those bytes). Unlike the decoded track it needs no companion
+  scalars, because nothing writes its fields in place — it has no UI. **This is the same invariant
+  the audio-undo work established, read in the other direction: a field cleared inside a structural
+  bracket must be captured by the snapshot, or undo silently destroys it.**
+- **`Canvas.svelte` binds its OWN window key handlers, which the new `exportBusy` gate missed.** A
+  Space tap during a multi-minute export restarted playback onto the boil GL surface the export
+  shares — precisely the hazard `App.svelte`'s gate exists to close. Both handlers now check it. In
+  `onViewKeyUp` the gate sits **after** `spaceHeld = false`: a space held when the export began was
+  latched by an ungated keydown, and returning first would leave grab-pan stuck on for good.
+- **A manual Save retired the "autosave is OFF" warning**, which a save does not fix — the work to
+  that point is on disk, everything drawn afterwards is still unprotected. New `state.autosaveOff`
+  (written once, by the restore catch) makes that one alert outlive a save while the transient ones
+  still clear.
+- **The undecoded-audio notice used `statusHint`**, so the title writer wiped it on the next pointer
+  move — the exact trap `persistAlert` was carved out to dodge, walked into two lines below the
+  carve-out. It is the only announcement an undecoded track gets (the lane renders a decoded track
+  only), so it is now sticky.
+
+Known and left: an undecoded track has no UI at all — it cannot be seen, muted or removed, only
+preserved. Adding one means deciding what a track you cannot hear should look like; not this wave.
+
+**Deferred by this wave — decided, not forgotten:**
+
+- **`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.** Drawing on a hold
+  materialises a keyframe (`cells[i] = {kind:"key", canvas}`) outside any structural snapshot; the
+  stroke is recorded as a PIXEL command against that canvas. Ordered scenario: (1) a structural op
+  (say, insert frame) pushes entry A; (2) draw on a hold at frame 5 → the cell silently becomes a
+  key, then a pixel command B records the stroke; (3) ⌘Z pops B (pixels revert, the ·→◆ marker
+  stays — the known app-wide cosmetic gap); (4) ⌘Z again pops A, whose `restoreStructure` reinstalls
+  the layer's PRE-materialisation `cells` array — the keyframe created in (2) disappears along with
+  the canvas the pixel command owns, so REDO of B paints into a canvas no longer in the document.
+  Real and serious, but every fix changes undo granularity for ORDINARY DRAWING (either drawing on
+  a hold pushes a structural entry too, or pixel commands must carry a structural rider), which is a
+  product decision the user has to make. **Code deliberately untouched.**
+- **Export has no streaming/progress/cancel**, and materialises the whole encode in memory (the
+  end-of-render spike). Too large for a defect wave; needs its own design pass.
+- **"New" has no confirmation** — it replaces the document and clears the autosave slot on one tap.
+- **The play In/Out range is ignored by export** (always frame 0..frameCount-1), which reads as a
+  bug once you've set a range.
+- **`evenDimensions` crops video but not PNG**, so an odd-width project's two exports disagree by a
+  pixel (reachable only since the 1× scale change).
