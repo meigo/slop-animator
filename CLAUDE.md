@@ -2399,7 +2399,19 @@ fixed root to get there, not the document `overflow` rules.
   emptiness test, and the only safe one has to inspect cell INK (a restored single blank-looking
   keyframe can still hold a drawing with no undo history behind it), which is more machinery than a
   rare action warrants and fails in the dangerous direction if it is wrong.
-- **The play In/Out range is ignored by export** (always frame 0..frameCount-1), which reads as a
-  bug once you've set a range.
-- **`evenDimensions` crops video but not PNG**, so an odd-width project's two exports disagree by a
-  pixel (reachable only since the 1× scale change).
+- ~~The play In/Out range is ignored by export.~~ **FIXED 2026-08-17.** Both exporters take an
+  inclusive `range` and the dialog states it whenever it is narrower than the project — a range set
+  and forgotten would otherwise silently shorten the file, so the fix is not complete without the
+  line of text. **The audio was the subtle half:** `audioExportPlan` hardcoded
+  `bufferOffsetForFrame(0, …)`, i.e. "the window starts at frame 0". It now takes the window's FIRST
+  frame, or a range export would carry the range's pictures against the animation's OPENING audio.
+  Same kept-span-vs-buffer-time care the trim work needed; 5 new tests pin it, including that
+  omitting the start argument reproduces the old whole-timeline plan exactly. Output timestamps and
+  PNG filenames both restart at zero/one, since an exported range is an ordinary clip, not a file
+  with a hole at its head.
+- ~~`evenDimensions` crops video but not PNG.~~ **FIXED 2026-08-17 — and it was worse than a
+  disagreement.** Rounding DOWN silently cropped the last row/column of ARTWORK out of the video
+  while the PNG sequence (no even requirement, true document size) kept it. It rounds UP now, so the
+  video is padded by at most one pixel per axis and loses nothing. That padding needs a fill:
+  `renderFrame` only clears and fills the DOCUMENT rect, so the pad strip would otherwise encode as
+  garbage — `exportVideo` paints `bgColor` across the whole surface before each frame.

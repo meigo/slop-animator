@@ -34,17 +34,21 @@ export interface AudioExportPlan {
 export function audioExportPlan(
   input: AudioExportInput | null,
   fps: number,
-  frameCount: number,
+  windowFrames: number,
+  startFrame = 0,
 ): AudioExportPlan | null {
   if (!input || input.muted) return null;
-  const windowS = frameCount / fps;
+  const windowS = windowFrames / fps;
   const { inS, lenS } = audioTrimSpan(
     input.trimInFrames,
     input.trimLenFrames,
     input.durationS,
     fps,
   );
-  const at = bufferOffsetForFrame(0, input.offsetFrames, fps); // KEPT-SPAN time
+  // The window's FIRST frame, not frame 0 — an In/Out export starts partway into the timeline, and
+  // the audio has to start from whatever is playing there. Passing 0 here would export the range's
+  // pictures against the animation's opening audio.
+  const at = bufferOffsetForFrame(startFrame, input.offsetFrames, fps); // KEPT-SPAN time
   const startAt = at >= 0 ? 0 : -at;
   const keptOffset = at >= 0 ? at : 0; // seconds into the KEPT span
   if (startAt >= windowS || keptOffset >= lenS) return null;
@@ -75,7 +79,8 @@ const EXPORT_SAMPLE_RATE = 48000;
 export async function buildExportAudio(
   track: AudioTrack | null,
   fps: number,
-  frameCount: number,
+  windowFrames: number,
+  startFrame = 0,
 ): Promise<AudioBuffer | null> {
   const plan = audioExportPlan(
     track && {
@@ -86,7 +91,8 @@ export async function buildExportAudio(
       trimLenFrames: track.trimLenFrames,
     },
     fps,
-    frameCount,
+    windowFrames,
+    startFrame,
   );
   if (!plan || !track) return null;
 

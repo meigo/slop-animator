@@ -4,6 +4,7 @@
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
+  import { effectiveRange } from "../anim/playback";
 
   let status = $state("");
   let busy = $state(false);
@@ -12,6 +13,11 @@
   // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
   // point of the note is "these are guides", not "these would otherwise have shown".
   const refCount = $derived(appState.project.layers.filter((l) => l.kind === "ref").length);
+  // Export honours the play In/Out range — it always rendered the whole timeline, which reads as a
+  // bug the moment you have set a range. Stated in the dialog below whenever it is narrower than the
+  // project, because a range set an hour ago and forgotten would otherwise silently shorten the file.
+  const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
+  const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
 
   async function run(kind: "png" | VideoFormat) {
     if (busy) return;
@@ -27,11 +33,11 @@
     status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
     try {
       if (kind === "png") {
-        const blob = await exportPngSequence(appState.project, DPR);
+        const blob = await exportPngSequence(appState.project, DPR, range);
         downloadBlob(blob, `${stem}.zip`);
         status = "Done.";
       } else {
-        const { blob, warning } = await exportVideo(appState.project, DPR, kind);
+        const { blob, warning } = await exportVideo(appState.project, DPR, kind, range);
         downloadBlob(blob, `${stem}.${kind}`);
         status = warning ? `Done — exported without audio: ${warning}.` : "Done.";
       }
@@ -82,6 +88,12 @@
         disabled={busy || !videoOk}
         onclick={() => run("webm")}>WebM video — {stem}.webm</button
       >
+      {#if partial}
+        <span class="text-xs text-amber-500">
+          In/Out range is set — exporting frames {range.start + 1}–{range.end + 1} of
+          {appState.project.frameCount}. Clear it on the playbar to export everything.
+        </span>
+      {/if}
       {#if refCount > 0}
         <!-- Both exporters hardcode includeReference:false, so references are visible while you
              work and silently absent from every output. Said here because this is the moment it

@@ -7,14 +7,22 @@ import type { Project } from "../anim/document";
  * Render every frame (drawing layers over the paper background, reference layers excluded)
  * to a PNG and return a zip Blob containing `frame_0001.png`, `frame_0002.png`, ….
  */
-export async function exportPngSequence(project: Project, dpr: number): Promise<Blob> {
+export async function exportPngSequence(
+  project: Project,
+  dpr: number,
+  range: { start: number; end: number },
+): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = project.width * dpr;
   canvas.height = project.height * dpr;
   const ctx = canvas.getContext("2d")!;
 
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
-  for (let f = 0; f < project.frameCount; f++) {
+  // The play In/Out range, inclusive. Filenames number the OUTPUT sequence from 1, not the source
+  // frame: an image sequence is consumed positionally, and a gap-free run is what every tool
+  // downstream expects.
+  const total = range.end - range.start + 1;
+  for (let f = range.start; f <= range.end; f++) {
     // Fail with the frame number rather than a bare "toBlob failed" after minutes of work — this is
     // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
     // frame: a zip silently missing frame 240 reads as a complete export.
@@ -29,13 +37,13 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
       );
       // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
       // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
-      files[frameFileName(f, project.frameCount)] = [
+      files[frameFileName(f - range.start, total)] = [
         new Uint8Array(await blob.arrayBuffer()),
         { level: 0 },
       ];
     } catch (e) {
       throw new Error(
-        `frame ${f + 1} of ${project.frameCount} could not be rendered — ${e instanceof Error ? e.message : String(e)}`,
+        `frame ${f - range.start + 1} of ${total} (timeline frame ${f + 1}) could not be rendered — ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
       );
     }
