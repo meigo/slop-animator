@@ -503,7 +503,7 @@
        inversion as the timeline's drag-up-to-grow. Overlays the panel's edge rather than taking a
        column, so it costs no width. -->
   <div
-    class="absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize hover:bg-text/10"
+    class="group absolute inset-y-0 left-0 z-30 w-2 cursor-col-resize"
     style="touch-action: none"
     role="separator"
     aria-orientation="vertical"
@@ -513,7 +513,12 @@
     onpointermove={gripMove}
     onpointerup={gripUp}
     onpointercancel={gripUp}
-  ></div>
+  >
+    <!-- The HIT area is 8px, but the tint is only the 4px the panel actually reserves. Tinting the
+         full 8px painted over the rows' own background (the grip overlays their left 4px), which
+         read as a mismatched notch against the active/hover row colour. -->
+    <div class="absolute inset-y-0 left-0 w-1 group-hover:bg-text/10"></div>
+  </div>
   <input
     bind:this={relinkInput}
     type="file"
