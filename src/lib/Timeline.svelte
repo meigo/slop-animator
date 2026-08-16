@@ -1417,7 +1417,7 @@
                 lay.startFrame + lay.spanFrames - appState.project.frameCount,
               )}
               <div
-                class="relative box-border h-6 cursor-grab overflow-hidden border border-media-clip-border bg-media-clip text-xs/6 text-text-secondary"
+                class="relative box-border h-6 cursor-grab overflow-hidden border border-media-clip-border bg-media-clip text-xs/6 text-text"
                 class:opacity-70={ref.id !== appState.activeLayerId}
                 style="touch-action: none; margin-left: {lay.startFrame *
                   CELL_W}px; width: {lay.spanFrames * CELL_W}px"
@@ -1453,7 +1453,7 @@
                    row's clip hangs past the end, which says nothing about this image. -->
               {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
               <div
-                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text-secondary"
+                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text"
                 class:border-media-clip-border={span !== null}
                 class:cursor-grab={span !== null}
                 class:border-dashed={span === null}
