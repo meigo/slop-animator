@@ -27,8 +27,6 @@
   const FPS_PRESETS = [6, 8, 12, 24];
   let settingsOpen = $state(false);
 
-  const frameDigits = $derived(String(appState.project.frameCount).length);
-
   function go(f: number) {
     seekPlayhead(f);
   }
@@ -99,25 +97,6 @@
 
   <span class={divider}></span>
 
-  <span class="text-text-secondary tabular-nums"
-    >Frame <span class="inline-block text-right" style="min-width: {frameDigits}ch"
-      >{appState.playhead + 1}</span
-    >/{appState.project.frameCount}</span
-  >
-  <label class="flex items-center gap-1 text-text-secondary"
-    >Length
-    <input
-      class="w-14 bg-surface border border-border text-text px-1"
-      type="number"
-      min="1"
-      max="9999"
-      value={appState.project.frameCount}
-      onchange={commitLength}
-    />
-  </label>
-
-  <span class={divider}></span>
-
   <div class="flex items-center gap-1 text-text-secondary">
     <button class={textBtn} title="Set range in-point to current frame" onclick={setPlayRangeIn}
       >In</button
@@ -168,6 +147,20 @@
               {/each}
             </div>
           </div>
+          <!-- Length lives with fps: both are TIMING PARAMS you set rather than transport you flip.
+               The common adjustment is dragging the ruler's right edge in the timeline; this is the
+               type-an-exact-number path. -->
+          <label class="flex items-center justify-between gap-2"
+            >Length
+            <input
+              class="w-16 bg-surface border border-border text-text px-1"
+              type="number"
+              min="1"
+              max="9999"
+              value={appState.project.frameCount}
+              onchange={commitLength}
+            />
+          </label>
         </div>
       {/if}
     </div>

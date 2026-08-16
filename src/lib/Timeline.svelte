@@ -37,6 +37,7 @@
     clearTimelineSelection,
     relinkReference,
     isRowSelected,
+    setAnimationLength,
     trimToPlayhead,
     trimToPlayheadInfo,
     type StructSnapshot,
@@ -67,6 +68,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    countKeyframesPastLength,
     refVisibleSpan,
     type DrawingLayer,
     type ReferenceLayer,
@@ -437,6 +439,82 @@
       /* already released */
     }
   }
+  // Ruler right-edge drag: set the animation's LENGTH where you can see it, the same direct
+  // manipulation the clip trim handles use. The numeric field lives in the playbar's settings
+  // popover for typing an exact value.
+  //
+  // Shortening past a keyframe normally asks for confirmation. A drag CANNOT ask per-frame — that is
+  // a modal per pointermove — so the drag writes the length live and defers the question to RELEASE,
+  // warning in the status bar throughout so it is never a surprise at the end.
+  let lenDrag: {
+    x: number;
+    startLen: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function lenGripDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e); // finger navigates, pen/mouse edits
+      return;
+    }
+    lenDrag = {
+      x: e.clientX,
+      startLen: appState.project.frameCount,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleLenDrag();
+  }
+
+  function lenGripMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!lenDrag) return;
+    const next = Math.max(
+      1,
+      Math.min(9999, lenDrag.startLen + Math.round((e.clientX - lenDrag.x) / CELL_W)),
+    );
+    if (next === appState.project.frameCount) return;
+    setAnimationLength(next);
+    const dropped = countKeyframesPastLength(appState.project, next);
+    appState.statusHint =
+      dropped > 0
+        ? `Length ${next} — releasing here removes ${dropped} keyframe(s)`
+        : `Length ${next}`;
+  }
+
+  /** Commit iff the length actually changed, and ask about dropped keyframes ONCE, here. Declining
+   *  restores the starting length rather than leaving the drag half-applied. */
+  function settleLenDrag() {
+    if (!lenDrag) return;
+    const { startLen, undo } = lenDrag;
+    lenDrag = null;
+    transformDragGuard.settle = null;
+    appState.statusHint = "";
+    const end = appState.project.frameCount;
+    if (end === startLen) return;
+    const dropped = countKeyframesPastLength(appState.project, end);
+    if (
+      end < startLen &&
+      dropped > 0 &&
+      !confirm(`Shorten to ${end} frames? This removes ${dropped} keyframe(s).`)
+    ) {
+      setAnimationLength(startLen);
+      return;
+    }
+    commitStructuralEdit(undo);
+  }
+
+  function lenGripUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanUp();
+      return;
+    }
+    settleLenDrag();
+  }
+
   // Gutter name-column resize. Unlike the panel's grip this one is NOT inverted: the gutter is on
   // the left, so dragging right widens it.
   let gutterStartX = 0;
@@ -1276,6 +1354,20 @@
         onpointercancel={rulerUp}
         onkeydown={rulerKey}
       >
+        <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
+             the frames it measures; absolutely positioned so it adds no column. -->
+        <div
+          class="absolute inset-y-0 z-20 w-2 cursor-ew-resize hover:bg-text/10"
+          style="left: {GUTTER_W + appState.project.frameCount * CELL_W - 4}px; touch-action: none"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag to set the animation length"
+          title="Drag to set the animation length"
+          onpointerdown={lenGripDown}
+          onpointermove={lenGripMove}
+          onpointerup={lenGripUp}
+          onpointercancel={lenGripUp}
+        ></div>
         {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = playRange}
           <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use

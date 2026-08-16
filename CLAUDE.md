@@ -1852,3 +1852,23 @@ transport felt more natural in use, and loop applies with or without a range). S
 CURRENT mode rather than naming the control. fps stays in the popover, which is now coherently "project settings" rather than a mixed
 bag. **The rule this sets: a popover is for parameters you set and forget; anything you toggle during
 playback belongs on the bar.**
+
+**Playbar slimmed; length is dragged on the ruler (2026-08-16).** Three changes from one review of the
+bar. (1) **"Frame n/n" removed** — it duplicated the STATUS BAR's `f n/n · tool · layer` readout, and
+the timeline's playhead badge shows the current frame as well; three places for one number. (2)
+**Length moved into the playbar's gear popover**, beside fps: both are timing PARAMS you set, not
+transport you flip — the same rule that moved loop the other way. (3) **The ruler's right edge is a
+drag handle for the animation's length**, the direct manipulation the clip trim handles established;
+the popover field is now the type-an-exact-number path.
+**The confirm is the interesting part.** Shortening past a keyframe asks "removes N keyframe(s)?" —
+a drag CANNOT ask per-frame, that is a modal per `pointermove`. So the drag writes the length live and
+defers the question to RELEASE, warning in the STATUS BAR throughout ("Length 20 — releasing here
+removes 3 keyframe(s)") so the prompt is never a surprise at the end. Declining restores the starting
+length rather than leaving the drag half-applied. Any future destructive drag wants this shape: warn
+continuously, ask once, revert cleanly on "no".
+The handle sits INSIDE the ruler row so it scrolls with the frames it measures, is absolutely
+positioned so it adds no column, and carries the usual `touch-action: none` + `pointercancel` +
+finger-pans/pen-edits trio. `frameDigits` went with the removed readout — it had no other reader.
+**Owed a browser pass:** drag to lengthen and shorten; shorten past keyframes and see the live warning
+then the single prompt; decline it and confirm the length snaps back; undo after a length drag; the
+handle staying at the ruler's end while scrolling horizontally; iPad.
