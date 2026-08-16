@@ -1792,9 +1792,13 @@ was deleted with the precedence rule rather than left as dead code.
 **Exactly one TIMELINE row reads as active, via `activeRowLayerId`.** `activeLayerId` keeps pointing
 at a layer while the audio lane is selected — it must, since it is still the draw target — so the
 gutter highlighted two rows at once until the four highlight sites were routed through one derived.
-The LAYER PANEL deliberately still highlights that layer: it answers "what am I drawing on", which is
-a different question from "which timeline row is selected", and blanking it would leave the draw
-target invisible.
+The LAYER PANEL follows the same rule (corrected the same day — an initial version kept its highlight
+on the reasoning that it answers "what am I drawing on"; in use, two panels disagreeing about what is
+selected was plainly worse than the tradeoff it bought). While the audio lane is selected, no layer
+row reads as selected in EITHER place. That also collapses the panel's Row 2 detail strip, which is
+the honest consequence — nothing layer-ish is selected — and one click restores it. The draw target
+does not become invisible: the STATUS BAR names the active layer independently of any highlight,
+which is what makes syncing safe.
 
 **`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
 an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
