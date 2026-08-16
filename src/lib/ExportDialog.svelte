@@ -5,9 +5,25 @@
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
+  import { isAbort } from "../export/progress";
+
+  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
   let status = $state("");
   let busy = $state(false);
+  // Progress: `done`/`total` frames, and `finalising` for the phase after the loop where the
+  // container is assembled — without naming it the bar sits at 100% looking stalled.
+  let done = $state(0);
+  let total = $state(0);
+  let finalising = $state(false);
+  // Held only while a render is in flight. Cancel is refused once finalising starts, so the button
+  // reads its own availability from `finalising` rather than from the controller being non-null.
+  let controller: AbortController | null = null;
+  function cancel() {
+    if (!busy || finalising) return;
+    controller?.abort();
+    status = "Cancelling…"; // the loop stops at its next frame boundary
+  }
   const videoOk = isVideoExportSupported();
   const stem = $derived(sanitizeFilename(appState.project.name));
   // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
@@ -18,6 +34,18 @@
   // project, because a range set an hour ago and forgotten would otherwise silently shorten the file.
   const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
   const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
+
+  // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
+  // while `exportBusy` is set (so a stray shortcut cannot edit the project mid-render), which would
+  // otherwise swallow this too. Bound only while a render is in flight.
+  $effect(() => {
+    if (!busy) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function run(kind: "png" | VideoFormat) {
     if (busy) return;
@@ -30,21 +58,38 @@
     // uncommitted edit and an export must not silently commit one.
     liftGuard.discard?.();
     appState.exportBusy = true; // gate the global keyboard handler for the WHOLE render (A10)
-    status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
+    controller = new AbortController();
+    const signal = controller.signal;
+    done = 0;
+    finalising = false;
+    total = range.end - range.start + 1;
+    status = `Exporting ${kind.toUpperCase()}…`;
+    const onProgress = (d: number, t: number) => {
+      done = d;
+      total = t;
+      // The loop yields after each frame, so this assignment actually reaches the screen.
+      finalising = d === t;
+    };
     try {
       if (kind === "png") {
-        const blob = await exportPngSequence(appState.project, DPR, range);
+        const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
         downloadBlob(blob, `${stem}.zip`);
         status = "Done.";
       } else {
-        const { blob, warning } = await exportVideo(appState.project, DPR, kind, range);
+        const { blob, warning } = await exportVideo(appState.project, DPR, kind, range, {
+          signal,
+          onProgress,
+        });
         downloadBlob(blob, `${stem}.${kind}`);
         status = warning ? `Done — exported without audio: ${warning}.` : "Done.";
       }
     } catch (e) {
-      status = `Failed: ${e instanceof Error ? e.message : String(e)}`;
+      // A cancel is not a failure — reporting it as one would read as a bug in the export.
+      status = isAbort(e) ? "Cancelled — no file was written." : `Failed: ${errText(e)}`;
     } finally {
       busy = false;
+      finalising = false;
+      controller = null;
       appState.exportBusy = false;
     }
   }
@@ -65,29 +110,61 @@
     >
       <div class="flex justify-between items-center">
         <span class="font-semibold">Export</span>
+        <!-- While rendering this CANCELS rather than sitting inert: Escape already means "get me out
+             of here", and a ✕ that silently refuses is exactly the control-that-cannot-explain-itself
+             this codebase avoids. Once finalising, `cancel()` no-ops and the title says why. -->
         <button
+          title={busy
+            ? finalising
+              ? "Finalising — the file is being assembled and can no longer be stopped"
+              : "Stop the export (Esc). No file is written."
+            : "Close"}
           onclick={() => {
-            if (!busy) appState.exportOpen = false;
+            if (busy) cancel();
+            else appState.exportOpen = false;
           }}>✕</button
         >
       </div>
-      <button
-        class="border border-border rounded py-1 hover:bg-surface-hover"
-        disabled={busy}
-        onclick={() => run("png")}
-      >
-        PNG sequence — {stem}.zip
-      </button>
-      <button
-        class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
-        disabled={busy || !videoOk}
-        onclick={() => run("mp4")}>MP4 video — {stem}.mp4</button
-      >
-      <button
-        class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
-        disabled={busy || !videoOk}
-        onclick={() => run("webm")}>WebM video — {stem}.webm</button
-      >
+      {#if busy}
+        <!-- The formats are replaced rather than disabled: while a render is running the only
+             decision left is whether to let it finish. -->
+        <div class="flex flex-col gap-2">
+          <span class="text-xs text-text-secondary">
+            {finalising ? "Finalising…" : `Frame ${done} of ${total}`}
+          </span>
+          <div class="h-1.5 rounded bg-surface-active overflow-hidden">
+            <div
+              class="h-full bg-selection transition-[width] duration-150"
+              style="width: {total ? (done / total) * 100 : 0}%"
+            ></div>
+          </div>
+          <button
+            class="border border-border rounded py-1 hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+            aria-disabled={finalising}
+            title={finalising
+              ? "Finalising — the file is being assembled and can no longer be stopped"
+              : "Stop the export (Esc). No file is written."}
+            onclick={cancel}>Cancel</button
+          >
+        </div>
+      {:else}
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover"
+          onclick={() => run("png")}
+        >
+          PNG sequence — {stem}.zip
+        </button>
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
+          disabled={!videoOk}
+          onclick={() => run("mp4")}>MP4 video — {stem}.mp4</button
+        >
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
+          disabled={!videoOk}
+          onclick={() => run("webm")}>WebM video — {stem}.webm</button
+        >
+      {/if}
       {#if partial}
         <span class="text-xs text-amber-500">
           In/Out range is set — exporting frames {range.start + 1}–{range.end + 1} of

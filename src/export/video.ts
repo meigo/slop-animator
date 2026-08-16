@@ -11,6 +11,7 @@ import {
 import { renderFrame } from "../anim/render";
 import { evenDimensions } from "./frames";
 import { buildExportAudio } from "./audio-mix";
+import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
 
 export type VideoFormat = "mp4" | "webm";
@@ -36,6 +37,7 @@ export async function exportVideo(
   dpr: number,
   format: VideoFormat,
   range: { start: number; end: number },
+  { signal, onProgress }: ExportProgress = {},
 ): Promise<VideoExportResult> {
   if (!isVideoExportSupported())
     throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
@@ -111,6 +113,12 @@ export async function exportVideo(
   // Timestamps run from 0 for the OUTPUT, so a range export is a normal clip that starts at zero
   // rather than a file with a gap of silence-and-nothing at its head.
   for (let f = range.start; f <= range.end; f++) {
+    // Outside the try, so a cancel is never reported as a frame defect. `output.cancel()` is
+    // mediabunny's own teardown — it releases the encoder and, unlike finalize(), produces no file.
+    if (signal?.aborted) {
+      await output.cancel();
+      throw abortError();
+    }
     // Export is the only code that renders EVERY frame, so it is where a defect that fires on one
     // frame surfaces — after minutes of encoding, and with nothing saying which frame. Name it.
     // Deliberately not skip-and-continue: a file that is quietly short (or missing a drawing) is
@@ -136,8 +144,16 @@ export async function exportVideo(
         { cause: e },
       );
     }
+    onProgress?.(f - range.start + 1, frameTotal);
+    await yieldToEventLoop(); // paint the bar, deliver a Cancel tap
   }
 
+  if (signal?.aborted) {
+    await output.cancel();
+    throw abortError();
+  }
+  // Past this point cancel is refused (the dialog disables the button): finalize is where the
+  // container is assembled, and interrupting it can only yield a file we would discard anyway.
   await output.finalize();
   const buffer = output.target.buffer!;
   return {

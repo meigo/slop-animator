@@ -1,6 +1,7 @@
 import { zipSync, type ZipOptions } from "fflate";
 import { renderFrame } from "../anim/render";
 import { frameFileName } from "./frames";
+import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
 
 /**
@@ -11,6 +12,7 @@ export async function exportPngSequence(
   project: Project,
   dpr: number,
   range: { start: number; end: number },
+  { signal, onProgress }: ExportProgress = {},
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = project.width * dpr;
@@ -23,6 +25,9 @@ export async function exportPngSequence(
   // downstream expects.
   const total = range.end - range.start + 1;
   for (let f = range.start; f <= range.end; f++) {
+    // OUTSIDE the try below, deliberately: an abort must not be caught and re-thrown as
+    // "frame N could not be rendered", which would report a deliberate cancel as a defect.
+    if (signal?.aborted) throw abortError();
     // Fail with the frame number rather than a bare "toBlob failed" after minutes of work — this is
     // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
     // frame: a zip silently missing frame 240 reads as a complete export.
@@ -47,6 +52,9 @@ export async function exportPngSequence(
         { cause: e },
       );
     }
+    onProgress?.(f - range.start + 1, total);
+    await yieldToEventLoop(); // paint the bar, deliver a Cancel tap
   }
+  if (signal?.aborted) throw abortError(); // the last frame's cancel, before the zip is built
   return new Blob([zipSync(files)], { type: "application/zip" });
 }
