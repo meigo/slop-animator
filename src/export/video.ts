@@ -35,10 +35,12 @@ export async function exportVideo(
   project: Project,
   dpr: number,
   format: VideoFormat,
+  range: { start: number; end: number },
 ): Promise<VideoExportResult> {
   if (!isVideoExportSupported())
     throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
 
+  const frameTotal = range.end - range.start + 1;
   const { w, h } = evenDimensions(project.width * dpr, project.height * dpr);
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -58,7 +60,9 @@ export async function exportVideo(
   let warning: string | undefined;
   let audioBuffer: AudioBuffer | null = null;
   try {
-    audioBuffer = await buildExportAudio(project.audio, project.fps, project.frameCount);
+    // The window is the RANGE, and it starts at `range.start` — the audio has to begin from
+    // whatever is playing there, not from the animation's opening.
+    audioBuffer = await buildExportAudio(project.audio, project.fps, frameTotal, range.start);
   } catch {
     warning = "the audio could not be prepared";
   }
@@ -104,12 +108,20 @@ export async function exportVideo(
   }
 
   const dt = 1 / project.fps;
-  for (let f = 0; f < project.frameCount; f++) {
+  // Timestamps run from 0 for the OUTPUT, so a range export is a normal clip that starts at zero
+  // rather than a file with a gap of silence-and-nothing at its head.
+  for (let f = range.start; f <= range.end; f++) {
     // Export is the only code that renders EVERY frame, so it is where a defect that fires on one
     // frame surfaces — after minutes of encoding, and with nothing saying which frame. Name it.
     // Deliberately not skip-and-continue: a file that is quietly short (or missing a drawing) is
     // worse than no file, because it looks finished.
     try {
+      // The canvas is padded to even dimensions, and `renderFrame` only clears/fills the DOCUMENT
+      // rect — so the pad strip would stay transparent and encode as garbage. Fill the whole surface
+      // first; renderFrame repaints the document area over it.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = project.bgColor;
+      ctx.fillRect(0, 0, w, h);
       renderFrame(ctx, project, f, dpr, {
         // Video has no alpha codec here (MP4/H.264); a transparent project is intentionally
         // flattened onto project.bgColor.
@@ -117,10 +129,10 @@ export async function exportVideo(
         includeReference: false,
         boil: project.boil.enabled ? project.boil : undefined,
       });
-      await source.add(f * dt, dt);
+      await source.add((f - range.start) * dt, dt);
     } catch (e) {
       throw new Error(
-        `frame ${f + 1} of ${project.frameCount} could not be encoded — ${e instanceof Error ? e.message : String(e)}`,
+        `frame ${f - range.start + 1} of ${frameTotal} (timeline frame ${f + 1}) could not be encoded — ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
       );
     }

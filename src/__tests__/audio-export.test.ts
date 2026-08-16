@@ -147,3 +147,39 @@ describe("audioExportPlan with a trimmed clip", () => {
     ).toBeNull();
   });
 });
+
+// Export honours the play In/Out range, so the window can start partway into the timeline. The
+// audio must begin from whatever is playing THERE — passing frame 0 would export the range's
+// pictures against the animation's opening audio, which is the same kept-span/buffer-time confusion
+// the trim work had to keep straight.
+describe("audioExportPlan — In/Out range window", () => {
+  it("starts the source at the range's first frame, not the timeline's", () => {
+    // Window = frames 12..23 (1s in, at 12fps), clip aligned to frame 0.
+    const plan = audioExportPlan(clip(), FPS, 12, 12)!;
+    expect(plan.windowS).toBeCloseTo(1, 10);
+    expect(plan.startAt).toBe(0); // already playing when the window opens
+    expect(plan.sourceOffset).toBeCloseTo(1, 10); // 1s into the buffer
+  });
+
+  it("a clip that begins inside the window still starts late by the right amount", () => {
+    // Clip starts at frame 18; window opens at 12 → 6 frames = 0.5s of leading silence.
+    const plan = audioExportPlan(clip({ offsetFrames: 18 }), FPS, 12, 12)!;
+    expect(plan.startAt).toBeCloseTo(0.5, 10);
+    expect(plan.sourceOffset).toBe(0); // from the clip's own start
+  });
+
+  it("returns null when the clip ends before the range begins", () => {
+    // A 5s clip at frame 0 is spent by frame 60; a window opening at frame 72 hears nothing.
+    expect(audioExportPlan(clip(), FPS, 12, 72)).toBeNull();
+  });
+
+  it("truncates to the RANGE length, not the project length", () => {
+    const plan = audioExportPlan(clip(), FPS, 6, 12)!;
+    expect(plan.windowS).toBeCloseTo(0.5, 10);
+    expect(plan.sourceDuration).toBeCloseTo(0.5, 10);
+  });
+
+  it("defaults to a whole-timeline window when no start is given", () => {
+    expect(audioExportPlan(clip(), FPS, FRAMES)).toEqual(audioExportPlan(clip(), FPS, FRAMES, 0));
+  });
+});
