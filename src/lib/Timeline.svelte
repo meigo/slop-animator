@@ -131,6 +131,12 @@
   // and a stale name is the one thing that would make the precedence rule unsafe.
   const trimTarget = $derived(trimToPlayheadInfo());
 
+  // Exactly ONE timeline row reads as active. `activeLayerId` still points at a layer while the
+  // audio lane is selected — it must, since it is the draw target — so the gutter would otherwise
+  // highlight two rows at once. The LAYER PANEL keeps showing that layer: it answers "what am I
+  // drawing on", which is a different question from "which timeline row is selected".
+  const activeRowLayerId = $derived(appState.audioLaneActive ? -1 : appState.activeLayerId);
+
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
   // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
   // a blank key / past the layer's end). ◇ makes a blank keyframe visible as "the next keyframe" a
@@ -1312,10 +1318,10 @@
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-            class:bg-surface={layer.id !== appState.activeLayerId}
-            class:bg-surface-active={layer.id === appState.activeLayerId}
-            class:text-text={layer.id === appState.activeLayerId}
-            class:text-text-secondary={layer.id !== appState.activeLayerId}
+            class:bg-surface={layer.id !== activeRowLayerId}
+            class:bg-surface-active={layer.id === activeRowLayerId}
+            class:text-text={layer.id === activeRowLayerId}
+            class:text-text-secondary={layer.id !== activeRowLayerId}
             style="width: {LABEL_W}px; touch-action: none"
             title="Select layer"
             onpointerdown={(e) => nameDown(e, layer.id)}
@@ -1352,8 +1358,8 @@
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
             class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 border-r border-text-muted"
-            class:bg-surface={layer.id !== appState.activeLayerId}
-            class:bg-surface-active={layer.id === appState.activeLayerId}
+            class:bg-surface={layer.id !== activeRowLayerId}
+            class:bg-surface-active={layer.id === activeRowLayerId}
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {
@@ -1381,8 +1387,8 @@
             <div
               class="flex select-none"
               style="touch-action: none; cursor: {rowCursor}"
-              class:opacity-100={layer.id === appState.activeLayerId}
-              class:opacity-70={layer.id !== appState.activeLayerId}
+              class:opacity-100={layer.id === activeRowLayerId}
+              class:opacity-70={layer.id !== activeRowLayerId}
               data-layer-id={layer.id}
               role="application"
               aria-label="{layer.name} frames"

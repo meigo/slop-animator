@@ -1789,6 +1789,12 @@ silently resolve to `undefined`. `setActiveLayer` clears it, so exactly one row 
 clicking the audio lane's label sets it (fine pointers only — a finger drag there is a timeline pan).
 The buttons dim unless the selected row is trimmable, with the reason in the title. `trimToPlayheadTarget`
 was deleted with the precedence rule rather than left as dead code.
+**Exactly one TIMELINE row reads as active, via `activeRowLayerId`.** `activeLayerId` keeps pointing
+at a layer while the audio lane is selected — it must, since it is still the draw target — so the
+gutter highlighted two rows at once until the four highlight sites were routed through one derived.
+The LAYER PANEL deliberately still highlights that layer: it answers "what am I drawing on", which is
+a different question from "which timeline row is selected", and blanking it would leave the draw
+target invisible.
 
 **`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
 an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
