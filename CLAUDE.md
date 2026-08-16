@@ -2393,6 +2393,7 @@ drop out of the series. The `name` parameter on `createDrawingLayer`/`createRefe
 **REQUIRED**: those functions see no project and so cannot know a good default, and making it
 required is what stops the id leaking back into the UI through a future caller. Only one production
 site relied on the default (LayerList's add button); every other already passed a real name.
+**Verified in the browser 2026-08-17.**
 
 **Deferred by this wave — decided, not forgotten:**
 
@@ -2428,7 +2429,7 @@ site relied on the default (LayerList's add button); every other already passed 
   never `finalize()`.
   Escape needs its OWN listener because `App.svelte`'s global handler returns immediately while
   `exportBusy` is set (the gate that stops a shortcut editing the project mid-render), which would
-  otherwise swallow it. Build+review verified — canvas, encoder and DOM throughout, with no
+  otherwise swallow it. **The bar and Cancel were verified in the browser 2026-08-17.** Build+review verified — canvas, encoder and DOM throughout, with no
   node-testable surface worth inventing tests for.
 - ~~"New" has no confirmation.~~ **FIXED 2026-08-17.** It was the last irreversible action reachable
   in one tap, and worse than it looked: `replaceProject` clears history, `clearAutosave` drops the
