@@ -468,12 +468,15 @@ export function nextId(): number {
  * the touched cell to a `key` (see timeline.ensureDrawableKeyframe). So a freshly
  * created project contributes nothing to `buildFrameDrawList` until something is drawn.
  */
-export function createDrawingLayer(frameCount: number, name?: string): DrawingLayer {
+export function createDrawingLayer(frameCount: number, name: string): DrawingLayer {
   const id = nextLayerId++;
   return {
     kind: "draw",
     id,
-    name: name ?? `Layer ${id}`,
+    // REQUIRED, with no id-derived fallback: this function cannot know a good name (it sees no
+    // project), and the old default silently leaked the session-wide id into the UI. Callers use
+    // `nextLayerName(project.layers)`.
+    name,
     visible: true,
     locked: false,
     opacity: 100,
@@ -485,12 +488,12 @@ export function createDrawingLayer(frameCount: number, name?: string): DrawingLa
 }
 
 /** A reference layer defaults to faint (60%) so the artist's ink reads over it. */
-export function createReferenceLayer(media: ReferenceMedia, name?: string): ReferenceLayer {
+export function createReferenceLayer(media: ReferenceMedia, name: string): ReferenceLayer {
   const id = nextLayerId++;
   return {
     kind: "ref",
     id,
-    name: name ?? `Reference ${id}`,
+    name, // required for the same reason as above — see createDrawingLayer
     visible: true,
     opacity: 60,
     offsetFrames: 0,
@@ -501,6 +504,29 @@ export function createReferenceLayer(media: ReferenceMedia, name?: string): Refe
     media,
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
+}
+
+/**
+ * The next display name in a `<prefix> N` series, scoped to THIS project's layers.
+ *
+ * Deliberately not derived from the layer id. `nextLayerId` is a session-wide monotonic counter that
+ * `setMinLayerId` also advances past every id in a LOADED project — correct for identity, which must
+ * never collide with an undo snapshot's or a saved file's — but naming from it meant the number the
+ * artist sees kept climbing forever, so a brand-new project's second layer could be "Layer 23".
+ * Identity and label are different concerns; only the label belongs to the project.
+ *
+ * MAX + 1 rather than lowest-unused: deleting "Layer 2" of three and adding one gives "Layer 4", so
+ * a name that was just in use is never immediately recycled onto different content. Renamed layers
+ * simply drop out of the series, since they no longer match the pattern.
+ */
+export function nextLayerName(layers: Layer[], prefix = "Layer"): string {
+  const pattern = new RegExp(`^${prefix} (\\d+)$`);
+  let max = 0;
+  for (const l of layers) {
+    const m = pattern.exec(l.name);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${prefix} ${max + 1}`;
 }
 
 /** The name to apply when renaming to `input`; falls back to `current` for empty/whitespace input. */

@@ -16,6 +16,8 @@ import {
   refreshLength,
   createProject,
   createDrawingLayer,
+  setMinLayerId,
+  nextLayerName,
   defaultBoilConfig,
   isCrispFrame,
   resolveLayerName,
@@ -544,11 +546,11 @@ describe("layer transform helpers", () => {
   });
 
   it("createDrawingLayer starts at identity", () => {
-    expect(isIdentityTransform(createDrawingLayer(3).transform)).toBe(true);
+    expect(isIdentityTransform(createDrawingLayer(3, "L").transform)).toBe(true);
   });
 
   it("transformBaseRect: full document for a draw layer", () => {
-    expect(transformBaseRect(createDrawingLayer(1), 100, 80)).toEqual({
+    expect(transformBaseRect(createDrawingLayer(1, "L"), 100, 80)).toEqual({
       x: 0,
       y: 0,
       w: 100,
@@ -557,17 +559,23 @@ describe("layer transform helpers", () => {
   });
 
   it("transformBaseRect: contain-fit for a ref, null when media unloaded", () => {
-    const loaded = createReferenceLayer({
-      type: "image",
-      el: { naturalWidth: 50, naturalHeight: 50 } as unknown as HTMLImageElement,
-    });
+    const loaded = createReferenceLayer(
+      {
+        type: "image",
+        el: { naturalWidth: 50, naturalHeight: 50 } as unknown as HTMLImageElement,
+      },
+      "R",
+    );
     const r = transformBaseRect(loaded, 100, 100);
     expect(r).not.toBeNull();
     expect(r!.w).toBeCloseTo(100, 5);
-    const unloaded = createReferenceLayer({
-      type: "image",
-      el: { naturalWidth: 0, naturalHeight: 0 } as unknown as HTMLImageElement,
-    });
+    const unloaded = createReferenceLayer(
+      {
+        type: "image",
+        el: { naturalWidth: 0, naturalHeight: 0 } as unknown as HTMLImageElement,
+      },
+      "R",
+    );
     expect(transformBaseRect(unloaded, 100, 100)).toBeNull();
   });
 });
@@ -885,5 +893,46 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
     expect(refVisibleSpan(l, 12)).toEqual({ start: 0, end: 0 });
     expect(isRefVisibleAtFrame(l, 0, 12)).toBe(true);
     expect(isRefVisibleAtFrame(l, 1, 12)).toBe(false);
+  });
+});
+
+describe("nextLayerName", () => {
+  const named = (...names: string[]) => names.map((name) => ({ name }) as Layer);
+
+  it("starts at 1 for an empty project", () => {
+    expect(nextLayerName([])).toBe("Layer 1");
+  });
+
+  it("continues the series from the highest existing number", () => {
+    expect(nextLayerName(named("Layer 1", "Layer 2"))).toBe("Layer 3");
+  });
+
+  // MAX + 1, not lowest-unused: a name that was just in use is never immediately recycled onto
+  // different content.
+  it("does not reuse a deleted number", () => {
+    expect(nextLayerName(named("Layer 1", "Layer 3"))).toBe("Layer 4");
+  });
+
+  it("ignores renamed layers, which have left the series", () => {
+    expect(nextLayerName(named("Harry", "Dale"))).toBe("Layer 1");
+    expect(nextLayerName(named("Layer 2", "Background"))).toBe("Layer 3");
+  });
+
+  // The regression test for the reported bug. `setMinLayerId` pushes the session-wide id counter
+  // past every id in a loaded project, and the name used to be built from that id — so a brand-new
+  // project's next layer came out as "Layer 501". Identity must still climb; the LABEL must not.
+  it("names a new layer from the project, never from the session-wide id", () => {
+    setMinLayerId(500);
+    const layer = createDrawingLayer(1, nextLayerName([]));
+    expect(layer.name).toBe("Layer 1");
+    expect(layer.id).toBeGreaterThanOrEqual(500);
+  });
+
+  it("only counts exact `<prefix> <digits>` names", () => {
+    expect(nextLayerName(named("Layer 2 copy", "Layer", "Layer 1a", "layer 9"))).toBe("Layer 1");
+  });
+
+  it("takes a prefix, so other series number independently", () => {
+    expect(nextLayerName(named("Layer 7", "Reference 2"), "Reference")).toBe("Reference 3");
   });
 });
