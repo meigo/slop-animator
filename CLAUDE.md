@@ -2321,6 +2321,32 @@ positionally: a `cancelled = false` boolean parameter would have been silently t
 `pointerup` path too. `AudioLane` routes through the same three functions and gets the momentum for
 free.
 
+**The first version shipped with no inertia at all on iPad, and the cause is worth remembering.**
+The edge test was `if (el.scrollLeft !== written) v = 0;` — i.e. "if the scroller didn't land where
+I put it, I must have hit an end". **`scrollLeft` is not a faithful round trip:** WebKit snaps it to
+whole device pixels, so a written 123.4 reads back 123 and the test fired on the FIRST frame from
+rounding alone, killing every fling. Desktop Chrome keeps scroll offsets fractional, so it worked
+there — a difference no amount of local testing would have surfaced. Two rules came out of it, both
+now in the pure, unit-tested `stepFlingAxis`: **compare against the BOUND, never against the value
+you wrote**, and **carry the animation's own float position** rather than re-reading `scrollLeft`
+each frame (the readback drops the fraction, so a slow glide whose per-frame step is under a pixel
+stalls outright).
+
+**The page itself must not scroll, and that is a separate fix in `app.css`.** Reported as "the app
+window is scrollable up from the layer panel and top toolbars, hiding the toolbar and revealing
+empty space under the UI". Two causes, both needed: (1) nothing set `overflow: hidden` on
+`html, body`, so once anything overflowed, the DOCUMENT was scrollable — and a drag on the layer
+panel or a toolbar, neither of which sets `touch-action`, pans the whole app. `overscroll-behavior`
+does NOT cover this: it governs chaining and rubber-banding, not a document with somewhere real to
+scroll to. (2) `height: 100%` resolves against iOS's LAYOUT viewport, which is taller than the
+visible area while Safari's dynamic toolbars show — that surplus is the "empty space under the UI".
+`100dvh` (behind `@supports`) is the visible area, and it is stable here precisely BECAUSE the page
+can no longer scroll, so the toolbars never hide and show underneath us. The timeline scroller also
+got `overscroll-contain`, so reaching either end cannot hand the gesture to an ancestor — chaining
+is one way iOS decides the gesture belongs to the page and fires `pointercancel` at us mid-pan,
+which aborts the custom pan and (correctly) suppresses its fling. The layer list already had its own
+`overflow-y-auto`, so locking the page does not make a long list unreachable.
+
 **Owed an iPad pass** (this is a FEEL change and no unit test can judge it): a flick from a drawing
 row glides and settles like the empty-space scroll always did; a slow drag ending stationary stops
 dead; a press mid-glide catches it; the glide stops at both ends without juddering; a Pencil press
