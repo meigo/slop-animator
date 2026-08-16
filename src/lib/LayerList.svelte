@@ -278,7 +278,11 @@
 </script>
 
 {#snippet layerRow(layer: Layer)}
-  {@const active = layer.id === appState.activeLayerId}
+  <!-- Synced with the timeline gutter: while the audio lane is the selected row, NO layer row reads
+       as selected, so the two panels never disagree. This also collapses the Row 2 detail strip,
+       which is the honest consequence — nothing layer-ish is selected. The draw target stays
+       visible either way: the status bar names the active layer independently of any highlight. -->
+  {@const active = layer.id === appState.activeLayerId && !appState.audioLaneActive}
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
