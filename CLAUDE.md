@@ -1679,7 +1679,12 @@ read as a mismatched notch against the active/hover row colour. Hit area and tin
 concerns on any overlay grip — size them separately.
 **`MARKER_W` is 28**, widened from 22 so the lock/hidden glyph is not crowded against the divider.
 
-**The TIMELINE's height grip keeps a visual bar; the two vertical ones do not.** Not an oversight —
+**The TIMELINE's height grip keeps a visual bar and takes NO background tint; the two vertical ones
+are the reverse.** The tint is area-sensitive: this grip spans the full width, so the same
+`bg-text/10` that is a subtle 8px sliver on a vertical edge became a loud full-width band. The bar
+brightening on hover is all the feedback it needs, and the vertical grips have no bar, so the tint
+is all THEY have. Do not unify them.
+Why it keeps the bar at all: Not an oversight —
 they sit on a panel EDGE, where drag-to-resize is a learned convention that needs no badge, while the
 height grip is an INTERIOR divider between the canvas and the timeline, so nothing about its position
 suggests it can be dragged at all. Edge → bare; interior → hinted.
