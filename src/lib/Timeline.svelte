@@ -1387,11 +1387,12 @@
       style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
     ></div>
     <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
-         it stays on that edge through horizontal scroll. z-25 to sit above the per-row sticky labels
-         (z-20) — otherwise a row's own label would swallow the press. Pulled out of flow the same
-         way the plate is, so it adds no height. -->
+         it stays on that edge through horizontal scroll. z-40 — above the per-row sticky labels
+         (z-20), which would otherwise swallow the press, AND above the ruler row (z-35), which the
+         grip crosses and must stay grabbable through. Pulled out of flow the same way the plate is,
+         so it adds no height. -->
     <div
-      class="group sticky top-0 z-25 cursor-col-resize"
+      class="group sticky top-0 z-40 cursor-col-resize"
       style="left: {GUTTER_W -
         6}px; width: 8px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
       role="separator"
@@ -1413,8 +1414,13 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
+    <!-- z-35: the per-row gutter labels are sticky at z-20 and come LATER in DOM order, so at equal
+         z they painted OVER this row — layer names leaked across the ruler as you scrolled the tracks
+         vertically. The ruler is the thing rows scroll UNDER, so it has to outrank them. The playhead
+         badge is a child of this row and rides along; the gutter resize grip sits above it again
+         (z-40) so it stays grabbable at the ruler's level. -->
     <div
-      class="sticky top-0 z-20 flex w-max items-stretch bg-surface"
+      class="sticky top-0 z-35 flex w-max items-stretch bg-surface"
       style="min-width: {stripMinW}px"
     >
       <span

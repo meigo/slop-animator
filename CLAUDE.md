@@ -1925,3 +1925,20 @@ on `pointerup` alone — the settles are also what undo/Open call through `trans
 **Owed a browser pass:** drag each of the seven past both edges and back; a marquee extending across pages while the tracks scroll; that a trim edge keeps
 following while the content scrolls; that it stops at either end without spinning; release outside
 the viewport; ⌘Z mid-autoscroll; iPad with a Pencil.
+
+**The timeline's z-index ladder, written down (2026-08-16).** Layer names leaked across the RULER
+while scrolling the tracks vertically: the ruler row and the per-row gutter labels were both `z-20`,
+and the labels come later in DOM order, so at equal z they won. The ruler is the thing rows scroll
+UNDER, so it has to outrank them. The full ladder now, bottom to top — check a new overlay against it
+rather than picking a number:
+| z | what | why |
+|---|---|---|
+| 10 | playhead line, playhead badge | visual only; must not cover the ◆ you are grabbing |
+| 15 | full-height gutter plate | hides the playhead line in empty space below the last row |
+| 20 | per-row sticky name labels and markers | above the plate, below everything structural |
+| 30 | selection bar (`TimelineSelectionBar`) | floats over the grid |
+| 35 | the sticky RULER row | rows scroll under it; the playhead badge is its child and rides along |
+| 40 | gutter resize grip | crosses the whole height including the ruler, so it must stay grabbable there |
+**Equal z plus later DOM order is a win, not a tie** — that is what made this a bug rather than a
+coin flip, and it is the same mechanism behind the audio trim handles stealing gutter presses at
+z-20. When two things must not overlap, give them different numbers, not the same one.
