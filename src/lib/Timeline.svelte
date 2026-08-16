@@ -979,15 +979,15 @@
     <span class="w-px h-5 bg-border mx-1"></span>
 
     <!-- Trim to playhead. Reaches a clip edge that is pages away horizontally, which is otherwise a
-         long scroll-and-drag. The TARGET is a precedence rule (active image ref, else the audio
-         track), so the title NAMES it — the precedence is only acceptable because it is visible
-         before the press. aria-disabled, not disabled: a disabled button dispatches no pointer
-         events, so the status bar could never read the reason. -->
+         long scroll-and-drag. Acts on the SELECTED row and nothing else — the audio lane or an
+         active image reference — so one control never means two things. Dimmed with the reason
+         otherwise. aria-disabled, not disabled: a disabled button dispatches no pointer events, so
+         the status bar could never read that reason. -->
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
       title={trimTarget
         ? `Trim ${trimTarget.label} start to the playhead`
-        : "Trim start to the playhead — no audio track, and the active layer is not an image reference"}
+        : "Trim start to the playhead — select the audio lane or an image reference layer first"}
       aria-disabled={!trimTarget}
       onclick={() => {
         if (trimTarget) trimToPlayhead("start");
@@ -997,7 +997,7 @@
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
       title={trimTarget
         ? `Trim ${trimTarget.label} end to the playhead`
-        : "Trim end to the playhead — no audio track, and the active layer is not an image reference"}
+        : "Trim end to the playhead — select the audio lane or an image reference layer first"}
       aria-disabled={!trimTarget}
       onclick={() => {
         if (trimTarget) trimToPlayhead("end");

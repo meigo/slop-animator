@@ -80,7 +80,7 @@ import {
 } from "../anim/panel-layout";
 import { trimHead, trimTail } from "../audio/trim";
 import { audioFrameSpan } from "../audio/peaks";
-import { trimToPlayheadTarget, trimDeltaToPlayhead, rangeAfterTrim } from "../anim/clip-layout";
+import { trimDeltaToPlayhead, rangeAfterTrim } from "../anim/clip-layout";
 
 export type Tool =
   | "brush"
@@ -120,6 +120,11 @@ interface AnimState {
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
+  /** The audio lane is the active timeline ROW. A boolean rather than a sentinel `activeLayerId`,
+   *  because ~30 call sites do `layers.find(l => l.id === activeLayerId)` and a sentinel would make
+   *  every one of them silently resolve to undefined. Cleared by `setActiveLayer`, so exactly one
+   *  row is ever active. */
+  audioLaneActive: boolean;
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
@@ -196,6 +201,7 @@ export const state: AnimState = $state({
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
+  audioLaneActive: false,
   timelineSelection: null,
   cellClipboard: null,
   selectionActive: false,
@@ -860,20 +866,21 @@ export function setAudioTrim(
  *  Exported so the UI can name the target BEFORE the press — the precedence is only acceptable
  *  because it is visible, not guessed at. */
 export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string } | null {
+  // Follows the SELECTED row, with no precedence or fallback. An earlier version picked the audio
+  // track whenever the active layer was not an image ref, which meant the buttons acted on audio
+  // while a drawing layer was selected — the same control doing different things for reasons that
+  // were invisible on screen.
+  if (state.audioLaneActive)
+    return state.project.audio ? { target: "audio", label: "the audio clip" } : null;
   const l = state.project.layers.find((x) => x.id === state.activeLayerId);
-  const kind =
-    !l || l.kind !== "ref"
-      ? ("draw" as const)
-      : l.media.type === "image"
-        ? ("image-ref" as const)
-        : l.media.type === "video"
-          ? ("video-ref" as const)
-          : ("missing-ref" as const);
-  const target = trimToPlayheadTarget(kind, !!state.project.audio);
-  if (!target) return null;
-  return target === "ref"
-    ? { target, label: `${l!.name}'s range` }
-    : { target, label: "the audio clip" };
+  if (l?.kind === "ref" && l.media.type === "image")
+    return { target: "ref", label: `${l.name}'s range` };
+  return null;
+}
+
+/** Make the audio lane the active timeline row (it holds no layer id, so it needs its own flag). */
+export function selectAudioLane(): void {
+  if (state.project.audio) state.audioLaneActive = true;
 }
 
 /** Move the resolved clip's start or end onto the playhead. One undo entry; the underlying
@@ -1209,6 +1216,7 @@ export const pressureCurve = new PressureCurve();
  */
 export function setActiveLayer(id: number): void {
   state.activeLayerId = id;
+  state.audioLaneActive = false; // exactly one active row
   const l = state.project.layers.find((x) => x.id === id);
   if (state.transformScope === "group" && (!l || l.groupId == null)) {
     state.transformScope = "frame";

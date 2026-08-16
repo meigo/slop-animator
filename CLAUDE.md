@@ -1778,14 +1778,18 @@ put the resolved clip's start or end on the playhead instead. Pure `trimToPlayhe
 `rangeAfterTrim` the drags use, so there is no second trim path to keep in sync, and no guard is
 needed for a playhead outside the clip — those helpers already clamp to the 1-frame minimum and the
 source's extent.
-**The target is a PRECEDENCE RULE, not a selection:** the active layer if it is an IMAGE reference,
-otherwise the audio track, otherwise nothing (buttons dim). A VIDEO ref falls through to audio
-because its span IS its footage. Chosen over adding a notion of "the audio lane is the active row" —
-the timeline has no such concept, and inventing one for two buttons is new state threaded through the
-gutter highlight for no other benefit. **The precedence is only acceptable because it is VISIBLE:**
-each button's `title` names the resolved target ("Trim the audio clip's start…" vs "Trim ref.png's
-range start…"), so the status bar says what will be hit before the press, on iPad too. Keep that
-property if the rule is ever extended.
+**The target follows the SELECTED ROW — no precedence, no fallback.** The first version used a
+precedence rule (active image ref, else the audio track) to avoid new state; in use it was confusing,
+and correctly so: image refs followed SELECTION while audio was a FALLBACK, so the same two buttons
+acted on audio whenever a drawing layer was selected, for reasons invisible on screen. The fix was
+the thing that rule existed to avoid — **`state.audioLaneActive`**, so the audio lane can be the
+active timeline row like any layer. A BOOLEAN, deliberately, not a sentinel `activeLayerId`: ~30 call
+sites do `layers.find(l => l.id === activeLayerId)` and a sentinel would make every one of them
+silently resolve to `undefined`. `setActiveLayer` clears it, so exactly one row is ever active, and
+clicking the audio lane's label sets it (fine pointers only — a finger drag there is a timeline pan).
+The buttons dim unless the selected row is trimmable, with the reason in the title. `trimToPlayheadTarget`
+was deleted with the precedence rule rather than left as dead code.
+
 **`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
 an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
 arithmetic, hence the `+ 1` in `trimDeltaToPlayhead`'s tail branch. Getting it wrong is silent: the
