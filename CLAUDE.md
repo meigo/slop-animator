@@ -2139,6 +2139,35 @@ so the most important message in the app would vanish on the next pointer move. 
 subsequent success (an autosave that lands, or an explicit Save). **Any future message that
 describes a CONDITION rather than a control needs its own field.**
 
+**Re-review follow-ups (2026-08-16, same branch).** The scoped re-review confirmed all 13 and found
+four more, all fixed here.
+
+- **`audioUndecoded` was not in `StructSnapshot`, while both writers that clear it are inside
+  `commitStructural`.** Open a project whose audio this device can't decode → import a new track →
+  ⌘Z: `restoreStructure` set `audio` back to null and left `audioUndecoded` null too, so the next
+  autosave wrote a project with no audio at all — the preserved bytes destroyed by the very undo
+  meant to bring them back. It is captured **by reference**, exactly like `audio`, and for the same
+  reason (it holds the only copy of those bytes). Unlike the decoded track it needs no companion
+  scalars, because nothing writes its fields in place — it has no UI. **This is the same invariant
+  the audio-undo work established, read in the other direction: a field cleared inside a structural
+  bracket must be captured by the snapshot, or undo silently destroys it.**
+- **`Canvas.svelte` binds its OWN window key handlers, which the new `exportBusy` gate missed.** A
+  Space tap during a multi-minute export restarted playback onto the boil GL surface the export
+  shares — precisely the hazard `App.svelte`'s gate exists to close. Both handlers now check it. In
+  `onViewKeyUp` the gate sits **after** `spaceHeld = false`: a space held when the export began was
+  latched by an ungated keydown, and returning first would leave grab-pan stuck on for good.
+- **A manual Save retired the "autosave is OFF" warning**, which a save does not fix — the work to
+  that point is on disk, everything drawn afterwards is still unprotected. New `state.autosaveOff`
+  (written once, by the restore catch) makes that one alert outlive a save while the transient ones
+  still clear.
+- **The undecoded-audio notice used `statusHint`**, so the title writer wiped it on the next pointer
+  move — the exact trap `persistAlert` was carved out to dodge, walked into two lines below the
+  carve-out. It is the only announcement an undecoded track gets (the lane renders a decoded track
+  only), so it is now sticky.
+
+Known and left: an undecoded track has no UI at all — it cannot be seen, muted or removed, only
+preserved. Adding one means deciding what a track you cannot hear should look like; not this wave.
+
 **Deferred by this wave — decided, not forgotten:**
 
 - **`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.** Drawing on a hold

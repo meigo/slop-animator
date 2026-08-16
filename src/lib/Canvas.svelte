@@ -262,6 +262,10 @@
   // Space holds a grab-to-pan mode; `0` fits the canvas to the view. Skipped while typing in a field;
   // space is left alone when a BUTTON is focused so it can still activate it.
   function onViewKeyDown(e: KeyboardEvent) {
+    // These are the app's OTHER window-level key handlers, so they need the export gate `App.svelte`
+    // has: a space tap restarts playback onto the boil GL surface the export shares, and the render
+    // loop re-reads the live project every frame. The dialog's backdrop blocks pointers, not keys.
+    if (appState.exportBusy) return;
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack typing
     if (e.key === " ") {
@@ -281,7 +285,10 @@
   }
   function onViewKeyUp(e: KeyboardEvent) {
     if (e.key !== " ") return;
+    // Clear the pan latch BEFORE the export gate: a space held when the export started already set
+    // it via a keydown that wasn't gated, and returning first would leave pan stuck on forever.
     spaceHeld = false;
+    if (appState.exportBusy) return;
     if (!spacePanned && e.timeStamp - spaceDownAt < SPACE_TAP_MS) playbackController.toggle();
   }
   // Space/pan can get stuck if focus leaves the window mid-press (no keyup fires) — reset on blur.

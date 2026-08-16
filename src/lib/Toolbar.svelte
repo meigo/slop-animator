@@ -81,8 +81,9 @@
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
         replaceProject(project);
         void pruneMedia(referencedMediaIds(appState.project.layers));
+        // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.
         if (appState.project.audioUndecoded)
-          appState.statusHint =
+          appState.persistAlert =
             "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
         return;
       }
@@ -136,7 +137,9 @@
       let embedFailed = false; // latched, not written straight to the hint: the success line below
       const blob = await saveProjectBlob(appState.project, true, () => (embedFailed = true));
       downloadBlob(blob, name);
-      appState.persistAlert = ""; // the work is on disk — retire any autosave warning
+      // The work is on disk, so retire any autosave warning — EXCEPT the one saying autosave is off
+      // for the session, which a save does not fix: everything drawn after this is still unprotected.
+      if (!appState.autosaveOff) appState.persistAlert = "";
       appState.statusHint = embedFailed
         ? `Saved ${name} — a reference couldn't be embedded, so it's saved without it`
         : `Saved ${name}`;

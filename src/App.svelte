@@ -245,11 +245,15 @@
       // stroke's 3s debounce overwrite it with nothing. Leave the gate shut for the session and say
       // so; a manual "Save Project" and a reload are both still available.
       console.error("startup restore failed", e);
+      state.autosaveOff = true; // stops a later manual save retiring the warning below
       state.persistAlert = `Couldn't load your saved project (${errText(e)}). Autosave is OFF so the saved copy isn't overwritten — reload to retry, or use File ▸ Open.`;
       return; // autosaveReady stays false — deliberately NOT a `finally`
     }
+    // A CONDITION, not a control's tooltip — so `persistAlert`, not `statusHint`, which the
+    // window-level title writer wipes on the next pointer move. There is no UI for an undecoded
+    // track (the lane renders only a decoded one), so this line is its only announcement.
     if (state.project.audioUndecoded)
-      state.statusHint =
+      state.persistAlert =
         "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
     autosaveReady = true;
   });

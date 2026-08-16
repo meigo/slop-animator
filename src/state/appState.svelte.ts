@@ -26,6 +26,7 @@ import {
   type DrawingLayer,
   type Cell,
   type AudioTrack,
+  type UndecodedAudio,
   type ReferenceLayer,
   type ReferenceMedia,
   type LayerGroup,
@@ -129,6 +130,11 @@ interface AnimState {
    *  session. Same carve-out, same reason, as `poseFillWarning`. Set by App.svelte/Toolbar; cleared
    *  only by a subsequent success. */
   persistAlert: string;
+  /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
+   *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
+   *  clearing on a save is how the "worked for hours believing they were saved" failure gets back
+   *  in through the side door. Written once, by App.svelte's restore catch. */
+  autosaveOff: boolean;
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
@@ -217,6 +223,7 @@ export const state: AnimState = $state({
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   persistAlert: "",
+  autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
@@ -295,6 +302,14 @@ export interface StructSnapshot {
    *  shared `audio` object, so the reference cannot carry their before-state. */
   audioTrimInFrames: number | null;
   audioTrimLenFrames: number | null;
+  /** Audio whose bytes this device could not decode, held by REFERENCE for the same reason `audio`
+   *  is: it carries the only copy of those bytes, and the save path writes them back verbatim so a
+   *  device that cannot decode never destroys them. It MUST be captured, because both writers that
+   *  clear it (`setAudioTrack`/`removeAudioTrack`) run inside `commitStructural` — without it,
+   *  import-then-undo left `audio` null AND `audioUndecoded` null, and the next autosave wrote a
+   *  project with no audio at all. Nothing writes its fields in place (it has no UI), so unlike the
+   *  decoded track it needs no separate scalars. */
+  audioUndecoded: UndecodedAudio | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -324,6 +339,7 @@ function snapshotStructure(): StructSnapshot {
     audioMuted: state.project.audio?.muted ?? null,
     audioTrimInFrames: state.project.audio?.trimInFrames ?? null,
     audioTrimLenFrames: state.project.audio?.trimLenFrames ?? null,
+    audioUndecoded: state.project.audioUndecoded ?? null,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -387,6 +403,11 @@ function restoreStructure(s: StructSnapshot) {
   const audioChanged = state.project.audio !== s.audio;
   const wasMuted = state.project.audio?.muted ?? null;
   state.project.audio = s.audio;
+  // Undecodable bytes are restored alongside the track, never left behind: an import or a remove
+  // clears them INSIDE commitStructural, so undoing one has to hand them back or the only copy is
+  // gone at the next autosave. `audio` and `audioUndecoded` are never both set, and restoring both
+  // from the same snapshot preserves that.
+  state.project.audioUndecoded = s.audioUndecoded;
   if (state.project.audio) {
     if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
     if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
