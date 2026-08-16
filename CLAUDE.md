@@ -2168,19 +2168,57 @@ four more, all fixed here.
 Known and left: an undecoded track has no UI at all — it cannot be seen, muted or removed, only
 preserved. Adding one means deciding what a track you cannot hear should look like; not this wave.
 
+**Materialising a keyframe is now part of the undo entry that caused it (2026-08-16).** This was the
+one finding the audit wave deliberately left, because every fix changes what a single ⌘Z means. It
+surfaced as the plain question "I draw on a hold, undo, and the drawing goes but the ◆ stays — should
+the key go too?" It should, and making it go also closes the data-loss path.
+
+**What was wrong.** `ensureDrawableKeyframe` converts `{kind:"hold"}` into a real key (or extends the
+track past the layer's end) and returned only a canvas. The tool that called it then recorded a PIXEL
+command. So the structural half was captured by NOTHING. Two consequences, one cosmetic and one not:
+undo reverted the pixels and stranded a blank ◆; and undoing an EARLIER structural entry restored the
+layer's pre-materialisation `cells`, deleting the cell out from under the pixel command that owned its
+canvas — so redo painted into an orphan and the drawing was gone with no way back.
+
+**The fix.** `ensureDrawableKeyframe` now returns `{ canvas, materialized }`, where `materialized` is
+a `CellTrackChange { before, after }` — whole-track arrays, `null` when the frame was already a key.
+The return type CHANGED rather than a second function being added, so the compiler names every call
+site; there were **eight**, not the three a truncated grep first showed. Each folds the restore into
+the undo/redo closures it already pushes, so one stroke stays one ⌘Z: undo takes the pixels **and**
+the ◆, redo puts both back.
+
+- **Whole-track copies, not a per-shape diff.** The two shapes (hold→key, and extend-past-the-end)
+  collapse into one, and a few hundred REFERENCES cost nothing beside the two ImageDatas the same
+  command already retains. `restoreCellTrack` copies on the way in, so a later in-place splice on the
+  live array cannot reach back and corrupt the record.
+- **Redo installs the track BEFORE the pixels.** The canvas a pixel command writes into only belongs
+  to the document once its cell is back in the track.
+- **The four LIFT entry points** (paper crop, paste, deform, pose) hold it in `selLayer`/
+  `selMaterialized` beside `selCtx`/`selBefore`, for the same span — a new `clearLiftTarget()` drops
+  all four together, since clearing three of them was exactly how a stale record could outlive its
+  lift. In `enterDeform`/`enterPose` they must be set **after** `selection.cancel()`, which clears
+  them.
+- **Every abandon path reverts too**, and there are more of them than the happy path: a discarded
+  stroke (`discardActiveEdits`), a cancelled lift or pose, a crop that finds nothing, deform/pose on
+  an empty cell, and a pose whose mesh fails to build. All of those previously left a ◆ behind for a
+  gesture that did nothing. The discard also `bump()`s, because the stroke's start already bumped and
+  a revert past the layer's end SHRINKS the track, so `frameCount` has to be recomputed.
+
+Pure logic is unit-tested (6 new cases, incl. canvas IDENTITY across a before→after round trip — the
+property that keeps redo pointing at a cell that is actually in the document — and that the record
+survives a later in-place edit). The eight call sites are DOM-coupled and are build+review verified.
+**Owed a browser pass:** draw on a hold → undo → the ◆ becomes · again and the held drawing returns;
+redo restores both; draw on a hold, then undo an EARLIER structural edit, then redo forward (the
+data-loss case); fill / clear-frame / delete / paste / deform / pose each on a hold, undone; drawing
+past the layer's end → undo → the track shrinks back and the timeline length with it; a stroke
+discarded mid-gesture by a two-finger undo leaves no ◆.
+
 **Deferred by this wave — decided, not forgotten:**
 
-- **`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.** Drawing on a hold
-  materialises a keyframe (`cells[i] = {kind:"key", canvas}`) outside any structural snapshot; the
-  stroke is recorded as a PIXEL command against that canvas. Ordered scenario: (1) a structural op
-  (say, insert frame) pushes entry A; (2) draw on a hold at frame 5 → the cell silently becomes a
-  key, then a pixel command B records the stroke; (3) ⌘Z pops B (pixels revert, the ·→◆ marker
-  stays — the known app-wide cosmetic gap); (4) ⌘Z again pops A, whose `restoreStructure` reinstalls
-  the layer's PRE-materialisation `cells` array — the keyframe created in (2) disappears along with
-  the canvas the pixel command owns, so REDO of B paints into a canvas no longer in the document.
-  Real and serious, but every fix changes undo granularity for ORDINARY DRAWING (either drawing on
-  a hold pushes a structural entry too, or pixel commands must carry a structural rider), which is a
-  product decision the user has to make. **Code deliberately untouched.**
+- ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —
+  the pixel command carries the structural rider; see the entry above. The product question this was
+  parked on ("does drawing on a hold now cost two undo steps?") answered itself: it costs one, and
+  the ◆ goes with the drawing.
 - **Export has no streaming/progress/cancel**, and materialises the whole encode in memory (the
   end-of-render spike). Too large for a defect wave; needs its own design pass.
 - **"New" has no confirmation** — it replaces the document and clears the autosave slot on one tap.

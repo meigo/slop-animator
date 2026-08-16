@@ -52,6 +52,7 @@
     insertFrameAllLayers,
     deleteFrameAllLayers,
     ensureDrawableKeyframe,
+    restoreCellTrack,
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
@@ -1152,7 +1153,7 @@
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
     liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
-    const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
+    const { canvas, materialized } = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -1164,9 +1165,13 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          // Clearing a HOLD materialises a keyframe first; undo removes that too, so the frame goes
+          // back to being a hold rather than staying an empty ◆.
+          if (materialized) restoreCellTrack(l, materialized.before);
           bump();
         },
         () => {
+          if (materialized) restoreCellTrack(l, materialized.after);
           ctx.putImageData(after, 0, 0);
           bump();
         },

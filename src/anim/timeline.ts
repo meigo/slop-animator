@@ -59,28 +59,53 @@ export function deleteFrame(layer: DrawingLayer, frame: number): void {
   layer.cells.splice(frame, 1);
 }
 
+/** The cell track on either side of a materialisation, so a caller's undo can put it back.
+ *  Whole-track copies rather than a per-shape diff: both shapes (hold→key, and extend-past-the-end)
+ *  collapse into one, and an array of a few hundred REFERENCES costs nothing beside the two
+ *  ImageDatas the same command already retains. */
+export interface CellTrackChange {
+  before: Cell[];
+  after: Cell[];
+}
+
+/** Install one side of a `CellTrackChange`. Copies, so a later in-place edit of the live track
+ *  (a splice from an unrelated op) cannot reach back and corrupt the stored record. */
+export function restoreCellTrack(layer: DrawingLayer, cells: Cell[]): void {
+  layer.cells = cells.slice();
+}
+
 /**
  * Guarantee the cell at `frame` is a keyframe and return its canvas, so a tool can draw on it.
  * - Past the layer's end → extend with holds up to `frame`, then a fresh blank keyframe.
  * - Already a keyframe → returns its canvas unchanged.
  * - A hold over an earlier keyframe → clones that drawing (draw-on-hold = clone & edit on top).
  * - A hold with nothing held → a fresh blank keyframe.
+ *
+ * Returns the change it made to the cell track (`null` when the frame was already a keyframe).
+ * **Every caller must carry that into its undo command.** Materialising a keyframe is a structural
+ * mutation, and for years it was captured by nothing: the stroke that caused it was recorded as a
+ * pixel command, so undo reverted the pixels and left a blank ◆ behind — and undoing an EARLIER
+ * structural entry silently deleted the cell out from under that pixel command, taking the drawing
+ * with it. Returning the change (rather than performing the bookkeeping here) keeps the pixels and
+ * the cell in ONE undo entry, which is also what the artist expects: one stroke, one ⌘Z.
  */
 export function ensureDrawableKeyframe(
   layer: DrawingLayer,
   frame: number,
   ops: CanvasOps,
-): HTMLCanvasElement {
+): { canvas: HTMLCanvasElement; materialized: CellTrackChange | null } {
   if (frame >= layer.cells.length) {
+    const before = layer.cells.slice();
     while (layer.cells.length < frame) layer.cells.push({ kind: "hold" });
     const canvas = ops.create();
     layer.cells.push({ kind: "key", canvas });
-    return canvas;
+    return { canvas, materialized: { before, after: layer.cells.slice() } };
   }
 
   const current = layer.cells[frame];
-  if (current.kind === "key") return current.canvas;
+  if (current.kind === "key") return { canvas: current.canvas, materialized: null };
 
+  const before = layer.cells.slice();
   const ki = resolveKeyframeIndex(layer.cells, frame);
   const held = ki === null ? null : layer.cells[ki];
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();
@@ -93,7 +118,7 @@ export function ensureDrawableKeyframe(
       neu.transformBox = held.transformBox ? { ...held.transformBox } : held.transformBox;
   }
   layer.cells[frame] = neu;
-  return canvas;
+  return { canvas, materialized: { before, after: layer.cells.slice() } };
 }
 
 /**
