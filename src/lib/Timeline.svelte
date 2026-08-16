@@ -906,7 +906,7 @@
   />
   <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
   <div
-    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text hover:bg-text/10"
+    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -920,7 +920,9 @@
     <!-- This one KEEPS a visual hint, unlike the two vertical grips. Those sit on a panel EDGE,
          where drag-to-resize is a learned convention that needs no badge; this is an INTERIOR
          divider between the canvas and the timeline, so nothing about its position suggests it can
-         be dragged. -->
+         be dragged. It also takes NO background tint, unlike them: this grip spans the full width,
+         so the same bg-text/10 covers a hundred times the area and reads far louder. The bar
+         brightening on hover is the whole feedback it needs. -->
     <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
   </div>
   <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
