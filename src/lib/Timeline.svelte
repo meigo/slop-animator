@@ -1140,7 +1140,7 @@
          (z-20) — otherwise a row's own label would swallow the press. Pulled out of flow the same
          way the plate is, so it adds no height. -->
     <div
-      class="sticky top-0 z-25 cursor-col-resize hover:bg-text/10"
+      class="group sticky top-0 z-25 cursor-col-resize"
       style="left: {GUTTER_W -
         6}px; width: 8px; height: {gridH}px; margin-bottom: {-gridH}px; touch-action: none"
       role="separator"
@@ -1151,7 +1151,12 @@
       onpointermove={gutterGripMove}
       onpointerup={gutterGripUp}
       onpointercancel={gutterGripUp}
-    ></div>
+    >
+      <!-- Same split as the layer panel's grip: 8px HIT area, 4px visible tint. Offset 2px from the
+           grip's left so the tint lands just INSIDE the divider and never over a frame cell — the
+           grip itself is biased 6-in/2-out for the same reason. -->
+      <div class="absolute inset-y-0 w-1 group-hover:bg-text/10" style="left: 2px"></div>
+    </div>
 
     <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->

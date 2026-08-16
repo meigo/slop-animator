@@ -1673,7 +1673,10 @@ its root, or the header's bottom border gets inset and stops short of the left e
 The GUTTER's grip is deliberately ASYMMETRIC — `left: GUTTER_W - 6` with width 8, so 6 of its 8px
 fall inside the gutter and only 2 reach the first frame cell, which is interactive and only 24px
 wide. Do not "centre" it.
-The panel grip's HIT area is 8px but its hover TINT is only the 4px the panel actually reserves:
+**Both vertical grips use the same split: 8px HIT area, 4px visible TINT.** For the panel the tint
+covers exactly the 4px it reserves; for the gutter it is offset 2px so it lands just inside the
+divider and never over a frame cell (the grip itself is biased 6-in/2-out for the same reason).
+The panel's rule, which the gutter now follows:
 tinting the full 8px painted over the rows' own background (the grip overlays their left 4px), which
 read as a mismatched notch against the active/hover row colour. Hit area and tint are separate
 concerns on any overlay grip — size them separately.
