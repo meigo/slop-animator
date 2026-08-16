@@ -222,7 +222,12 @@
       edgeRaf = 0;
       if (!edgeApply || !gridWrapper) return;
       const r = gridWrapper.getBoundingClientRect();
-      const d = edgeScrollDelta(edgePointerX, r.left, r.right);
+      // The LEFT trigger is the gutter's inner edge, not the scroller's. The name column and marker
+      // are sticky, so they cover the scroller's left edge — measuring from there would put the
+      // whole zone UNDERNEATH them, and you would have to drag the pointer behind the gutter before
+      // scrolling began. `GUTTER_W` is where the frame strip actually becomes visible. The right
+      // side needs no such inset: nothing overlays it.
+      const d = edgeScrollDelta(edgePointerX, r.left + GUTTER_W, r.right);
       if (d !== 0) {
         const before = gridWrapper.scrollLeft;
         gridWrapper.scrollLeft = before + d;

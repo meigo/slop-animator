@@ -1914,6 +1914,11 @@ captured at grab and `rowColumnAt`/`rowBoundaryAt` measure from it; every row sh
 horizontal geometry, so any one of them is the right ruler.
 The IDLE HOVER tail of `rowMove` deliberately stayed on the event path as `rowHover`: it measures
 `currentTarget` and there is no drag to re-apply when nothing is being dragged.
+**The LEFT trigger is measured from the gutter's inner edge (`r.left + GUTTER_W`), not the
+scroller's.** The name column and marker are STICKY, so they cover the scroller's left edge — a zone
+measured from there sits underneath them, and you have to drag the pointer behind the gutter before
+scrolling starts. The right side needs no inset, since nothing overlays it. Add the same term to any
+future left-edge geometry in this scroller; the sticky gutter has caught this several times now.
 `AudioLane` does not own the scroller, so Timeline passes it `onEdgeScrollStart/Stop/PointerX`
 alongside the existing touch-pan callbacks. Every start is paired with a stop on the settle path, not
 on `pointerup` alone — the settles are also what undo/Open call through `transformDragGuard`.
