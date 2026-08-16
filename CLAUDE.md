@@ -1878,3 +1878,26 @@ handle); reach for it, not for stopPropagation. `frameDigits` went with the remo
 **Owed a browser pass:** drag to lengthen and shorten; shorten past keyframes and see the live warning
 then the single prompt; decline it and confirm the length snaps back; undo after a length drag; the
 handle staying at the ruler's end while scrolling horizontally; iPad.
+
+**Edge auto-scroll while dragging (2026-08-16).** Reported as: dragging the playhead or a trim edge
+past the viewport does nothing, so you must stop, scroll by hand, and resume. All six HORIZONTAL
+timeline drags now scroll when the pointer nears an edge — ruler scrub, animation length, audio
+offset, audio trim, image-ref range, video clip slide. The two panel-resize grips deliberately do
+NOT: scrolling the content while sizing a panel would be wrong.
+**The tick RE-APPLIES the active drag, and that is the whole design.** While the pointer sits still
+past the edge there are no `pointermove` events, so a helper that only scrolled would slide the
+content out from under a trim edge that never followed — you would scroll but not trim. Each drag
+therefore splits into an event handler (pointer-type guards, capture checks) and a plain
+`xMoveAt(clientX)` the rAF tick calls with the last known pointer x. Do not "simplify" a drag back
+into a single event handler without removing it from the autoscroll registry.
+`edgeScrollDelta` (`src/anim/edge-scroll.ts`, pure, unit-tested) is PROPORTIONAL to how far into the
+40px zone the pointer is, capped at 24px/tick — a small overshoot creeps so an edge can be placed
+precisely, a large one races, and deflection past the edge counts as full speed rather than growing
+without bound, or the scroll becomes impossible to steer. The tick also skips re-applying when
+`scrollLeft` did not actually move, so sitting at either end costs nothing.
+`AudioLane` does not own the scroller, so Timeline passes it `onEdgeScrollStart/Stop/PointerX`
+alongside the existing touch-pan callbacks. Every start is paired with a stop on the settle path, not
+on `pointerup` alone — the settles are also what undo/Open call through `transformDragGuard`.
+**Owed a browser pass:** drag each of the six past both edges and back; that a trim edge keeps
+following while the content scrolls; that it stops at either end without spinning; release outside
+the viewport; ⌘Z mid-autoscroll; iPad with a Pencil.

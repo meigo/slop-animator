@@ -62,6 +62,7 @@
   } from "../anim/timeline-layout";
   import { clampGutterLabelWidth } from "../anim/panel-layout";
   import { audioFrameSpan } from "../audio/peaks";
+  import { edgeScrollDelta } from "../anim/edge-scroll";
   import { pixelCommand } from "../anim/history";
   import {
     groupOf,
@@ -173,6 +174,7 @@
   // Draggable playhead: pointer-drag anywhere on the ruler scrubs the current frame.
   // Pointer capture keeps the drag alive outside the element; touch-action:none stops
   // the browser from panning/zooming the page while scrubbing (needed on iPad).
+  let rulerEl: HTMLDivElement | undefined = $state();
   let scrubbing = $state(false);
   let boilSettingsOpen = $state(false);
   let onionSettingsOpen = $state(false);
@@ -204,6 +206,40 @@
     gridWrapper.scrollTop = touchPan.top - dy;
     return true;
   }
+  // Edge auto-scroll for horizontal drags. The tick RE-APPLIES the active drag at the last pointer
+  // position, which is the whole point: while the pointer sits still past the edge there are no
+  // pointermove events, so a helper that only scrolled would slide the content out from under a
+  // trim edge that never followed. Each drag registers how to re-apply itself.
+  let edgeRaf = 0;
+  let edgeApply: ((clientX: number) => void) | null = null;
+  let edgePointerX = 0;
+
+  function startEdgeScroll(apply: (clientX: number) => void) {
+    edgeApply = apply;
+    if (edgeRaf) return;
+    const tick = () => {
+      edgeRaf = 0;
+      if (!edgeApply || !gridWrapper) return;
+      const r = gridWrapper.getBoundingClientRect();
+      const d = edgeScrollDelta(edgePointerX, r.left, r.right);
+      if (d !== 0) {
+        const before = gridWrapper.scrollLeft;
+        gridWrapper.scrollLeft = before + d;
+        // Only re-apply when the scroll actually moved: at either end this would otherwise keep
+        // recomputing the same value every frame for no reason.
+        if (gridWrapper.scrollLeft !== before) edgeApply(edgePointerX);
+      }
+      edgeRaf = requestAnimationFrame(tick);
+    };
+    edgeRaf = requestAnimationFrame(tick);
+  }
+
+  function stopEdgeScroll() {
+    if (edgeRaf) cancelAnimationFrame(edgeRaf);
+    edgeRaf = 0;
+    edgeApply = null;
+  }
+
   function touchPanUp() {
     // Remember whether the gesture actually PANNED, for controls that must not fire on a scroll that
     // happens to end on them. A click still fires when a drag ends on its element, and while
@@ -250,6 +286,8 @@
       appState.project.fps,
     );
     clipDrag = { layer, x: e.clientX, startFrame };
+    edgePointerX = e.clientX;
+    startEdgeScroll(clipMoveAt);
   }
 
   function clipMove(e: PointerEvent) {
@@ -257,8 +295,12 @@
       touchPanMove(e);
       return;
     }
+    edgePointerX = e.clientX;
+    clipMoveAt(e.clientX);
+  }
+  function clipMoveAt(clientX: number) {
     if (!clipDrag) return;
-    const delta = Math.round((e.clientX - clipDrag.x) / CELL_W);
+    const delta = Math.round((clientX - clipDrag.x) / CELL_W);
     // Zero-delta no-op: startFrame = round(-offset/speed) is lossy when offset is
     // not a multiple of speed (e.g. placed at 1× then speed set to 1.5). Recomputing
     // next would rewrite the in-point on a click or sub-cell twitch without moving.
@@ -271,6 +313,7 @@
   }
 
   function clipUp() {
+    stopEdgeScroll();
     clipDrag = null;
     touchPanUp();
   }
@@ -315,6 +358,8 @@
       wasAbsent: !layer.range,
       undo: beginStructuralEdit(),
     };
+    edgePointerX = e.clientX;
+    startEdgeScroll(rangeMoveAt);
     transformDragGuard.settle = () => settleRangeDrag();
   }
 
@@ -323,8 +368,12 @@
       touchPanMove(e);
       return;
     }
+    edgePointerX = e.clientX;
+    rangeMoveAt(e.clientX);
+  }
+  function rangeMoveAt(clientX: number) {
     if (!rangeDrag) return;
-    const delta = Math.round((e.clientX - rangeDrag.x) / CELL_W);
+    const delta = Math.round((clientX - rangeDrag.x) / CELL_W);
     if (delta === 0) return;
     // During a handle drag this fires TWICE per pointermove: pointer capture retargets the event
     // to the handle, but it still bubbles to the body, which carries the same handlers. Harmless
@@ -345,6 +394,7 @@
 
   /** Commit iff the gesture actually changed the range; an empty entry makes undo look dead. */
   function settleRangeDrag() {
+    stopEdgeScroll();
     if (!rangeDrag) return;
     const cur = rangeDrag.layer.range;
     if (cur && (cur.start !== rangeDrag.from.start || cur.end !== rangeDrag.from.end)) {
@@ -391,7 +441,9 @@
       return;
     }
     scrubbing = true;
+    edgePointerX = e.clientX;
     scrubTo(e);
+    startEdgeScroll(scrubToX);
   }
   function rulerMove(e: PointerEvent) {
     if (lenDrag) return; // the length handle owns this gesture
@@ -399,9 +451,17 @@
       touchPanMove(e);
       return;
     }
-    if (scrubbing) scrubTo(e);
+    if (!scrubbing) return;
+    edgePointerX = e.clientX;
+    scrubToX(e.clientX);
+  }
+  function scrubToX(clientX: number) {
+    if (!rulerEl) return;
+    const rect = rulerEl.getBoundingClientRect();
+    go(columnAtX(clientX - rect.left, CELL_W, appState.project.frameCount));
   }
   function rulerUp(e: PointerEvent) {
+    stopEdgeScroll();
     scrubbing = false;
     touchPanUp();
     try {
@@ -470,6 +530,8 @@
       startLen: appState.project.frameCount,
       undo: beginStructuralEdit(),
     };
+    edgePointerX = e.clientX;
+    startEdgeScroll(lenGripMoveAt);
     transformDragGuard.settle = () => settleLenDrag();
   }
 
@@ -478,10 +540,14 @@
       touchPanMove(e);
       return;
     }
+    edgePointerX = e.clientX;
+    lenGripMoveAt(e.clientX);
+  }
+  function lenGripMoveAt(clientX: number) {
     if (!lenDrag) return;
     const next = Math.max(
       1,
-      Math.min(9999, lenDrag.startLen + Math.round((e.clientX - lenDrag.x) / CELL_W)),
+      Math.min(9999, lenDrag.startLen + Math.round((clientX - lenDrag.x) / CELL_W)),
     );
     if (next === appState.project.frameCount) return;
     setAnimationLength(next);
@@ -495,6 +561,7 @@
   /** Commit iff the length actually changed, and ask about dropped keyframes ONCE, here. Declining
    *  restores the starting length rather than leaving the drag half-applied. */
   function settleLenDrag() {
+    stopEdgeScroll();
     if (!lenDrag) return;
     const { startLen, undo } = lenDrag;
     lenDrag = null;
@@ -1347,6 +1414,7 @@
            no capability — it only added a stray stop and a click focus ring. role/aria stay so
            assistive tech can still read the ruler in browse mode. -->
       <div
+        bind:this={rulerEl}
         class="flex cursor-ew-resize select-none bg-surface-active"
         style="touch-action: none"
         role="slider"
@@ -1404,6 +1472,9 @@
       onTouchDown={touchPanDown}
       onTouchMove={touchPanMove}
       onTouchUp={touchPanUp}
+      onEdgeScrollStart={startEdgeScroll}
+      onEdgeScrollStop={stopEdgeScroll}
+      onEdgePointerX={(x) => (edgePointerX = x)}
     />
 
     <!-- layer rows (top layer first) -->
