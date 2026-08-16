@@ -2359,8 +2359,10 @@ which aborts the custom pan and (correctly) suppresses its fling. The layer list
 drawing row now glides. NOT individually walked, so still owed: a slow drag ending stationary stops
 dead rather than throwing; a press mid-glide catches it; the glide stops at both ends without
 juddering; a Pencil press mid-glide stops it instead of drawing on a moving view; the audio lane
-behaves the same; and scrubbing / edge auto-scroll / playback-follow never fight it. The page-lock
-half of the same fix (no document pan, no blank space under the UI) is also unconfirmed.
+behaves the same; and scrubbing / edge auto-scroll / playback-follow never fight it.
+**The page lock is CONFIRMED on iPad (2026-08-16):** the app no longer pans, the toolbars stay put
+and the blank space under the status bar is gone. Do not re-litigate it — and note it took the
+fixed root to get there, not the document `overflow` rules.
 
 **Deferred by this wave — decided, not forgotten:**
 
