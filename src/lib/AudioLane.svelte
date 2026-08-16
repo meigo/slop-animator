@@ -5,12 +5,14 @@
     bump,
     removeAudioTrack,
     toggleAudioMute,
+    setAudioTrim,
     beginStructuralEdit,
     commitStructuralEdit,
     transformDragGuard,
   } from "../state/appState.svelte";
   import { audioEngine } from "../audio/engine";
   import { computePeaks, audioFrameSpan } from "../audio/peaks";
+  import { trimHead, trimTail, AUDIO_MIN_TRIM_FRAMES } from "../audio/trim";
 
   // Grid metrics passed from Timeline so the lane aligns with the frame columns.
   let {
@@ -51,6 +53,7 @@
 
   function laneDown(e: PointerEvent) {
     if (!state.project.audio) return;
+    if (trimDrag) return; // a trim handle already claimed this gesture
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (e.pointerType === "touch") {
       onTouchDown(e);
@@ -93,6 +96,104 @@
     onTouchUp();
   }
 
+  // The kept span in BUFFER-frame space, resolved once for both the handle markup and the drag
+  // handlers. `$derived` rather than `{@const}` in the markup: Svelte 5 only allows `{@const}` as
+  // the immediate child of a block, and these are needed in the script anyway.
+  // (`in` is a reserved word, hence `trimIn`/`trimLen`.)
+  const extentFrames = $derived(
+    state.project.audio
+      ? audioFrameSpan(state.project.audio.buffer.duration, state.project.fps)
+      : 0,
+  );
+  const trimIn = $derived(Math.max(0, state.project.audio?.trimInFrames ?? 0));
+  const trimLen = $derived(state.project.audio?.trimLenFrames ?? extentFrames - trimIn);
+
+  // Edge trim. Separate from the body drag (which slides offsetFrames) but brackets undo the same
+  // way: one entry per completed gesture, settle registered so a mid-drag undo cannot leave it open.
+  let trimDrag: {
+    edge: "head" | "tail";
+    x: number;
+    from: { offsetFrames: number; trimInFrames: number; trimLenFrames: number };
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function trimDown(e: PointerEvent, edge: "head" | "tail") {
+    const audio = state.project.audio;
+    if (!audio) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (e.pointerType === "touch") {
+      onTouchDown(e); // finger navigates, pen/mouse edits
+      return;
+    }
+    if (trimDrag) return; // a handle already owns this gesture
+    trimDrag = {
+      edge,
+      x: e.clientX,
+      from: { offsetFrames: audio.offsetFrames, trimInFrames: trimIn, trimLenFrames: trimLen },
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleTrimDrag();
+  }
+
+  function trimMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      onTouchMove(e);
+      return;
+    }
+    const audio = state.project.audio;
+    if (!trimDrag || !audio) return;
+    const delta = Math.round((e.clientX - trimDrag.x) / cellW);
+    const f = trimDrag.from;
+    const next =
+      trimDrag.edge === "head"
+        ? trimHead(f.offsetFrames, f.trimInFrames, f.trimLenFrames, delta, extentFrames)
+        : {
+            offsetFrames: f.offsetFrames,
+            ...trimTail(f.trimInFrames, f.trimLenFrames, delta, extentFrames),
+          };
+    // Compare against the CURRENT EFFECTIVE values, not against `delta === 0`.
+    //   - A tap writes nothing, because next equals what is already there (so no autosave re-arm,
+    //     and an untrimmed clip is not silently materialised into explicit 0/extent fields).
+    //   - A drag that goes out and comes BACK to its start still writes, restoring the clip.
+    // An early `if (delta === 0) return` gets the first right and the second wrong: it would leave
+    // the clip stranded at the last non-zero delta, so a gesture could not be cancelled by
+    // returning to where it began.
+    if (
+      audio.offsetFrames === next.offsetFrames &&
+      trimIn === next.trimInFrames &&
+      trimLen === next.trimLenFrames
+    )
+      return;
+    setAudioTrim(next.trimInFrames, next.trimLenFrames, next.offsetFrames);
+  }
+
+  /** Commit iff the gesture changed something — a click without a drag must push nothing.
+   *  The comparison is against the EFFECTIVE trim (`trimIn`/`trimLen`), never the raw optional
+   *  fields: an untouched clip leaves `trimLenFrames` undefined while `from` holds the resolved
+   *  extent, so a raw compare would read as changed and commit an empty undo entry. */
+  function settleTrimDrag() {
+    if (!trimDrag) return;
+    const audio = state.project.audio;
+    const f = trimDrag.from;
+    const changed =
+      !!audio &&
+      (audio.offsetFrames !== f.offsetFrames ||
+        trimIn !== f.trimInFrames ||
+        trimLen !== f.trimLenFrames);
+    if (changed) commitStructuralEdit(trimDrag.undo);
+    trimDrag = null;
+    transformDragGuard.settle = null;
+  }
+
+  function trimUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      onTouchUp();
+      return;
+    }
+    if (trimDrag && state.playback.isPlaying) audioEngine.syncTo(state.playhead, state.project.fps);
+    settleTrimDrag();
+  }
+
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
 
@@ -121,6 +222,14 @@
       // The clip may outlast the document: past the last frame there is no ruler and nothing to
       // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
       const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
+      // Trimmed head/tail stay drawn, dimmed, so you can see what was cut and drag it back.
+      // Same tokens and alpha the past-the-last-frame tail already uses. `cols` is already the
+      // buffer's extent in frames, so there is nothing to recompute.
+      const keptFrom = Math.max(0, audio.trimInFrames ?? 0);
+      const keptTo = Math.min(cols, keptFrom + (audio.trimLenFrames ?? cols - keptFrom));
+      const pxPerFrame = (w / naturalW) * cellW;
+      const keptX0 = keptFrom * pxPerFrame;
+      const keptX1 = keptTo * pxPerFrame;
       // Canvas can't use Tailwind classes, so read the same media-clip tokens the video-ref clip
       // block uses — hardcoded greys were near-black in light mode, and any grey blends with the
       // ruler (surface-active) directly above this lane.
@@ -138,6 +247,11 @@
         ctx.fillStyle = token("--color-media-clip-dim", "#24272f");
         ctx.fillRect(Math.max(0, docEndX), 0, w - Math.max(0, docEndX), node.height);
       }
+      if (keptX0 > 0 || keptX1 < w) {
+        ctx.fillStyle = token("--color-media-clip-dim", "#24272f");
+        if (keptX0 > 0) ctx.fillRect(0, 0, keptX0, node.height);
+        if (keptX1 < w) ctx.fillRect(keptX1, 0, w - keptX1, node.height);
+      }
       // Outline, matching the video clip's border. Scaled with the backing store on a
       // >MAX_CANVAS_W clip, which is cosmetic-only.
       ctx.strokeStyle = token("--color-media-clip-border", "#3d4759");
@@ -148,7 +262,7 @@
       const mid = node.height / 2;
       for (let x = 0; x < peaks.length; x++) {
         const h = peaks[x] * (node.height - 2);
-        ctx.globalAlpha = x < docEndX ? 1 : 0.25;
+        ctx.globalAlpha = x >= keptX0 && x < keptX1 && x < docEndX ? 1 : 0.25;
         ctx.fillRect(x, mid - h / 2, 1, h);
       }
       ctx.globalAlpha = 1;
@@ -201,15 +315,41 @@
         onclick={removeAudioTrack}><X size={13} /></button
       >
     </div>
-    <canvas
-      class="h-7 cursor-grab"
-      style="touch-action: none; margin-left: {state.project.audio.offsetFrames * cellW}px"
-      use:waveform={{ audioVersion: state.version, theme: state.theme }}
-      onpointerdown={laneDown}
-      onpointermove={laneMove}
-      onpointerup={laneUp}
-      onpointercancel={laneUp}
-      title="Drag to offset the audio clip"
-    ></canvas>
+    <!-- The clip's position lives on this wrapper, not the canvas: the absolutely-positioned trim
+         handles need a positioned ancestor sharing the buffer's frame-0 origin, so their `left`
+         carries no offsetFrames term. -->
+    <div class="relative" style="margin-left: {state.project.audio.offsetFrames * cellW}px">
+      <canvas
+        class="h-7 cursor-grab"
+        style="touch-action: none"
+        use:waveform={{ audioVersion: state.version, theme: state.theme }}
+        onpointerdown={laneDown}
+        onpointermove={laneMove}
+        onpointerup={laneUp}
+        onpointercancel={laneUp}
+        title="Drag to offset the audio clip"
+      ></canvas>
+      <div
+        class="absolute inset-y-0 z-20 w-2 cursor-ew-resize"
+        style="left: {trimIn * cellW}px; touch-action: none"
+        role="presentation"
+        title="Trim the start of the audio"
+        onpointerdown={(e) => trimDown(e, "head")}
+        onpointermove={trimMove}
+        onpointerup={trimUp}
+        onpointercancel={trimUp}
+      ></div>
+      <div
+        class="absolute inset-y-0 z-20 w-2 cursor-ew-resize"
+        style="left: {Math.max(trimIn + AUDIO_MIN_TRIM_FRAMES, trimIn + trimLen) * cellW -
+          8}px; touch-action: none"
+        role="presentation"
+        title="Trim the end of the audio"
+        onpointerdown={(e) => trimDown(e, "tail")}
+        onpointermove={trimMove}
+        onpointerup={trimUp}
+        onpointercancel={trimUp}
+      ></div>
+    </div>
   </div>
 {/if}
