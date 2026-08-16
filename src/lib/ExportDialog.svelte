@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { state as appState, DPR, playbackController } from "../state/appState.svelte";
+  import { state as appState, DPR, playbackController, liftGuard } from "../state/appState.svelte";
   import { exportPngSequence } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { downloadBlob } from "../export/download";
@@ -17,6 +17,13 @@
     if (busy) return;
     busy = true;
     playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
+    // A live lift (selection float / deform / pose) has CLEARED its region from the cell canvas —
+    // the pixels exist only on the overlay, which renderFrame never composites. Exporting through
+    // that state writes a hole into every frame resolving to that key (a pose lift takes the whole
+    // content bbox, i.e. the layer goes blank for the hold span). Discard, not bank: the lift is an
+    // uncommitted edit and an export must not silently commit one.
+    liftGuard.discard?.();
+    appState.exportBusy = true; // gate the global keyboard handler for the WHOLE render (A10)
     status = `Exporting ${kind.toUpperCase()}… (${appState.project.frameCount} frames)`;
     try {
       if (kind === "png") {
@@ -32,6 +39,7 @@
       status = `Failed: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       busy = false;
+      appState.exportBusy = false;
     }
   }
 </script>

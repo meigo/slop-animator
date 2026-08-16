@@ -18,6 +18,7 @@ import {
   mediaIdsToEmbed,
   shouldRestoreMedia,
   sanitizeFilename,
+  collectFrameAssets,
 } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
@@ -505,5 +506,142 @@ describe("reference range persistence", () => {
 
   it("an untrimmed reference writes no range", () => {
     expect(projectToJson(projWith(rlayer(2))).references[0].range).toBeUndefined();
+  });
+});
+
+// ── Audit wave (2026-08-16) ───────────────────────────────────────────────────────────────────
+
+describe("collectFrameAssets", () => {
+  // A canvas that is distinguishable by identity, which is what the path→canvas mapping is about.
+  const cv = (tag: string) => ({ tag }) as unknown as HTMLCanvasElement;
+  const keyed = (tag: string): Cell => ({ kind: "key", canvas: cv(tag) });
+
+  const proj = (layers: DrawingLayer[]) =>
+    ({
+      name: "t",
+      width: 8,
+      height: 8,
+      fps: 8,
+      bgColor: "#eee",
+      frameCount: 3,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers,
+      audio: null,
+    }) as unknown as Project;
+
+  it("emits one entry per KEY cell, at that cell's frame path", () => {
+    const p = proj([dlayer(1, [keyed("a"), hold(), keyed("b")])]);
+    expect(collectFrameAssets(p).map((f) => f.path)).toEqual([
+      frameAssetPath(1, 0),
+      frameAssetPath(1, 2),
+    ]);
+  });
+
+  it("skips reference layers and covers every drawing layer", () => {
+    const p = proj([dlayer(1, [keyed("a")]), rlayer(2), dlayer(3, [hold(), keyed("c")])] as never);
+    expect(collectFrameAssets(p).map((f) => f.path)).toEqual([
+      frameAssetPath(1, 0),
+      frameAssetPath(3, 1),
+    ]);
+  });
+
+  it("agrees exactly with the cell KINDS projectToJson records", () => {
+    const p = proj([dlayer(1, [keyed("a"), hold(), keyed("b")]), dlayer(2, [keyed("c")])]);
+    const fromJson = projectToJson(p).layers.flatMap((l) =>
+      l.cells.flatMap((k, i) => (k === "key" ? [frameAssetPath(l.id, i)] : [])),
+    );
+    expect(collectFrameAssets(p).map((f) => f.path)).toEqual(fromJson);
+  });
+});
+
+describe("saveProjectBlob captures the model in one tick", () => {
+  /** A canvas whose encode YIELDS — the point at which a real user edit can land mid-save. */
+  const encodingCanvas = (onEncode?: () => void) =>
+    ({
+      toBlob: (cb: BlobCallback) => {
+        onEncode?.();
+        cb(new Blob([new Uint8Array(4)]));
+      },
+    }) as unknown as HTMLCanvasElement;
+
+  it("a frame deleted DURING the PNG pass cannot desync project.json from the PNG set", async () => {
+    const project = createProject();
+    const layer = project.layers[0] as DrawingLayer;
+    layer.cells = [
+      { kind: "key", canvas: encodingCanvas() },
+      // Encoding cell 1 deletes cell 2 — the shape of "autosave started, then the user deleted a
+      // frame". Before the fix, the JSON (10 cells) and the PNG walk (9 cells) disagreed.
+      { kind: "key", canvas: encodingCanvas(() => layer.cells.splice(2, 1)) },
+      { kind: "key", canvas: encodingCanvas() },
+    ];
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(project)).arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    const declared = json.layers[0].cells.flatMap((k: string, i: number) =>
+      k === "key" ? [frameAssetPath(layer.id, i)] : [],
+    );
+    expect(declared).toHaveLength(3);
+    for (const path of declared) expect(zip[path]).toBeDefined(); // no key left without its PNG
+    const written = Object.keys(zip).filter((p) => p.startsWith("frames/"));
+    expect(written.sort()).toEqual(declared.sort()); // …and no PNG the JSON doesn't declare
+  });
+
+  it("a not-yet-encoded LAYER deleted during the PNG pass still gets its PNGs written", async () => {
+    const project = createProject();
+    const first = project.layers[0] as DrawingLayer;
+    const second = dlayer(99, []);
+    second.cells = [{ kind: "key", canvas: encodingCanvas() }];
+    project.layers.push(second);
+    // Encoding the FIRST layer removes the second — which the old walk had not reached yet, so it
+    // wrote none of its PNGs while project.json still described it: a layer restoring fully blank.
+    first.cells = [{ kind: "key", canvas: encodingCanvas(() => project.layers.splice(1, 1)) }];
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(project)).arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.layers.map((l: { id: number }) => l.id)).toEqual([first.id, 99]);
+    expect(zip[frameAssetPath(first.id, 0)]).toBeDefined();
+    expect(zip[frameAssetPath(99, 0)]).toBeDefined();
+  });
+});
+
+describe("undecodable audio survives a re-save", () => {
+  const undecoded = {
+    name: "take.m4a",
+    bytes: new Uint8Array([1, 2, 3, 4]),
+    offsetFrames: 5,
+    muted: true,
+    trimInFrames: 2,
+    trimLenFrames: 9,
+  };
+
+  it("projectToJson writes the kept metadata when there is no decoded track", () => {
+    const p = { ...createProject(), audio: null, audioUndecoded: undecoded } as Project;
+    expect(projectToJson(p).audio).toEqual({
+      name: "take.m4a",
+      offsetFrames: 5,
+      muted: true,
+      trimInFrames: 2,
+      trimLenFrames: 9,
+    });
+  });
+
+  it("a decoded track always wins over kept bytes", () => {
+    const p = {
+      ...createProject(),
+      audio: {
+        name: "live.wav",
+        bytes: new Uint8Array(0),
+        buffer: {} as AudioBuffer,
+        offsetFrames: 0,
+        muted: false,
+      },
+      audioUndecoded: undecoded,
+    } as Project;
+    expect(projectToJson(p).audio?.name).toBe("live.wav");
+  });
+
+  it("saveProjectBlob re-writes the original bytes unchanged", async () => {
+    const p = { ...createProject(), audio: null, audioUndecoded: undecoded } as Project;
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(p)).arrayBuffer()));
+    expect(Array.from(zip["audio/track"])).toEqual([1, 2, 3, 4]);
   });
 });

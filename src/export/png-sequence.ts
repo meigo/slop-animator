@@ -15,20 +15,30 @@ export async function exportPngSequence(project: Project, dpr: number): Promise<
 
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
   for (let f = 0; f < project.frameCount; f++) {
-    renderFrame(ctx, project, f, dpr, {
-      drawBg: !project.transparentBg,
-      includeReference: false,
-      boil: project.boil.enabled ? project.boil : undefined,
-    });
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
-    );
-    // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
-    // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
-    files[frameFileName(f, project.frameCount)] = [
-      new Uint8Array(await blob.arrayBuffer()),
-      { level: 0 },
-    ];
+    // Fail with the frame number rather than a bare "toBlob failed" after minutes of work — this is
+    // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
+    // frame: a zip silently missing frame 240 reads as a complete export.
+    try {
+      renderFrame(ctx, project, f, dpr, {
+        drawBg: !project.transparentBg,
+        includeReference: false,
+        boil: project.boil.enabled ? project.boil : undefined,
+      });
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
+      );
+      // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
+      // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
+      files[frameFileName(f, project.frameCount)] = [
+        new Uint8Array(await blob.arrayBuffer()),
+        { level: 0 },
+      ];
+    } catch (e) {
+      throw new Error(
+        `frame ${f + 1} of ${project.frameCount} could not be rendered — ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }
   }
   return new Blob([zipSync(files)], { type: "application/zip" });
 }

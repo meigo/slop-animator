@@ -211,6 +211,19 @@ export interface AudioTrack {
   trimLenFrames?: number;
 }
 
+/** An audio track that was loaded from a save but could NOT be decoded on this device (e.g. a
+ *  desktop-Chrome m4a opened in WebKit). Everything `AudioTrack` has except `buffer` — which is
+ *  exactly what playback and export need, so this cannot BE a track. It exists only so the encoded
+ *  bytes survive the round-trip instead of being destroyed by the first re-save. */
+export interface UndecodedAudio {
+  name: string;
+  bytes: Uint8Array;
+  offsetFrames: number;
+  muted: boolean;
+  trimInFrames?: number;
+  trimLenFrames?: number;
+}
+
 export function isDrawingLayer(l: Layer): l is DrawingLayer {
   return l.kind === "draw";
 }
@@ -231,6 +244,10 @@ export interface Project {
   groups: LayerGroup[];
   layers: Layer[]; // layers[0] = bottom of the stack
   audio: AudioTrack | null;
+  /** Set INSTEAD of `audio` when the saved bytes wouldn't decode here. Carried through save so the
+   *  only copy of the audio isn't destroyed by opening the project on a device that can't play it;
+   *  never both — an `audio` import always clears it. */
+  audioUndecoded?: UndecodedAudio | null;
 }
 
 /**

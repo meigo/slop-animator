@@ -34,6 +34,14 @@
 <div
   class="flex items-center justify-between gap-3 border-t border-border bg-surface px-2 h-6 text-xs text-text-secondary select-none"
 >
+  {#if appState.persistAlert}
+    <!-- Amber, per the read-only/state-signalling convention: this is a condition to act on, not a
+         momentary error. It keeps its own slot rather than replacing the hint, so hovering a control
+         still explains that control while the warning stays put. -->
+    <span class="truncate text-amber-500 shrink-2" title={appState.persistAlert}
+      >⚠ {appState.persistAlert}</span
+    >
+  {/if}
   <span class="truncate">{appState.statusHint || idleHint}</span>
   <span class="shrink-0 tabular-nums"
     >f <span class="inline-block text-right" style="min-width: {frameDigits}ch"
