@@ -1801,6 +1801,18 @@ as `kind !== "draw"` / `!== "ref"` that today MEAN "is a reference" and would si
 audio** — plus a persistence migration and turning the engine's single `source`/`track` into many. It
 also buys multi-track audio, which is a current non-goal. Revisit only if multi-track is actually
 wanted; the accessor rule above is what made the workarounds unnecessary in the meantime.
+**Audio stays OUT of the layer panel (decided 2026-08-16).** Asked once the audio lane became
+selectable; the answer follows from the same fork. The panel's rows are dense with things audio does
+not have — visibility, lock, opacity, boil strength, transform apply/reset, drag-reorder, grouping,
+merge-down — and audio has no z-order relationship with layers at all, so it is neither above nor
+below anything. A row there would be mostly empty and would advertise layer-hood it does not possess
+(drag it into a group? why no opacity?), and it would put mute and remove in two places. Either audio
+becomes a REAL layer, with the 29-silent-branch cost measured above, or it lives in the timeline where
+a clip belongs and where all its controls already are. The panel showing no selection while the audio
+lane is selected is now TRUE rather than a glitch, and the status bar still names the draw target.
+If the itch turns out to be "I cannot tell from the panel whether the project has audio", the cheap
+answers are a 🔊 in the panel header or the menu item reading "Replace audio…" once a track exists —
+not a fake row.
 **`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
 an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
 arithmetic, hence the `+ 1` in `trimDeltaToPlayhead`'s tail branch. Getting it wrong is silent: the
