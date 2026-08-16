@@ -379,6 +379,12 @@
   }
 
   function rulerDown(e: PointerEvent) {
+    // The length handle is a CHILD of the ruler, and Svelte's delegated dispatch runs the target's
+    // handler before this one — so by now `lenDrag` is set if the press landed on it. Bail, or the
+    // ruler also scrubs and the playhead jumps in front of the handle you just grabbed. Deliberately
+    // not `stopPropagation` in the handle: that would suppress the window-level status-hint
+    // listener for the very pointer performing the drag.
+    if (lenDrag) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e);
@@ -388,6 +394,7 @@
     scrubTo(e);
   }
   function rulerMove(e: PointerEvent) {
+    if (lenDrag) return; // the length handle owns this gesture
     if (touchPan) {
       touchPanMove(e);
       return;
