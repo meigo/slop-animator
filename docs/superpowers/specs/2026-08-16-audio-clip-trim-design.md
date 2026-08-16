@@ -1,7 +1,7 @@
 # Audio clip trim — design
 
 **Date:** 2026-08-16
-**Status:** Proposed
+**Status:** Implemented (2026-08-16)
 **Builds on:** audio P2 drag-offset/mute (`2026-08-09-audio-phase2-design.md`), audio P3 export
 muxing (`2026-08-11-audio-phase3-export-muxing-design.md`), reference layer visibility ranges
 (`2026-08-15-reference-layer-ranges-design.md` — the trim gesture and its pure math come from there).

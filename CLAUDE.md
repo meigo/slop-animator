@@ -1694,3 +1694,61 @@ suggests it can be dragged at all. Edge → bare; interior → hinted.
 **Known trade, accepted:** hover does not exist on iPad, so there is no visual affordance there at
 all; the edges are discoverable only by trying them. Both still carry `title=`, which the status bar
 surfaces on tap, so the hint route survives even though the tint does not.
+
+**Audio clip trim (2026-08-16):** the audio lane's clip can be trimmed at either end, so a long take
+can be cut to the shot without re-importing. `AudioTrack` gains `trimInFrames?`/`trimLenFrames?` —
+SOURCE frames, both optional, matching `offsetFrames`'s framing rather than seconds. **Absent means
+untrimmed**, the same convention as `ReferenceLayer.range`: an old project loads playing the whole
+buffer and the save format version does not move. The pure arithmetic lives in `src/audio/trim.ts`
+(`audioTrimSpan`, `trimHead`, `trimTail`, `AUDIO_MIN_TRIM_FRAMES`), unit-tested (14 cases).
+**Two coordinate systems, and conflating them was the bug the spec's own self-review caught before
+any code existed.** `audioPlayPlan` reasons in KEPT-SPAN time (0 = the first kept sample);
+`AudioBufferSourceNode.start()` needs BUFFER time (0 = the first sample of the file). The in-point
+(`trimInFrames / fps`) is the conversion between the two, and it is added **only at the `start()`
+call**. Folding it into the value passed to `audioPlayPlan` while still passing the trimmed length as
+its `duration` compares the two systems against each other and silently cuts every trimmed clip short
+by exactly the in-point — the failure mode is not a crash, it is a slightly-too-short clip that looks
+like a rounding error. **`audioPlayPlan` needed no signature change at all**: passing it the trimmed
+length (`lenS`) instead of the buffer's raw duration makes its existing `at >= duration → silence`
+guard cover the trimmed tail for free — the only new tests assert that a smaller `duration` moves that
+existing boundary, not a new code path. `trimHead` **clamps the DELTA, not the two results**:
+`offsetFrames` and `trimInFrames` must move by exactly the same amount so the kept audio stays under
+the same project frames — clamping the two results independently could clamp them by different
+amounts and re-sync the clip, which is precisely the thing trimming must not do (the reason to trim is
+usually that the sync is already right). Export's existing single `OfflineAudioContext` render in
+`buildExportAudio` gains one field on `AudioExportPlan`, `sourceDuration`, passed as `start()`'s third
+argument — no second render pass; a trim that puts the clip's span entirely outside the export window
+still returns null (no audio track, not a silent one), extending an existing case rather than adding
+one. **The undo snapshot holds the trim as SCALARS** (`audioTrimInFrames`/`audioTrimLenFrames` on
+`StructSnapshot`), not read off `snap.audio` by reference — the same reason `audioOffsetFrames`/
+`audioMuted` are scalars: these fields are written IN PLACE on the shared track object, so a
+by-reference snapshot would alias the live value and undo would restore nothing. `restoreStructure`
+assigns them **unconditionally**, not guarded by `!== null` the way the offset restore is — `null`
+means "was untrimmed", and restoring that has to actively CLEAR the fields, so copying the offset's
+guard would leave a trim in place after undoing past it. `setAudioTrim(trimInFrames, trimLenFrames,
+offsetFrames)` writes the trim and the offset together so a head-trim gesture's paired write lands in
+one undo entry. The stored `bytes` are never touched — trimming is non-destructive, so widening a
+handle back out after a save-and-reload recovers the audio. Lane UI: the canvas still draws the whole
+buffer, with the trimmed head/tail dimmed the same way the past-the-last-frame tail already is; two
+8px edge handles, undo bracketed per completed gesture via `transformDragGuard.settle`, the same shape
+the offset drag already uses.
+**Five Minor findings deferred, deliberately, not fixed:** (1) the trim handles sit at `z-20`, the
+same stacking context as the sticky gutter label/marker, and DOM order makes the handles win — with
+the clip at offset 0 and the timeline scrolled right, the invisible head handle can overlay the
+mute/✕ buttons and steal their presses; the fix is to drop the handles' `z-20`. (2)
+`setPointerCapture` in `trimDown` runs before the `if (trimDrag) return` guard, so a second
+simultaneous pen/mouse pointer on the other handle could drive the move off the first gesture's
+origin. (3) The `laneDown` trim guard is unreachable by construction (the handles are DOM siblings of
+the canvas, not descendants) — noted so nobody later treats it as the load-bearing thing preventing a
+double gesture. (4) An out-and-back drag on a never-trimmed clip leaves the optional fields
+materialised as an explicit 0/extent with no undo entry — behaviourally identical to untrimmed, but it
+re-arms autosave for a gesture that changed nothing. (5) `trimUp` skips its settle on the touch
+branch, where the body drag's `laneUp` settles unconditionally. **Owed a browser pass** (Tasks 5/6
+have no unit tests and playback is audible, so none of this is verified beyond build+review): trim
+head and tail and hear the result match the waveform; a head trim leaves the kept audio at the same
+project frame (the sync-preserving property — check this first); drag a handle back out and recover
+the audio; trim → undo → redo; ⌘Z mid-drag; a trimmed clip exports with exactly the kept span; a trim
+that puts the clip entirely outside the export window exports with no audio track and still succeeds;
+scrub inside and outside the trimmed span; mute unchanged; save → reload preserves the trim and the
+bytes; an old project opens untrimmed; iPad for the handles (`touch-action`, finger-pan vs pen-trim).
+Spec/plan: `docs/superpowers/{specs,plans}/2026-08-16-audio-clip-trim*.md`.
