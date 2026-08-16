@@ -2230,11 +2230,12 @@ Pure logic is unit-tested (9 cases, incl. canvas IDENTITY across a before→afte
 property that keeps redo pointing at a cell that is actually in the document — that `after` is
 copied too, since it is what redo installs, and that the record survives a later in-place edit). The
 eight call sites are DOM-coupled and are build+review verified.
-**Owed a browser pass:** draw on a hold → undo → the ◆ becomes · again and the held drawing returns;
-redo restores both; draw on a hold, then undo an EARLIER structural edit, then redo forward (the
-data-loss case); fill / clear-frame / delete / paste / deform / pose each on a hold, undone; drawing
-past the layer's end → undo → the track shrinks back and the timeline length with it; a stroke
-discarded mid-gesture by a two-finger undo leaves no ◆.
+**Verified on iPad 2026-08-16: drawing on a hold and undoing behaves correctly** — the headline
+case, and the one the whole rider exists for. NOT individually walked, so still owed: redo restoring
+both halves; draw on a hold then undo an EARLIER structural edit then redo forward (the data-loss
+sequence); fill / clear-frame / delete / paste / deform / pose each on a hold, undone; drawing past
+the layer's end → undo → the track shrinks and the timeline length with it; a stroke discarded
+mid-gesture by a two-finger undo leaving no ◆.
 
 **Deform and Pose lift on ARRIVAL, not on the first press (2026-08-16).** Reported as "selecting the
 deform tool doesn't create the grid handles — they appear after clicking on the canvas". By design,
@@ -2283,10 +2284,11 @@ the next press. Auto-re-entry would mean every frame step lifts — and on a hol
 keyframe — turning a scrub into a document-wide mutation. The press fallback keeps it usable; revisit
 only if the missing grid actually bites.
 
-**Owed a browser pass:** the grid appears on selecting Deform and the first press grabs a handle;
-same for Pose; an empty cell or a locked/hidden layer still enters nothing; select Deform then switch
-away without touching it (no undo entry — ⌘Z should hit the edit BEFORE it); step a frame with Deform
-active; reload with Deform as the saved tool (no lift until you press, and no ◆ appears on a hold).
+**Verified on iPad 2026-08-16: the grid is there on arrival for both tools and the first press grabs
+a handle.** Still owed, since none of these were walked: an empty cell or a locked/hidden layer
+entering nothing; select Deform then switch away untouched (no undo entry — ⌘Z should hit the edit
+BEFORE it); stepping a frame with Deform active (the grid goes, by design — see above); reloading
+with Deform as the saved tool (no lift until you press, and no ◆ on a hold).
 
 **The timeline's finger pan has momentum (2026-08-16).** Reported as "iPad timeline scrolling is
 kinetic only when initiated from empty areas". Exactly right, and the cause is structural rather
