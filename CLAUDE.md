@@ -2386,8 +2386,36 @@ fixed root to get there, not the document `overflow` rules.
   the pixel command carries the structural rider; see the entry above. The product question this was
   parked on ("does drawing on a hold now cost two undo steps?") answered itself: it costs one, and
   the ◆ goes with the drawing.
-- **Export has no streaming/progress/cancel**, and materialises the whole encode in memory (the
-  end-of-render spike). Too large for a defect wave; needs its own design pass.
+- **Export progress + cancel — SHIPPED 2026-08-17. Streaming was DECLINED, and the reasoning is the
+  point.** The item was logged as one thing; a design pass split it and killed two thirds. At this
+  project's scale (low hundreds of frames — the stated ceiling) a 1920×1080 line-art PNG sequence is
+  ~30MB, doubling while `zipSync` builds its copy; the video path is the same order. Nowhere near a
+  limit on either device, and nothing had ever failed — it was logged preventively. True streaming
+  also needs somewhere to stream TO: `mediabunny.StreamTarget` and fflate's streaming `Zip` both
+  exist, but the sink would be the File System Access API, which **iPad Safari does not have** — so
+  the machinery would help only on desktop Chromium, i.e. not on the device this app is for.
+  Revisit only if projects reach the high hundreds AND memory actually bites; the note above is the
+  measurement to redo first.
+  What DID ship is worth having at any length, since a 300-frame MP4 is still tens of seconds of
+  apparently-frozen app: both exporters take `{ signal, onProgress }` (`src/export/progress.ts`), the
+  dialog shows `Frame n of m` with a bar, and Cancel / Escape / ✕ all abort. Three details that are
+  load-bearing rather than decorative:
+  **(a) The loop must YIELD A MACROTASK per frame or none of it works.** Awaiting a promise that
+  settles on a microtask never lets the browser paint or deliver a click, so the bar would jump
+  0→100 at the end and Cancel could not be pressed. `setTimeout`'s ~4ms clamp is small beside the
+  tens of ms a frame costs, and unlike a rAF yield it does not scale with refresh rate.
+  **(b) The abort check sits OUTSIDE each exporter's per-frame `try`.** Inside, a deliberate cancel
+  would be caught and re-thrown as "frame 42 could not be encoded" — a user action reported as a
+  defect. `isAbort(e)` then lets the dialog say "Cancelled", never "Failed".
+  **(c) Cancel is refused once finalising**, and the phase is NAMED in the UI. `output.finalize()`
+  (and `zipSync`) is where the container is assembled; interrupting it can only produce a file we
+  would discard, and without the label the bar sits at 100% looking stalled. The video path calls
+  `output.cancel()` — mediabunny's own teardown, which releases the encoder and writes no file —
+  never `finalize()`.
+  Escape needs its OWN listener because `App.svelte`'s global handler returns immediately while
+  `exportBusy` is set (the gate that stops a shortcut editing the project mid-render), which would
+  otherwise swallow it. Build+review verified — canvas, encoder and DOM throughout, with no
+  node-testable surface worth inventing tests for.
 - ~~"New" has no confirmation.~~ **FIXED 2026-08-17.** It was the last irreversible action reachable
   in one tap, and worse than it looked: `replaceProject` clears history, `clearAutosave` drops the
   only restorable copy and `clearAllMedia` discards the stored reference bytes, so there is nothing
