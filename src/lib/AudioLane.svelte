@@ -5,6 +5,7 @@
     bump,
     removeAudioTrack,
     toggleAudioMute,
+    selectAudioLane,
     setAudioTrim,
     beginStructuralEdit,
     commitStructuralEdit,
@@ -278,14 +279,22 @@
 {#if state.project.audio}
   <div class="flex w-max items-center" style="min-width: {minWidth}px">
     <div
-      class="shrink-0 sticky left-0 z-20 bg-surface flex items-center gap-1 h-7 px-1 text-text-secondary"
+      class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 px-1 cursor-pointer"
+      class:bg-surface={!state.audioLaneActive}
+      class:text-text-secondary={!state.audioLaneActive}
+      class:bg-surface-active={state.audioLaneActive}
+      class:text-text={state.audioLaneActive}
       role="presentation"
       style="width: {labelW}px; touch-action: none"
       onpointerdown={(e) => {
-        if (e.pointerType !== "touch") return;
+        if (e.pointerType !== "touch") {
+          selectAudioLane(); // make this the active timeline row, like clicking a layer name
+          return;
+        }
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         onTouchDown(e);
       }}
+      onclick={selectAudioLane}
       onpointermove={(e) => {
         if (e.pointerType === "touch") onTouchMove(e);
       }}

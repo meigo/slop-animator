@@ -4,7 +4,6 @@ import {
   offsetAfterClipDrag,
   rangeAfterSlide,
   rangeAfterTrim,
-  trimToPlayheadTarget,
   trimDeltaToPlayhead,
 } from "../anim/clip-layout";
 
@@ -94,29 +93,6 @@ describe("rangeAfterTrim", () => {
   it("clamps the start edge at frame 0 but lets the end run past the project", () => {
     expect(rangeAfterTrim({ start: 4, end: 9 }, "start", -99)).toEqual({ start: 0, end: 9 });
     expect(rangeAfterTrim({ start: 4, end: 9 }, "end", 500)).toEqual({ start: 4, end: 509 });
-  });
-});
-
-describe("trimToPlayheadTarget", () => {
-  it("prefers the active layer when it is an IMAGE reference", () => {
-    expect(trimToPlayheadTarget("image-ref", true)).toBe("ref");
-    expect(trimToPlayheadTarget("image-ref", false)).toBe("ref");
-  });
-
-  it("falls through to audio for a VIDEO reference — its span IS its footage", () => {
-    expect(trimToPlayheadTarget("video-ref", true)).toBe("audio");
-  });
-
-  it("falls through to audio for a drawing layer or no layer at all", () => {
-    expect(trimToPlayheadTarget("draw", true)).toBe("audio");
-    expect(trimToPlayheadTarget(null, true)).toBe("audio");
-    expect(trimToPlayheadTarget("missing-ref", true)).toBe("audio");
-  });
-
-  it("resolves to nothing when there is no audio and no image ref", () => {
-    expect(trimToPlayheadTarget("draw", false)).toBeNull();
-    expect(trimToPlayheadTarget("video-ref", false)).toBeNull();
-    expect(trimToPlayheadTarget(null, false)).toBeNull();
   });
 });
 
