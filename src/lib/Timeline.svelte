@@ -211,10 +211,11 @@
   // pointermove events, so a helper that only scrolled would slide the content out from under a
   // trim edge that never followed. Each drag registers how to re-apply itself.
   let edgeRaf = 0;
-  let edgeApply: ((clientX: number) => void) | null = null;
+  let edgeApply: ((clientX: number, clientY: number) => void) | null = null;
   let edgePointerX = 0;
+  let edgePointerY = 0; // only the row drag needs Y (it hit-tests which track it is over)
 
-  function startEdgeScroll(apply: (clientX: number) => void) {
+  function startEdgeScroll(apply: (clientX: number, clientY: number) => void) {
     edgeApply = apply;
     if (edgeRaf) return;
     const tick = () => {
@@ -227,7 +228,7 @@
         gridWrapper.scrollLeft = before + d;
         // Only re-apply when the scroll actually moved: at either end this would otherwise keep
         // recomputing the same value every frame for no reason.
-        if (gridWrapper.scrollLeft !== before) edgeApply(edgePointerX);
+        if (gridWrapper.scrollLeft !== before) edgeApply(edgePointerX, edgePointerY);
       }
       edgeRaf = requestAnimationFrame(tick);
     };
@@ -760,6 +761,18 @@
   function rowOffset(e: PointerEvent): number {
     return e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left;
   }
+  /** The row element under the active row drag, captured at grab. Re-applying a drag during edge
+   *  auto-scroll has no event, so there is no `currentTarget` to measure — and every row shares the
+   *  same horizontal geometry, so any one of them gives the right left edge. */
+  let dragRowEl: HTMLElement | null = null;
+  function rowColumnAt(clientX: number): number {
+    const left = dragRowEl?.getBoundingClientRect().left ?? 0;
+    return columnAtX(clientX - left, CELL_W, appState.project.frameCount);
+  }
+  function rowBoundaryAt(clientX: number): number {
+    const left = dragRowEl?.getBoundingClientRect().left ?? 0;
+    return Math.max(0, Math.round((clientX - left) / CELL_W));
+  }
   function rowColumn(e: PointerEvent): number {
     return columnAtX(rowOffset(e), CELL_W, appState.project.frameCount);
   }
@@ -771,6 +784,10 @@
   }
 
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
+    dragRowEl = e.currentTarget as HTMLElement;
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    if (isFinePointer(e)) startEdgeScroll((x, y) => rowMoveAt(x, y, layer));
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e); // finger/palm: pan only — do not change layer or frame
@@ -834,37 +851,43 @@
       touchPanMove(e);
       return;
     }
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    rowMoveAt(e.clientX, e.clientY, layer);
+    if (dragMode === "none" && !armedOutside) rowHover(e, layer);
+  }
+  function rowMoveAt(clientX: number, clientY: number, layer: DrawingLayer) {
     // A real drag cancels a pending long-press.
     if (
       longPressTimer !== null &&
-      (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
-        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
+      (Math.abs(clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(clientY - pressStartY) > MOVE_CANCEL_PX)
     )
       cancelLongPress();
 
     if (dragMode === "marquee" && appState.timelineSelection) {
-      const overLayer = layerIdAtPoint(e.clientX, e.clientY, dragLayerId);
+      const overLayer = layerIdAtPoint(clientX, clientY, dragLayerId);
       setTimelineSelection(appState.timelineSelection.anchor, {
         layerId: overLayer,
-        frame: rowColumn(e),
+        frame: rowColumnAt(clientX),
       });
       return;
     }
     if (dragMode === "moveblock") {
-      const raw = rowColumn(e) - moveGrabFrame;
+      const raw = rowColumnAt(clientX) - moveGrabFrame;
       moveDelta = selRect ? Math.max(raw, -selRect.startFrame) : raw; // clamp so nothing goes < 0
       // Mark a real drag by pointer TRAVEL, not by moveDelta — a drag that stays clamped at 0 (e.g. a
       // frame-0 selection dragged left) is still a drag, and must not be misread as a tap-to-collapse.
       if (
-        Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
-        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX
+        Math.abs(clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(clientY - pressStartY) > MOVE_CANCEL_PX
       )
         moved = true;
       return;
     }
     if (dragMode === "resize") {
       if (!isLayerEditable(layer, appState.project.groups)) return; // locked/hidden row: hold-span is content, not selection
-      dragLastBoundary = rowBoundary(e);
+      dragLastBoundary = rowBoundaryAt(clientX);
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
       bump();
       return;
@@ -872,18 +895,23 @@
     // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
     if (
       armedOutside &&
-      (Math.abs(e.clientX - pressStartX) > MOVE_CANCEL_PX ||
-        Math.abs(e.clientY - pressStartY) > MOVE_CANCEL_PX)
+      (Math.abs(clientX - pressStartX) > MOVE_CANCEL_PX ||
+        Math.abs(clientY - pressStartY) > MOVE_CANCEL_PX)
     ) {
       armedOutside = false;
       cancelLongPress();
       dragMode = "marquee";
       setTimelineSelection(
         { layerId: dragLayerId, frame: pressFrame },
-        { layerId: layer.id, frame: rowColumn(e) },
+        { layerId: layer.id, frame: rowColumnAt(clientX) },
       );
       return;
     }
+  }
+
+  /** Idle hover only — stays on the EVENT path because it measures `currentTarget`, and because
+   *  there is no drag to re-apply when nothing is being dragged. */
+  function rowHover(e: PointerEvent, layer: DrawingLayer) {
     // Idle hover cursor. Don't advertise resize/move on a row that rowDown will refuse.
     if (dragMode === "none") {
       if (!isLayerEditable(layer, appState.project.groups)) {
@@ -910,6 +938,8 @@
   }
 
   function resetRowDrag() {
+    stopEdgeScroll();
+    dragRowEl = null;
     dragMode = "none";
     dragLayerId = -1;
     dragKey = -1;
