@@ -1426,7 +1426,18 @@
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
-      ></span>
+      >
+        <!-- The playhead badge's tip protrudes 6px BELOW this row, so the spacer above (which is
+             only as tall as the ruler) cannot hide it and the tip leaked over the gutter names when
+             scrolled right. This masks that band. It must be a child of the STICKY spacer: an
+             absolute box in the row itself would be positioned from the row's left edge, which
+             scrolls away, and a taller spacer would push every track down by 6px. `top-full` puts it
+             exactly under the ruler; the border continues the gutter divider through the strip. -->
+        <span
+          class="pointer-events-none absolute left-0 top-full bg-surface border-r border-text-muted"
+          style="width: {GUTTER_W}px; height: 6px"
+        ></span>
+      </span>
       {#if playRange}
         <!-- Play-range edges: accent line + a triangle pointing INTO the range (slop-compositor /
              iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected. -->
