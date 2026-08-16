@@ -83,6 +83,18 @@ html,
 body {
   overflow: hidden;
 }
+/* …and `overflow: hidden` on the document is only a HINT on iOS — WebKit still lets a touch drag
+   pan the app when its content exceeds the viewport, which is how the toolbars scrolled off the top
+   and left blank space under the status bar. Taking the root OUT OF FLOW is the actual lock: a
+   fixed element has no scrollable overflow to give, so there is nothing to drag. Keep both — the
+   document rules stop a scrollbar appearing on desktop, this stops the iPad pan.
+   Trade-off, accepted: iOS can no longer scroll a focused input into view above the keyboard. The
+   app's inputs live in centred dialogs or the layer panel, so none sits at the very bottom. */
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
 body {
   overscroll-behavior: none;
   font-family: system-ui, sans-serif;

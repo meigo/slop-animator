@@ -2341,7 +2341,15 @@ does NOT cover this: it governs chaining and rubber-banding, not a document with
 scroll to. (2) `height: 100%` resolves against iOS's LAYOUT viewport, which is taller than the
 visible area while Safari's dynamic toolbars show — that surplus is the "empty space under the UI".
 `100dvh` (behind `@supports`) is the visible area, and it is stable here precisely BECAUSE the page
-can no longer scroll, so the toolbars never hide and show underneath us. The timeline scroller also
+can no longer scroll, so the toolbars never hide and show underneath us. **Neither was enough on
+their own, and a screenshot proved it:** `overflow: hidden` on the document is only a HINT on iOS —
+WebKit still pans the app when its content exceeds the viewport. The actual lock is taking the root
+OUT OF FLOW (`#app { position: fixed; inset: 0 }`): a fixed element has no scrollable overflow to
+give, so there is nothing to drag. Keep all three — the document rules stop a desktop scrollbar, the
+fixed root stops the iPad pan. Accepted trade: iOS can no longer scroll a focused input above the
+keyboard, which is fine only while no input sits at the very bottom of the window (today they are in
+centred dialogs and the layer panel). **Reach for the fixed root FIRST next time; `overflow: hidden`
+on `html, body` looks like the answer and costs a deploy to disprove.** The timeline scroller also
 got `overscroll-contain`, so reaching either end cannot hand the gesture to an ancestor — chaining
 is one way iOS decides the gesture belongs to the page and fires `pointercancel` at us mid-pan,
 which aborts the custom pan and (correctly) suppresses its fling. The layer list already had its own
