@@ -1942,3 +1942,15 @@ rather than picking a number:
 **Equal z plus later DOM order is a win, not a tie** — that is what made this a bug rather than a
 coin flip, and it is the same mechanism behind the audio trim handles stealing gutter presses at
 z-20. When two things must not overlap, give them different numbers, not the same one.
+
+**The playhead tip needed its own gutter mask (2026-08-16).** Everything in the ruler row hides behind
+the sticky gutter spacer when you scroll right — EXCEPT the badge's downward tip, which is positioned
+at `top: 24px`, i.e. 6px BELOW the row, where the spacer (only as tall as the ruler) does not reach.
+Scrolled right, it painted over the layer names. It cannot be hidden by the full-height gutter plate
+either: the plate is z-15 in the OUTER context while the ruler row is z-35, so anything inside the row
+outranks it.
+The mask is an ABSOLUTE child of the STICKY spacer, `top-full`, 6px tall, carrying the divider border.
+Both halves of that are load-bearing: an absolute box in the ROW would be positioned from the row's
+left edge, which scrolls away, and simply making the spacer taller would push every track down by 6px
+(a taller flex item grows the row). Being a child of the sticky element gets sticky's horizontal
+tracking with absolute's freedom from layout.
