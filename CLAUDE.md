@@ -2139,6 +2139,20 @@ so the most important message in the app would vanish on the next pointer move. 
 subsequent success (an autosave that lands, or an explicit Save). **Any future message that
 describes a CONDITION rather than a control needs its own field.**
 
+**iPad verification of this wave (2026-08-17) — four of the thirteen confirmed on device.**
+**(1)** Exporting with an uncommitted selection float or pose lift produces complete frames, no hole
+— including the deliberate part, that the lift is DISCARDED rather than baked, so an in-progress move
+reverts. **(5)** Insert-keyframe, duplicate-frame and duplicate-layer while a lift is live all copy
+the complete drawing instead of a holed canvas. **(13)** A no-op set-length and a repeat rasterize
+push no undo entry — one undo reaches the previous real edit. **(4)** Ripple insert then undo returns
+a video reference clip exactly where it was, with no per-repetition drift.
+**Still unverified: (3) the `saveProjectBlob` race** — the test is to Save a large project and delete
+a frame or layer while it is still writing, then reopen the file; the failure is silent (frames on
+the wrong drawings, or a blank final key), not an error. The remaining findings — the failed-restore
+autosave lock, the `openDb` timeout, autosave-failure reporting, Save/Open error handling and the
+per-frame export error — are failure paths that cannot be triggered by hand without a forced-failure
+debug hook, and are unit-tested where the logic is testable.
+
 **Re-review follow-ups (2026-08-16, same branch).** The scoped re-review confirmed all 13 and found
 four more, all fixed here.
 
