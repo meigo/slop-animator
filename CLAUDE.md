@@ -1770,3 +1770,29 @@ head handle under the pointer 1:1 the whole drag; the grips are visible on both 
 negative-offset clip's head handle no longer swallows the mute/✕ presses; scrubbing the last kept
 frame of a tail-trimmed clip is silent past the out-point.
 Spec/plan: `docs/superpowers/{specs,plans}/2026-08-16-audio-clip-trim*.md`.
+
+**Trim to playhead (2026-08-16).** Reported as: with a long audio clip you must scroll to its end and
+drag the handle back through many pages. Two buttons in the timeline tool bar, after the ripple pair,
+put the resolved clip's start or end on the playhead instead. Pure `trimToPlayheadTarget` /
+`trimDeltaToPlayhead` (`clip-layout.ts`, unit-tested) feed the SAME `trimHead`/`trimTail`/
+`rangeAfterTrim` the drags use, so there is no second trim path to keep in sync, and no guard is
+needed for a playhead outside the clip — those helpers already clamp to the 1-frame minimum and the
+source's extent.
+**The target is a PRECEDENCE RULE, not a selection:** the active layer if it is an IMAGE reference,
+otherwise the audio track, otherwise nothing (buttons dim). A VIDEO ref falls through to audio
+because its span IS its footage. Chosen over adding a notion of "the audio lane is the active row" —
+the timeline has no such concept, and inventing one for two buttons is new state threaded through the
+gutter highlight for no other benefit. **The precedence is only acceptable because it is VISIBLE:**
+each button's `title` names the resolved target ("Trim the audio clip's start…" vs "Trim ref.png's
+range start…"), so the status bar says what will be hit before the press, on iPad too. Keep that
+property if the rule is ever extended.
+**`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
+an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
+arithmetic, hence the `+ 1` in `trimDeltaToPlayhead`'s tail branch. Getting it wrong is silent: the
+clip just ends one frame off. There is a test pinning that trimming the end to a clip's existing last
+frame is a NO-OP rather than a one-frame change.
+An untrimmed image ref materialises its implicit whole-project range first, the same range an edge
+drag materialises. `aria-disabled`, not `disabled`, so the dimmed state can explain itself.
+**Owed a browser pass:** trim start/end to playhead on an audio clip and on an image ref; the title
+naming the right target as the active layer changes; both dim with a reason when neither applies;
+undo restores in one step; a playhead outside the clip clamping instead of inverting; iPad tap.
