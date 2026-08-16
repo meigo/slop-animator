@@ -1868,7 +1868,13 @@ length rather than leaving the drag half-applied. Any future destructive drag wa
 continuously, ask once, revert cleanly on "no".
 The handle sits INSIDE the ruler row so it scrolls with the frames it measures, is absolutely
 positioned so it adds no column, and carries the usual `touch-action: none` + `pointercancel` +
-finger-pans/pen-edits trio. `frameDigits` went with the removed readout — it had no other reader.
+finger-pans/pen-edits trio. **Being a child of the ruler means the ruler's own scrub had to bail:**
+`rulerDown`/`rulerMove` return early when `lenDrag` is set, or pressing the handle ALSO scrubs and the
+playhead jumps in front of the thing you just grabbed (reported immediately after the first deploy).
+The handle deliberately does not `stopPropagation` — that would suppress the window-level status-hint
+listener for the very pointer performing the drag. This is the third control to need the
+parent-bails-on-child-state shape (clip body vs trim handle, lane body vs trim handle, ruler vs length
+handle); reach for it, not for stopPropagation. `frameDigits` went with the removed readout — it had no other reader.
 **Owed a browser pass:** drag to lengthen and shorten; shorten past keyframes and see the live warning
 then the single prompt; decline it and confirm the length snaps back; undo after a length drag; the
 handle staying at the ruler's end while scrolling horizontally; iPad.
