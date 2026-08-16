@@ -2204,9 +2204,32 @@ the ◆, redo puts both back.
   gesture that did nothing. The discard also `bump()`s, because the stroke's start already bumped and
   a revert past the layer's end SHRINKS the track, so `frameCount` has to be recomputed.
 
-Pure logic is unit-tested (6 new cases, incl. canvas IDENTITY across a before→after round trip — the
-property that keeps redo pointing at a cell that is actually in the document — and that the record
-survives a later in-place edit). The eight call sites are DOM-coupled and are build+review verified.
+**Three things a review caught, all of them the rider's blast radius rather than its idea.**
+
+1. **`enterDeform`/`enterPose` materialised BEFORE `selection.cancel()` — a Critical the rider
+   created.** `cancel()` now reverts the cell track, so it could remove the very cell whose canvas
+   the tool had just taken: the pose then lifted from, and baked into, a detached canvas and the
+   work vanished silently. Reachable via marquee on a hold → Free transform → press with Pose. Both
+   functions now **tear down the previous lift first, then materialise** — the ordering
+   `pasteSelection` already had. It also means the content bounds are measured on a canvas without
+   the old lift's hole punched in it.
+2. **The rider is a WHOLE-TRACK snapshot spanning the whole gesture**, so a structural track edit
+   landing between materialise and commit gets reverted along with the stroke. Every timeline op
+   that splices a track already called `liftGuard.discard?.()` first — except **Add frame**, which
+   on iPad a finger can tap mid-Pencil-stroke. Added there. (A targeted rider — revert only
+   `cells[frame]` — would be structurally immune, but that is a larger change than this needs.)
+3. **A captured layer OBJECT goes stale.** `restoreStructure` mutates the live layer in place only
+   while it still exists with the same kind; otherwise it installs a FRESH object (reachable via
+   rasterize, which keeps the id, and via delete-then-undo). A deferred closure holding the old one
+   writes outside the document — the same orphan failure one branch over. Every DEFERRED restore
+   (the undo/redo closures) now resolves the layer **by id at restore time** via
+   `restoreTrackById`; the IMMEDIATE reverts (abandon/cancel/discard paths, same tick or same
+   teardown flow) keep the object, which is provably live there.
+
+Pure logic is unit-tested (9 cases, incl. canvas IDENTITY across a before→after round trip — the
+property that keeps redo pointing at a cell that is actually in the document — that `after` is
+copied too, since it is what redo installs, and that the record survives a later in-place edit). The
+eight call sites are DOM-coupled and are build+review verified.
 **Owed a browser pass:** draw on a hold → undo → the ◆ becomes · again and the held drawing returns;
 redo restores both; draw on a hold, then undo an EARLIER structural edit, then redo forward (the
 data-loss case); fill / clear-frame / delete / paste / deform / pose each on a hold, undone; drawing

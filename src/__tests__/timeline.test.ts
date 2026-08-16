@@ -242,6 +242,36 @@ describe("timeline operations", () => {
     l.cells.push({ kind: "hold" }); // an unrelated op edits the live array in place
     expect(materialized!.before.length).toBe(2); // record untouched
   });
+
+  // `after` is what REDO installs, so it has the same aliasing exposure as `before`.
+  it("restoreCellTrack copies `after` too, so a redo can be repeated", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    restoreCellTrack(l, materialized!.after);
+    l.cells.push({ kind: "hold" }); // live array grows under the record
+    expect(materialized!.after.length).toBe(2);
+    restoreCellTrack(l, materialized!.after); // redo again → same track, not the mutated one
+    expect(l.cells.length).toBe(2);
+  });
+
+  it("`after` carries the holds appended past the layer's end", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const { materialized } = ensureDrawableKeyframe(l, 3, fakeOps);
+    expect(materialized!.after.length).toBe(4);
+    expect(materialized!.after[1]).toEqual({ kind: "hold" });
+    expect(materialized!.after[3].kind).toBe("key");
+  });
+
+  it("before → after → before round-trips (undo/redo/undo of the same entry)", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    const materializedTrack = l.cells.slice();
+    restoreCellTrack(l, materialized!.before);
+    restoreCellTrack(l, materialized!.after);
+    expect(l.cells).toEqual(materializedTrack);
+    restoreCellTrack(l, materialized!.before);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+  });
 });
 
 describe("moveKeyframe", () => {

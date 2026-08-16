@@ -326,6 +326,15 @@
   // wherever selCtx/selBefore are set (paper crop, paste, deform, pose); cleared with them.
   let selLayer: DrawingLayer | null = null;
   let selMaterialized: CellTrackChange | null = null;
+  /** Put a cell track back, resolving the layer by ID **at restore time**. A captured layer OBJECT
+   *  goes stale: `restoreStructure` mutates the live layer in place only when it still exists with
+   *  the same kind — otherwise it installs a fresh object, so an undo/redo closure holding the old
+   *  one would write to something no longer in the document. Reachable via rasterize (ref→draw keeps
+   *  the id) and via delete-then-undo. */
+  function restoreTrackById(layerId: number, cells: Cell[]) {
+    const l = appState.project.layers.find((x) => x.id === layerId);
+    if (l?.kind === "draw") restoreCellTrack(l, cells);
+  }
   /** Drop the lift's whole target binding at once — the four fields have one lifetime, and clearing
    *  three of them was how a stale materialisation could outlive the lift that made it. */
   function clearLiftTarget() {
@@ -448,6 +457,7 @@
     const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(layer)];
     pt = inverseChain(steps, pt);
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const layerId = layer.id; // resolve at restore time, never through a captured object
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -480,11 +490,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
-          if (materialized) restoreCellTrack(layer, materialized.before); // a fill on a hold made this ◆
+          if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
         () => {
-          if (materialized) restoreCellTrack(layer, materialized.after);
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
@@ -520,6 +530,7 @@
 
     // Only now materialise the keyframe — on a hold it clones the very canvas just measured.
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const layerId = layer.id;
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -546,11 +557,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
-          if (materialized) restoreCellTrack(layer, materialized.before); // a fill on a hold made this ◆
+          if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
         () => {
-          if (materialized) restoreCellTrack(layer, materialized.after);
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
@@ -840,19 +851,19 @@
     // change, and it rides in this same command so one stroke stays one ⌘Z: undo takes the pixels
     // AND the ◆ it created, redo puts both back. Leaving it out is what let a later structural undo
     // delete the cell this command's `target` points into.
-    const layer = strokeLayer;
+    const layerId = strokeLayer?.id ?? null;
     const mat = strokeMaterialized;
     history.push(
       pixelCommand(
         () => {
           target.putImageData(before, 0, 0);
-          if (layer && mat) restoreCellTrack(layer, mat.before);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
           recomposite();
         },
         () => {
           // Cell track FIRST: the canvas `target` writes into only belongs to the document once its
           // cell is back in the track.
-          if (layer && mat) restoreCellTrack(layer, mat.after);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
           target.putImageData(after, 0, 0);
           recomposite();
         },
@@ -1096,18 +1107,18 @@
       selCtx.restore();
       const ctx = selCtx;
       const before = selBefore;
-      const layer = selLayer;
+      const layerId = selLayer?.id ?? null;
       const mat = selMaterialized;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
       history.push(
         pixelCommand(
           () => {
             ctx.putImageData(before, 0, 0);
-            if (layer && mat) restoreCellTrack(layer, mat.before); // lifting on a hold made this ◆
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // lifting on a hold made this ◆
             recomposite();
           },
           () => {
-            if (layer && mat) restoreCellTrack(layer, mat.after);
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
             ctx.putImageData(after, 0, 0);
             recomposite();
           },
@@ -1124,7 +1135,13 @@
       if (selCtx && selBefore) {
         selCtx.putImageData(selBefore, 0, 0);
         // A cancelled lift leaves nothing behind — including the keyframe it materialised.
-        if (selLayer && selMaterialized) restoreCellTrack(selLayer, selMaterialized.before);
+        // Reverting the TRACK needs a bump, not just a repaint: the lift's entry already bumped
+        // (pasteSelection does so explicitly), so without this `persistTick` describes a document
+        // state that has since been undone. The sibling revert sites all bump for the same reason.
+        if (selLayer && selMaterialized) {
+          restoreCellTrack(selLayer, selMaterialized.before);
+          bump();
+        }
         recomposite();
       }
       clearLiftTarget();
@@ -1216,11 +1233,7 @@
       // Nothing to lift — put back the keyframe this just materialised rather than stranding a ◆
       // for a gesture that did nothing.
       if (mk.materialized) restoreCellTrack(layer, mk.materialized.before);
-      selLayer = null;
-      selMaterialized = null;
-      selCtx = null;
-      selBefore = null;
-      liftComposeSteps = [];
+      clearLiftTarget();
       return false;
     }
     // Refresh before the hole punch so we don't clip with a previous layer's steps.
@@ -1264,6 +1277,7 @@
     const target = activeDrawableCtx();
     if (!target) return;
     const { ctx, layer, materialized } = target;
+    const layerId = layer.id;
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -1271,11 +1285,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
-          if (materialized) restoreCellTrack(layer, materialized.before); // deleting on a hold made this ◆
+          if (materialized) restoreTrackById(layerId, materialized.before); // deleting on a hold made this ◆
           bump();
         },
         () => {
-          if (materialized) restoreCellTrack(layer, materialized.after);
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           bump();
         },
@@ -1329,6 +1343,12 @@
   function enterDeform() {
     const al = activeLayer();
     if (!isLayerEditable(al, appState.project.groups)) return;
+    // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
+    // in-progress lift, and that revert now includes the cell track (a lift on a hold materialised
+    // a ◆). Materialising before cancelling meant cancel could remove the very cell whose canvas we
+    // had just taken, so the deform would lift from, and bake into, a detached canvas: silent loss.
+    // (It also means the content bounds below are measured on a canvas without the old lift's hole.)
+    selection.cancel();
     const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const canvas = mk.canvas;
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
@@ -1336,10 +1356,6 @@
       if (mk.materialized) restoreCellTrack(al, mk.materialized.before); // nothing to deform → leave the hold alone
       return; // empty cell
     }
-    // Clear any leftover selection (esp. a lasso path) so liftPixels uses our content rect, not a
-    // stale lasso clip. cancel() reverts an in-progress lift (onCancel no-ops when nothing's lifted).
-    selection.cancel();
-    // AFTER cancel(): it clears the lift target, which would otherwise wipe what we set here.
     selLayer = al;
     selMaterialized = mk.materialized;
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -1459,6 +1475,10 @@
   function enterPose() {
     const al = activeLayer();
     if (!isLayerEditable(al, appState.project.groups)) return;
+    // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
+    // cancel() now reverts the cell track too, and could otherwise delete the cell whose canvas this
+    // pose is about to lift from and bake into.
+    selection.cancel(); // also clears any stale selection/lasso so liftPixels uses our content rect
     const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
     const canvas = mk.canvas;
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
@@ -1466,8 +1486,7 @@
       if (mk.materialized) restoreCellTrack(al, mk.materialized.before); // nothing to pose → leave the hold alone
       return;
     }
-    selection.cancel(); // clear any stale selection/lasso so liftPixels uses our content rect
-    selLayer = al; // after cancel(), which clears the lift target
+    selLayer = al;
     selMaterialized = mk.materialized;
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -1509,18 +1528,18 @@
     meshPose.render(selCtx); // bake the deformed raster into the cell
     const ctx = selCtx;
     const before = selBefore;
-    const layer = selLayer;
+    const layerId = selLayer?.id ?? null;
     const mat = selMaterialized;
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
-          if (layer && mat) restoreCellTrack(layer, mat.before); // posing on a hold made this ◆
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // posing on a hold made this ◆
           recomposite();
         },
         () => {
-          if (layer && mat) restoreCellTrack(layer, mat.after);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
