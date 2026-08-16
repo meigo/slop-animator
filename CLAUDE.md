@@ -1953,9 +1953,16 @@ rather than picking a number:
 | 10 | playhead line, playhead badge | visual only; must not cover the ◆ you are grabbing |
 | 15 | full-height gutter plate | hides the playhead line in empty space below the last row |
 | 20 | per-row sticky name labels and markers | above the plate, below everything structural |
-| 30 | selection bar (`TimelineSelectionBar`) | floats over the grid |
 | 35 | the sticky RULER row | rows scroll under it; the playhead badge is its child and rides along |
 | 40 | gutter resize grip | crosses the whole height including the ruler, so it must stay grabbable there |
+| 45 | selection bar (`TimelineSelectionBar`) | a floating TOOLBAR: it must be clickable wherever it lands, so it outranks everything it can be placed over |
+**The selection bar was `z-30` until 2026-08-16 and that was a regression from this very table**:
+raising the ruler to `z-35` put the bar UNDER it, and the ruler has no `pointer-events: none`, so it
+also swallowed the bar's taps — pressing Copy/Cut/Paste/Delete scrubbed the playhead. It is reachable
+immediately whenever a selection is taller than the viewport, since the bar's fallback placement is
+`viewTop + 2`, i.e. exactly the ruler's band. The lesson generalises: when a ladder rung moves, every
+FLOATING thing that can be positioned over it has to be re-checked, because a float has no fixed
+neighbour to compare against.
 **Equal z plus later DOM order is a win, not a tie** — that is what made this a bug rather than a
 coin flip, and it is the same mechanism behind the audio trim handles stealing gutter presses at
 z-20. When two things must not overlap, give them different numbers, not the same one.
@@ -1971,3 +1978,61 @@ Both halves of that are load-bearing: an absolute box in the ROW would be positi
 left edge, which scrolls away, and simply making the spacer taller would push every track down by 6px
 (a taller flex item grows the row). Being a child of the sticky element gets sticky's horizontal
 tracking with absolute's freedom from layout.
+
+**Two rules for live drags, learned the expensive way (2026-08-16).** The ruler's length handle broke
+both at once and each cost real keyframes; a five-reviewer pass found them. Check any NEW drag against
+both before shipping it.
+
+**1. A drag over DESTRUCTIVE state settles by REVERT-then-REAPPLY, never by comparing endpoints.**
+`applyAnimationLength` → `resizeCells` SLICES, so every intermediate shrink permanently drops the cells
+past it and dragging back only pads `{kind:"hold"}` — the grab-time snapshot is the only thing still
+holding the originals. `settleLenDrag` used to open with `if (end === startLen) return;`, discarding
+that snapshot — so an overshoot-left-then-correct (the normal shape of a drag) destroyed every keyframe
+past the deepest dip, silently, with no undo entry to get them back. The endpoint comparison is only
+sound when the intermediate states are non-destructive, which is exactly what a "does the value differ?"
+check cannot tell you. `settleLenDrag` now ALWAYS `revertStructural(undo)` first — restoring the
+grab-time document — and then re-applies the released length inside the same bracket
+(`applyAnimationLength(end)` + `commitStructuralEdit(undo)`), so out-and-back is a true no-op with the
+cells intact and one undo entry is pushed per gesture that changed anything. It also fixes the confirm,
+which counted and gated on the RELEASE length against ALREADY-TRUNCATED cells: dip to 5 and release at
+60 and it never asked though everything past 5 was gone. Counting after the revert is counting against
+unmutated state. A `dirty` flag skips the revert entirely for a grab-and-release that never wrote
+(otherwise a click on the handle re-dirties autosave for nothing).
+
+**2. A drag whose value CHANGES THE CONTENT WIDTH must not use a screen-space origin plus a scroll
+correction.** The other five timeline drags store `x`/`sx` at grab and add `scrollX() - sx`, which is
+right for them — auto-scroll moves the content while the dragged edge would otherwise stay put. The
+length drag's value sizes the content (`min-width: GUTTER_W + stripFrames*CELL_W`), so shrinking
+shrinks `scrollWidth`, the browser clamps `scrollLeft` down, and the correction term fed the drag's own
+output back in: `n_new = n_cur + round(dx/CELL_W)`, i.e. the cumulative delta re-applied EVERY
+pointermove, collapsing the length toward 1 under a stationary pointer. Now measured absolutely, from
+`rulerEl`'s rect (an element INSIDE the scroller, so its left edge moves with the scroll — the same
+basis the ruler scrub and row drag use), via the pure `lengthAtX` (unit-tested; ROUNDS and is 1-based,
+because the handle sits on a column BOUNDARY, unlike `columnAtX`). `sx` is deleted from `lenDrag`.
+**An absolute measure is necessary but NOT sufficient here**, which is the subtle half: at the far right
+`scrollLeft` sits at its maximum, so a shrink still makes the browser clamp it, the content slides right
+under a stationary pointer and the measurement walks down a frame per event — the same feedback, slower.
+`lenDragFloor` (a `$state` holding the grab-time length, pushed into `stripFrames`) pins the row width
+for the whole gesture so `scrollWidth` never DECREASES and `scrollLeft` is never clamped; growing past
+it is fine, since widening never clamps, and that is what lets edge auto-scroll extend past the viewport.
+
+**Same wave, smaller (all 2026-08-16).** `revertStructural` now `bump()`s: the abandoned gesture had
+already bumped `persistTick` on every live step, so the ~3s autosave debounce could have written the
+MUTATED document, and a memory-only revert then lost the restore on reload (`undo()`/`redo()` bump after
+a pop for this reason). `applyAnimationLength` calls `liftGuard.discard?.()` — it resplices every cell
+array, so a lifted pose/selection would bank into a canvas no longer in the document; it is guarded
+inside the action rather than at its two call sites so no future caller can miss it. `restoreStructure`
+resets `activeRow` only when a LAYER row is selected — undo is not allowed to move the selection BETWEEN
+rows, and it was silently dropping an audio-lane selection on any unrelated undo. `trimToPlayhead`
+computes its delta FIRST and returns before `commitStructural` when the write would change nothing:
+unconditional, it pushed an empty undo entry AND materialised implicit state (an untrimmed ref's
+"always visible" became a fixed range), comparing against EFFECTIVE values the way `AudioLane.trimMoveAt`
+already did. Edge auto-scroll grew two guards: the tick re-applies only once the pointer has TRAVELLED
+more than `MOVE_CANCEL_PX` from where the tick was armed (a press-and-hold inside the left trigger zone
+was dragging on its own — and `clipMoveAt` writes `offsetFrames` with no undo bracket at all, so it slid
+a video's in-point unrecoverably), and the row drag arms it only once `dragMode` really becomes a drag.
+The tick is ONE shared resource, so `startEdgeScroll`/`stopEdgeScroll` now take an `owner` string and a
+stop is ignored unless that drag armed it; `resetRowDrag` clears `transformDragGuard.settle` only when it
+still holds its own hook. Four `ref.id !== activeLayerId` comparisons in the clip rows were left behind
+by the `activeRow` refactor and now use `isRowSelected` (selecting the audio lane left a reference row's
+gutter label dim while its clip body stayed lit).

@@ -355,7 +355,11 @@ function restoreStructure(s: StructSnapshot) {
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
-  state.activeRow = { kind: "layer", id: s.activeLayerId }; // selection follows the restored layer
+  // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
+  // selection is session state, and undo must not move it BETWEEN rows: resetting it
+  // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
+  // "trim to playhead" retargeted from the audio clip to a layer.
+  if (state.activeRow.kind === "layer") state.activeRow = { kind: "layer", id: s.activeLayerId };
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
   // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
@@ -907,33 +911,51 @@ export function trimToPlayhead(edge: "start" | "end"): void {
   const info = trimToPlayheadInfo();
   if (!info) return;
   const fps = state.project.fps;
-  commitStructural(() => {
-    if (info.target === "ref") {
-      const l = state.project.layers.find((x) => x.id === state.activeLayerId);
-      if (!l || l.kind !== "ref") return;
-      // An untrimmed ref means "always visible", so materialise the implicit whole-project range
-      // first — the same range an edge drag materialises.
-      const cur = l.range ?? { start: 0, end: Math.max(0, state.project.frameCount - 1) };
-      const delta = trimDeltaToPlayhead(edge, state.playhead, {
-        startFrame: cur.start,
-        lengthFrames: cur.end - cur.start + 1,
-      });
-      l.range = rangeAfterTrim(cur, edge, delta); // REPLACE, never mutate (shared snapshot refs)
-      return;
-    }
-    const t = state.project.audio;
-    if (!t) return;
-    const extent = audioFrameSpan(t.buffer.duration, fps);
-    const tin = Math.max(0, t.trimInFrames ?? 0);
-    const len = t.trimLenFrames ?? extent - tin;
+  // Decide FIRST, write only if it changes anything. `trimDeltaToPlayhead` legitimately returns 0
+  // when the edge is already on the playhead, and an unconditional write then did two invisible
+  // things: pushed an EMPTY undo command (so the next ⌘Z looked dead), and MATERIALISED the implicit
+  // state — an untrimmed ref's "always visible, follows the project length" became a fixed range,
+  // an untrimmed clip's trim fields became explicit numbers — with no visible cause. The comparison
+  // is against the current EFFECTIVE values, mirroring AudioLane.trimMoveAt for the same reason:
+  // the raw optional fields are undefined on an untouched clip while `next` holds resolved numbers,
+  // so a raw compare always reads as changed.
+  if (info.target === "ref") {
+    const l = state.project.layers.find((x) => x.id === state.activeLayerId);
+    if (!l || l.kind !== "ref") return;
+    // An untrimmed ref means "always visible": the implicit whole-project range is the baseline an
+    // edge drag would materialise, so trimming from it gives the same answer.
+    const cur = l.range ?? { start: 0, end: Math.max(0, state.project.frameCount - 1) };
     const delta = trimDeltaToPlayhead(edge, state.playhead, {
-      startFrame: t.offsetFrames,
-      lengthFrames: len,
+      startFrame: cur.start,
+      lengthFrames: cur.end - cur.start + 1,
     });
-    const next =
-      edge === "start"
-        ? trimHead(t.offsetFrames, tin, len, delta, extent)
-        : { offsetFrames: t.offsetFrames, ...trimTail(tin, len, delta, extent) };
+    const next = rangeAfterTrim(cur, edge, delta);
+    if (next.start === cur.start && next.end === cur.end) return; // no-op (and would materialise)
+    commitStructural(() => {
+      l.range = next; // REPLACE, never mutate (shared snapshot refs)
+    });
+    return;
+  }
+  const t = state.project.audio;
+  if (!t) return;
+  const extent = audioFrameSpan(t.buffer.duration, fps);
+  const tin = Math.max(0, t.trimInFrames ?? 0);
+  const len = t.trimLenFrames ?? extent - tin;
+  const delta = trimDeltaToPlayhead(edge, state.playhead, {
+    startFrame: t.offsetFrames,
+    lengthFrames: len,
+  });
+  const next =
+    edge === "start"
+      ? trimHead(t.offsetFrames, tin, len, delta, extent)
+      : { offsetFrames: t.offsetFrames, ...trimTail(tin, len, delta, extent) };
+  if (
+    next.offsetFrames === t.offsetFrames &&
+    next.trimInFrames === tin &&
+    next.trimLenFrames === len
+  )
+    return; // no-op (and would materialise the implicit trim)
+  commitStructural(() => {
     t.trimInFrames = next.trimInFrames;
     t.trimLenFrames = next.trimLenFrames;
     t.offsetFrames = next.offsetFrames;
@@ -952,6 +974,11 @@ export function setAnimationLength(n: number) {
 export function applyAnimationLength(n: number): void {
   const target = Math.max(1, Math.min(9999, Math.floor(n)));
   if (target === state.project.frameCount) return;
+  // Every layer's cell array is respliced (and a shrink DELETES cells), so a live selection/deform/
+  // pose lift would be banked into a canvas that is no longer in the document — the same reason
+  // rippleInsert/rippleDelete/deleteTool/resizeProject discard here. Guarded here rather than at the
+  // two call sites (ruler drag, playbar field) so no future caller can miss it.
+  liftGuard.discard?.();
   for (const layer of state.project.layers) {
     if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
   }
@@ -963,6 +990,11 @@ export function applyAnimationLength(n: number): void {
  *  holds back; the keyframes are already gone and only the snapshot still has them. */
 export function revertStructural(snap: StructSnapshot): void {
   restoreStructure(snap);
+  // bump(), not just restoreStructure's version++: the gesture being abandoned already bumped
+  // persistTick on every live step, so the ~3s autosave debounce may well have fired and written the
+  // MUTATED document. Without marking dirty again the revert lives only in memory and a reload
+  // restores the truncated project. undo()/redo() bump after a pop for exactly this reason.
+  bump();
 }
 
 /**

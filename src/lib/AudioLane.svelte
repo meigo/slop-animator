@@ -38,9 +38,11 @@
     onTouchMove: (e: PointerEvent) => boolean;
     onTouchUp: () => void;
     /** Edge auto-scroll, owned by Timeline because it owns the scroller. `apply` is how this lane
-     *  re-applies its own drag at the last pointer x while the content slides under a still pointer. */
-    onEdgeScrollStart: (apply: (clientX: number) => void) => void;
-    onEdgeScrollStop: () => void;
+     *  re-applies its own drag at the last pointer x while the content slides under a still pointer.
+     *  `owner` names the drag: the tick is one shared resource, so a settle only stops it when its
+     *  own drag armed it. */
+    onEdgeScrollStart: (apply: (clientX: number) => void, owner: string) => void;
+    onEdgeScrollStop: (owner: string) => void;
     onEdgePointerX: (clientX: number) => void;
     /** The timeline scroller's offset. A screen-space drag origin goes stale as soon as the content
      *  scrolls under it, so both drags here add the change since grab. */
@@ -81,7 +83,7 @@
       undo: beginStructuralEdit(),
     };
     onEdgePointerX(e.clientX);
-    onEdgeScrollStart(laneMoveAt);
+    onEdgeScrollStart(laneMoveAt, "audio-offset");
     transformDragGuard.settle = () => settleLaneDrag(); // undo / Open mid-drag settles the bracket
   }
   function laneMove(e: PointerEvent) {
@@ -106,7 +108,7 @@
   /** Commit iff the offset actually moved — a click without a drag must push nothing, or the next
    *  undo appears dead. Also the settle hook, so a mid-drag undo/Open cannot leave the bracket open. */
   function settleLaneDrag() {
-    onEdgeScrollStop();
+    onEdgeScrollStop("audio-offset");
     if (!dragStart) return;
     const audio = state.project.audio;
     if (audio && audio.offsetFrames !== dragStart.offset) commitStructuralEdit(dragStart.undo);
@@ -160,7 +162,7 @@
       undo: beginStructuralEdit(),
     };
     onEdgePointerX(e.clientX);
-    onEdgeScrollStart(trimMoveAt);
+    onEdgeScrollStart(trimMoveAt, "audio-trim");
     transformDragGuard.settle = () => settleTrimDrag();
   }
 
@@ -205,7 +207,7 @@
    *  fields: an untouched clip leaves `trimLenFrames` undefined while `from` holds the resolved
    *  extent, so a raw compare would read as changed and commit an empty undo entry. */
   function settleTrimDrag() {
-    onEdgeScrollStop();
+    onEdgeScrollStop("audio-trim");
     if (!trimDrag) return;
     const audio = state.project.audio;
     const f = trimDrag.from;

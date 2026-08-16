@@ -61,17 +61,12 @@
   let y = $state(0);
   let barEl = $state<HTMLElement | null>(null);
 
-  // Recompute the anchor whenever the selection or the document changes (rows can move/scroll).
-  // The grid wrapper clips vertically (overflow-x:auto forces overflow-y:auto), so the bar must stay
-  // inside its visible band. Prefer ABOVE the top selected row; if that clips at the top, drop BELOW
-  // the bottom selected row; if neither fits (a selection taller than the viewport), pin it inside.
-  // A final clamp guarantees the whole bar is visible on both edges. Reading barEl re-runs the effect
-  // once the bar mounts so its measured height corrects the first-frame estimate.
-  $effect(() => {
+  // Anchor the bar. The grid wrapper clips vertically (overflow-x:auto forces overflow-y:auto), so
+  // the bar must stay inside its visible band. Prefer ABOVE the top selected row; if that clips at
+  // the top, drop BELOW the bottom selected row; if neither fits (a selection taller than the
+  // viewport), pin it inside. A final clamp guarantees the whole bar is visible on both edges.
+  function place() {
     if (!container || !rect) return;
-    // read appState.version so the effect re-runs on structural changes
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    appState.version;
     const cRect = container.getBoundingClientRect();
     const topEl = container.querySelector<HTMLElement>(`[data-layer-id="${rect.layerIds[0]}"]`);
     if (!topEl) return;
@@ -99,6 +94,25 @@
     else top = viewTop + 2; // taller than the viewport → pin near the top (overlaps the selection)
     y = Math.max(viewTop, Math.min(top, viewBottom - barH)); // clamp fully into the visible band
     void labelW; // labelW reserved for future absolute layouts; keep the prop stable
+  }
+
+  // Re-place whenever the selection or the document changes (rows can move) — AND on every scroll of
+  // the container. The clamp above is computed FROM `scrollTop`/`clientHeight`, which no reactive
+  // dependency tracks: without the listener it was computed once and never again, so scrolling after
+  // selecting left the bar glued to a stale position, ending up under the ruler or out of view.
+  // Reading barEl re-runs the effect once the bar mounts so its measured height corrects the
+  // first-frame estimate.
+  $effect(() => {
+    if (!container || !rect) return;
+    // read appState.version so the effect re-runs on structural changes
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    appState.version;
+    void barEl;
+    place();
+    const el = container;
+    const onScroll = () => place();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
   });
 
   // `aria-disabled`, NOT `disabled`: a disabled button dispatches no pointer events, so App.svelte's
@@ -111,9 +125,14 @@
 </script>
 
 {#if rect}
+  <!-- z-45: ABOVE the sticky ruler row (z-35) and the gutter resize grip (z-40). At z-30 the ruler
+       painted over this bar and — having no pointer-events:none — swallowed its taps, so pressing
+       Copy/Cut/Paste/Delete scrubbed the playhead instead. Reachable immediately whenever a
+       selection is taller than the viewport, since the fallback placement is `viewTop + 2`, which is
+       exactly the ruler's band. -->
   <div
     bind:this={barEl}
-    class="absolute z-30 flex items-center gap-0.5 rounded border border-border bg-surface px-1 py-0.5 shadow"
+    class="absolute z-45 flex items-center gap-0.5 rounded border border-border bg-surface px-1 py-0.5 shadow"
     style="left: {x}px; top: {y}px;"
     role="toolbar"
     aria-label="Selection actions"

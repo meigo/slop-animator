@@ -40,3 +40,12 @@ export function columnAtX(offsetX: number, cellW: number, count: number): number
   const i = Math.floor(offsetX / cellW);
   return Math.max(0, Math.min(count - 1, i));
 }
+
+/**
+ * Map a horizontal offset (px from the frame strip's left edge) to an animation LENGTH in frames,
+ * clamped to the model's 1..9999. Unlike `columnAtX` this ROUNDS and is 1-based: the length handle
+ * sits on a column BOUNDARY (the boundary at `n * cellW` means "n frames"), not inside a cell.
+ */
+export function lengthAtX(offsetX: number, cellW: number): number {
+  return Math.max(1, Math.min(9999, Math.round(offsetX / cellW)));
+}
