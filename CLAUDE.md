@@ -1781,25 +1781,26 @@ source's extent.
 **The target follows the SELECTED ROW — no precedence, no fallback.** The first version used a
 precedence rule (active image ref, else the audio track) to avoid new state; in use it was confusing,
 and correctly so: image refs followed SELECTION while audio was a FALLBACK, so the same two buttons
-acted on audio whenever a drawing layer was selected, for reasons invisible on screen. The fix was
-the thing that rule existed to avoid — **`state.audioLaneActive`**, so the audio lane can be the
-active timeline row like any layer. A BOOLEAN, deliberately, not a sentinel `activeLayerId`: ~30 call
-sites do `layers.find(l => l.id === activeLayerId)` and a sentinel would make every one of them
-silently resolve to `undefined`. `setActiveLayer` clears it, so exactly one row is ever active, and
-clicking the audio lane's label sets it (fine pointers only — a finger drag there is a timeline pan).
-The buttons dim unless the selected row is trimmable, with the reason in the title. `trimToPlayheadTarget`
-was deleted with the precedence rule rather than left as dead code.
-**Exactly one TIMELINE row reads as active, via `activeRowLayerId`.** `activeLayerId` keeps pointing
-at a layer while the audio lane is selected — it must, since it is still the draw target — so the
-gutter highlighted two rows at once until the four highlight sites were routed through one derived.
-The LAYER PANEL follows the same rule (corrected the same day — an initial version kept its highlight
-on the reasoning that it answers "what am I drawing on"; in use, two panels disagreeing about what is
-selected was plainly worse than the tradeoff it bought). While the audio lane is selected, no layer
-row reads as selected in EITHER place. That also collapses the panel's Row 2 detail strip, which is
-the honest consequence — nothing layer-ish is selected — and one click restores it. The draw target
-does not become invisible: the STATUS BAR names the active layer independently of any highlight,
-which is what makes syncing safe.
+acted on audio whenever a drawing layer was selected, for reasons invisible on screen.
 
+**`state.activeRow` models WHICH ROW IS SELECTED — and that is the whole lesson here.** The first fix
+added a boolean `audioLaneActive` beside `activeLayerId`, which meant every view that draws a
+selection had to spell out `id === activeLayerId && !audioLaneActive` by hand. Forgetting the second
+term is not hypothetical: it shipped twice, once as a double highlight in the gutter and once as a
+layer panel disagreeing with it. `activeRow` is now
+`{ kind: "layer"; id } | { kind: "audio" }`, and the rule is: **no view may COMBINE it with
+`activeLayerId`.** Ask `isRowSelected(id)` or `isAudioRowSelected()` for selection; read
+`activeLayerId` for the draw target; never both in one expression. The two remain separate fields on
+purpose — `activeLayerId` must survive selecting the audio lane, because it is still what a stroke
+lands on — but they answer different questions and no longer meet in a conjunction anyone can forget.
+`setActiveLayer` and `selectAudioLane` are the only writers, and `restoreStructure` returns selection
+to the restored layer.
+This was chosen over making audio a real LAYER, which is the correct long-term model and was measured
+first: 64 explicit `kind === "draw"/"ref"` checks a compiler sweep would catch, but **29 sites written
+as `kind !== "draw"` / `!== "ref"` that today MEAN "is a reference" and would silently start catching
+audio** — plus a persistence migration and turning the engine's single `source`/`track` into many. It
+also buys multi-track audio, which is a current non-goal. Revisit only if multi-track is actually
+wanted; the accessor rule above is what made the workarounds unnecessary in the meantime.
 **`end` is INCLUSIVE for both clip kinds, but they store different things** — a reference range holds
 an inclusive `end`, audio holds a LENGTH — so the same user-visible meaning needs different
 arithmetic, hence the `+ 1` in `trimDeltaToPlayhead`'s tail branch. Getting it wrong is silent: the

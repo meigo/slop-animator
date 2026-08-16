@@ -51,6 +51,7 @@
     resetCellTransform,
     resetGroupTransform,
     setActiveLayer,
+    isRowSelected,
     toggleEmbedMedia,
   } from "../state/appState.svelte";
   import {
@@ -278,11 +279,11 @@
 </script>
 
 {#snippet layerRow(layer: Layer)}
-  <!-- Synced with the timeline gutter: while the audio lane is the selected row, NO layer row reads
-       as selected, so the two panels never disagree. This also collapses the Row 2 detail strip,
-       which is the honest consequence — nothing layer-ish is selected. The draw target stays
-       visible either way: the status bar names the active layer independently of any highlight. -->
-  {@const active = layer.id === appState.activeLayerId && !appState.audioLaneActive}
+  <!-- One question, one value: `isRowSelected` is the whole answer, so this panel and the timeline
+       gutter cannot disagree about what is selected. Also gates the Row 2 detail strip — nothing
+       layer-ish is selected while the audio lane is, and one click restores it. The draw target does
+       not go missing: the status bar names the active layer independently of any highlight. -->
+  {@const active = isRowSelected(layer.id)}
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
