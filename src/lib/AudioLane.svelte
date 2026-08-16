@@ -28,6 +28,7 @@
     onEdgeScrollStart,
     onEdgeScrollStop,
     onEdgePointerX,
+    getScrollLeft,
   }: {
     cellW: number;
     labelW: number;
@@ -41,6 +42,9 @@
     onEdgeScrollStart: (apply: (clientX: number) => void) => void;
     onEdgeScrollStop: () => void;
     onEdgePointerX: (clientX: number) => void;
+    /** The timeline scroller's offset. A screen-space drag origin goes stale as soon as the content
+     *  scrolls under it, so both drags here add the change since grab. */
+    getScrollLeft: () => number;
   } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
@@ -54,6 +58,7 @@
   // after, so every audio edit now pushes a command.
   let dragStart: {
     x: number;
+    sx: number;
     offset: number;
     undo: ReturnType<typeof beginStructuralEdit>;
   } | null = null;
@@ -71,6 +76,7 @@
     }
     dragStart = {
       x: e.clientX,
+      sx: getScrollLeft(),
       offset: state.project.audio.offsetFrames,
       undo: beginStructuralEdit(),
     };
@@ -89,7 +95,9 @@
   function laneMoveAt(clientX: number) {
     const audio = state.project.audio;
     if (!dragStart || !audio) return;
-    const next = dragStart.offset + Math.round((clientX - dragStart.x) / cellW);
+    const next =
+      dragStart.offset +
+      Math.round((clientX - dragStart.x + (getScrollLeft() - dragStart.sx)) / cellW);
     if (next !== audio.offsetFrames) {
       audio.offsetFrames = next;
       bump();
@@ -130,6 +138,7 @@
   let trimDrag: {
     edge: "head" | "tail";
     x: number;
+    sx: number;
     from: { offsetFrames: number; trimInFrames: number; trimLenFrames: number };
     undo: ReturnType<typeof beginStructuralEdit>;
   } | null = null;
@@ -146,6 +155,7 @@
     trimDrag = {
       edge,
       x: e.clientX,
+      sx: getScrollLeft(),
       from: { offsetFrames: audio.offsetFrames, trimInFrames: trimIn, trimLenFrames: trimLen },
       undo: beginStructuralEdit(),
     };
@@ -165,7 +175,7 @@
   function trimMoveAt(clientX: number) {
     const audio = state.project.audio;
     if (!trimDrag || !audio) return;
-    const delta = Math.round((clientX - trimDrag.x) / cellW);
+    const delta = Math.round((clientX - trimDrag.x + (getScrollLeft() - trimDrag.sx)) / cellW);
     const f = trimDrag.from;
     const next =
       trimDrag.edge === "head"
