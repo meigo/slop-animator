@@ -2347,11 +2347,12 @@ is one way iOS decides the gesture belongs to the page and fires `pointercancel`
 which aborts the custom pan and (correctly) suppresses its fling. The layer list already had its own
 `overflow-y-auto`, so locking the page does not make a long list unreachable.
 
-**Owed an iPad pass** (this is a FEEL change and no unit test can judge it): a flick from a drawing
-row glides and settles like the empty-space scroll always did; a slow drag ending stationary stops
-dead; a press mid-glide catches it; the glide stops at both ends without juddering; a Pencil press
-mid-glide stops it rather than drawing on a moving view; the audio lane behaves the same; and
-scrubbing/edge-scroll/playback-follow never fight it.
+**Verified on iPad 2026-08-16: inertia works.** That covers the headline behaviour — a flick from a
+drawing row now glides. NOT individually walked, so still owed: a slow drag ending stationary stops
+dead rather than throwing; a press mid-glide catches it; the glide stops at both ends without
+juddering; a Pencil press mid-glide stops it instead of drawing on a moving view; the audio lane
+behaves the same; and scrubbing / edge auto-scroll / playback-follow never fight it. The page-lock
+half of the same fix (no document pan, no blank space under the UI) is also unconfirmed.
 
 **Deferred by this wave — decided, not forgotten:**
 
