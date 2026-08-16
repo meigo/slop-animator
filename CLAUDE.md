@@ -2380,6 +2380,20 @@ behaves the same; and scrubbing / edge auto-scroll / playback-follow never fight
 and the blank space under the status bar is gone. Do not re-litigate it — and note it took the
 fixed root to get there, not the document `overflow` rules.
 
+**Layer names come from the PROJECT, not the layer id (2026-08-17).** Reported as "the layer index
+keeps incrementing even in a new project" — a fresh document's second layer could be "Layer 23".
+`nextLayerId` is a session-wide monotonic counter, and `setMinLayerId` deliberately advances it past
+every id in a LOADED project so ids can never collide with a saved file's or an undo snapshot's.
+That is right for IDENTITY and wrong for a LABEL, and `createDrawingLayer`'s default name was
+`Layer ${id}` — so the number the artist sees inherited a counter that must never reset.
+New pure `nextLayerName(layers, prefix)` (unit-tested) numbers within the project instead: **MAX + 1
+over names matching `<prefix> N`**, so deleting "Layer 2" of three and adding one gives "Layer 4" —
+a name just in use is never immediately recycled onto different content — and renamed layers simply
+drop out of the series. The `name` parameter on `createDrawingLayer`/`createReferenceLayer` is now
+**REQUIRED**: those functions see no project and so cannot know a good default, and making it
+required is what stops the id leaking back into the UI through a future caller. Only one production
+site relied on the default (LayerList's add button); every other already passed a real name.
+
 **Deferred by this wave — decided, not forgotten:**
 
 - ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —

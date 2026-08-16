@@ -56,6 +56,7 @@
   } from "../state/appState.svelte";
   import {
     createDrawingLayer,
+    nextLayerName,
     groupOf,
     isLayerLocked,
     groupTransform,
@@ -121,7 +122,11 @@
   }
 
   function addLayer() {
-    addLayerToProject(createDrawingLayer(appState.project.frameCount)); // undoable
+    // Name from THIS project's layers, not from the layer id — the id is session-wide and only ever
+    // climbs, which is why a new project's next layer used to be "Layer 23".
+    addLayerToProject(
+      createDrawingLayer(appState.project.frameCount, nextLayerName(appState.project.layers)),
+    ); // undoable
   }
 
   // Panel resize, mirroring Timeline's grip. The panel is docked RIGHT, so dragging the left-edge

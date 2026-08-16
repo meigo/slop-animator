@@ -248,13 +248,13 @@ describe("frameAssetPath", () => {
 describe("setMinLayerId", () => {
   it("ensures subsequent created layers get ids at or above the floor", () => {
     setMinLayerId(500);
-    expect(createDrawingLayer(1).id).toBeGreaterThanOrEqual(500);
+    expect(createDrawingLayer(1, "L").id).toBeGreaterThanOrEqual(500);
   });
   it("never lowers the counter", () => {
     setMinLayerId(500);
-    const a = createDrawingLayer(1).id;
+    const a = createDrawingLayer(1, "L").id;
     setMinLayerId(10);
-    const b = createDrawingLayer(1).id;
+    const b = createDrawingLayer(1, "L").id;
     expect(b).toBeGreaterThan(a);
   });
 });
@@ -346,7 +346,9 @@ describe("reference media persistence fields", () => {
 
   it("layers without the fields round-trip as undefined (old saves)", async () => {
     const project = createProject();
-    project.layers.push(createReferenceLayer({ type: "missing", was: "image", name: "a.png" }));
+    project.layers.push(
+      createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R"),
+    );
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     const lref = loaded.layers.find((l) => l.kind === "ref")!;
     expect(lref.kind === "ref" && lref.mediaId).toBeUndefined();
@@ -357,7 +359,7 @@ describe("reference media persistence fields", () => {
 describe("zip media entries", () => {
   it("includeMedia=true writes no media/ entry for missing media; =false never writes any", async () => {
     const project = createProject();
-    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" });
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
     ref.mediaId = "gone-1";
     project.layers.push(ref);
     for (const include of [true, false]) {
@@ -455,7 +457,9 @@ describe("reference layer lock", () => {
 
   it("old saves (no locked field) load unlocked", async () => {
     const project = createProject();
-    project.layers.push(createReferenceLayer({ type: "missing", was: "image", name: "a.png" }));
+    project.layers.push(
+      createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R"),
+    );
     const blob = await saveProjectBlob(project);
     const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
     const json = JSON.parse(strFromU8(zip["project.json"]));
