@@ -204,6 +204,11 @@ export interface AudioTrack {
   buffer: AudioBuffer; // decoded PCM -> session-only, rebuilt on load
   offsetFrames: number; // start frame (Phase 1: always 0)
   muted: boolean; // Phase 1: always false
+  /** Frames of the SOURCE skipped at the head. Absent/0 = from the start. Non-destructive: `bytes`
+   *  and `buffer` are never modified, so widening a handle recovers the audio. */
+  trimInFrames?: number;
+  /** Frames of the SOURCE kept from `trimInFrames`. Absent = to the end of the buffer. */
+  trimLenFrames?: number;
 }
 
 export function isDrawingLayer(l: Layer): l is DrawingLayer {

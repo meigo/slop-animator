@@ -56,4 +56,15 @@ describe("audioPlayPlan", () => {
   it("treats a zero-length buffer as silent", () => {
     expect(audioPlayPlan(0, 0)).toEqual({ kind: "silence" });
   });
+  it("a trimmed length moves the silence boundary earlier than the buffer's own end", () => {
+    // 10s buffer trimmed to 4s: at 3.9s still audible, at 4s silent — even though the buffer runs on.
+    expect(audioPlayPlan(3.9, 4)).toEqual({ kind: "offset", offsetS: 3.9 });
+    expect(audioPlayPlan(4, 4)).toEqual({ kind: "silence" });
+    expect(audioPlayPlan(4, 10)).toEqual({ kind: "offset", offsetS: 4 }); // untrimmed: still audible
+  });
+  it("the delay branch is unaffected by a trimmed length", () => {
+    // A clip dragged right of the playhead still schedules a delayed start; trimming the tail
+    // cannot make a not-yet-started clip silent.
+    expect(audioPlayPlan(-2, 4)).toEqual({ kind: "delay", delayS: 2 });
+  });
 });

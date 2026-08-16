@@ -1,4 +1,5 @@
 import { bufferOffsetForFrame } from "../audio/peaks";
+import { audioTrimSpan } from "../audio/trim";
 import type { AudioTrack } from "../anim/document";
 
 /** Just the fields the plan needs, so it stays node-testable (an AudioBuffer cannot be built
@@ -7,6 +8,8 @@ export interface AudioExportInput {
   offsetFrames: number;
   muted: boolean;
   durationS: number;
+  trimInFrames?: number;
+  trimLenFrames?: number;
 }
 
 export interface AudioExportPlan {
@@ -16,6 +19,8 @@ export interface AudioExportPlan {
   startAt: number;
   /** Seconds into the source buffer to start from (0 unless it was dragged left of frame 0). */
   sourceOffset: number;
+  /** Seconds of source to play from `sourceOffset`, so the trimmed tail is not rendered. */
+  sourceDuration: number;
 }
 
 /**
@@ -33,11 +38,24 @@ export function audioExportPlan(
 ): AudioExportPlan | null {
   if (!input || input.muted) return null;
   const windowS = frameCount / fps;
-  const at = bufferOffsetForFrame(0, input.offsetFrames, fps);
+  const { inS, lenS } = audioTrimSpan(
+    input.trimInFrames,
+    input.trimLenFrames,
+    input.durationS,
+    fps,
+  );
+  const at = bufferOffsetForFrame(0, input.offsetFrames, fps); // KEPT-SPAN time
   const startAt = at >= 0 ? 0 : -at;
-  const sourceOffset = at >= 0 ? at : 0;
-  if (startAt >= windowS || sourceOffset >= input.durationS) return null;
-  return { windowS, startAt, sourceOffset };
+  const keptOffset = at >= 0 ? at : 0; // seconds into the KEPT span
+  if (startAt >= windowS || keptOffset >= lenS) return null;
+  return {
+    windowS,
+    startAt,
+    // Buffer time: the in-point is added HERE, the same rule the engine follows.
+    sourceOffset: keptOffset + inS,
+    // Never render past the kept span, nor past the window.
+    sourceDuration: Math.min(lenS - keptOffset, windowS - startAt),
+  };
 }
 
 /** Accepted by both AAC (MP4) and Opus (WebM), so a 44.1 kHz import needs no special case. */
@@ -64,6 +82,8 @@ export async function buildExportAudio(
       offsetFrames: track.offsetFrames,
       muted: track.muted,
       durationS: track.buffer.duration,
+      trimInFrames: track.trimInFrames,
+      trimLenFrames: track.trimLenFrames,
     },
     fps,
     frameCount,
@@ -80,6 +100,6 @@ export async function buildExportAudio(
   src.connect(ctx.destination);
   // The same two branches AudioEngine.play takes: the clip either starts late inside the
   // window, or begins partway into its own buffer. Never both (see audioExportPlan).
-  src.start(plan.startAt, plan.sourceOffset);
+  src.start(plan.startAt, plan.sourceOffset, plan.sourceDuration);
   return ctx.startRendering();
 }

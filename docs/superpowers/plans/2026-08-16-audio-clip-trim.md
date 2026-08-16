@@ -221,7 +221,7 @@ export function trimHead(
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run src/__tests__/audio-trim.test.ts`
-Expected: PASS (16 tests).
+Expected: PASS (14 tests).
 
 - [ ] **Step 6: Run the build gate**
 

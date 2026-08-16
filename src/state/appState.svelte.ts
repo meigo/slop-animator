@@ -263,6 +263,10 @@ export interface StructSnapshot {
   /** Same story as the offset: `muted` is written in place by the toggle, so the shared `audio`
    *  object cannot carry its before-state. Captured separately for the same reason. */
   audioMuted: boolean | null;
+  /** Trim, captured as scalars for the same reason the offset is: both are written in place on the
+   *  shared `audio` object, so the reference cannot carry their before-state. */
+  audioTrimInFrames: number | null;
+  audioTrimLenFrames: number | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -290,6 +294,8 @@ function snapshotStructure(): StructSnapshot {
     audio: state.project.audio,
     audioOffsetFrames: state.project.audio?.offsetFrames ?? null,
     audioMuted: state.project.audio?.muted ?? null,
+    audioTrimInFrames: state.project.audio?.trimInFrames ?? null,
+    audioTrimLenFrames: state.project.audio?.trimLenFrames ?? null,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -346,6 +352,8 @@ function restoreStructure(s: StructSnapshot) {
   if (state.project.audio) {
     if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
     if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
+    state.project.audio.trimInFrames = s.audioTrimInFrames ?? undefined;
+    state.project.audio.trimLenFrames = s.audioTrimLenFrames ?? undefined;
   }
   // The $state PROXY read back after assignment, never `s.audio` raw — a raw ref left the engine
   // reading offsetFrames 0 forever (gotcha #11).
@@ -826,6 +834,23 @@ export function removeAudioTrack() {
     state.project.audio = null;
     audioEngine.setTrack(null);
   });
+}
+
+/** Write a completed trim gesture. Takes `offsetFrames` too because a HEAD trim moves it and
+ *  `trimInFrames` by the same delta — the two must land in one undo entry, or undoing would leave
+ *  the clip trimmed but re-synced. Not wrapped in `commitStructural`: the lane brackets the whole
+ *  drag itself, so one gesture is one entry. */
+export function setAudioTrim(
+  trimInFrames: number,
+  trimLenFrames: number,
+  offsetFrames: number,
+): void {
+  const t = state.project.audio;
+  if (!t) return;
+  t.trimInFrames = trimInFrames;
+  t.trimLenFrames = trimLenFrames;
+  t.offsetFrames = offsetFrames;
+  bump();
 }
 
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the

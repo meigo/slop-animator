@@ -49,6 +49,8 @@ describe("audioExportPlan — placement", () => {
       windowS: 2,
       startAt: 0,
       sourceOffset: 0,
+      // Untrimmed, so the kept span is the whole 5s buffer; capped at the 2s window.
+      sourceDuration: 2,
     });
   });
 
@@ -58,6 +60,8 @@ describe("audioExportPlan — placement", () => {
       windowS: 2,
       startAt: 0.5,
       sourceOffset: 0,
+      // Only 1.5s of window remains after the 0.5s of silence head.
+      sourceDuration: 1.5,
     });
   });
 
@@ -67,6 +71,8 @@ describe("audioExportPlan — placement", () => {
       windowS: 2,
       startAt: 0,
       sourceOffset: 0.5,
+      // Untrimmed 5s buffer easily covers the whole 2s window.
+      sourceDuration: 2,
     });
   });
 
@@ -82,5 +88,62 @@ describe("audioExportPlan — placement", () => {
       const p = audioExportPlan(clip({ offsetFrames }), FPS, FRAMES)!;
       expect(Math.min(p.startAt, p.sourceOffset)).toBe(0);
     }
+  });
+});
+
+describe("audioExportPlan with a trimmed clip", () => {
+  it("an untrimmed clip renders its whole buffer", () => {
+    const p = audioExportPlan(
+      {
+        offsetFrames: 0,
+        muted: false,
+        durationS: 10,
+        trimInFrames: undefined,
+        trimLenFrames: undefined,
+      },
+      12,
+      120,
+    );
+    expect(p).toEqual({ windowS: 10, startAt: 0, sourceOffset: 0, sourceDuration: 10 });
+  });
+
+  it("a tail trim shortens sourceDuration without moving the start", () => {
+    const p = audioExportPlan(
+      { offsetFrames: 0, muted: false, durationS: 10, trimInFrames: 0, trimLenFrames: 48 },
+      12,
+      120,
+    );
+    expect(p).toEqual({ windowS: 10, startAt: 0, sourceOffset: 0, sourceDuration: 4 });
+  });
+
+  it("a head trim starts further into the source", () => {
+    // trimHead moved offsetFrames to 24 alongside trimInFrames, so the audio stays at frame 24.
+    const p = audioExportPlan(
+      { offsetFrames: 24, muted: false, durationS: 10, trimInFrames: 24, trimLenFrames: 96 },
+      12,
+      120,
+    );
+    expect(p).toEqual({ windowS: 10, startAt: 2, sourceOffset: 2, sourceDuration: 8 });
+  });
+
+  it("returns null when the TRIMMED span falls entirely outside the window", () => {
+    // Kept span is one frame, dragged past the last frame: no audio track at all, not a silent one.
+    expect(
+      audioExportPlan(
+        { offsetFrames: 240, muted: false, durationS: 10, trimInFrames: 0, trimLenFrames: 1 },
+        12,
+        120,
+      ),
+    ).toBeNull();
+  });
+
+  it("still returns null for a muted track", () => {
+    expect(
+      audioExportPlan(
+        { offsetFrames: 0, muted: true, durationS: 10, trimInFrames: 0, trimLenFrames: 48 },
+        12,
+        120,
+      ),
+    ).toBeNull();
   });
 });

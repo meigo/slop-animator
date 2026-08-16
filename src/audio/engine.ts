@@ -1,5 +1,6 @@
 import { getAudioContext } from "./context";
 import { audioPlayPlan, bufferOffsetForFrame } from "./peaks";
+import { audioTrimSpan } from "./trim";
 import type { AudioTrack } from "../anim/document";
 
 const SCRUB_WINDOW_S = 0.1; // ~100 ms preview per paused playhead move (P2 spec)
@@ -19,8 +20,14 @@ class AudioEngine {
   /** Start audio aligned to animation `frame`. */
   play(frame: number, fps: number): void {
     if (!this.track || this.track.muted) return;
-    const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
-    const plan = audioPlayPlan(at, this.track.buffer.duration);
+    const { inS, lenS } = audioTrimSpan(
+      this.track.trimInFrames,
+      this.track.trimLenFrames,
+      this.track.buffer.duration,
+      fps,
+    );
+    const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps); // KEPT-SPAN time
+    const plan = audioPlayPlan(at, lenS); // ...so the trimmed tail reuses the existing guard
     if (plan.kind === "silence") {
       this.stop(); // clip already over → silent, animation continues
       return;
@@ -31,10 +38,9 @@ class AudioEngine {
     const src = ctx.createBufferSource();
     src.buffer = this.track.buffer;
     src.connect(ctx.destination);
-    // Negative = the clip starts in the future (offset drag pushed it right of the playhead):
-    // schedule the start so the audio begins exactly when the frame clock reaches the clip.
-    if (plan.kind === "offset") src.start(0, plan.offsetS);
-    else src.start(ctx.currentTime + plan.delayS, 0);
+    // `inS` is added HERE and nowhere else: this is the one place buffer time is needed.
+    if (plan.kind === "offset") src.start(0, plan.offsetS + inS, lenS - plan.offsetS);
+    else src.start(ctx.currentTime + plan.delayS, inS, lenS);
     this.source = src;
   }
 
@@ -47,15 +53,24 @@ class AudioEngine {
    *  fast scrubs self-coalesce. No-op when muted or while playback owns the output. */
   scrub(frame: number, fps: number): void {
     if (!this.track || this.track.muted || this.source) return;
+    const { inS, lenS } = audioTrimSpan(
+      this.track.trimInFrames,
+      this.track.trimLenFrames,
+      this.track.buffer.duration,
+      fps,
+    );
     const at = bufferOffsetForFrame(frame, this.track.offsetFrames, fps);
-    if (at < 0 || at >= this.track.buffer.duration) return; // playhead outside the clip → silence
+    if (at < 0 || at >= lenS) return; // playhead outside the TRIMMED clip → silence
     const ctx = getAudioContext();
     void ctx.resume();
     this.stopScrub();
     const src = ctx.createBufferSource();
     src.buffer = this.track.buffer;
     src.connect(ctx.destination);
-    src.start(0, at);
+    // Duration is clamped to what is LEFT of the kept span: the `at >= lenS` guard above only
+    // covers starting outside it, so near the out-point the ~100 ms window would otherwise run on
+    // into material the tail trim removed.
+    src.start(0, at + inS, Math.min(SCRUB_WINDOW_S, lenS - at));
     src.stop(ctx.currentTime + SCRUB_WINDOW_S);
     src.onended = () => {
       // Self-cleanup when the window ran out naturally (stopScrub handles replacement).
