@@ -1673,6 +1673,10 @@ its root, or the header's bottom border gets inset and stops short of the left e
 The GUTTER's grip is deliberately ASYMMETRIC — `left: GUTTER_W - 6` with width 8, so 6 of its 8px
 fall inside the gutter and only 2 reach the first frame cell, which is interactive and only 24px
 wide. Do not "centre" it.
+The panel grip's HIT area is 8px but its hover TINT is only the 4px the panel actually reserves:
+tinting the full 8px painted over the rows' own background (the grip overlays their left 4px), which
+read as a mismatched notch against the active/hover row colour. Hit area and tint are separate
+concerns on any overlay grip — size them separately.
 **`MARKER_W` is 28**, widened from 22 so the lock/hidden glyph is not crowded against the divider.
 
 **The TIMELINE's height grip keeps a visual bar; the two vertical ones do not.** Not an oversight —
