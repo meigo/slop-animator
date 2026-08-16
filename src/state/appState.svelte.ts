@@ -78,6 +78,9 @@ import {
   clampGutterLabelWidth,
   DEFAULT_GUTTER_LABEL_WIDTH,
 } from "../anim/panel-layout";
+import { trimHead, trimTail } from "../audio/trim";
+import { audioFrameSpan } from "../audio/peaks";
+import { trimToPlayheadTarget, trimDeltaToPlayhead, rangeAfterTrim } from "../anim/clip-layout";
 
 export type Tool =
   | "brush"
@@ -851,6 +854,66 @@ export function setAudioTrim(
   t.trimLenFrames = trimLenFrames;
   t.offsetFrames = offsetFrames;
   bump();
+}
+
+/** Which clip a "trim to playhead" command would act on, and its label for the button's title.
+ *  Exported so the UI can name the target BEFORE the press — the precedence is only acceptable
+ *  because it is visible, not guessed at. */
+export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string } | null {
+  const l = state.project.layers.find((x) => x.id === state.activeLayerId);
+  const kind =
+    !l || l.kind !== "ref"
+      ? ("draw" as const)
+      : l.media.type === "image"
+        ? ("image-ref" as const)
+        : l.media.type === "video"
+          ? ("video-ref" as const)
+          : ("missing-ref" as const);
+  const target = trimToPlayheadTarget(kind, !!state.project.audio);
+  if (!target) return null;
+  return target === "ref"
+    ? { target, label: `${l!.name}'s range` }
+    : { target, label: "the audio clip" };
+}
+
+/** Move the resolved clip's start or end onto the playhead. One undo entry; the underlying
+ *  trim helpers already clamp, so a playhead outside the clip degrades to the 1-frame minimum or
+ *  the source's extent rather than needing a guard here. */
+export function trimToPlayhead(edge: "start" | "end"): void {
+  const info = trimToPlayheadInfo();
+  if (!info) return;
+  const fps = state.project.fps;
+  commitStructural(() => {
+    if (info.target === "ref") {
+      const l = state.project.layers.find((x) => x.id === state.activeLayerId);
+      if (!l || l.kind !== "ref") return;
+      // An untrimmed ref means "always visible", so materialise the implicit whole-project range
+      // first — the same range an edge drag materialises.
+      const cur = l.range ?? { start: 0, end: Math.max(0, state.project.frameCount - 1) };
+      const delta = trimDeltaToPlayhead(edge, state.playhead, {
+        startFrame: cur.start,
+        lengthFrames: cur.end - cur.start + 1,
+      });
+      l.range = rangeAfterTrim(cur, edge, delta); // REPLACE, never mutate (shared snapshot refs)
+      return;
+    }
+    const t = state.project.audio;
+    if (!t) return;
+    const extent = audioFrameSpan(t.buffer.duration, fps);
+    const tin = Math.max(0, t.trimInFrames ?? 0);
+    const len = t.trimLenFrames ?? extent - tin;
+    const delta = trimDeltaToPlayhead(edge, state.playhead, {
+      startFrame: t.offsetFrames,
+      lengthFrames: len,
+    });
+    const next =
+      edge === "start"
+        ? trimHead(t.offsetFrames, tin, len, delta, extent)
+        : { offsetFrames: t.offsetFrames, ...trimTail(tin, len, delta, extent) };
+    t.trimInFrames = next.trimInFrames;
+    t.trimLenFrames = next.trimLenFrames;
+    t.offsetFrames = next.offsetFrames;
+  });
 }
 
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the

@@ -4,6 +4,8 @@ import {
   offsetAfterClipDrag,
   rangeAfterSlide,
   rangeAfterTrim,
+  trimToPlayheadTarget,
+  trimDeltaToPlayhead,
 } from "../anim/clip-layout";
 
 describe("videoClipLayout", () => {
@@ -92,5 +94,51 @@ describe("rangeAfterTrim", () => {
   it("clamps the start edge at frame 0 but lets the end run past the project", () => {
     expect(rangeAfterTrim({ start: 4, end: 9 }, "start", -99)).toEqual({ start: 0, end: 9 });
     expect(rangeAfterTrim({ start: 4, end: 9 }, "end", 500)).toEqual({ start: 4, end: 509 });
+  });
+});
+
+describe("trimToPlayheadTarget", () => {
+  it("prefers the active layer when it is an IMAGE reference", () => {
+    expect(trimToPlayheadTarget("image-ref", true)).toBe("ref");
+    expect(trimToPlayheadTarget("image-ref", false)).toBe("ref");
+  });
+
+  it("falls through to audio for a VIDEO reference — its span IS its footage", () => {
+    expect(trimToPlayheadTarget("video-ref", true)).toBe("audio");
+  });
+
+  it("falls through to audio for a drawing layer or no layer at all", () => {
+    expect(trimToPlayheadTarget("draw", true)).toBe("audio");
+    expect(trimToPlayheadTarget(null, true)).toBe("audio");
+    expect(trimToPlayheadTarget("missing-ref", true)).toBe("audio");
+  });
+
+  it("resolves to nothing when there is no audio and no image ref", () => {
+    expect(trimToPlayheadTarget("draw", false)).toBeNull();
+    expect(trimToPlayheadTarget("video-ref", false)).toBeNull();
+    expect(trimToPlayheadTarget(null, false)).toBeNull();
+  });
+});
+
+describe("trimDeltaToPlayhead", () => {
+  // A clip occupying project frames 10..29 (start 10, length 20, so its inclusive end is 29).
+  const clip = { startFrame: 10, lengthFrames: 20 };
+
+  it("start: the delta moves the head onto the playhead", () => {
+    expect(trimDeltaToPlayhead("start", 15, clip)).toBe(5); // 10 -> 15
+    expect(trimDeltaToPlayhead("start", 4, clip)).toBe(-6); // dragging the head back out
+    expect(trimDeltaToPlayhead("start", 10, clip)).toBe(0); // already there
+  });
+
+  it("end: the delta keeps the playhead's OWN frame — the end is inclusive", () => {
+    // Trimming the end to frame 19 must leave frames 10..19, i.e. length 10, so delta = -10.
+    expect(trimDeltaToPlayhead("end", 19, clip)).toBe(-10);
+    // Trimming to the clip's existing last frame (29) must be a no-op, NOT a one-frame change.
+    expect(trimDeltaToPlayhead("end", 29, clip)).toBe(0);
+    expect(trimDeltaToPlayhead("end", 35, clip)).toBe(6); // extending the tail
+  });
+
+  it("end on a single-frame clip resolves to zero at its own frame", () => {
+    expect(trimDeltaToPlayhead("end", 7, { startFrame: 7, lengthFrames: 1 })).toBe(0);
   });
 });

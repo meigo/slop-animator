@@ -10,6 +10,8 @@
     Film,
     BetweenHorizonalStart,
     BetweenHorizonalEnd,
+    ArrowRightToLine,
+    ArrowLeftToLine,
     Layers,
     Waves,
     Settings,
@@ -34,6 +36,8 @@
     moveTimelineSelection,
     clearTimelineSelection,
     relinkReference,
+    trimToPlayhead,
+    trimToPlayheadInfo,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -120,6 +124,12 @@
     return timelineStripFrames(appState.project.frameCount, ends);
   });
   const stripMinW = $derived(GUTTER_W + stripFrames * CELL_W);
+
+  // `trimToPlayheadInfo` reads `activeLayerId`, `project.layers` and `project.audio` — all $state
+  // proxies — and runes track reads wherever they happen during a derived's evaluation, so no
+  // dependency needs listing here. Staying reactive matters: the button's title NAMES its target,
+  // and a stale name is the one thing that would make the precedence rule unsafe.
+  const trimTarget = $derived(trimToPlayheadInfo());
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
   // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
@@ -964,6 +974,34 @@
       class={toolBtn}
       title="Remove frame from all layers (ripples clips and audio)"
       onclick={rippleDelete}><BetweenHorizonalEnd size={16} /></button
+    >
+
+    <span class="w-px h-5 bg-border mx-1"></span>
+
+    <!-- Trim to playhead. Reaches a clip edge that is pages away horizontally, which is otherwise a
+         long scroll-and-drag. The TARGET is a precedence rule (active image ref, else the audio
+         track), so the title NAMES it — the precedence is only acceptable because it is visible
+         before the press. aria-disabled, not disabled: a disabled button dispatches no pointer
+         events, so the status bar could never read the reason. -->
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} start to the playhead`
+        : "Trim start to the playhead — no audio track, and the active layer is not an image reference"}
+      aria-disabled={!trimTarget}
+      onclick={() => {
+        if (trimTarget) trimToPlayhead("start");
+      }}><ArrowRightToLine size={16} /></button
+    >
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} end to the playhead`
+        : "Trim end to the playhead — no audio track, and the active layer is not an image reference"}
+      aria-disabled={!trimTarget}
+      onclick={() => {
+        if (trimTarget) trimToPlayhead("end");
+      }}><ArrowLeftToLine size={16} /></button
     >
 
     <span class="w-px h-5 bg-border mx-1"></span>
