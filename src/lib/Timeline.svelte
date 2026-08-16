@@ -235,6 +235,15 @@
     edgeRaf = requestAnimationFrame(tick);
   }
 
+  /** The scroller's horizontal offset. A drag that stores a SCREEN-space origin must add the change
+   *  in this since grab, or auto-scroll moves the content while the dragged edge stays put — it then
+   *  resumes following the pointer carrying that offset permanently. Drags that measure from an
+   *  element INSIDE the scroller (the ruler scrub, the row drag) self-correct and do not need it:
+   *  that element's rect shifts with the scroll. */
+  function scrollX(): number {
+    return gridWrapper?.scrollLeft ?? 0;
+  }
+
   function stopEdgeScroll() {
     if (edgeRaf) cancelAnimationFrame(edgeRaf);
     edgeRaf = 0;
@@ -269,7 +278,7 @@
   }
 
   // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
-  let clipDrag: { layer: ReferenceLayer; x: number; startFrame: number } | null = null;
+  let clipDrag: { layer: ReferenceLayer; x: number; sx: number; startFrame: number } | null = null;
 
   function clipDown(e: PointerEvent, layer: ReferenceLayer) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -286,7 +295,7 @@
       dur,
       appState.project.fps,
     );
-    clipDrag = { layer, x: e.clientX, startFrame };
+    clipDrag = { layer, x: e.clientX, sx: scrollX(), startFrame };
     edgePointerX = e.clientX;
     startEdgeScroll(clipMoveAt);
   }
@@ -301,7 +310,7 @@
   }
   function clipMoveAt(clientX: number) {
     if (!clipDrag) return;
-    const delta = Math.round((clientX - clipDrag.x) / CELL_W);
+    const delta = Math.round((clientX - clipDrag.x + (scrollX() - clipDrag.sx)) / CELL_W);
     // Zero-delta no-op: startFrame = round(-offset/speed) is lossy when offset is
     // not a multiple of speed (e.g. placed at 1× then speed set to 1.5). Recomputing
     // next would rewrite the in-point on a click or sub-cell twitch without moving.
@@ -325,6 +334,9 @@
     layer: ReferenceLayer;
     mode: "slide" | "start" | "end";
     x: number;
+    /** Scroller offset at grab — the delta adds the change since, or auto-scroll leaves the edge
+     *  behind while the content moves (see `scrollX`). */
+    sx: number;
     from: { start: number; end: number };
     /** The layer had NO explicit range at grab (an edge drag materialises the implicit one). */
     wasAbsent: boolean;
@@ -355,6 +367,7 @@
       layer,
       mode,
       x: e.clientX,
+      sx: scrollX(),
       from,
       wasAbsent: !layer.range,
       undo: beginStructuralEdit(),
@@ -374,7 +387,7 @@
   }
   function rangeMoveAt(clientX: number) {
     if (!rangeDrag) return;
-    const delta = Math.round((clientX - rangeDrag.x) / CELL_W);
+    const delta = Math.round((clientX - rangeDrag.x + (scrollX() - rangeDrag.sx)) / CELL_W);
     if (delta === 0) return;
     // During a handle drag this fires TWICE per pointermove: pointer capture retargets the event
     // to the handle, but it still bubbles to the body, which carries the same handlers. Harmless
@@ -516,6 +529,7 @@
   // warning in the status bar throughout so it is never a surprise at the end.
   let lenDrag: {
     x: number;
+    sx: number;
     startLen: number;
     undo: ReturnType<typeof beginStructuralEdit>;
   } | null = null;
@@ -528,6 +542,7 @@
     }
     lenDrag = {
       x: e.clientX,
+      sx: scrollX(),
       startLen: appState.project.frameCount,
       undo: beginStructuralEdit(),
     };
@@ -548,7 +563,10 @@
     if (!lenDrag) return;
     const next = Math.max(
       1,
-      Math.min(9999, lenDrag.startLen + Math.round((clientX - lenDrag.x) / CELL_W)),
+      Math.min(
+        9999,
+        lenDrag.startLen + Math.round((clientX - lenDrag.x + (scrollX() - lenDrag.sx)) / CELL_W),
+      ),
     );
     if (next === appState.project.frameCount) return;
     setAnimationLength(next);
@@ -1505,6 +1523,7 @@
       onEdgeScrollStart={startEdgeScroll}
       onEdgeScrollStop={stopEdgeScroll}
       onEdgePointerX={(x) => (edgePointerX = x)}
+      getScrollLeft={scrollX}
     />
 
     <!-- layer rows (top layer first) -->

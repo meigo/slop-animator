@@ -1884,6 +1884,16 @@ past the viewport does nothing, so you must stop, scroll by hand, and resume. Al
 timeline drags now scroll when the pointer nears an edge — ruler scrub, animation length, audio
 offset, audio trim, image-ref range, video clip slide. The two panel-resize grips deliberately do
 NOT: scrolling the content while sizing a panel would be wrong.
+**A screen-space drag origin must be corrected by the scroll, or auto-scroll does nothing useful.**
+Five of the drags stored the pointer x at grab and computed `round((clientX - x) / CELL_W)`. Scrolling
+does not change either term, so re-applying with a still pointer produced the SAME delta while the
+content moved — the dragged edge sat at its frame and scrolled away, then resumed following the
+pointer carrying that offset for good (reported straight after the first deploy). Each now records
+`sx = scrollX()` at grab and adds `(scrollX() - sx)` to the delta, which also covers the user
+scrolling by any other means mid-drag. The RULER SCRUB and the ROW DRAG needed nothing: they measure
+from an element INSIDE the scroller, whose rect shifts with it, so they self-correct. `AudioLane`
+takes a `getScrollLeft` prop for the same reason it takes the scroll controller — it does not own the
+scroller.
 **The tick RE-APPLIES the active drag, and that is the whole design.** While the pointer sits still
 past the edge there are no `pointermove` events, so a helper that only scrolled would slide the
 content out from under a trim edge that never followed — you would scroll but not trim. Each drag
