@@ -25,6 +25,9 @@
     onTouchDown,
     onTouchMove,
     onTouchUp,
+    onEdgeScrollStart,
+    onEdgeScrollStop,
+    onEdgePointerX,
   }: {
     cellW: number;
     labelW: number;
@@ -33,6 +36,11 @@
     onTouchDown: (e: PointerEvent) => void;
     onTouchMove: (e: PointerEvent) => boolean;
     onTouchUp: () => void;
+    /** Edge auto-scroll, owned by Timeline because it owns the scroller. `apply` is how this lane
+     *  re-applies its own drag at the last pointer x while the content slides under a still pointer. */
+    onEdgeScrollStart: (apply: (clientX: number) => void) => void;
+    onEdgeScrollStop: () => void;
+    onEdgePointerX: (clientX: number) => void;
   } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
@@ -66,6 +74,8 @@
       offset: state.project.audio.offsetFrames,
       undo: beginStructuralEdit(),
     };
+    onEdgePointerX(e.clientX);
+    onEdgeScrollStart(laneMoveAt);
     transformDragGuard.settle = () => settleLaneDrag(); // undo / Open mid-drag settles the bracket
   }
   function laneMove(e: PointerEvent) {
@@ -73,9 +83,13 @@
       onTouchMove(e);
       return;
     }
+    onEdgePointerX(e.clientX);
+    laneMoveAt(e.clientX);
+  }
+  function laneMoveAt(clientX: number) {
     const audio = state.project.audio;
     if (!dragStart || !audio) return;
-    const next = dragStart.offset + Math.round((e.clientX - dragStart.x) / cellW);
+    const next = dragStart.offset + Math.round((clientX - dragStart.x) / cellW);
     if (next !== audio.offsetFrames) {
       audio.offsetFrames = next;
       bump();
@@ -84,6 +98,7 @@
   /** Commit iff the offset actually moved — a click without a drag must push nothing, or the next
    *  undo appears dead. Also the settle hook, so a mid-drag undo/Open cannot leave the bracket open. */
   function settleLaneDrag() {
+    onEdgeScrollStop();
     if (!dragStart) return;
     const audio = state.project.audio;
     if (audio && audio.offsetFrames !== dragStart.offset) commitStructuralEdit(dragStart.undo);
@@ -134,6 +149,8 @@
       from: { offsetFrames: audio.offsetFrames, trimInFrames: trimIn, trimLenFrames: trimLen },
       undo: beginStructuralEdit(),
     };
+    onEdgePointerX(e.clientX);
+    onEdgeScrollStart(trimMoveAt);
     transformDragGuard.settle = () => settleTrimDrag();
   }
 
@@ -142,9 +159,13 @@
       onTouchMove(e);
       return;
     }
+    onEdgePointerX(e.clientX);
+    trimMoveAt(e.clientX);
+  }
+  function trimMoveAt(clientX: number) {
     const audio = state.project.audio;
     if (!trimDrag || !audio) return;
-    const delta = Math.round((e.clientX - trimDrag.x) / cellW);
+    const delta = Math.round((clientX - trimDrag.x) / cellW);
     const f = trimDrag.from;
     const next =
       trimDrag.edge === "head"
@@ -174,6 +195,7 @@
    *  fields: an untouched clip leaves `trimLenFrames` undefined while `from` holds the resolved
    *  extent, so a raw compare would read as changed and commit an empty undo entry. */
   function settleTrimDrag() {
+    onEdgeScrollStop();
     if (!trimDrag) return;
     const audio = state.project.audio;
     const f = trimDrag.from;
