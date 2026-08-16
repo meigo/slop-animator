@@ -310,6 +310,8 @@
   let selection: Selection;
   let selectionMode: "create" | "drag" | null = null;
   let prevTool: Tool = "brush";
+  // False until the tool $effect has run once, so a restored preference doesn't read as a user pick.
+  let toolEntryPrimed = false;
   // Track the active layer/frame so a switch can discard any in-progress lift (see the cleanup $effect).
   let prevLayer = appState.activeLayerId;
   let prevPlayhead = appState.playhead;
@@ -336,6 +338,13 @@
   const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
   // $state so the floating Paste button reacts to copy/cut filling the clipboard.
   let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
+  // Did the artist actually MOVE anything since the lift? Now that selecting the tool lifts on its
+  // own, an untouched lift is the common case — baking it would push an undo entry that changes
+  // nothing (and a lift→re-render round trip is a resample, so "nothing" isn't even guaranteed to be
+  // pixel-identical). Untouched lifts cancel instead. Adding a pose handle doesn't count: it changes
+  // the mesh, not the picture.
+  let deformDirty = false;
+  let poseDirty = false;
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
@@ -936,9 +945,11 @@
           const d = Math.hypot(p.x - c.x, p.y - c.y);
           meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
           meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
+          poseDirty = true;
           posePaint();
         } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
+          poseDirty = true;
           posePaint();
         }
       } else {
@@ -960,7 +971,10 @@
           selection.startDrag(handle, p.x, p.y);
         }
       } else if (!done) {
-        if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
+        if (selectionMode === "drag") {
+          selection.updateDrag(p.x, p.y);
+          deformDirty = true;
+        }
       } else {
         if (selectionMode === "drag") selection.endDrag();
         selectionMode = null;
@@ -1347,6 +1361,7 @@
     syncOverlayScale(); // handles/grid stay screen-constant against zoom × compose scale
     selection.beginTransform(lifted);
     selection.beginWarp(4, 4);
+    deformDirty = false; // fresh lift — nothing moved yet
   }
 
   // Reactive gate for the pose bar: read the proxy's version (reactive) so the bar
@@ -1471,6 +1486,7 @@
       gap: appState.pose.gap,
     });
     appState.poseActive = meshPose !== null;
+    poseDirty = false; // fresh lift — nothing moved yet
     if (!meshPose) {
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
       if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // …including the ◆ it made
@@ -1709,23 +1725,52 @@
     // from the on-canvas bar (Select → Free transform).
     const toolChanged = t !== prevTool;
     if (toolChanged) {
-      if (prevTool === "pose" && t !== "pose" && meshPose) applyPose();
-      if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
-      else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
+      // An untouched lift cancels rather than bakes — see `deformDirty`/`poseDirty`.
+      if (prevTool === "pose" && t !== "pose" && meshPose) {
+        if (poseDirty) applyPose();
+        else cancelPose();
+      }
+      if (prevTool === "deform" && t !== "deform" && selection.hasFloating) {
+        if (deformDirty) selection.commit();
+        else selection.cancel();
+      } else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
     }
     prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
     else if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
-    // t === "deform": lift entry happens on the first canvas press (onStroke).
+    // Lift on ARRIVAL, not on the first press. Waiting for a press made the tool look inert until
+    // you guessed a tap would do something, and — worse — that press was consumed entirely by the
+    // lift, so summoning the grid and grabbing a handle could never be one gesture. Entering here
+    // means the first press already lands on a handle. Both entries no-op on an empty cell or a
+    // locked/hidden layer, and re-entering is guarded below, so a re-run of this effect is free.
+    // …but only for a tool the ARTIST picked. The tool is persisted, so this effect's first run
+    // reports a "change" from the hardcoded initial value to whatever was restored — entering there
+    // would lift (and, on a hold, materialise a keyframe) merely because the app was launched, with
+    // no gesture behind it and possibly before the project has finished restoring. Arriving with
+    // Deform already selected therefore still waits for the first press, which is what the fallback
+    // in `onStroke` is for.
+    if (toolChanged && toolEntryPrimed) {
+      if (t === "deform" && selection.state !== "warping") enterDeform();
+      else if (t === "pose" && !meshPose) enterPose();
+    }
+    toolEntryPrimed = true;
   });
 
   // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
   // started on, so switching the active layer or frame leaves a clean slate — mirrors the tool-switch
   // banker. A plain marquee is document-level and kept; the gizmo-based layer transform self-retargets.
   function bankActiveEdits() {
-    if (meshPose) applyPose();
-    if (selection?.hasFloating) selection.commit();
+    // Same rule as the tool switch: an untouched lift is discarded, not banked. Stepping a frame
+    // with Deform selected must not stamp an undo entry per frame.
+    if (meshPose) {
+      if (poseDirty) applyPose();
+      else cancelPose();
+    }
+    if (selection?.hasFloating) {
+      if (appState.tool === "deform" && !deformDirty) selection.cancel();
+      else selection.commit();
+    }
     // Mid-stroke ↑/↓ or ←/→ would keep writing the old cell while inverse-mapping the new
     // compose. Commit what we have and drop the rest of this pointer stream.
     if (strokeCanvas) {

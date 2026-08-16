@@ -2213,6 +2213,39 @@ data-loss case); fill / clear-frame / delete / paste / deform / pose each on a h
 past the layer's end → undo → the track shrinks back and the timeline length with it; a stroke
 discarded mid-gesture by a two-finger undo leaves no ◆.
 
+**Deform and Pose lift on ARRIVAL, not on the first press (2026-08-16).** Reported as "selecting the
+deform tool doesn't create the grid handles — they appear after clicking on the canvas". By design,
+not a regression: `enterDeform`/`enterPose` fired from `onStroke` on `points.length === 1 && !done`.
+Two costs, and the second is the one that mattered — the tool looked INERT until you guessed that a
+tap would do something (no grid, no handles, nothing said so), and that first press was consumed
+ENTIRELY by the lift (both branches `return` straight after entering), so summoning the grid and
+grabbing a handle could never be the same gesture. Every deform was tap-then-press-drag. Entry now
+happens in the tool `$effect`, so the first press lands on a handle.
+
+Three things this needed, none of them obvious:
+
+- **The press-time entry STAYS as a fallback.** A layer or frame switch banks the lift
+  (`bankActiveEdits`) without the tool changing, so the effect will not re-fire — without the
+  fallback the tool would go permanently inert after one frame step. It is now a safety net rather
+  than the main path.
+- **Entry is gated on `toolEntryPrimed`, and that guard is load-bearing.** The tool is PERSISTED, so
+  the effect's first run always reports a change from the hardcoded `"brush"` to whatever was
+  restored. Without the gate, launching the app with Deform selected would lift — and on a hold
+  MATERIALISE A KEYFRAME — with no gesture behind it, possibly before the project has finished
+  restoring. Arriving with the tool already selected therefore still waits for one press.
+- **An untouched lift now CANCELS instead of baking** (`deformDirty`/`poseDirty`, set only when a
+  grid point or pose handle actually MOVES — adding a handle changes the mesh, not the picture).
+  Baking one pushes an undo entry that changes nothing, and since a lift→re-render round trip is a
+  resample, "nothing" is not even guaranteed to be pixel-identical. This was already reachable by
+  tapping the canvas with Deform selected and switching away; making entry automatic would have made
+  it the COMMON case, including one junk entry per frame step while scrubbing with Deform active.
+  Both bake sites (the tool switch and `bankActiveEdits`) check it.
+
+**Owed a browser pass:** the grid appears on selecting Deform and the first press grabs a handle;
+same for Pose; an empty cell or a locked/hidden layer still enters nothing; select Deform then switch
+away without touching it (no undo entry — ⌘Z should hit the edit BEFORE it); step a frame with Deform
+active; reload with Deform as the saved tool (no lift until you press, and no ◆ appears on a hold).
+
 **Deferred by this wave — decided, not forgotten:**
 
 - ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —
