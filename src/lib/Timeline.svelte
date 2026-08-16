@@ -37,7 +37,8 @@
     clearTimelineSelection,
     relinkReference,
     isRowSelected,
-    setAnimationLength,
+    applyAnimationLength,
+    revertStructural,
     trimToPlayhead,
     trimToPlayheadInfo,
     type StructSnapshot,
@@ -69,7 +70,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
-    countKeyframesPastLength,
+    countKeyframesPastLengthIn,
     refVisibleSpan,
     type DrawingLayer,
     type ReferenceLayer,
@@ -574,8 +575,10 @@
       ),
     );
     if (next === appState.project.frameCount) return;
-    setAnimationLength(next);
-    const dropped = countKeyframesPastLength(appState.project, next);
+    // Count against the grab-time snapshot, NOT the live project: the live cells have already been
+    // truncated by earlier moves, so counting there always returns 0 and the warning never fires.
+    const dropped = countKeyframesPastLengthIn(lenDrag.undo.layers, next);
+    applyAnimationLength(next); // no undo entry — the gesture's own bracket is the single entry
     appState.statusHint =
       dropped > 0
         ? `Length ${next} — releasing here removes ${dropped} keyframe(s)`
@@ -593,13 +596,16 @@
     appState.statusHint = "";
     const end = appState.project.frameCount;
     if (end === startLen) return;
-    const dropped = countKeyframesPastLength(appState.project, end);
+    // Snapshot-based for the same reason as the live warning above.
+    const dropped = countKeyframesPastLengthIn(undo.layers, end);
     if (
       end < startLen &&
       dropped > 0 &&
       !confirm(`Shorten to ${end} frames? This removes ${dropped} keyframe(s).`)
     ) {
-      setAnimationLength(startLen);
+      // REVERT, do not re-set the length: shrinking already sliced those cells away, so restoring
+      // the old number would just pad holds back and the keyframes would be gone for good.
+      revertStructural(undo);
       return;
     }
     commitStructuralEdit(undo);

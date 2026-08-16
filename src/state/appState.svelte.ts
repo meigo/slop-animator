@@ -943,13 +943,26 @@ export function trimToPlayhead(edge: "start" | "end"): void {
 /** Set the animation's total length to `n` frames (clamped 1..9999). Extends layers by holding the
  *  last frame; shortens by trimming trailing cells. Undoable. */
 export function setAnimationLength(n: number) {
+  commitStructural(() => applyAnimationLength(n));
+}
+
+/** The length mutation WITHOUT an undo entry, for a drag that brackets the whole gesture itself.
+ *  `setAnimationLength` used to be the only entry point, and a drag calling it pushed one undo
+ *  command per pointermove — a 30-frame drag left 30 entries in the history. */
+export function applyAnimationLength(n: number): void {
   const target = Math.max(1, Math.min(9999, Math.floor(n)));
   if (target === state.project.frameCount) return;
-  commitStructural(() => {
-    for (const layer of state.project.layers) {
-      if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
-    }
-  });
+  for (const layer of state.project.layers) {
+    if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
+  }
+  bump(); // refreshes document length and clamps the playhead
+}
+
+/** Restore a structural snapshot WITHOUT pushing an undo entry — for abandoning a gesture. Shrinking
+ *  truncates cells immediately (`resizeCells` slices), so re-applying the old LENGTH would only pad
+ *  holds back; the keyframes are already gone and only the snapshot still has them. */
+export function revertStructural(snap: StructSnapshot): void {
+  restoreStructure(snap);
 }
 
 /**
