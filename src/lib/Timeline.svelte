@@ -82,7 +82,7 @@
     rangeAfterTrim,
   } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
-  import { columnAtX, planCellPointer } from "./timeline-grid";
+  import { columnAtX, lengthAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs } from "./timeline-glyphs";
   import { clickOutside } from "./click-outside";
@@ -126,6 +126,8 @@
       const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
       ends.push(startFrame + spanFrames);
     }
+    // Hold the strip at its grab-time width for the whole length drag — see `lenDragFloor`.
+    if (lenDragFloor > 0) ends.push(lenDragFloor);
     return timelineStripFrames(appState.project.frameCount, ends);
   });
   const stripMinW = $derived(GUTTER_W + stripFrames * CELL_W);
@@ -215,26 +217,43 @@
   let edgeApply: ((clientX: number, clientY: number) => void) | null = null;
   let edgePointerX = 0;
   let edgePointerY = 0; // only the row drag needs Y (it hit-tests which track it is over)
+  /** Which drag armed the tick. It is ONE shared resource, so a settle may only stop it when its own
+   *  drag owns it — otherwise a settle for a drag that is not live (a second pointer finishing an
+   *  unrelated gesture) kills the tick out from under the drag that is. */
+  let edgeOwner: string | null = null;
+  /** Pointer position when the tick was armed. The tick re-applies the drag whenever the scroller
+   *  moved, so without this a press that NEVER moved still dragged: hold inside the left trigger
+   *  zone and the content scrolls under a stationary pointer, and each frame re-applies the drag at
+   *  a new column. `clipMoveAt` writes `offsetFrames` with no undo bracket at all, so that alone
+   *  slid a video's in-point unrecoverably. */
+  let edgeOriginX = 0;
+  let edgeOriginY = 0;
 
-  function startEdgeScroll(apply: (clientX: number, clientY: number) => void) {
+  function startEdgeScroll(apply: (clientX: number, clientY: number) => void, owner: string) {
     edgeApply = apply;
+    edgeOwner = owner;
+    edgeOriginX = edgePointerX;
+    edgeOriginY = edgePointerY;
     if (edgeRaf) return;
     const tick = () => {
       edgeRaf = 0;
       if (!edgeApply || !gridWrapper) return;
-      const r = gridWrapper.getBoundingClientRect();
-      // The LEFT trigger is the gutter's inner edge, not the scroller's. The name column and marker
-      // are sticky, so they cover the scroller's left edge — measuring from there would put the
-      // whole zone UNDERNEATH them, and you would have to drag the pointer behind the gutter before
-      // scrolling began. `GUTTER_W` is where the frame strip actually becomes visible. The right
-      // side needs no such inset: nothing overlays it.
-      const d = edgeScrollDelta(edgePointerX, r.left + GUTTER_W, r.right);
-      if (d !== 0) {
-        const before = gridWrapper.scrollLeft;
-        gridWrapper.scrollLeft = before + d;
-        // Only re-apply when the scroll actually moved: at either end this would otherwise keep
-        // recomputing the same value every frame for no reason.
-        if (gridWrapper.scrollLeft !== before) edgeApply(edgePointerX, edgePointerY);
+      // Only a gesture that has actually TRAVELLED may auto-scroll — see `edgeOriginX`.
+      if (Math.hypot(edgePointerX - edgeOriginX, edgePointerY - edgeOriginY) > MOVE_CANCEL_PX) {
+        const r = gridWrapper.getBoundingClientRect();
+        // The LEFT trigger is the gutter's inner edge, not the scroller's. The name column and
+        // marker are sticky, so they cover the scroller's left edge — measuring from there would put
+        // the whole zone UNDERNEATH them, and you would have to drag the pointer behind the gutter
+        // before scrolling began. `GUTTER_W` is where the frame strip actually becomes visible. The
+        // right side needs no such inset: nothing overlays it.
+        const d = edgeScrollDelta(edgePointerX, r.left + GUTTER_W, r.right);
+        if (d !== 0) {
+          const before = gridWrapper.scrollLeft;
+          gridWrapper.scrollLeft = before + d;
+          // Only re-apply when the scroll actually moved: at either end this would otherwise keep
+          // recomputing the same value every frame for no reason.
+          if (gridWrapper.scrollLeft !== before) edgeApply(edgePointerX, edgePointerY);
+        }
       }
       edgeRaf = requestAnimationFrame(tick);
     };
@@ -244,16 +263,19 @@
   /** The scroller's horizontal offset. A drag that stores a SCREEN-space origin must add the change
    *  in this since grab, or auto-scroll moves the content while the dragged edge stays put — it then
    *  resumes following the pointer carrying that offset permanently. Drags that measure from an
-   *  element INSIDE the scroller (the ruler scrub, the row drag) self-correct and do not need it:
-   *  that element's rect shifts with the scroll. */
+   *  element INSIDE the scroller (the ruler scrub, the row drag, the LENGTH drag) self-correct and do
+   *  not need it: that element's rect shifts with the scroll. A drag whose own value sizes the
+   *  content MUST be in that second group — see `lenDrag`. */
   function scrollX(): number {
     return gridWrapper?.scrollLeft ?? 0;
   }
 
-  function stopEdgeScroll() {
+  function stopEdgeScroll(owner: string) {
+    if (edgeOwner !== owner) return; // not ours — see `edgeOwner`
     if (edgeRaf) cancelAnimationFrame(edgeRaf);
     edgeRaf = 0;
     edgeApply = null;
+    edgeOwner = null;
   }
 
   function touchPanUp() {
@@ -303,7 +325,7 @@
     );
     clipDrag = { layer, x: e.clientX, sx: scrollX(), startFrame };
     edgePointerX = e.clientX;
-    startEdgeScroll(clipMoveAt);
+    startEdgeScroll(clipMoveAt, "clip");
   }
 
   function clipMove(e: PointerEvent) {
@@ -329,7 +351,7 @@
   }
 
   function clipUp() {
-    stopEdgeScroll();
+    stopEdgeScroll("clip");
     clipDrag = null;
     touchPanUp();
   }
@@ -379,7 +401,7 @@
       undo: beginStructuralEdit(),
     };
     edgePointerX = e.clientX;
-    startEdgeScroll(rangeMoveAt);
+    startEdgeScroll(rangeMoveAt, "range");
     transformDragGuard.settle = () => settleRangeDrag();
   }
 
@@ -414,7 +436,7 @@
 
   /** Commit iff the gesture actually changed the range; an empty entry makes undo look dead. */
   function settleRangeDrag() {
-    stopEdgeScroll();
+    stopEdgeScroll("range");
     if (!rangeDrag) return;
     const cur = rangeDrag.layer.range;
     if (cur && (cur.start !== rangeDrag.from.start || cur.end !== rangeDrag.from.end)) {
@@ -463,7 +485,7 @@
     scrubbing = true;
     edgePointerX = e.clientX;
     scrubTo(e);
-    startEdgeScroll(scrubToX);
+    startEdgeScroll(scrubToX, "scrub");
   }
   function rulerMove(e: PointerEvent) {
     if (lenDrag) return; // the length handle owns this gesture
@@ -481,7 +503,7 @@
     go(columnAtX(clientX - rect.left, CELL_W, appState.project.frameCount));
   }
   function rulerUp(e: PointerEvent) {
-    stopEdgeScroll();
+    stopEdgeScroll("scrub");
     scrubbing = false;
     touchPanUp();
     try {
@@ -533,12 +555,32 @@
   // Shortening past a keyframe normally asks for confirmation. A drag CANNOT ask per-frame — that is
   // a modal per pointermove — so the drag writes the length live and defers the question to RELEASE,
   // warning in the status bar throughout so it is never a surprise at the end.
+  //
+  // NOTE this drag stores NO screen-space origin and uses no `scrollX()` correction, unlike the five
+  // others. Its value CHANGES THE CONTENT WIDTH (every row is `min-width: GUTTER_W +
+  // stripFrames*CELL_W`), so shrinking shrinks `scrollWidth` and the browser clamps `scrollLeft`
+  // down — and the handle lives at the far right, where `scrollLeft` is pinned at max whenever it is
+  // visible. `startLen + round((dx + Δscroll)/CELL_W)` therefore fed its own output back in
+  // (n_new = n_cur + round(dx/CELL_W) per move) and collapsed the length toward 1 under a stationary
+  // pointer. It is measured instead against `rulerEl`'s rect — an element INSIDE the scroller, whose
+  // left edge moves with the scroll — which is absolute rather than cumulative, plus `lenDragFloor`
+  // to stop the width changing under it at all. Both halves are needed; see `lenDragFloor`.
   let lenDrag: {
-    x: number;
-    sx: number;
     startLen: number;
+    /** Did any move actually WRITE a length? A grab-and-release must not revert (and re-dirty
+     *  autosave) a document it never touched. */
+    dirty: boolean;
     undo: ReturnType<typeof beginStructuralEdit>;
   } | null = null;
+  /** Grab-time length, held as a floor under `stripFrames` for the whole gesture (0 = no drag).
+   *  Measuring against `rulerEl` is only stable while the SCROLL is: at the far right `scrollLeft`
+   *  sits at its maximum, so a shrink that narrows `scrollWidth` makes the browser clamp it, the
+   *  content slides right under a stationary pointer, and the measurement walks down a frame per
+   *  event — the same feedback in a slower form. Pinning the row width means `scrollWidth` never
+   *  DECREASES during the drag, so `scrollLeft` is never clamped and the handle tracks the pointer
+   *  1:1. Growing past the floor is fine (widening never clamps), which is what lets edge
+   *  auto-scroll extend the length past the viewport. Must be `$state`: `stripFrames` reads it. */
+  let lenDragFloor = $state(0);
 
   function lenGripDown(e: PointerEvent) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -547,14 +589,14 @@
       return;
     }
     lenDrag = {
-      x: e.clientX,
-      sx: scrollX(),
       startLen: appState.project.frameCount,
+      dirty: false,
       undo: beginStructuralEdit(),
     };
+    lenDragFloor = lenDrag.startLen;
     edgePointerX = e.clientX;
-    startEdgeScroll(lenGripMoveAt);
-    transformDragGuard.settle = () => settleLenDrag();
+    startEdgeScroll(lenGripMoveAt, "len");
+    transformDragGuard.settle = settleLenDrag;
   }
 
   function lenGripMove(e: PointerEvent) {
@@ -566,49 +608,53 @@
     lenGripMoveAt(e.clientX);
   }
   function lenGripMoveAt(clientX: number) {
-    if (!lenDrag) return;
-    const next = Math.max(
-      1,
-      Math.min(
-        9999,
-        lenDrag.startLen + Math.round((clientX - lenDrag.x + (scrollX() - lenDrag.sx)) / CELL_W),
-      ),
-    );
+    if (!lenDrag || !rulerEl) return;
+    // Measured from the frame strip's own left edge, which scrolls with the content — see `lenDrag`.
+    const next = lengthAtX(clientX - rulerEl.getBoundingClientRect().left, CELL_W);
     if (next === appState.project.frameCount) return;
     // Count against the grab-time snapshot, NOT the live project: the live cells have already been
     // truncated by earlier moves, so counting there always returns 0 and the warning never fires.
     const dropped = countKeyframesPastLengthIn(lenDrag.undo.layers, next);
     applyAnimationLength(next); // no undo entry — the gesture's own bracket is the single entry
+    lenDrag.dirty = true;
     appState.statusHint =
       dropped > 0
         ? `Length ${next} — releasing here removes ${dropped} keyframe(s)`
         : `Length ${next}`;
   }
 
-  /** Commit iff the length actually changed, and ask about dropped keyframes ONCE, here. Declining
-   *  restores the starting length rather than leaving the drag half-applied. */
+  /** Settle the gesture: ALWAYS revert to the grab-time document first, then re-apply the released
+   *  length as a single undo entry (asking about dropped keyframes ONCE, here).
+   *
+   *  Revert-then-reapply, never "compare the endpoints and commit if they differ". The live drag is
+   *  DESTRUCTIVE — `resizeCells` slices, so every intermediate shrink permanently drops the cells
+   *  past it and dragging back only pads `{kind:"hold"}` — and the snapshot is the only thing still
+   *  holding them. Returning early on `end === startLen` therefore threw away the cells an
+   *  overshoot-left-then-correct had already destroyed, silently and with no undo entry to get them
+   *  back. Reverting first also makes the confirm honest: the count is taken against UNMUTATED
+   *  state, so it reflects the released length rather than whatever the deepest dip left behind. */
   function settleLenDrag() {
-    stopEdgeScroll();
+    stopEdgeScroll("len");
     if (!lenDrag) return;
-    const { startLen, undo } = lenDrag;
+    const { startLen, dirty, undo } = lenDrag;
     lenDrag = null;
+    lenDragFloor = 0; // release the pinned strip width
     transformDragGuard.settle = null;
     appState.statusHint = "";
     const end = appState.project.frameCount;
-    if (end === startLen) return;
-    // Snapshot-based for the same reason as the live warning above.
-    const dropped = countKeyframesPastLengthIn(undo.layers, end);
+    if (!dirty) return; // grab-and-release: nothing was written, so nothing to revert or commit
+    revertStructural(undo); // the document is now exactly as it was at grab
+    if (end === startLen) return; // out-and-back: a true no-op, cells intact, no undo entry
+    // Counted against the restored (== grab-time) document, so it is the real cost of `end`.
+    const dropped = countKeyframesPastLengthIn(appState.project.layers, end);
     if (
       end < startLen &&
       dropped > 0 &&
       !confirm(`Shorten to ${end} frames? This removes ${dropped} keyframe(s).`)
-    ) {
-      // REVERT, do not re-set the length: shrinking already sliced those cells away, so restoring
-      // the old number would just pad holds back and the keyframes would be gone for good.
-      revertStructural(undo);
-      return;
-    }
-    commitStructuralEdit(undo);
+    )
+      return; // declined — already reverted, nothing to undo
+    applyAnimationLength(end);
+    commitStructuralEdit(undo); // `undo` is still the correct before-state: we restored it
   }
 
   function lenGripUp(e: PointerEvent) {
@@ -812,11 +858,17 @@
     return Math.max(0, Math.round(rowOffset(e) / CELL_W));
   }
 
+  /** Arm edge auto-scroll for the row drag. Called only once `dragMode` is actually a drag — arming
+   *  on plain press meant a press that never became one (a tap, or a hover-press near the gutter)
+   *  still auto-scrolled the timeline. */
+  function armRowEdgeScroll(layer: DrawingLayer) {
+    startEdgeScroll((x, y) => rowMoveAt(x, y, layer), "row");
+  }
+
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
     dragRowEl = e.currentTarget as HTMLElement;
     edgePointerX = e.clientX;
     edgePointerY = e.clientY;
-    if (isFinePointer(e)) startEdgeScroll((x, y) => rowMoveAt(x, y, layer));
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e); // finger/palm: pan only — do not change layer or frame
@@ -832,6 +884,7 @@
     if ((e.shiftKey || e.ctrlKey || e.metaKey) && appState.timelineSelection) {
       setTimelineSelection(appState.timelineSelection.anchor, { layerId: layer.id, frame });
       dragMode = "marquee";
+      armRowEdgeScroll(layer);
       return;
     }
 
@@ -841,6 +894,7 @@
       longPressTimer = null;
       dragMode = "marquee";
       setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
+      armRowEdgeScroll(layer);
     }, LONG_PRESS_MS);
 
     // Locked/hidden rows accept SELECTION (copy is a read) but no mutating gesture: without this
@@ -853,7 +907,8 @@
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
-      transformDragGuard.settle = () => settleRowDrag();
+      transformDragGuard.settle = settleRowDrag;
+      armRowEdgeScroll(layer);
       return;
     }
 
@@ -864,7 +919,8 @@
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
-      transformDragGuard.settle = () => settleRowDrag();
+      transformDragGuard.settle = settleRowDrag;
+      armRowEdgeScroll(layer);
       return;
     }
 
@@ -934,6 +990,7 @@
         { layerId: dragLayerId, frame: pressFrame },
         { layerId: layer.id, frame: rowColumnAt(clientX) },
       );
+      armRowEdgeScroll(layer);
       return;
     }
   }
@@ -967,7 +1024,10 @@
   }
 
   function resetRowDrag() {
-    stopEdgeScroll();
+    // Both shared hooks are released only if THIS drag still owns them: a settle for a row drag that
+    // is not live must not kill another gesture's edge-scroll tick or clear its settle hook.
+    stopEdgeScroll("row");
+    if (transformDragGuard.settle === settleRowDrag) transformDragGuard.settle = null;
     dragRowEl = null;
     dragMode = "none";
     dragLayerId = -1;
@@ -982,7 +1042,6 @@
     armedOnKey = false;
     pressFrame = -1;
     touchPanUp();
-    transformDragGuard.settle = null;
   }
 
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
@@ -1665,7 +1724,7 @@
               )}
               <div
                 class="relative box-border h-6 cursor-grab overflow-hidden border border-media-clip-border bg-media-clip text-xs/6 text-text"
-                class:opacity-70={ref.id !== appState.activeLayerId}
+                class:opacity-70={!isRowSelected(ref.id)}
                 style="touch-action: none; margin-left: {lay.startFrame *
                   CELL_W}px; width: {lay.spanFrames * CELL_W}px"
                 role="presentation"
@@ -1689,7 +1748,7 @@
                    propagation would kill the hint for the very pointer performing the gesture. -->
               <button
                 class="ml-1 rounded px-1 text-xs text-text-muted underline decoration-dotted underline-offset-2 hover:bg-surface-hover hover:text-text"
-                class:opacity-70={ref.id !== appState.activeLayerId}
+                class:opacity-70={!isRowSelected(ref.id)}
                 title="Media missing — click to re-link the file"
                 onclick={() => startRelink(ref.id)}>re-link</button
               >
@@ -1705,7 +1764,7 @@
                 class:cursor-grab={span !== null}
                 class:border-dashed={span === null}
                 class:border-text-muted={span === null}
-                class:opacity-70={ref.id !== appState.activeLayerId}
+                class:opacity-70={!isRowSelected(ref.id)}
                 style="touch-action: none; margin-left: {s.start * CELL_W}px; width: {(s.end -
                   s.start +
                   1) *
@@ -1752,9 +1811,7 @@
                 </div>
               </div>
             {:else}
-              <span
-                class="ml-1 text-xs text-text-muted"
-                class:opacity-70={ref.id !== appState.activeLayerId}
+              <span class="ml-1 text-xs text-text-muted" class:opacity-70={!isRowSelected(ref.id)}
                 >{ref.media.type === "video" ? "video" : "image"}</span
               >
             {/if}

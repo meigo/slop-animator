@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { columnAtX, planCellPointer } from "../lib/timeline-grid";
+import { columnAtX, lengthAtX, planCellPointer } from "../lib/timeline-grid";
 import type { Cell } from "../anim/document";
 
 describe("columnAtX", () => {
@@ -25,6 +25,30 @@ describe("columnAtX", () => {
 
   it("returns 0 when there are no columns", () => {
     expect(columnAtX(100, W, 0)).toBe(0);
+  });
+});
+
+describe("lengthAtX", () => {
+  const W = 24;
+
+  it("maps a boundary offset to that many frames (1-based, rounds to the nearest boundary)", () => {
+    expect(lengthAtX(10 * W, W)).toBe(10);
+    expect(lengthAtX(10 * W - 4, W)).toBe(10); // grabbed at the handle's left edge
+    expect(lengthAtX(10 * W + 11, W)).toBe(10); // still nearer boundary 10 than 11
+    expect(lengthAtX(10 * W + 13, W)).toBe(11);
+  });
+
+  it("is an absolute measure, so the same offset always yields the same length", () => {
+    // The length drag re-measures from the strip's left edge every move; unlike a delta from a
+    // screen-space origin it cannot accumulate (the bug that collapsed the length under a still
+    // pointer once shrinking clamped the scroller).
+    for (const n of [1, 5, 60]) expect(lengthAtX(n * W, W)).toBe(n);
+  });
+
+  it("clamps to the model's 1..9999", () => {
+    expect(lengthAtX(0, W)).toBe(1);
+    expect(lengthAtX(-500, W)).toBe(1);
+    expect(lengthAtX(10_000 * W, W)).toBe(9999);
   });
 });
 
