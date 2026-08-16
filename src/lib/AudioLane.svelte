@@ -6,6 +6,7 @@
     removeAudioTrack,
     toggleAudioMute,
     selectAudioLane,
+    isAudioRowSelected,
     setAudioTrim,
     beginStructuralEdit,
     commitStructuralEdit,
@@ -280,10 +281,10 @@
   <div class="flex w-max items-center" style="min-width: {minWidth}px">
     <div
       class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 px-1 cursor-pointer"
-      class:bg-surface={!state.audioLaneActive}
-      class:text-text-secondary={!state.audioLaneActive}
-      class:bg-surface-active={state.audioLaneActive}
-      class:text-text={state.audioLaneActive}
+      class:bg-surface={!isAudioRowSelected()}
+      class:text-text-secondary={!isAudioRowSelected()}
+      class:bg-surface-active={isAudioRowSelected()}
+      class:text-text={isAudioRowSelected()}
       role="presentation"
       style="width: {labelW}px; touch-action: none"
       onpointerdown={(e) => {

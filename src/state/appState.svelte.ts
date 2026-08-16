@@ -120,11 +120,16 @@ interface AnimState {
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
-  /** The audio lane is the active timeline ROW. A boolean rather than a sentinel `activeLayerId`,
-   *  because ~30 call sites do `layers.find(l => l.id === activeLayerId)` and a sentinel would make
-   *  every one of them silently resolve to undefined. Cleared by `setActiveLayer`, so exactly one
-   *  row is ever active. */
-  audioLaneActive: boolean;
+  /** WHICH TIMELINE ROW IS SELECTED — the single value every selection highlight reads.
+   *
+   *  This is deliberately separate from `activeLayerId`, which answers a DIFFERENT question ("what
+   *  am I drawing on") and must survive selecting the audio lane. The rule that keeps them from
+   *  contradicting each other: no view ever COMBINES them. Ask `isRowSelected(id)` /
+   *  `isAudioRowSelected()` for selection, or read `activeLayerId` for the draw target — never
+   *  `id === activeLayerId && !somethingElse`. An earlier version had each view spell that
+   *  conjunction out by hand, and forgetting the second term produced a double highlight and a
+   *  panel that disagreed with the gutter. */
+  activeRow: { kind: "layer"; id: number } | { kind: "audio" };
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
@@ -201,7 +206,7 @@ export const state: AnimState = $state({
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
-  audioLaneActive: false,
+  activeRow: { kind: "layer", id: project.layers[0].id },
   timelineSelection: null,
   cellClipboard: null,
   selectionActive: false,
@@ -350,6 +355,7 @@ function restoreStructure(s: StructSnapshot) {
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
+  state.activeRow = { kind: "layer", id: s.activeLayerId }; // selection follows the restored layer
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
   // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
@@ -870,7 +876,7 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   // track whenever the active layer was not an image ref, which meant the buttons acted on audio
   // while a drawing layer was selected — the same control doing different things for reasons that
   // were invisible on screen.
-  if (state.audioLaneActive)
+  if (state.activeRow.kind === "audio")
     return state.project.audio ? { target: "audio", label: "the audio clip" } : null;
   const l = state.project.layers.find((x) => x.id === state.activeLayerId);
   if (l?.kind === "ref" && l.media.type === "image")
@@ -878,9 +884,20 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   return null;
 }
 
+/** Is this layer's row the selected one? The ONLY question a selection highlight should ask — see
+ *  `activeRow` for why no view may combine this with `activeLayerId`. */
+export function isRowSelected(layerId: number): boolean {
+  return state.activeRow.kind === "layer" && state.activeRow.id === layerId;
+}
+
+/** Is the audio lane the selected row? */
+export function isAudioRowSelected(): boolean {
+  return state.activeRow.kind === "audio";
+}
+
 /** Make the audio lane the active timeline row (it holds no layer id, so it needs its own flag). */
 export function selectAudioLane(): void {
-  if (state.project.audio) state.audioLaneActive = true;
+  if (state.project.audio) state.activeRow = { kind: "audio" };
 }
 
 /** Move the resolved clip's start or end onto the playhead. One undo entry; the underlying
@@ -1216,7 +1233,7 @@ export const pressureCurve = new PressureCurve();
  */
 export function setActiveLayer(id: number): void {
   state.activeLayerId = id;
-  state.audioLaneActive = false; // exactly one active row
+  state.activeRow = { kind: "layer", id }; // selection and draw target coincide when a layer is picked
   const l = state.project.layers.find((x) => x.id === id);
   if (state.transformScope === "group" && (!l || l.groupId == null)) {
     state.transformScope = "frame";
