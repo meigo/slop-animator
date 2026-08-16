@@ -67,7 +67,10 @@ class AudioEngine {
     const src = ctx.createBufferSource();
     src.buffer = this.track.buffer;
     src.connect(ctx.destination);
-    src.start(0, at + inS);
+    // Duration is clamped to what is LEFT of the kept span: the `at >= lenS` guard above only
+    // covers starting outside it, so near the out-point the ~100 ms window would otherwise run on
+    // into material the tail trim removed.
+    src.start(0, at + inS, Math.min(SCRUB_WINDOW_S, lenS - at));
     src.stop(ctx.currentTime + SCRUB_WINDOW_S);
     src.onended = () => {
       // Self-cleanup when the window ran out naturally (stopScrub handles replacement).

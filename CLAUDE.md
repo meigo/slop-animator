@@ -1730,20 +1730,34 @@ offsetFrames)` writes the trim and the offset together so a head-trim gesture's 
 one undo entry. The stored `bytes` are never touched — trimming is non-destructive, so widening a
 handle back out after a save-and-reload recovers the audio. Lane UI: the canvas still draws the whole
 buffer, with the trimmed head/tail dimmed the same way the past-the-last-frame tail already is; two
-8px edge handles, undo bracketed per completed gesture via `transformDragGuard.settle`, the same shape
-the offset drag already uses.
-**Five Minor findings deferred, deliberately, not fixed:** (1) the trim handles sit at `z-20`, the
-same stacking context as the sticky gutter label/marker, and DOM order makes the handles win — with
-the clip at offset 0 and the timeline scrolled right, the invisible head handle can overlay the
-mute/✕ buttons and steal their presses; the fix is to drop the handles' `z-20`. (2)
+8px edge handles carrying the video-ref clip's two 1px `pointer-events-none` grip bars (the grips are
+the ONLY marking — `cursor-ew-resize` does nothing on iPad), undo bracketed per completed gesture via
+`transformDragGuard.settle`, the same shape the offset drag already uses.
+**The lane's origin is `offsetFrames - trimInFrames`, not `offsetFrames`** (fixed 2026-08-16, a
+whole-branch review's one Critical). The trim model anchors the FIRST KEPT sample at `offsetFrames`
+— `bufferOffsetForFrame` yields kept-span time and `trimHead` moves `offsetFrames`/`trimInFrames` by
+the same delta — so BUFFER frame 0 sits `trimInFrames` earlier. The wrapper's `margin-left` still
+placed buffer frame 0 at `offsetFrames`, which was right before the branch: the kept body then drew
+`trimIn` columns right of where it PLAYS, and, because the handles' `left` is measured from that
+wrapper edge, the head handle travelled at 2× the pointer and hit the minimum-length clamp after half
+its expected travel. Three places share that origin and must move together: the wrapper `margin-left`,
+the `docEndX` term in the `waveform` action, and `Timeline.svelte`'s `stripFrames` (that last one only
+costs surplus scroll width, but coherence beats a second convention).
+**Four Minor findings deferred, deliberately, not fixed** (a fifth, the handles' `z-20`, WAS fixed —
+it tied them with the sticky gutter's label/marker, and with a negative `offsetFrames` the invisible
+head handle overlaid the mute/✕ buttons and stole their presses; the handles are `absolute` inside a
+`relative` wrapper, so they paint above the canvas with no z-index at all): (1)
 `setPointerCapture` in `trimDown` runs before the `if (trimDrag) return` guard, so a second
 simultaneous pen/mouse pointer on the other handle could drive the move off the first gesture's
-origin. (3) The `laneDown` trim guard is unreachable by construction (the handles are DOM siblings of
+origin. (2) The `laneDown` trim guard is unreachable by construction (the handles are DOM siblings of
 the canvas, not descendants) — noted so nobody later treats it as the load-bearing thing preventing a
-double gesture. (4) An out-and-back drag on a never-trimmed clip leaves the optional fields
+double gesture. (3) An out-and-back drag on a never-trimmed clip leaves the optional fields
 materialised as an explicit 0/extent with no undo entry — behaviourally identical to untrimmed, but it
-re-arms autosave for a gesture that changed nothing. (5) `trimUp` skips its settle on the touch
-branch, where the body drag's `laneUp` settles unconditionally. **Owed a browser pass** (Tasks 5/6
+re-arms autosave for a gesture that changed nothing. (4) `trimUp` skips its settle on the touch
+branch, where the body drag's `laneUp` settles unconditionally.
+`AudioEngine.scrub` passes `Math.min(SCRUB_WINDOW_S, lenS - at)` as `start()`'s duration: its
+`at >= lenS` guard only covers starting OUTSIDE the kept span, so scrubbing the last kept frame of a
+tail-trimmed clip used to play up to 100 ms of the material the trim removed. **Owed a browser pass** (Tasks 5/6
 have no unit tests and playback is audible, so none of this is verified beyond build+review): trim
 head and tail and hear the result match the waveform; a head trim leaves the kept audio at the same
 project frame (the sync-preserving property — check this first); drag a handle back out and recover
@@ -1751,4 +1765,8 @@ the audio; trim → undo → redo; ⌘Z mid-drag; a trimmed clip exports with ex
 that puts the clip entirely outside the export window exports with no audio track and still succeeds;
 scrub inside and outside the trimmed span; mute unchanged; save → reload preserves the trim and the
 bytes; an old project opens untrimmed; iPad for the handles (`touch-action`, finger-pan vs pen-trim).
+Plus the 2026-08-16 fix wave: a head trim leaves the solid body drawn at the frame it plays and the
+head handle under the pointer 1:1 the whole drag; the grips are visible on both handles on iPad; a
+negative-offset clip's head handle no longer swallows the mute/✕ presses; scrubbing the last kept
+frame of a tail-trimmed clip is silent past the out-point.
 Spec/plan: `docs/superpowers/{specs,plans}/2026-08-16-audio-clip-trim*.md`.

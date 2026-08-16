@@ -218,15 +218,18 @@
       // with the timeline columns; the clamped backing store is stretched to fit.
       node.style.width = naturalW + "px";
       ctx.clearRect(0, 0, node.width, node.height);
-      // Boundary in backing-store px: CSS px scaled by the canvas-width clamp ratio.
-      // The clip may outlast the document: past the last frame there is no ruler and nothing to
-      // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
-      const docEndX = (state.project.frameCount - audio.offsetFrames) * cellW * (w / naturalW);
       // Trimmed head/tail stay drawn, dimmed, so you can see what was cut and drag it back.
       // Same tokens and alpha the past-the-last-frame tail already uses. `cols` is already the
       // buffer's extent in frames, so there is nothing to recompute.
       const keptFrom = Math.max(0, audio.trimInFrames ?? 0);
       const keptTo = Math.min(cols, keptFrom + (audio.trimLenFrames ?? cols - keptFrom));
+      // Boundary in backing-store px: CSS px scaled by the canvas-width clamp ratio.
+      // The clip may outlast the document: past the last frame there is no ruler and nothing to
+      // scrub, so dim that tail (still visible for drag-positioning, clearly not frame-backed).
+      // Measured from BUFFER frame 0, which sits at project frame `offsetFrames - trimIn`: the
+      // trim model anchors the FIRST KEPT sample at `offsetFrames` (see the wrapper's margin-left).
+      const docEndX =
+        (state.project.frameCount - (audio.offsetFrames - keptFrom)) * cellW * (w / naturalW);
       const pxPerFrame = (w / naturalW) * cellW;
       const keptX0 = keptFrom * pxPerFrame;
       const keptX1 = keptTo * pxPerFrame;
@@ -317,8 +320,16 @@
     </div>
     <!-- The clip's position lives on this wrapper, not the canvas: the absolutely-positioned trim
          handles need a positioned ancestor sharing the buffer's frame-0 origin, so their `left`
-         carries no offsetFrames term. -->
-    <div class="relative" style="margin-left: {state.project.audio.offsetFrames * cellW}px">
+         carries no offsetFrames term.
+         The origin is `offsetFrames - trimIn`, NOT `offsetFrames`: the trim model puts the FIRST
+         KEPT sample at `offsetFrames` (bufferOffsetForFrame yields kept-span time, and trimHead
+         moves offsetFrames and trimInFrames by the same delta), so buffer frame 0 lives that many
+         frames earlier. Using offsetFrames drew the kept body trimIn columns right of where it
+         plays, and made the head handle travel at 2x the pointer. -->
+    <div
+      class="relative"
+      style="margin-left: {(state.project.audio.offsetFrames - trimIn) * cellW}px"
+    >
       <canvas
         class="h-7 cursor-grab"
         style="touch-action: none"
@@ -329,8 +340,16 @@
         onpointercancel={laneUp}
         title="Drag to offset the audio clip"
       ></canvas>
+      <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing on iPad
+           (no cursor, no hover), which is the platform this app is used on most. The bars are
+           pointer-events-none so the handle div stays the event target. Same treatment as the
+           video-ref clip's trim handles in Timeline.svelte — keep the two in step.
+           No z-index: the handles are absolute inside a relative wrapper, so they already paint
+           above the unpositioned canvas. z-20 tied them with the sticky gutter's label/marker
+           columns, and with a negative offsetFrames the head handle then stole presses from the
+           mute and Remove buttons. -->
       <div
-        class="absolute inset-y-0 z-20 w-2 cursor-ew-resize"
+        class="absolute inset-y-0 flex w-2 cursor-ew-resize items-center justify-center gap-px"
         style="left: {trimIn * cellW}px; touch-action: none"
         role="presentation"
         title="Trim the start of the audio"
@@ -338,9 +357,12 @@
         onpointermove={trimMove}
         onpointerup={trimUp}
         onpointercancel={trimUp}
-      ></div>
+      >
+        <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+        <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+      </div>
       <div
-        class="absolute inset-y-0 z-20 w-2 cursor-ew-resize"
+        class="absolute inset-y-0 flex w-2 cursor-ew-resize items-center justify-center gap-px"
         style="left: {Math.max(trimIn + AUDIO_MIN_TRIM_FRAMES, trimIn + trimLen) * cellW -
           8}px; touch-action: none"
         role="presentation"
@@ -349,7 +371,10 @@
         onpointermove={trimMove}
         onpointerup={trimUp}
         onpointercancel={trimUp}
-      ></div>
+      >
+        <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+        <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+      </div>
     </div>
   </div>
 {/if}

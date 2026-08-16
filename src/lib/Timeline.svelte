@@ -97,7 +97,14 @@
     const ends: number[] = [];
     const fps = appState.project.fps;
     const audio = appState.project.audio;
-    if (audio) ends.push(audio.offsetFrames + audioFrameSpan(audio.buffer.duration, fps));
+    // The lane draws from BUFFER frame 0, which sits at `offsetFrames - trimInFrames` (the trim
+    // model anchors the first KEPT sample at offsetFrames) — see AudioLane's wrapper margin-left.
+    if (audio)
+      ends.push(
+        audio.offsetFrames -
+          Math.max(0, audio.trimInFrames ?? 0) +
+          audioFrameSpan(audio.buffer.duration, fps),
+      );
     for (const l of appState.project.layers) {
       if (l.kind !== "ref") continue;
       if (l.media.type === "image") {
