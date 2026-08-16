@@ -2408,10 +2408,11 @@ fixed root to get there, not the document `overflow` rules.
   Same kept-span-vs-buffer-time care the trim work needed; 5 new tests pin it, including that
   omitting the start argument reproduces the old whole-timeline plan exactly. Output timestamps and
   PNG filenames both restart at zero/one, since an exported range is an ordinary clip, not a file
-  with a hole at its head.
+  with a hole at its head. **Verified in the browser 2026-08-17**, audio alignment included.
 - ~~`evenDimensions` crops video but not PNG.~~ **FIXED 2026-08-17 — and it was worse than a
   disagreement.** Rounding DOWN silently cropped the last row/column of ARTWORK out of the video
   while the PNG sequence (no even requirement, true document size) kept it. It rounds UP now, so the
   video is padded by at most one pixel per axis and loses nothing. That padding needs a fill:
   `renderFrame` only clears and fills the DOCUMENT rect, so the pad strip would otherwise encode as
   garbage — `exportVideo` paints `bgColor` across the whole surface before each frame.
+  **Verified in the browser 2026-08-17.**
