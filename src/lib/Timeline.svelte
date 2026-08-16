@@ -52,6 +52,7 @@
     insertFrameAllLayers,
     deleteFrameAllLayers,
     ensureDrawableKeyframe,
+    restoreCellTrack,
     setHoldSpan,
   } from "../anim/timeline";
   import { resolveSelectionRect } from "../anim/timeline-selection";
@@ -74,6 +75,7 @@
     refVisibleSpan,
     type DrawingLayer,
     type ReferenceLayer,
+    type Cell,
   } from "../anim/document";
   import {
     videoClipLayout,
@@ -902,6 +904,12 @@
     const editable = isLayerEditable(layer, appState.project.groups);
     const plan = planCellPointer(layer.cells, rowOffset(e), CELL_W, appState.project.frameCount);
     if (plan.kind === "resize" && editable) {
+      // `setHoldSpan` splices the cell track, which a live lift/stroke holds a whole-track undo rider
+      // against — undoing that lift would then also revert this resize. Must run BEFORE
+      // `beginStructuralEdit`, since the discard reverts any keyframe the lift materialised and that
+      // has to be part of the before-state. (Reachable without a layer/frame change: pressing this
+      // row re-selects the SAME layer, so nothing banks the lift for us.)
+      liftGuard.discard?.();
       dragMode = "resize";
       dragKey = plan.keyIndex;
       dragStartBoundary = rowBoundary(e);
@@ -1090,9 +1098,21 @@
   // (inserts land AFTER the playhead, then the playhead follows to the new frame).
   // Frame tools are undoable structural edits. Advancing the playhead happens inside the
   // mutation so commitStructural's trailing bump() refreshes the length and clamps it.
+  /** Put a cell track back, resolving the layer by ID at restore time — `restoreStructure` installs
+   *  a FRESH layer object when the layer was removed or changed kind, so a captured object goes
+   *  stale and the restore would silently write outside the document. */
+  function restoreTrackById(layerId: number, cells: Cell[]) {
+    const l = appState.project.layers.find((x) => x.id === layerId);
+    if (l?.kind === "draw") restoreCellTrack(l, cells);
+  }
   function frameTool() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    // Splices the cell track, which a live stroke/lift holds a whole-track undo rider against — on
+    // iPad a finger can tap this while the Pencil is mid-stroke, and the rider (captured before the
+    // splice) would then revert the inserted frame when that stroke is undone. The only frame tool
+    // that lacked this; its siblings discard for the canvas-clone reason instead.
+    liftGuard.discard?.();
     commitStructural(() => {
       addFrame(l, appState.playhead);
       appState.playhead += 1;
@@ -1152,7 +1172,8 @@
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
     liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
-    const canvas = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
+    const { canvas, materialized } = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
+    const layerId = l.id; // resolved at restore time: `restoreStructure` can replace the layer object
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -1164,9 +1185,13 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          // Clearing a HOLD materialises a keyframe first; undo removes that too, so the frame goes
+          // back to being a hold rather than staying an empty ◆.
+          if (materialized) restoreTrackById(layerId, materialized.before);
           bump();
         },
         () => {
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           bump();
         },

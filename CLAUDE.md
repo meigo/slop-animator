@@ -2168,19 +2168,132 @@ four more, all fixed here.
 Known and left: an undecoded track has no UI at all — it cannot be seen, muted or removed, only
 preserved. Adding one means deciding what a track you cannot hear should look like; not this wave.
 
+**Materialising a keyframe is now part of the undo entry that caused it (2026-08-16).** This was the
+one finding the audit wave deliberately left, because every fix changes what a single ⌘Z means. It
+surfaced as the plain question "I draw on a hold, undo, and the drawing goes but the ◆ stays — should
+the key go too?" It should, and making it go also closes the data-loss path.
+
+**What was wrong.** `ensureDrawableKeyframe` converts `{kind:"hold"}` into a real key (or extends the
+track past the layer's end) and returned only a canvas. The tool that called it then recorded a PIXEL
+command. So the structural half was captured by NOTHING. Two consequences, one cosmetic and one not:
+undo reverted the pixels and stranded a blank ◆; and undoing an EARLIER structural entry restored the
+layer's pre-materialisation `cells`, deleting the cell out from under the pixel command that owned its
+canvas — so redo painted into an orphan and the drawing was gone with no way back.
+
+**The fix.** `ensureDrawableKeyframe` now returns `{ canvas, materialized }`, where `materialized` is
+a `CellTrackChange { before, after }` — whole-track arrays, `null` when the frame was already a key.
+The return type CHANGED rather than a second function being added, so the compiler names every call
+site; there were **eight**, not the three a truncated grep first showed. Each folds the restore into
+the undo/redo closures it already pushes, so one stroke stays one ⌘Z: undo takes the pixels **and**
+the ◆, redo puts both back.
+
+- **Whole-track copies, not a per-shape diff.** The two shapes (hold→key, and extend-past-the-end)
+  collapse into one, and a few hundred REFERENCES cost nothing beside the two ImageDatas the same
+  command already retains. `restoreCellTrack` copies on the way in, so a later in-place splice on the
+  live array cannot reach back and corrupt the record.
+- **Redo installs the track BEFORE the pixels.** The canvas a pixel command writes into only belongs
+  to the document once its cell is back in the track.
+- **The four LIFT entry points** (paper crop, paste, deform, pose) hold it in `selLayer`/
+  `selMaterialized` beside `selCtx`/`selBefore`, for the same span — a new `clearLiftTarget()` drops
+  all four together, since clearing three of them was exactly how a stale record could outlive its
+  lift. In `enterDeform`/`enterPose` they must be set **after** `selection.cancel()`, which clears
+  them.
+- **Every abandon path reverts too**, and there are more of them than the happy path: a discarded
+  stroke (`discardActiveEdits`), a cancelled lift or pose, a crop that finds nothing, deform/pose on
+  an empty cell, and a pose whose mesh fails to build. All of those previously left a ◆ behind for a
+  gesture that did nothing. The discard also `bump()`s, because the stroke's start already bumped and
+  a revert past the layer's end SHRINKS the track, so `frameCount` has to be recomputed.
+
+**Three things a review caught, all of them the rider's blast radius rather than its idea.**
+
+1. **`enterDeform`/`enterPose` materialised BEFORE `selection.cancel()` — a Critical the rider
+   created.** `cancel()` now reverts the cell track, so it could remove the very cell whose canvas
+   the tool had just taken: the pose then lifted from, and baked into, a detached canvas and the
+   work vanished silently. Reachable via marquee on a hold → Free transform → press with Pose. Both
+   functions now **tear down the previous lift first, then materialise** — the ordering
+   `pasteSelection` already had. It also means the content bounds are measured on a canvas without
+   the old lift's hole punched in it.
+2. **The rider is a WHOLE-TRACK snapshot spanning the whole gesture**, so a structural track edit
+   landing between materialise and commit gets reverted along with the stroke. Every timeline op
+   that splices a track already called `liftGuard.discard?.()` first — except **Add frame**, which
+   on iPad a finger can tap mid-Pencil-stroke. Added there. (A targeted rider — revert only
+   `cells[frame]` — would be structurally immune, but that is a larger change than this needs.)
+3. **A captured layer OBJECT goes stale.** `restoreStructure` mutates the live layer in place only
+   while it still exists with the same kind; otherwise it installs a FRESH object (reachable via
+   rasterize, which keeps the id, and via delete-then-undo). A deferred closure holding the old one
+   writes outside the document — the same orphan failure one branch over. Every DEFERRED restore
+   (the undo/redo closures) now resolves the layer **by id at restore time** via
+   `restoreTrackById`; the IMMEDIATE reverts (abandon/cancel/discard paths, same tick or same
+   teardown flow) keep the object, which is provably live there.
+
+Pure logic is unit-tested (9 cases, incl. canvas IDENTITY across a before→after round trip — the
+property that keeps redo pointing at a cell that is actually in the document — that `after` is
+copied too, since it is what redo installs, and that the record survives a later in-place edit). The
+eight call sites are DOM-coupled and are build+review verified.
+**Owed a browser pass:** draw on a hold → undo → the ◆ becomes · again and the held drawing returns;
+redo restores both; draw on a hold, then undo an EARLIER structural edit, then redo forward (the
+data-loss case); fill / clear-frame / delete / paste / deform / pose each on a hold, undone; drawing
+past the layer's end → undo → the track shrinks back and the timeline length with it; a stroke
+discarded mid-gesture by a two-finger undo leaves no ◆.
+
+**Deform and Pose lift on ARRIVAL, not on the first press (2026-08-16).** Reported as "selecting the
+deform tool doesn't create the grid handles — they appear after clicking on the canvas". By design,
+not a regression: `enterDeform`/`enterPose` fired from `onStroke` on `points.length === 1 && !done`.
+Two costs, and the second is the one that mattered — the tool looked INERT until you guessed that a
+tap would do something (no grid, no handles, nothing said so), and that first press was consumed
+ENTIRELY by the lift (both branches `return` straight after entering), so summoning the grid and
+grabbing a handle could never be the same gesture. Every deform was tap-then-press-drag. Entry now
+happens in the tool `$effect`, so the first press lands on a handle.
+
+Three things this needed, none of them obvious:
+
+- **The press-time entry STAYS as a fallback.** A layer or frame switch banks the lift
+  (`bankActiveEdits`) without the tool changing, so the effect will not re-fire — without the
+  fallback the tool would go permanently inert after one frame step. It is now a safety net rather
+  than the main path.
+- **Entry is gated on `toolEntryPrimed`, and that guard is load-bearing.** The tool is PERSISTED, so
+  the effect's first run always reports a change from the hardcoded `"brush"` to whatever was
+  restored. Without the gate, launching the app with Deform selected would lift — and on a hold
+  MATERIALISE A KEYFRAME — with no gesture behind it, possibly before the project has finished
+  restoring. Arriving with the tool already selected therefore still waits for one press.
+- **An untouched lift now CANCELS instead of baking** (`deformDirty`/`poseDirty`, set only when a
+  grid point or pose handle actually MOVES — adding a handle changes the mesh, not the picture).
+  Baking one pushes an undo entry that changes nothing, and since a lift→re-render round trip is a
+  resample, "nothing" is not even guaranteed to be pixel-identical. This was already reachable by
+  tapping the canvas with Deform selected and switching away; making entry automatic would have made
+  it the COMMON case, including one junk entry per frame step while scrubbing with Deform active.
+  Both bake sites (the tool switch and `bankActiveEdits`) check it.
+
+**Two more the re-review caught, both created by moving entry to the tool switch.** (a) `enterPose`
+ended with `bump()`, so merely SELECTING the tool armed the 3s autosave debounce over a cell whose
+content `liftPixels` had punched out — the float lives on the overlay, which autosave never sees, so
+a tab killed inside that window reloaded to an empty keyframe. It is `repaint()` now (version only):
+**a lift is not a document edit**, and the pose bar only ever needed `version`. Same in `cancelPose`.
+(b) The tool `$effect` does not commit an open stroke the way `bankActiveEdits` does, so on iPad a
+finger tapping the tool button mid-Pencil-stroke would capture `selBefore` and punch the hole while
+`paintStroke` kept writing the same ctx — entry is gated on `!strokeCanvas`, and the press-time
+fallback picks it up once the stroke ends. Also: the hold-span resize was the LAST track-splicing op
+without a `liftGuard.discard` (it must sit above `beginStructuralEdit`, since the discard's revert
+belongs in the before-state), and a pose mesh rebuild resets `poseDirty` — it drops every handle, so
+the picture is back at rest.
+
+**Deliberately NOT done: re-entering after a frame or layer step.** `bankActiveEdits` cancels the
+untouched lift and nothing re-enters, so scrubbing with Deform selected leaves the grid gone until
+the next press. Auto-re-entry would mean every frame step lifts — and on a hold, MATERIALISES a
+keyframe — turning a scrub into a document-wide mutation. The press fallback keeps it usable; revisit
+only if the missing grid actually bites.
+
+**Owed a browser pass:** the grid appears on selecting Deform and the first press grabs a handle;
+same for Pose; an empty cell or a locked/hidden layer still enters nothing; select Deform then switch
+away without touching it (no undo entry — ⌘Z should hit the edit BEFORE it); step a frame with Deform
+active; reload with Deform as the saved tool (no lift until you press, and no ◆ appears on a hold).
+
 **Deferred by this wave — decided, not forgotten:**
 
-- **`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.** Drawing on a hold
-  materialises a keyframe (`cells[i] = {kind:"key", canvas}`) outside any structural snapshot; the
-  stroke is recorded as a PIXEL command against that canvas. Ordered scenario: (1) a structural op
-  (say, insert frame) pushes entry A; (2) draw on a hold at frame 5 → the cell silently becomes a
-  key, then a pixel command B records the stroke; (3) ⌘Z pops B (pixels revert, the ·→◆ marker
-  stays — the known app-wide cosmetic gap); (4) ⌘Z again pops A, whose `restoreStructure` reinstalls
-  the layer's PRE-materialisation `cells` array — the keyframe created in (2) disappears along with
-  the canvas the pixel command owns, so REDO of B paints into a canvas no longer in the document.
-  Real and serious, but every fix changes undo granularity for ORDINARY DRAWING (either drawing on
-  a hold pushes a structural entry too, or pixel commands must carry a structural rider), which is a
-  product decision the user has to make. **Code deliberately untouched.**
+- ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —
+  the pixel command carries the structural rider; see the entry above. The product question this was
+  parked on ("does drawing on a hold now cost two undo steps?") answered itself: it costs one, and
+  the ◆ goes with the drawing.
 - **Export has no streaming/progress/cancel**, and materialises the whole encode in memory (the
   end-of-render spike). Too large for a defect wave; needs its own design pass.
 - **"New" has no confirmation** — it replaces the document and clears the autosave slot on one tap.

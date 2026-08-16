@@ -9,6 +9,7 @@ import {
   duplicateKeyframe,
   deleteFrame,
   ensureDrawableKeyframe,
+  restoreCellTrack,
   insertFrameAllLayers,
   deleteFrameAllLayers,
   shiftSpan,
@@ -142,7 +143,7 @@ describe("timeline operations", () => {
       { kind: "key", canvas: src as unknown as HTMLCanvasElement },
       { kind: "hold" },
     ]);
-    const canvas = ensureDrawableKeyframe(l, 1, fakeOps);
+    const { canvas } = ensureDrawableKeyframe(l, 1, fakeOps);
     expect(l.cells[1].kind).toBe("key");
     expect((canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(src.__id);
   });
@@ -167,7 +168,7 @@ describe("timeline operations", () => {
 
   it("ensureDrawableKeyframe creates a blank keyframe when nothing is held", () => {
     const l = layer([{ kind: "hold" }]);
-    const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
+    const { canvas } = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(l.cells[0].kind).toBe("key");
     expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
   });
@@ -175,18 +176,101 @@ describe("timeline operations", () => {
   it("ensureDrawableKeyframe returns the existing canvas when the frame is already a keyframe", () => {
     const existing = fakeOps.create();
     const l = layer([{ kind: "key", canvas: existing }]);
-    const canvas = ensureDrawableKeyframe(l, 0, fakeOps);
+    const { canvas } = ensureDrawableKeyframe(l, 0, fakeOps);
     expect(canvas).toBe(existing);
   });
 
   it("ensureDrawableKeyframe extends the layer with holds when drawing past its end", () => {
     const l = layer([{ kind: "hold" }]); // length 1
-    const canvas = ensureDrawableKeyframe(l, 3, fakeOps);
+    const { canvas } = ensureDrawableKeyframe(l, 3, fakeOps);
     expect(l.cells.length).toBe(4);
     expect(l.cells[1]).toEqual({ kind: "hold" });
     expect(l.cells[2]).toEqual({ kind: "hold" });
     expect(l.cells[3].kind).toBe("key");
     expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+  });
+
+  // Materialising a keyframe is a STRUCTURAL change made by a tool that records a PIXEL command.
+  // For years nothing captured it: undo reverted the pixels and left a blank ◆ behind, and undoing
+  // an earlier structural entry deleted the cell out from under the pixel command that owned it.
+  // These pin the reporting that lets a caller fold it into the same undo entry.
+  it("reports no materialization when the frame is already a keyframe", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    expect(ensureDrawableKeyframe(l, 0, fakeOps).materialized).toBeNull();
+  });
+
+  it("reports the cell track on both sides of a hold→key materialization", () => {
+    const src = fakeOps.create();
+    const l = layer([{ kind: "key", canvas: src }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    expect(materialized).not.toBeNull();
+    expect(materialized!.before[1]).toEqual({ kind: "hold" });
+    expect(materialized!.after[1].kind).toBe("key");
+  });
+
+  it("restoring `before` turns the materialized keyframe back into a hold", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    restoreCellTrack(l, materialized!.before);
+    expect(l.cells[1]).toEqual({ kind: "hold" }); // the ◆ undo has to remove
+    expect(l.cells.length).toBe(2);
+  });
+
+  it("restoring `before` truncates the holds appended past the layer's end", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const { materialized } = ensureDrawableKeyframe(l, 3, fakeOps);
+    expect(l.cells.length).toBe(4);
+    restoreCellTrack(l, materialized!.before);
+    expect(l.cells.length).toBe(1); // the track never grew
+  });
+
+  it("restoring `after` puts back the SAME canvas, so a redo paints into a cell in the document", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { canvas, materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    restoreCellTrack(l, materialized!.before);
+    restoreCellTrack(l, materialized!.after);
+    const cell = l.cells[1];
+    expect(cell.kind).toBe("key");
+    if (cell.kind !== "key") return;
+    expect(cell.canvas).toBe(canvas); // identity matters: the pixel command holds this ctx
+  });
+
+  it("restoreCellTrack copies, so a later edit of the live track can't corrupt the record", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    restoreCellTrack(l, materialized!.before);
+    l.cells.push({ kind: "hold" }); // an unrelated op edits the live array in place
+    expect(materialized!.before.length).toBe(2); // record untouched
+  });
+
+  // `after` is what REDO installs, so it has the same aliasing exposure as `before`.
+  it("restoreCellTrack copies `after` too, so a redo can be repeated", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    restoreCellTrack(l, materialized!.after);
+    l.cells.push({ kind: "hold" }); // live array grows under the record
+    expect(materialized!.after.length).toBe(2);
+    restoreCellTrack(l, materialized!.after); // redo again → same track, not the mutated one
+    expect(l.cells.length).toBe(2);
+  });
+
+  it("`after` carries the holds appended past the layer's end", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
+    const { materialized } = ensureDrawableKeyframe(l, 3, fakeOps);
+    expect(materialized!.after.length).toBe(4);
+    expect(materialized!.after[1]).toEqual({ kind: "hold" });
+    expect(materialized!.after[3].kind).toBe("key");
+  });
+
+  it("before → after → before round-trips (undo/redo/undo of the same entry)", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    const { materialized } = ensureDrawableKeyframe(l, 1, fakeOps);
+    const materializedTrack = l.cells.slice();
+    restoreCellTrack(l, materialized!.before);
+    restoreCellTrack(l, materialized!.after);
+    expect(l.cells).toEqual(materializedTrack);
+    restoreCellTrack(l, materialized!.before);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
   });
 });
 

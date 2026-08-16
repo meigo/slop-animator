@@ -13,7 +13,7 @@
   } from "../core/fill";
   import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
-  import { ensureDrawableKeyframe } from "../anim/timeline";
+  import { ensureDrawableKeyframe, restoreCellTrack, type CellTrackChange } from "../anim/timeline";
   import {
     state as appState,
     history,
@@ -24,6 +24,7 @@
     activeLayer,
     activeStroke,
     bump,
+    repaint,
     pressureCurve,
     toggleEraser,
     applyEyedropper,
@@ -67,6 +68,7 @@
     type Layer,
     type Cell,
     type LayerGroup,
+    type DrawingLayer,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
@@ -309,6 +311,8 @@
   let selection: Selection;
   let selectionMode: "create" | "drag" | null = null;
   let prevTool: Tool = "brush";
+  // False until the tool $effect has run once, so a restored preference doesn't read as a user pick.
+  let toolEntryPrimed = false;
   // Track the active layer/frame so a switch can discard any in-progress lift (see the cleanup $effect).
   let prevLayer = appState.activeLayerId;
   let prevPlayhead = appState.playhead;
@@ -318,9 +322,39 @@
   // Compose at lift/paste time. Commit inverts *this*, not live activeLayer() —
   // bankActiveEdits runs after the layer/playhead has already changed.
   let liftComposeSteps: ComposeStep[] = [];
+  // A lift on a HOLD materialises a keyframe to lift out of. Carried beside `selBefore` and for the
+  // same span, so the commit's undo also removes that ◆ and a cancel leaves the hold a hold. Set
+  // wherever selCtx/selBefore are set (paper crop, paste, deform, pose); cleared with them.
+  let selLayer: DrawingLayer | null = null;
+  let selMaterialized: CellTrackChange | null = null;
+  /** Put a cell track back, resolving the layer by ID **at restore time**. A captured layer OBJECT
+   *  goes stale: `restoreStructure` mutates the live layer in place only when it still exists with
+   *  the same kind — otherwise it installs a fresh object, so an undo/redo closure holding the old
+   *  one would write to something no longer in the document. Reachable via rasterize (ref→draw keeps
+   *  the id) and via delete-then-undo. */
+  function restoreTrackById(layerId: number, cells: Cell[]) {
+    const l = appState.project.layers.find((x) => x.id === layerId);
+    if (l?.kind === "draw") restoreCellTrack(l, cells);
+  }
+  /** Drop the lift's whole target binding at once — the four fields have one lifetime, and clearing
+   *  three of them was how a stale materialisation could outlive the lift that made it. */
+  function clearLiftTarget() {
+    selCtx = null;
+    selBefore = null;
+    liftComposeSteps = [];
+    selLayer = null;
+    selMaterialized = null;
+  }
   const PASTE_OFFSET = 8; // logical px — so a paste-in-place reads as a new copy
   // $state so the floating Paste button reacts to copy/cut filling the clipboard.
   let selectionClipboard = $state<{ canvas: HTMLCanvasElement; rect: SelectionRect } | null>(null);
+  // Did the artist actually MOVE anything since the lift? Now that selecting the tool lifts on its
+  // own, an untouched lift is the common case — baking it would push an undo entry that changes
+  // nothing (and a lift→re-render round trip is a resample, so "nothing" isn't even guaranteed to be
+  // pixel-identical). Untouched lifts cancel instead. Adding a pose handle doesn't count: it changes
+  // the mesh, not the picture.
+  let deformDirty = false;
+  let poseDirty = false;
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
   let poseDrag: number | null = null;
@@ -337,6 +371,11 @@
   let beforeSnapshot: ImageData | null = null;
   // Compose captured at stroke start — paintStroke must not re-read activeLayer/playhead.
   let strokeSteps: ComposeStep[] | null = null;
+  // The layer the stroke started on, and the keyframe it had to materialise (drawing on a hold, or
+  // past the layer's end) — both captured at stroke start so the commit binds the same cell track
+  // the stroke began on, whatever the active layer is by the time the pointer lifts.
+  let strokeLayer: DrawingLayer | null = null;
+  let strokeMaterialized: CellTrackChange | null = null;
   // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
   let dropStrokeUntilUp = false;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
@@ -418,7 +457,8 @@
       : { x: 0, y: 0, w: W, h: H };
     const steps: ComposeStep[] = [{ base: cellBox, t: cellT }, ...layerComposeSteps(layer)];
     pt = inverseChain(steps, pt);
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const layerId = layer.id; // resolve at restore time, never through a captured object
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -451,9 +491,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
         () => {
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
@@ -488,7 +530,8 @@
     if (area === 0) return nothing();
 
     // Only now materialise the keyframe — on a hold it clones the very canvas just measured.
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const layerId = layer.id;
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -515,9 +558,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
         () => {
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
@@ -791,6 +836,8 @@
       strokeCtx = null;
       beforeSnapshot = null;
       strokeSteps = null;
+      strokeLayer = null;
+      strokeMaterialized = null;
       return;
     }
     if (drawRaf) {
@@ -801,13 +848,23 @@
     const after = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
     const target = strokeCtx;
     const before = beforeSnapshot;
+    // Drawing on a hold (or past the layer's end) MATERIALIZED a keyframe. That is a structural
+    // change, and it rides in this same command so one stroke stays one ⌘Z: undo takes the pixels
+    // AND the ◆ it created, redo puts both back. Leaving it out is what let a later structural undo
+    // delete the cell this command's `target` points into.
+    const layerId = strokeLayer?.id ?? null;
+    const mat = strokeMaterialized;
     history.push(
       pixelCommand(
         () => {
           target.putImageData(before, 0, 0);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
           recomposite();
         },
         () => {
+          // Cell track FIRST: the canvas `target` writes into only belongs to the document once its
+          // cell is back in the track.
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
           target.putImageData(after, 0, 0);
           recomposite();
         },
@@ -819,6 +876,8 @@
     strokeCtx = null;
     beforeSnapshot = null;
     strokeSteps = null;
+    strokeLayer = null;
+    strokeMaterialized = null;
     bump(); // refresh the timeline (e.g. an empty cell that just gained ink flips ·→◆)
   }
 
@@ -898,9 +957,11 @@
           const d = Math.hypot(p.x - c.x, p.y - c.y);
           meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
           meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
+          poseDirty = true;
           posePaint();
         } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
+          poseDirty = true;
           posePaint();
         }
       } else {
@@ -922,7 +983,10 @@
           selection.startDrag(handle, p.x, p.y);
         }
       } else if (!done) {
-        if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
+        if (selectionMode === "drag") {
+          selection.updateDrag(p.x, p.y);
+          deformDirty = true;
+        }
       } else {
         if (selectionMode === "drag") selection.endDrag();
         selectionMode = null;
@@ -977,7 +1041,10 @@
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
       if (!isLayerEditable(layer, appState.project.groups)) return;
-      strokeCanvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+      const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+      strokeCanvas = mk.canvas;
+      strokeLayer = layer;
+      strokeMaterialized = mk.materialized;
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
       strokeSteps = cellComposeSteps(layer);
@@ -1041,14 +1108,18 @@
       selCtx.restore();
       const ctx = selCtx;
       const before = selBefore;
+      const layerId = selLayer?.id ?? null;
+      const mat = selMaterialized;
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
       history.push(
         pixelCommand(
           () => {
             ctx.putImageData(before, 0, 0);
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // lifting on a hold made this ◆
             recomposite();
           },
           () => {
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
             ctx.putImageData(after, 0, 0);
             recomposite();
           },
@@ -1056,9 +1127,7 @@
           after,
         ),
       );
-      selCtx = null;
-      selBefore = null;
-      liftComposeSteps = [];
+      clearLiftTarget();
       bump();
       recomposite();
     };
@@ -1066,11 +1135,17 @@
     selection.onCancel = () => {
       if (selCtx && selBefore) {
         selCtx.putImageData(selBefore, 0, 0);
+        // A cancelled lift leaves nothing behind — including the keyframe it materialised.
+        // Reverting the TRACK needs a bump, not just a repaint: the lift's entry already bumped
+        // (pasteSelection does so explicitly), so without this `persistTick` describes a document
+        // state that has since been undone. The sibling revert sites all bump for the same reason.
+        if (selLayer && selMaterialized) {
+          restoreCellTrack(selLayer, selMaterialized.before);
+          bump();
+        }
         recomposite();
       }
-      selCtx = null;
-      selBefore = null;
-      liftComposeSteps = [];
+      clearLiftTarget();
     };
 
     selectionRef.current = selection;
@@ -1148,14 +1223,18 @@
     if (!selection?.rect) return false;
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return false;
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const canvas = mk.canvas;
+    selLayer = layer;
+    selMaterialized = mk.materialized;
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     const crop = cropComposedSelection();
     if (!crop) {
-      selCtx = null;
-      selBefore = null;
-      liftComposeSteps = [];
+      // Nothing to lift — put back the keyframe this just materialised rather than stranding a ◆
+      // for a gesture that did nothing.
+      if (mk.materialized) restoreCellTrack(layer, mk.materialized.before);
+      clearLiftTarget();
       return false;
     }
     // Refresh before the hole punch so we don't clip with a previous layer's steps.
@@ -1172,13 +1251,17 @@
 
   // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
   // active layer isn't an editable (unlocked, visible) drawing layer.
-  function activeDrawableCtx(): CanvasRenderingContext2D | null {
+  function activeDrawableCtx(): {
+    ctx: CanvasRenderingContext2D;
+    layer: DrawingLayer;
+    materialized: CellTrackChange | null;
+  } | null {
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return null;
-    const canvas = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
+    const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    return ctx;
+    return { ctx, layer, materialized };
   }
 
   function copySelection() {
@@ -1192,8 +1275,10 @@
 
   function deleteSelection() {
     if (!selection || selection.state !== "selected") return;
-    const ctx = activeDrawableCtx();
-    if (!ctx) return;
+    const target = activeDrawableCtx();
+    if (!target) return;
+    const { ctx, layer, materialized } = target;
+    const layerId = layer.id;
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -1201,9 +1286,11 @@
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          if (materialized) restoreTrackById(layerId, materialized.before); // deleting on a hold made this ◆
           bump();
         },
         () => {
+          if (materialized) restoreTrackById(layerId, materialized.after);
           ctx.putImageData(after, 0, 0);
           bump();
         },
@@ -1223,9 +1310,11 @@
   function pasteSelection(): boolean {
     if (!selectionClipboard) return false;
     liftGuard.discard?.(); // drop any in-progress lift before setting up the new float
-    const ctx = activeDrawableCtx();
-    if (!ctx) return false;
-    selCtx = ctx;
+    const target = activeDrawableCtx();
+    if (!target) return false;
+    selCtx = target.ctx;
+    selLayer = target.layer;
+    selMaterialized = target.materialized; // pasting onto a hold materialises the ◆ this float lands in
     selBefore = selCtx.getImageData(0, 0, selCtx.canvas.width, selCtx.canvas.height); // for the commit undo
     const dest = activeLayer();
     liftComposeSteps = dest.kind === "draw" ? cellComposeSteps(dest) : [];
@@ -1255,12 +1344,21 @@
   function enterDeform() {
     const al = activeLayer();
     if (!isLayerEditable(al, appState.project.groups)) return;
-    const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
-    const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
-    if (!rect) return; // empty cell → nothing to deform
-    // Clear any leftover selection (esp. a lasso path) so liftPixels uses our content rect, not a
-    // stale lasso clip. cancel() reverts an in-progress lift (onCancel no-ops when nothing's lifted).
+    // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
+    // in-progress lift, and that revert now includes the cell track (a lift on a hold materialised
+    // a ◆). Materialising before cancelling meant cancel could remove the very cell whose canvas we
+    // had just taken, so the deform would lift from, and bake into, a detached canvas: silent loss.
+    // (It also means the content bounds below are measured on a canvas without the old lift's hole.)
     selection.cancel();
+    const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const canvas = mk.canvas;
+    const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
+    if (!rect) {
+      if (mk.materialized) restoreCellTrack(al, mk.materialized.before); // nothing to deform → leave the hold alone
+      return; // empty cell
+    }
+    selLayer = al;
+    selMaterialized = mk.materialized;
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0); // liftPixels operates in CSS/logical coords
@@ -1273,13 +1371,14 @@
     const lifted = selection.liftPixels(selCtx, DPR);
     if (!lifted) {
       selection.cellSpaceLift = false;
-      selCtx = null;
-      selBefore = null;
+      if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // abandoned → leave the hold alone
+      clearLiftTarget();
       return;
     }
     syncOverlayScale(); // handles/grid stay screen-constant against zoom × compose scale
     selection.beginTransform(lifted);
     selection.beginWarp(4, 4);
+    deformDirty = false; // fresh lift — nothing moved yet
   }
 
   // Reactive gate for the pose bar: read the proxy's version (reactive) so the bar
@@ -1377,10 +1476,19 @@
   function enterPose() {
     const al = activeLayer();
     if (!isLayerEditable(al, appState.project.groups)) return;
-    const canvas = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
+    // cancel() now reverts the cell track too, and could otherwise delete the cell whose canvas this
+    // pose is about to lift from and bake into.
+    selection.cancel(); // also clears any stale selection/lasso so liftPixels uses our content rect
+    const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const canvas = mk.canvas;
     const rect = contentRectLogical(contentBounds(canvas, appState.version), DPR);
-    if (!rect) return;
-    selection.cancel(); // clear any stale selection/lasso so liftPixels uses our content rect
+    if (!rect) {
+      if (mk.materialized) restoreCellTrack(al, mk.materialized.before); // nothing to pose → leave the hold alone
+      return;
+    }
+    selLayer = al;
+    selMaterialized = mk.materialized;
     selCtx = canvas.getContext("2d", { willReadFrequently: true })!;
     selBefore = selCtx.getImageData(0, 0, canvas.width, canvas.height);
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -1389,8 +1497,8 @@
     liftComposeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
     if (!lifted) {
-      selCtx = null;
-      selBefore = null;
+      if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // abandoned → leave the hold alone
+      clearLiftTarget();
       return;
     }
     meshPose = MeshPose.fromLift(lifted, rect, DPR, poseSpacing, {
@@ -1398,10 +1506,11 @@
       gap: appState.pose.gap,
     });
     appState.poseActive = meshPose !== null;
+    poseDirty = false; // fresh lift — nothing moved yet
     if (!meshPose) {
       if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
-      selCtx = null;
-      selBefore = null;
+      if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // …including the ◆ it made
+      clearLiftTarget();
       appState.poseFillWarning = "";
       recomposite();
       return;
@@ -1411,7 +1520,12 @@
     reportPoseFill();
     recomposite(); // show the hole where the content lifted out
     posePaint(); // draw the deformed raster + wireframe on the overlay
-    bump(); // bump version so the reactive pose bar mounts
+    // `repaint`, NOT `bump`: a LIFT is not a document edit. `liftPixels` punches the content out of
+    // the cell canvas and holds it on the overlay, which autosave never sees — so bumping
+    // `persistTick` here armed the 3s debounce to persist a HOLED cell (plus any ◆ the entry
+    // materialised). Merely selecting the tool did that, once entry moved to the tool switch. The
+    // pose bar only needs `version`, which is what `repaint` increments.
+    repaint();
   }
 
   function applyPose() {
@@ -1420,14 +1534,18 @@
     meshPose.render(selCtx); // bake the deformed raster into the cell
     const ctx = selCtx;
     const before = selBefore;
+    const layerId = selLayer?.id ?? null;
+    const mat = selMaterialized;
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
         () => {
           ctx.putImageData(before, 0, 0);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // posing on a hold made this ◆
           recomposite();
         },
         () => {
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
           ctx.putImageData(after, 0, 0);
           recomposite();
         },
@@ -1441,28 +1559,28 @@
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
-    selCtx = null;
-    selBefore = null;
-    liftComposeSteps = [];
+    clearLiftTarget();
     posePaint(); // meshPose null → clears overlay
     bump();
     recomposite();
   }
 
   function cancelPose() {
-    if (meshPose && selCtx && selBefore) selCtx.putImageData(selBefore, 0, 0);
+    if (meshPose && selCtx && selBefore) {
+      selCtx.putImageData(selBefore, 0, 0);
+      // …and the keyframe the lift materialised, so a cancelled pose leaves a hold a hold.
+      if (selLayer && selMaterialized) restoreCellTrack(selLayer, selMaterialized.before);
+    }
     meshPose = null;
     appState.poseActive = false;
     appState.poseFillWarning = "";
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
-    selCtx = null;
-    selBefore = null;
-    liftComposeSteps = [];
+    clearLiftTarget();
     posePaint();
     recomposite();
-    bump(); // bump version so the reactive pose bar unmounts
+    repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
   }
 
   // Shared by the density buttons and the fill-outlines controls: any setting that changes the
@@ -1478,6 +1596,7 @@
     poseDrag = null;
     activeHandle = null;
     poseAdjusting = false;
+    poseDirty = false; // a rebuild drops every handle: the picture is back at rest, nothing to bake
     posePaint();
     reportPoseFill();
   }
@@ -1626,29 +1745,69 @@
     // transform bracket, or it leaks into the next gesture and one undo reverts both (gotcha #6).
     void appState.transformScope;
     transformDragGuard.settle?.();
-    if (!selection) return;
+    if (!selection) {
+      // Prime here too: leaving the flag false on an early first run would cost the artist TWO tool
+      // switches before the first lift, for a guard that only exists to skip the restored preference.
+      toolEntryPrimed = true;
+      prevTool = appState.tool;
+      return;
+    }
     // Only bank when the TOOL actually changes. This effect also re-runs when hasFloating
     // flips (the reads below), and committing then would bake+clear a lift the user just started
     // from the on-canvas bar (Select → Free transform).
     const toolChanged = t !== prevTool;
     if (toolChanged) {
-      if (prevTool === "pose" && t !== "pose" && meshPose) applyPose();
-      if (prevTool === "deform" && t !== "deform" && selection.hasFloating) selection.commit();
-      else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
+      // An untouched lift cancels rather than bakes — see `deformDirty`/`poseDirty`.
+      if (prevTool === "pose" && t !== "pose" && meshPose) {
+        if (poseDirty) applyPose();
+        else cancelPose();
+      }
+      if (prevTool === "deform" && t !== "deform" && selection.hasFloating) {
+        if (deformDirty) selection.commit();
+        else selection.cancel();
+      } else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
     }
     prevTool = t;
     if (t === "select") selection.mode = "rect";
     else if (t === "lasso") selection.mode = "lasso";
     else if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
-    // t === "deform": lift entry happens on the first canvas press (onStroke).
+    // Lift on ARRIVAL, not on the first press. Waiting for a press made the tool look inert until
+    // you guessed a tap would do something, and — worse — that press was consumed entirely by the
+    // lift, so summoning the grid and grabbing a handle could never be one gesture. Entering here
+    // means the first press already lands on a handle. Both entries no-op on an empty cell or a
+    // locked/hidden layer, and re-entering is guarded below, so a re-run of this effect is free.
+    // …but only for a tool the ARTIST picked. The tool is persisted, so this effect's first run
+    // reports a "change" from the hardcoded initial value to whatever was restored — entering there
+    // would lift (and, on a hold, materialise a keyframe) merely because the app was launched, with
+    // no gesture behind it and possibly before the project has finished restoring. Arriving with
+    // Deform already selected therefore still waits for the first press, which is what the fallback
+    // in `onStroke` is for.
+    // `!strokeCanvas`: on iPad a finger can tap the tool button while the Pencil is mid-stroke.
+    // Entering would capture `selBefore` mid-stroke and punch the hole while `paintStroke` keeps
+    // writing the same ctx — the smooth brush redraws from its own snapshot, so the lifted content
+    // gets painted back into the cell while the float still holds it. The press-time fallback then
+    // enters normally once the stroke ends.
+    if (toolChanged && toolEntryPrimed && !strokeCanvas) {
+      if (t === "deform" && selection.state !== "warping") enterDeform();
+      else if (t === "pose" && !meshPose) enterPose();
+    }
+    toolEntryPrimed = true;
   });
 
   // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
   // started on, so switching the active layer or frame leaves a clean slate — mirrors the tool-switch
   // banker. A plain marquee is document-level and kept; the gizmo-based layer transform self-retargets.
   function bankActiveEdits() {
-    if (meshPose) applyPose();
-    if (selection?.hasFloating) selection.commit();
+    // Same rule as the tool switch: an untouched lift is discarded, not banked. Stepping a frame
+    // with Deform selected must not stamp an undo entry per frame.
+    if (meshPose) {
+      if (poseDirty) applyPose();
+      else cancelPose();
+    }
+    if (selection?.hasFloating) {
+      if (appState.tool === "deform" && !deformDirty) selection.cancel();
+      else selection.commit();
+    }
     // Mid-stroke ↑/↓ or ←/→ would keep writing the old cell while inverse-mapping the new
     // compose. Commit what we have and drop the rest of this pointer stream.
     if (strokeCanvas) {
@@ -1672,11 +1831,21 @@
         drawRaf = 0;
       }
       strokeCtx.putImageData(beforeSnapshot, 0, 0);
+      // A discarded stroke leaves NOTHING behind, including the keyframe it materialised — reverting
+      // only the pixels used to strand a blank ◆ on a frame that was a hold before the discard.
+      const revertedTrack = !!(strokeLayer && strokeMaterialized);
+      if (strokeLayer && strokeMaterialized)
+        restoreCellTrack(strokeLayer, strokeMaterialized.before);
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
       strokeSteps = null;
+      strokeLayer = null;
+      strokeMaterialized = null;
       dropStrokeUntilUp = true; // swallow the rest of this pointer stream
+      // Undoing the track needs a bump, not just a repaint: the stroke's start already bumped, and
+      // past the layer's end the revert SHRINKS the track, so frameCount has to be recomputed.
+      if (revertedTrack) bump();
       recomposite();
     }
   }
