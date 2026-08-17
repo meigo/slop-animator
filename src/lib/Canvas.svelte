@@ -66,6 +66,7 @@
     isRefVisibleAtFrame,
     groupTransform,
     transformAt,
+    withTransformKey,
     type Layer,
     type Cell,
     type LayerGroup,
@@ -750,10 +751,22 @@
           t: groupTransform(g),
         });
     } else {
-      // scope = "layer" (or ref layer)
+      // scope = "layer" (or ref layer). An animated layer reads and writes THROUGH the track;
+      // `base` stays live (never frozen to `track.box`, which Task 5 fixed at null for layer
+      // tracks) since a layer's base rect is the document rect / a media contain-fit — neither
+      // drifts the way a content-derived transformBox does, and resizeProject never touches
+      // transform/transformTrack.
       base = transformBaseRect(layer, W, H);
-      getT = () => layer.transform;
-      setT = (nt) => (layer.transform = nt);
+      getT = () => transformAt(layer, appState.playhead);
+      setT = (nt) => {
+        const track = layer.transformTrack;
+        if (!track) {
+          layer.transform = nt;
+          return;
+        }
+        // Replace the track object: undo snapshots share the layer (gotcha #8).
+        layer.transformTrack = withTransformKey(track, appState.playhead, nt);
+      };
       // Outer = group (if any).
       if (g)
         outerSteps.push({

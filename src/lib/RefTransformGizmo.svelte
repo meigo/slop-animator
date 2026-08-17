@@ -25,6 +25,7 @@
     isRefVisibleAtFrame,
     groupTransform,
     transformAt,
+    withTransformKey,
     isIdentityTransform,
     isSameTransform,
     type Cell,
@@ -163,8 +164,22 @@
     // scope = "layer" (or ref layer of any scope)
     const outer: ComposeStep[] = [...groupStep];
     return {
-      getT: () => l.transform,
-      setT: (t: RefTransform) => (l.transform = t),
+      // An animated layer reads and writes THROUGH the track. Everything else about the drag —
+      // the undo bracket, the settle hook, the isSameTransform no-op check — works unchanged,
+      // because the whole lifecycle already goes through this getT/setT pair. `base` stays live
+      // (never frozen to `track.box`, which Task 5 fixed at null for layer tracks): a layer's
+      // base rect is the document rect / a media contain-fit, neither of which drifts the way a
+      // content-derived transformBox does, and resizeProject never touches transform/transformTrack.
+      getT: () => transformAt(l, appState.playhead),
+      setT: (t: RefTransform) => {
+        const track = l.transformTrack;
+        if (!track) {
+          l.transform = t;
+          return;
+        }
+        // Replace the track object: undo snapshots share the layer (gotcha #8).
+        l.transformTrack = withTransformKey(track, appState.playhead, t);
+      },
       base: baseRect(l),
       outer,
       cell: null,
