@@ -9,6 +9,7 @@
     groupTransform,
     cellTransform,
     resolvedKeyCell,
+    transformAt,
   } from "../anim/document";
   import { forwardChain, type ComposeStep } from "../core/ref-transform";
   import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
@@ -53,7 +54,7 @@
         base: contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version),
         t: cellTransform(rk.cell),
       });
-    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: l.transform });
+    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, appState.playhead) });
     if (g)
       steps.push({
         base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),

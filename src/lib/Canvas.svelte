@@ -1176,11 +1176,8 @@
     const cellT = cellTransform(rk.cell);
     const g = groupOf(al, appState.project.groups);
     const groupT = groupTransform(g);
-    if (
-      isIdentityTransform(al.transform) &&
-      isIdentityTransform(cellT) &&
-      isIdentityTransform(groupT)
-    ) {
+    const layerT = transformAt(al, appState.playhead);
+    if (isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT)) {
       // Document space == cell space: crop the cell bitmap at this.rect (same blit as today).
       const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
       return selection.copyPixelsFromDoc(ctx, DPR);
@@ -1214,7 +1211,7 @@
       rk.cell.canvas,
       W * DPR,
       H * DPR,
-      al.transform,
+      layerT,
       cellT,
       boxDev,
       DPR,

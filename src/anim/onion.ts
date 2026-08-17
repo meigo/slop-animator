@@ -64,6 +64,7 @@ import {
   cellTransform,
   groupOf,
   groupTransform,
+  transformAt,
   type Project,
 } from "./document";
 import { compositeFrameLayers, drawCellComposed } from "./render";
@@ -113,7 +114,11 @@ function drawGhost(
         const cellT = cellTransform(cell);
         const g = groupOf(layer, project.groups);
         const groupT = groupTransform(g);
-        const layerId = isIdentityTransform(layer.transform),
+        // This ghost renders `ghostFrame`, not the playhead — each ghost is a different frame, so
+        // its layer transform must resolve at ITS frame or every ghost would collapse onto the
+        // playhead's position.
+        const layerT = transformAt(layer, ghostFrame);
+        const layerId = isIdentityTransform(layerT),
           cellId = isIdentityTransform(cellT),
           groupId = isIdentityTransform(groupT);
         if (layerId && cellId && groupId) scratch.drawImage(cell.canvas, 0, 0);
@@ -137,7 +142,7 @@ function drawGhost(
             cell.canvas,
             w,
             h,
-            layer.transform,
+            layerT,
             cellT,
             boxDev,
             dpr,
