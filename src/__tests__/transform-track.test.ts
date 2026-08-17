@@ -7,6 +7,7 @@ import {
   hasKeyAt,
   createProject,
   createDrawingLayer,
+  createReferenceLayer,
   type Layer,
   type TransformTrack,
 } from "../anim/document";
@@ -180,6 +181,24 @@ describe("transform track persistence", () => {
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     const back = loaded.layers[loaded.layers.length - 1];
     expect(back.transformTrack).toEqual(l.transformTrack);
+  });
+
+  it("round-trips a track on a REFERENCE layer", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
+    ref.transformTrack = {
+      keys: [
+        { frame: 0, t: T(0) },
+        { frame: 5, t: T(50, 0.5) },
+      ],
+      interp: "linear",
+      sampleEvery: 3,
+      box: { x: 10, y: 20, w: 30, h: 40 },
+    };
+    project.layers.push(ref);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const back = loaded.layers[loaded.layers.length - 1];
+    expect(back.transformTrack).toEqual(ref.transformTrack);
   });
 
   it("a layer with no track round-trips as undefined (old saves)", async () => {
