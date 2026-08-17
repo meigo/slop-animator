@@ -2395,6 +2395,30 @@ required is what stops the id leaking back into the UI through a future caller. 
 site relied on the default (LayerList's add button); every other already passed a real name.
 **Verified in the browser 2026-08-17.**
 
+**Groups have timeline rows, and the row ordering is shared (2026-08-18).** Groundwork for
+transform tweening, but it stands on its own: `project.layers` is bottom-first and `project.groups`
+is a PARALLEL array (membership is the back-reference `layer.groupId`), so neither describes what the
+artist sees. The panel reconstructed that itself, which is why the timeline had no group rows at all
+— it walked `layers` directly and consulted groups only to skip collapsed members. So **collapsing a
+group removed its content from the timeline with nothing left to say it existed.**
+`buildSegments` moved out of `LayerList.svelte` into pure `src/anim/row-layout.ts`, joined by
+`timelineRows` (unit-tested, 10 cases). Both views build from the same function, so they cannot drift
+on ordering or on which layers a collapsed group is hiding.
+
+**The group row carries NO `data-layer-id`, and that one omission is what keeps it out of the
+selection axis for free.** `layerIdAtPoint` resolves rows through that attribute via
+`elementFromPoint` (with a nearest-row fallback) rather than by index arithmetic — so the marquee,
+block copy/paste/move and `resolveSelectionRect` all ignore group rows without a line of new
+guarding. Correct as well as cheap: a group holds no cells, so there is nothing on it to select. A
+marquee dragged ACROSS a group row still spans the layers either side, via that same fallback.
+Anything added to the timeline later that is not a layer should follow this rule rather than adding
+guards.
+
+The row is a collapse toggle (chevron + name + hidden-member count), so a collapsed group is finally
+visible and expandable from the timeline. Its frame strip is deliberately empty — that is where a
+transform track will live. `onclick` is guarded by `panEndedWithMovement`, the same latch the ref
+row's re-link button uses, so a finger scroll that happens to end on the row does not toggle it.
+
 **Deferred by this wave — decided, not forgotten:**
 
 - ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —
