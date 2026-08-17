@@ -45,6 +45,7 @@ export interface DrawingLayer {
   groupId: number | null;
   cells: Cell[]; // independent per-layer length; document length = the longest layer
   transform: RefTransform;
+  transformTrack?: TransformTrack;
 }
 
 export type ReferenceMedia =
@@ -57,6 +58,25 @@ export interface RefTransform {
   dy: number;
   scale: number; // uniform multiplier on the fit size (1 = fit)
   rotation: number; // radians, clockwise, about the center
+}
+
+export interface TransformKey {
+  /** Project frame, >= 0. Unique within a track. */
+  frame: number;
+  t: RefTransform;
+}
+
+export interface TransformTrack {
+  /** Sorted by `frame`, never empty. */
+  keys: TransformKey[];
+  /** "linear" interpolates between keys; "hold" keeps each key's value until the next. */
+  interp: "linear" | "hold";
+  /** Linear only: quantise the sampled frame to a multiple of this, so a move updates on 2s/3s
+   *  like the drawings do. 1 (or absent) = every frame. */
+  sampleEvery?: number;
+  /** The pivot box, captured ONCE at track creation and shared by every key. A per-key box would
+   *  make the pivot interpolate and warp the motion path between keys, invisibly. */
+  box: { x: number; y: number; w: number; h: number } | null;
 }
 
 export interface ReferenceLayer {
@@ -80,6 +100,7 @@ export interface ReferenceLayer {
   groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
+  transformTrack?: TransformTrack;
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
@@ -266,6 +287,48 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
 /** A key cell's own transform (identity when absent / not a key). */
 export function cellTransform(cell: Cell): RefTransform {
   return cell.kind === "key" && cell.transform ? cell.transform : IDENTITY_TRANSFORM;
+}
+
+/** Quantise `frame` onto a grid anchored at `origin`. Never rounds up: the value shown is always
+ *  one the animation actually passed through. */
+function quantiseFrame(frame: number, origin: number, every: number): number {
+  const n = Math.max(1, Math.floor(every));
+  return origin + Math.floor((frame - origin) / n) * n;
+}
+
+function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransform {
+  return {
+    dx: a.dx + (b.dx - a.dx) * u,
+    dy: a.dy + (b.dy - a.dy) * u,
+    scale: a.scale + (b.scale - a.scale) * u,
+    // Absolute, NOT shortest-path: the gizmo stores accumulated rotation, so a 720° spin is 4π and
+    // has to render as two turns.
+    rotation: a.rotation + (b.rotation - a.rotation) * u,
+  };
+}
+
+/** The layer's transform at `frame`: its static value when there is no track, otherwise the track
+ *  resolved (and held outside its key range — a track never extrapolates). */
+export function transformAt(layer: Layer, frame: number): RefTransform {
+  const track = layer.transformTrack;
+  if (!track || track.keys.length === 0) return layer.transform;
+  const keys = track.keys;
+  const first = keys[0];
+  const last = keys[keys.length - 1];
+  if (keys.length === 1 || frame <= first.frame) return first.t;
+  if (frame >= last.frame) return last.t;
+
+  // `q` is inside [first.frame, last.frame) — quantising only ever moves it earlier, and the
+  // out-of-range cases already returned.
+  const q =
+    track.interp === "hold" ? frame : quantiseFrame(frame, first.frame, track.sampleEvery ?? 1);
+  let i = 0;
+  while (i < keys.length - 2 && keys[i + 1].frame <= q) i++;
+  const a = keys[i];
+  const b = keys[i + 1];
+  if (track.interp === "hold" || q <= a.frame) return a.t;
+  if (q >= b.frame) return b.t;
+  return lerpTransform(a.t, b.t, (q - a.frame) / (b.frame - a.frame));
 }
 
 /** A group's own transform (identity when absent / undefined group). */
