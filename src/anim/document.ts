@@ -79,6 +79,12 @@ export interface TransformTrack {
   box: { x: number; y: number; w: number; h: number } | null;
 }
 
+/** Largest `sampleEvery` the transform track UI/store accepts. The Step input's `max` mirrors this
+ *  constant rather than being a second number that could drift from it (same shape as
+ *  `MAX_GAP`/`clampGap` in `fill-holes.ts` for the Fill tool's gap: a browser accepts a typed value
+ *  beyond a number input's `max`, so the clamp must live in the logic, not just the widget). */
+export const MAX_SAMPLE_EVERY = 12;
+
 export interface ReferenceLayer {
   kind: "ref";
   id: number;

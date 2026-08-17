@@ -17,7 +17,14 @@
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
-  import { whyNotEditable, hasKeyAt, isLayerLocked, isLayerVisible } from "../anim/document";
+  import {
+    whyNotEditable,
+    hasKeyAt,
+    isLayerLocked,
+    isLayerVisible,
+    isRefVisibleAtFrame,
+    MAX_SAMPLE_EVERY,
+  } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
   import { MAX_GAP } from "../core/fill-holes";
 
@@ -33,13 +40,17 @@
 
   // Whose transform the Animate controls act on, or null when none applies. A ref is animatable
   // under any tool because its gizmo is always live — the same reason Reset-to-fit sits outside
-  // the per-tool branches. A locked or hidden layer is never a target.
+  // the per-tool branches. A locked or hidden layer is never a target, and neither is a ref outside
+  // its own frame span — RefTransformGizmo.svelte's `activeTransformLayer` and Canvas.svelte's
+  // `refPinned` gate the same way (hiding the handles / refusing the drag) and say they must agree;
+  // this is a third site offering the same authoring affordance, so it must agree too.
   const animTarget = $derived.by(() => {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
     if (isLayerLocked(l, appState.project.groups)) return null;
     if (!isLayerVisible(l, appState.project.groups)) return null;
-    if (l.kind === "ref") return l;
+    if (l.kind === "ref")
+      return isRefVisibleAtFrame(l, appState.playhead, appState.project.fps) ? l : null;
     return appState.tool === "transform" && appState.transformScope === "layer" ? l : null;
   });
 
@@ -345,7 +356,7 @@
             class="w-12 bg-surface border border-border text-text px-1"
             type="number"
             min="1"
-            max="12"
+            max={MAX_SAMPLE_EVERY}
             value={track.sampleEvery ?? 1}
             onchange={(e) =>
               setTransformTrackOptions(animTarget.id, {

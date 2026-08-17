@@ -25,6 +25,7 @@ import {
   transformAt,
   createTransformTrack,
   withoutTransformKey,
+  MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
   type Layer,
@@ -769,7 +770,10 @@ export function setTransformTrackOptions(
   if (!l || !track || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const interp = opts.interp ?? track.interp;
-  const sampleEvery = Math.max(1, Math.floor(opts.sampleEvery ?? track.sampleEvery ?? 1));
+  const sampleEvery = Math.min(
+    MAX_SAMPLE_EVERY,
+    Math.max(1, Math.floor(opts.sampleEvery ?? track.sampleEvery ?? 1)),
+  );
   if (interp === track.interp && sampleEvery === (track.sampleEvery ?? 1)) return;
   commitStructural(() => {
     l.transformTrack = { ...track, interp, sampleEvery };
