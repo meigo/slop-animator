@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { buildSegments } from "../anim/row-layout";
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
   import {
@@ -67,7 +68,7 @@
     canDuplicateLayer,
     whyNotMergeDown,
   } from "../anim/document";
-  import type { Layer, LayerGroup, MergeDownBlock } from "../anim/document";
+  import type { Layer, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
 
@@ -207,22 +208,10 @@
     return "group";
   }
 
-  // Build display segments (top-first, reverse of the bottom→top data order).
-  // Each segment is either a bare layer ({ layer }) or a contiguous group block
-  // ({ group, layers }). Called from the template with `appState.project.layers`/`.groups` so the
-  // reads are tracked fine-grained (runes mode).
-  type Segment = { layer: Layer } | { group: LayerGroup; layers: Layer[] };
-  function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] {
-    const segs: Segment[] = [];
-    for (const layer of [...layers].reverse()) {
-      const g = groupOf(layer, groups);
-      const last = segs[segs.length - 1];
-      if (g && last && "group" in last && last.group.id === g.id) last.layers.push(layer);
-      else if (g) segs.push({ group: g, layers: [layer] });
-      else segs.push({ layer });
-    }
-    return segs;
-  }
+  // Display segments now come from the shared `row-layout` module — the timeline builds its rows
+  // from the same function, so the two views cannot disagree about the order or about which layers
+  // a collapsed group is hiding. Still called from the template with `appState.project.layers`/
+  // `.groups` so the reads stay fine-grained (runes mode).
 
   // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
   // Walks top-first display order (root children, descending into group-members),

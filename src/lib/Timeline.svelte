@@ -16,8 +16,11 @@
     Waves,
     Settings,
     Lock,
+    ChevronRight,
+    ChevronDown,
     EyeOff,
   } from "@lucide/svelte";
+  import { buildSegments, timelineRows } from "../anim/row-layout";
   import {
     state as appState,
     canvasOps,
@@ -30,6 +33,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     setActiveLayer,
+    toggleGroupCollapsed,
     liftGuard,
     transformDragGuard,
     setTimelineSelection,
@@ -74,7 +78,6 @@
   import { edgeScrollDelta } from "../anim/edge-scroll";
   import { pixelCommand } from "../anim/history";
   import {
-    groupOf,
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
@@ -1731,8 +1734,53 @@
     />
 
     <!-- layer rows (top layer first) -->
-    {#each [...appState.project.layers].reverse() as layer (layer.id)}
-      {#if !groupOf(layer, appState.project.groups)?.collapsed}
+    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : `g${row.group.id}`)}
+      {#if row.kind === "group"}
+        {@const g = row.group}
+        <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
+             axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
+             that attribute, and a group holds no cells to select. The frame strip is empty for now
+             and is where a transform track would live. -->
+        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+          <button
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-secondary hover:bg-surface-hover"
+            style="width: {LABEL_W}px; touch-action: none"
+            title={g.collapsed ? "Expand group" : "Collapse group"}
+            onpointerdown={(e) => {
+              if (isFinePointer(e)) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              touchPanDown(e);
+            }}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
+            onclick={() => {
+              if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
+            }}
+          >
+            <span class="flex w-3.5 shrink-0 justify-center">
+              {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
+            </span>
+            <span class="min-w-0 flex-1 truncate font-semibold">{g.name}</span>
+            {#if row.hiddenCount > 0}
+              <!-- Says the content is still there. Collapsing used to remove it from the timeline
+                   with nothing left to indicate it existed. -->
+              <span class="shrink-0 text-text-muted">{row.hiddenCount}</span>
+            {/if}
+          </button>
+          <span
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 bg-surface border-r border-text-muted"
+            role="presentation"
+            style="left: {LABEL_W}px; width: {MARKER_W}px"
+            title={g.locked ? "Group locked — edits refused" : !g.visible ? "Group hidden" : ""}
+          >
+            {#if g.locked}<Lock size={11} />{:else if !g.visible}<EyeOff size={11} />{/if}
+          </span>
+        </div>
+      {:else}
+        {@const layer = row.layer}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
