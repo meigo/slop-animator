@@ -331,6 +331,40 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
   return lerpTransform(a.t, b.t, (q - a.frame) / (b.frame - a.frame));
 }
 
+/** A fresh track holding `t` at frame 0 — that value has been true for every frame, so frame 0 is
+ *  its honest home and the first drag at frame N then produces a clean 0→N tween. */
+export function createTransformTrack(
+  t: RefTransform,
+  box: { x: number; y: number; w: number; h: number } | null,
+): TransformTrack {
+  return { keys: [{ frame: 0, t: { ...t } }], interp: "linear", box: box ? { ...box } : null };
+}
+
+/** Write a key at `frame`, replacing any key already there. Returns a NEW track: snapshots share
+ *  layer objects, so no writer may mutate the one it was given (gotcha #8). */
+export function withTransformKey(
+  track: TransformTrack,
+  frame: number,
+  t: RefTransform,
+): TransformTrack {
+  const keys = track.keys.filter((k) => k.frame !== frame);
+  keys.push({ frame, t: { ...t } });
+  keys.sort((a, b) => a.frame - b.frame);
+  return { ...track, keys };
+}
+
+/** Drop the key at `frame`. Returns the SAME object when nothing changes — including the attempt to
+ *  remove the last key, since a track is never empty — so callers can skip an empty undo entry. */
+export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
+  if (track.keys.length <= 1) return track;
+  const keys = track.keys.filter((k) => k.frame !== frame);
+  return keys.length === track.keys.length ? track : { ...track, keys };
+}
+
+export function hasKeyAt(track: TransformTrack, frame: number): boolean {
+  return track.keys.some((k) => k.frame === frame);
+}
+
 /** A group's own transform (identity when absent / undefined group). */
 export function groupTransform(group: LayerGroup | null | undefined): RefTransform {
   return group && group.transform ? group.transform : IDENTITY_TRANSFORM;

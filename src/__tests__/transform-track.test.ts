@@ -96,3 +96,65 @@ describe("transformAt", () => {
     expect(transformAt(layer(z), 5).scale).toBeCloseTo(2, 10);
   });
 });
+
+import {
+  createTransformTrack,
+  withTransformKey,
+  withoutTransformKey,
+  hasKeyAt,
+} from "../anim/document";
+
+describe("track mutations", () => {
+  it("createTransformTrack seeds one key at frame 0 with the static value", () => {
+    const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 });
+    expect(t.keys).toEqual([{ frame: 0, t: T(9) }]);
+    expect(t.interp).toBe("linear");
+    expect(t.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  });
+
+  it("createTransformTrack copies the transform and the box", () => {
+    const src = T(9);
+    const box = { x: 1, y: 2, w: 3, h: 4 };
+    const t = createTransformTrack(src, box);
+    expect(t.keys[0].t).not.toBe(src);
+    expect(t.box).not.toBe(box);
+  });
+
+  it("withTransformKey inserts in frame order", () => {
+    const t = withTransformKey(track(), 5, T(55));
+    expect(t.keys.map((k) => k.frame)).toEqual([0, 5, 10]);
+  });
+
+  it("withTransformKey replaces a key at the same frame", () => {
+    const t = withTransformKey(track(), 10, T(999));
+    expect(t.keys).toHaveLength(2);
+    expect(t.keys[1].t.dx).toBe(999);
+  });
+
+  // Undo snapshots share layer objects, so a writer must never touch the track it was handed.
+  it("withTransformKey leaves the input untouched", () => {
+    const original = track();
+    withTransformKey(original, 5, T(55));
+    expect(original.keys.map((k) => k.frame)).toEqual([0, 10]);
+  });
+
+  it("withoutTransformKey removes the key at that frame", () => {
+    expect(withoutTransformKey(track(), 10).keys.map((k) => k.frame)).toEqual([0]);
+  });
+
+  // Returning the SAME object is how callers detect a no-op and skip pushing an empty undo entry.
+  it("withoutTransformKey returns the same object when there is nothing at that frame", () => {
+    const t = track();
+    expect(withoutTransformKey(t, 7)).toBe(t);
+  });
+
+  it("withoutTransformKey refuses to empty the track", () => {
+    const t = track({ keys: [{ frame: 0, t: T(0) }] });
+    expect(withoutTransformKey(t, 0)).toBe(t);
+  });
+
+  it("hasKeyAt reports an exact frame match", () => {
+    expect(hasKeyAt(track(), 10)).toBe(true);
+    expect(hasKeyAt(track(), 9)).toBe(false);
+  });
+});
