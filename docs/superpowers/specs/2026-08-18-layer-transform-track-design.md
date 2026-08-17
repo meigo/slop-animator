@@ -105,7 +105,7 @@ export function transformAt(layer: Layer, frame: number): RefTransform;
 Field-by-field interpolation:
 
 - `dx`, `dy`, `scale` — linear. Scale is linear rather than geometric: it is what 2D tools do for a
-  fit-multiplier, and a geometric ramp is not what a artist dragging a handle expects.
+  fit-multiplier, and a geometric ramp is not what an artist dragging a handle expects.
 - `rotation` — linear in radians with **no shortest-path normalisation**. The gizmo stores absolute
   accumulated rotation, so a deliberate 720° spin is `4π` and must render as two turns, not as zero.
   This is the one place where the "obvious" implementation is wrong.
@@ -115,9 +115,11 @@ Field-by-field interpolation:
 **Animate** — a button in ToolOptions, shown whenever the active layer's own transform is directly
 editable: for a **drawing layer** that means the Transform tool at Layer scope; for a **reference
 layer** it means any tool, because a ref's gizmo is live under all of them (the same reason
-Reset-to-fit is rendered outside the per-tool branches). A locked or hidden layer never shows it. It creates a track with **one key at
-frame 0** carrying the layer's current static transform, and captures `box` from the layer's current
-`transformBox` (or its base rect when absent). Frame 0 because that value has been true for every
+Reset-to-fit is rendered outside the per-tool branches). A locked or hidden layer never shows it.
+
+Pressing it creates a track with **one key at frame 0** carrying the layer's current static
+transform, and captures `box` from the layer's current `transformBox` (or its base rect when
+absent). Frame 0 because that value has been true for every
 frame; anchoring it there makes the first drag at frame N produce a clean 0→N tween.
 
 **Keying** — with a track present, both transform drag paths (the gizmo's handle drag and the
