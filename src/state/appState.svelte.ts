@@ -18,8 +18,14 @@ import {
   isIdentityTransform,
   groupHasLockedLayer,
   isLayerEditable,
+  isLayerLocked,
+  isLayerVisible,
   IDENTITY_TRANSFORM,
   resolvedKeyCell,
+  transformAt,
+  createTransformTrack,
+  withoutTransformKey,
+  transformBaseRect,
   type RefTransform,
   type Project,
   type Layer,
@@ -707,6 +713,59 @@ export function resetGroupTransform(groupId: number): void {
   commitStructural(() => {
     g.transform = { ...IDENTITY_TRANSFORM };
     g.transformBox = null;
+  });
+}
+
+/** Start animating a layer: its current static transform becomes the key at frame 0, and the pivot
+ *  box is captured ONCE for the whole track (a per-key box would warp the motion path). */
+export function animateLayer(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l || l.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const box = transformBaseRect(l, state.project.width, state.project.height);
+  commitStructural(() => {
+    l.transformTrack = createTransformTrack(l.transform, box);
+  });
+}
+
+/** Stop animating: bake what is on screen NOW into the static transform, then drop the track.
+ *  WYSIWYG — the alternative (restoring the pre-animation value) would undo work invisibly. */
+export function removeLayerAnimation(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l?.transformTrack) return;
+  const resolved = transformAt(l, state.playhead);
+  commitStructural(() => {
+    l.transform = { ...resolved };
+    l.transformTrack = undefined;
+  });
+}
+
+/** Remove the key at the playhead. No-op (and no undo entry) when there is none, or when it is the
+ *  last key — a track is never empty; Remove animation is the way out. */
+export function deleteTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track) return;
+  const next = withoutTransformKey(track, state.playhead);
+  if (next === track) return; // guard ABOVE the commit: a no-op must not push an empty entry
+  commitStructural(() => {
+    l.transformTrack = next;
+  });
+}
+
+/** Interpolation settings. Replaces the track object (gotcha #8) rather than writing in place. */
+export function setTransformTrackOptions(
+  layerId: number,
+  opts: { interp?: "linear" | "hold"; sampleEvery?: number },
+): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track) return;
+  const interp = opts.interp ?? track.interp;
+  const sampleEvery = Math.max(1, Math.floor(opts.sampleEvery ?? track.sampleEvery ?? 1));
+  if (interp === track.interp && sampleEvery === (track.sampleEvery ?? 1)) return;
+  commitStructural(() => {
+    l.transformTrack = { ...track, interp, sampleEvery };
   });
 }
 
