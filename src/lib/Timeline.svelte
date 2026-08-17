@@ -83,6 +83,7 @@
     isLayerVisible,
     countKeyframesPastLengthIn,
     refVisibleSpan,
+    hasKeyAt,
     type DrawingLayer,
     type ReferenceLayer,
     type Cell,
@@ -1737,7 +1738,7 @@
     />
 
     <!-- layer rows (top layer first) -->
-    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : `g${row.group.id}`)}
+    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "transform" ? `t${row.layer.id}` : `g${row.group.id}`)}
       {#if row.kind === "group"}
         {@const g = row.group}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
@@ -1781,6 +1782,34 @@
           >
             {#if g.locked}<Lock size={11} />{:else if !g.visible}<EyeOff size={11} />{/if}
           </span>
+        </div>
+      {:else if row.kind === "transform"}
+        {@const tl = row.layer}
+        <!-- A transform row. Like the group row, it carries NO `data-layer-id` — a track holds no
+             cells, so there is nothing on it to select. -->
+        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+          <span
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pl-4 pr-1 text-left bg-surface text-text-muted"
+            style="width: {LABEL_W}px"
+            title="Transform keys for {tl.name}"
+          >
+            <span class="min-w-0 flex-1 truncate">Transform</span>
+          </span>
+          <span
+            class="sticky z-20 shrink-0 h-6 bg-surface border-r border-text-muted"
+            role="presentation"
+            style="left: {LABEL_W}px; width: {MARKER_W}px"
+          ></span>
+          <div class="flex select-none">
+            {#each Array(appState.project.frameCount) as _, f (f)}
+              <div
+                class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center text-text-secondary"
+                style="width: {CELL_W}px"
+              >
+                {tl.transformTrack && hasKeyAt(tl.transformTrack, f) ? "◆" : ""}
+              </div>
+            {/each}
+          </div>
         </div>
       {:else}
         {@const layer = row.layer}

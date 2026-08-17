@@ -40,11 +40,20 @@ export function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] 
  * Group rows deliberately carry no layer identity. The timeline's selection axis resolves rows
  * through `data-layer-id` in the DOM, so a row without one is invisible to the marquee, to block
  * copy/paste/move, and to `resolveSelectionRect` — which is exactly right: a group holds no cells,
- * so there is nothing on it to select.
+ * so there is nothing on it to select. A transform row is the same story: a track holds no cells
+ * either, so it carries no layer identity in the DOM.
  */
 export type TimelineRow =
   | { kind: "layer"; layer: Layer }
-  | { kind: "group"; group: LayerGroup; hiddenCount: number };
+  | { kind: "group"; group: LayerGroup; hiddenCount: number }
+  | { kind: "transform"; layer: Layer };
+
+/** Push a layer row, and — directly under it, only when animated — its transform row. Shared by
+ *  both branches of `timelineRows` so the two can't drift. */
+function pushLayer(rows: TimelineRow[], layer: Layer): void {
+  rows.push({ kind: "layer", layer });
+  if (layer.transformTrack) rows.push({ kind: "transform", layer });
+}
 
 /** Flatten segments into timeline rows, top-first. A collapsed group contributes only its own row,
  *  and reports how many layers it is standing in for. */
@@ -52,7 +61,7 @@ export function timelineRows(segments: Segment[]): TimelineRow[] {
   const rows: TimelineRow[] = [];
   for (const seg of segments) {
     if ("layer" in seg) {
-      rows.push({ kind: "layer", layer: seg.layer });
+      pushLayer(rows, seg.layer);
       continue;
     }
     rows.push({
@@ -60,7 +69,7 @@ export function timelineRows(segments: Segment[]): TimelineRow[] {
       group: seg.group,
       hiddenCount: seg.group.collapsed ? seg.layers.length : 0,
     });
-    if (!seg.group.collapsed) for (const layer of seg.layers) rows.push({ kind: "layer", layer });
+    if (!seg.group.collapsed) for (const layer of seg.layers) pushLayer(rows, layer);
   }
   return rows;
 }

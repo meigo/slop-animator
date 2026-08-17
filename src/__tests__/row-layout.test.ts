@@ -9,7 +9,13 @@ const group = (id: number, collapsed = false) =>
 
 // Data order is bottom-first; display order is top-first, so everything below reads reversed.
 const ids = (rows: ReturnType<typeof timelineRows>) =>
-  rows.map((r) => (r.kind === "layer" ? `L${r.layer.id}` : `G${r.group.id}`));
+  rows.map((r) =>
+    r.kind === "layer"
+      ? `L${r.layer.id}`
+      : r.kind === "group"
+        ? `G${r.group.id}`
+        : `T${r.layer.id}`,
+  );
 
 describe("buildSegments", () => {
   it("returns bare layers top-first when there are no groups", () => {
@@ -71,5 +77,40 @@ describe("timelineRows", () => {
 
   it("is empty for an empty project", () => {
     expect(timelineRows(buildSegments([], []))).toEqual([]);
+  });
+});
+
+const animated = (id: number, groupId: number | null = null) =>
+  ({
+    kind: "draw",
+    id,
+    name: `L${id}`,
+    groupId,
+    transformTrack: {
+      keys: [{ frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+      interp: "linear",
+      box: null,
+    },
+  }) as Layer;
+
+describe("timelineRows — transform tracks", () => {
+  it("emits a transform row directly under its layer", () => {
+    const rows = timelineRows(buildSegments([animated(1)], []));
+    expect(rows.map((r) => r.kind)).toEqual(["layer", "transform"]);
+  });
+
+  it("emits nothing extra for a layer with no track", () => {
+    expect(timelineRows(buildSegments([layer(1)], []))).toHaveLength(1);
+  });
+
+  it("emits the row for a grouped layer too", () => {
+    const rows = timelineRows(buildSegments([animated(1, 10)], [group(10)]));
+    expect(rows.map((r) => r.kind)).toEqual(["group", "layer", "transform"]);
+  });
+
+  // A collapsed group hides its members, so their tracks go with them.
+  it("hides a member's transform row when its group is collapsed", () => {
+    const rows = timelineRows(buildSegments([animated(1, 10)], [group(10, true)]));
+    expect(rows.map((r) => r.kind)).toEqual(["group"]);
   });
 });
