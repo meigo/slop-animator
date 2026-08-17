@@ -24,6 +24,7 @@ import {
   resolvedKeyCell,
   transformAt,
   createTransformTrack,
+  cloneTransformTrack,
   withoutTransformKey,
   MAX_SAMPLE_EVERY,
   type RefTransform,
@@ -323,27 +324,20 @@ function cloneLayers(layers: Layer[]): Layer[] {
   // so a future in-place field write cannot corrupt in-flight snapshots (groups already do this).
   // The transform TRACK is deep-copied for the same reason, down to each key's transform: a
   // snapshot that shared the keys array would be rewritten by the next key the artist drags in.
-  const track = (t: Layer["transformTrack"]) =>
-    t
-      ? {
-          ...t,
-          keys: t.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
-          box: t.box ? { ...t.box } : null,
-        }
-      : undefined;
+  // `cloneTransformTrack` is the single copy site (shared with restoreStructure/duplicateLayer).
   return layers.map((l) =>
     l.kind === "draw"
       ? {
           ...l,
           cells: l.cells.slice(),
           transform: { ...l.transform },
-          transformTrack: track(l.transformTrack),
+          transformTrack: cloneTransformTrack(l.transformTrack),
         }
       : {
           ...l,
           transform: { ...l.transform },
           range: l.range ? { ...l.range } : undefined,
-          transformTrack: track(l.transformTrack),
+          transformTrack: cloneTransformTrack(l.transformTrack),
         },
   );
 }
@@ -382,13 +376,7 @@ function restoreStructure(s: StructSnapshot) {
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
       // Structural: it decides what renders at every frame, exactly like `range` does for a ref.
-      live.transformTrack = snap.transformTrack
-        ? {
-            ...snap.transformTrack,
-            keys: snap.transformTrack.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
-            box: snap.transformTrack.box ? { ...snap.transformTrack.box } : null,
-          }
-        : undefined;
+      live.transformTrack = cloneTransformTrack(snap.transformTrack);
       if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
         live.range = snap.range ? { ...snap.range } : undefined;
@@ -539,6 +527,14 @@ export function rasterizeReference(layerId: number): void {
   const ref = layers[idx];
   if (!ref || ref.kind !== "ref" || ref.media.type !== "image") return; // image refs only
   if (mediaIntrinsicSize(ref.media).w === 0) return; // media not loaded
+  // Rasterizing bakes ONE placement into pixels, which only means something for a transform that
+  // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
+  // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
+  // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
+  if (ref.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   commitStructural(() => {
     const cell = createCellCanvas(state.project.width, state.project.height, DPR);
     const ctx = cell.getContext("2d")!;
@@ -616,6 +612,10 @@ export function duplicateLayer(id: number) {
     dup.boilStrength = src.boilStrength; // match the source's line-boil strength
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
     dup.transform = { ...src.transform }; // copy renders at the same placement as the source
+    // …and the same MOTION: without this the copy of an animated layer came back static, parked at
+    // the ignored static transform (a position it may never have rendered at). Same deep copy the
+    // undo snapshot uses — one helper, so the two cannot drift.
+    dup.transformTrack = cloneTransformTrack(src.transformTrack);
     dup.cells = src.cells.map(
       (c): Cell =>
         c.kind === "key"

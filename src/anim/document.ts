@@ -169,7 +169,7 @@ export function canDuplicateLayer(layers: Layer[], id: number): boolean {
 }
 
 /** Why `mergeDown` would refuse, in the order it checks. */
-export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only";
+export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only" | "animated";
 
 export function whyNotMergeDown(
   layers: Layer[],
@@ -183,6 +183,11 @@ export function whyNotMergeDown(
   if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return "not-drawing";
   // Merging replaces the lower layer's whole cell track, so it is a content edit on both.
   if (!isLayerEditable(upper, groups) || !isLayerEditable(below, groups)) return "read-only";
+  // Merging BAKES each layer's transform into its pixels, and a bake only means something for a
+  // transform that does not vary — the same reason Apply/Reset refuse. On an animated layer the
+  // static `transform` is retained but IGNORED, so baking it would place the pixels where the layer
+  // renders at no frame at all, and the track would then vanish with the merged layer.
+  if (upper.transformTrack || below.transformTrack) return "animated";
   return null;
 }
 
@@ -369,6 +374,20 @@ export function withoutTransformKey(track: TransformTrack, frame: number): Trans
 
 export function hasKeyAt(track: TransformTrack, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
+}
+
+/** Deep-copy a track (or pass `undefined` through) — keys array, each key's transform, and the box.
+ *  THE single copy site: undo snapshots share layer objects, so `cloneLayers`, `restoreStructure`
+ *  and `duplicateLayer` all need exactly this depth, and three hand-written copies would drift the
+ *  moment a field is added to `TransformTrack`. */
+export function cloneTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
+  return track
+    ? {
+        ...track,
+        keys: track.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
+        box: track.box ? { ...track.box } : null,
+      }
+    : undefined;
 }
 
 /** A group's own transform (identity when absent / undefined group). */

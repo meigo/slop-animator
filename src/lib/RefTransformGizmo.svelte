@@ -70,6 +70,10 @@
     outer: ComposeStep[];
     setT: (t: RefTransform) => void;
     getT: () => RefTransform;
+    /** Grab-time playhead. `setT`/`getT` above are closures over `transformTarget(keyFrame)`, so they
+     *  already read and key at this frame for the whole gesture — this field records WHICH frame
+     *  that is, so the freeze is visible in the drag state rather than only inside a closure. */
+    keyFrame: number;
   } | null = null;
   let dragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
   let dragFreeze: {
@@ -112,7 +116,14 @@
   type Rect = { x: number; y: number; w: number; h: number };
   // Scope-aware transform target: which transform the gizmo edits/displays, its logical base
   // rect, and the outer compose chain (inner-to-outer) for display/pointer mapping.
-  function transformTarget(): {
+  //
+  // `frame` is the playhead this target reads and WRITES at. The DISPLAY path (tick) leaves it
+  // defaulted, so the gizmo always draws where the layer currently is; a DRAG passes the grab-time
+  // playhead, so the whole gesture — the startT capture, every move, and the isSameTransform no-op
+  // check at settle — reads and keys at one frame. Reading it live scattered a key at every frame
+  // playback passed while a drag was held, all derived from the grab-frame's startT and all inside
+  // one undo entry.
+  function transformTarget(frame: number = appState.playhead): {
     getT: () => RefTransform;
     setT: (t: RefTransform) => void;
     base: Rect | null;
@@ -120,6 +131,8 @@
     cell: Extract<Cell, { kind: "key" }> | null;
     group: LayerGroup | null;
     scope: "frame" | "layer" | "group";
+    /** Layer scope on a layer driven by a transform TRACK — Reset-to-fit refuses on those. */
+    animated: boolean;
   } | null {
     const l = activeTransformLayer();
     if (!l) return null;
@@ -129,7 +142,7 @@
     const groupStep: ComposeStep[] = g
       ? [
           {
-            base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+            base: groupBoxLogical(g, appState.project, frame, DPR, appState.version),
             t: groupTransform(g),
           },
         ]
@@ -141,19 +154,20 @@
       return {
         getT: () => groupTransform(g),
         setT: (t: RefTransform) => (g.transform = t),
-        base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+        base: groupBoxLogical(g, appState.project, frame, DPR, appState.version),
         outer: [], // group is top of the compose chain
         cell: null,
         group: g,
         scope: "group",
+        animated: false, // a group has no track of its own; an animated MEMBER does not block it
       };
     }
 
     if (l.kind === "draw" && appState.transformScope === "frame") {
-      const rk = resolvedKeyCell(l, appState.playhead);
+      const rk = resolvedKeyCell(l, frame);
       if (!rk) return null;
       const outer: ComposeStep[] = [
-        { base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, appState.playhead) },
+        { base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, frame) },
         ...groupStep,
       ];
       return {
@@ -164,6 +178,7 @@
         cell: rk.cell,
         group: g,
         scope: "frame",
+        animated: false, // a per-cell transform is static even on an animated layer
       };
     }
 
@@ -176,7 +191,7 @@
       // (never frozen to `track.box`, which Task 5 fixed at null for layer tracks): a layer's
       // base rect is the document rect / a media contain-fit, neither of which drifts the way a
       // content-derived transformBox does, and resizeProject never touches transform/transformTrack.
-      getT: () => transformAt(l, appState.playhead),
+      getT: () => transformAt(l, frame),
       setT: (t: RefTransform) => {
         const track = l.transformTrack;
         if (!track) {
@@ -184,19 +199,23 @@
           return;
         }
         // Replace the track object: undo snapshots share the layer (gotcha #8).
-        l.transformTrack = withTransformKey(track, appState.playhead, t);
+        l.transformTrack = withTransformKey(track, frame, t);
       },
       base: baseRect(l),
       outer,
       cell: null,
       group: g,
       scope: "layer",
+      animated: !!l.transformTrack,
     };
   }
 
   function startHandleDrag(handle: DragHandle, e: PointerEvent) {
     const vp = getViewport();
-    let tgt = transformTarget();
+    // Freeze the frame for the whole gesture (see transformTarget): every closure below reads and
+    // writes here, so a playhead that moves mid-drag cannot retarget the key.
+    const keyFrame = appState.playhead;
+    let tgt = transformTarget(keyFrame);
     if (!vp || !tgt || !tgt.base) return;
     e.stopPropagation();
     e.preventDefault();
@@ -213,7 +232,7 @@
         const idx = l.cells.indexOf(tgt.cell);
         if (idx >= 0) {
           l.cells[idx] = { ...tgt.cell };
-          tgt = transformTarget(); // re-resolve: closures must write the clone, not the snapshot's cell
+          tgt = transformTarget(keyFrame); // re-resolve: closures must write the clone, not the snapshot's cell
           if (!tgt || !tgt.base) {
             dragUndo = null;
             transformDragGuard.settle = null;
@@ -250,6 +269,7 @@
       outer: tgt.outer,
       setT: tgt.setT,
       getT: tgt.getT,
+      keyFrame,
     };
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endHandleDrag);
@@ -311,6 +331,11 @@
         // exist where none did — and no undo command is being pushed to fix that via
         // restoreStructure, since committing was just decided against above.
         if (trackFreeze) trackFreeze.layer.transformTrack = trackFreeze.prevTrack;
+        // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have
+        // written the TRANSIENT state (press and hold past it without moving). Reverting the live
+        // document is not enough — the saved slot has to be re-dirtied so the restore lands too.
+        // Covers the prevBox revert above as well, which is not value-neutral either.
+        bump();
       } else {
         commitStructuralEdit(dragUndo);
       }
@@ -341,7 +366,11 @@
       visible = true;
       // Publish whether Reset would do anything, so the ToolOptions bar can hide a dead button.
       // Assigning the same boolean is a no-op for $state dependents, so this is safe per frame.
-      appState.canResetTransform = !isIdentityTransform(t);
+      // An ANIMATED layer's resolved transform is usually non-identity, so this alone left the
+      // button rendered on a target where resetLayerTransform only prints its refusal hint — a
+      // button that appears "only when it does something" must account for that guard too. Frame
+      // and group scope keep working on an animated layer (`animated` is layer-scope only).
+      appState.canResetTransform = !isIdentityTransform(t) && !tgt.animated;
     } else {
       visible = false;
       appState.canResetTransform = false;

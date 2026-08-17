@@ -4,6 +4,8 @@ import {
   type Cell,
   type DrawingLayer,
   type Project,
+  type TransformKey,
+  type TransformTrack,
 } from "./document";
 import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
 
@@ -152,11 +154,38 @@ export function shiftStartFrame(startFrame: number, at: number, delta: 1 | -1): 
   return startFrame > at ? startFrame - 1 : startFrame;
 }
 
-/** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: image reference
- *  ranges, video clip offsets, and the audio track. Drawing-layer cells are handled by the
- *  callers, which splice them directly. */
+/** Every key of a layer transform track, moved through the same `shiftStartFrame` rule the audio and
+ *  video clips use — a key is pinned to a single document frame and has no `end` to grow.
+ *
+ *  The DEDUPE is not optional: on a DELETE a key at `at` and one at `at + 1` both land on `at`, and
+ *  `TransformKey.frame` is documented unique within a track. Keys arrive sorted, so writing them in
+ *  order into a map keeps the LATER key's value on a collision — it is the one that survives the
+ *  deleted frame.
+ *
+ *  Returns a NEW track (gotcha #8: undo snapshots share layer objects). */
+export function shiftTransformTrackFrames(
+  track: TransformTrack,
+  at: number,
+  delta: 1 | -1,
+): TransformTrack {
+  const byFrame = new Map<number, TransformKey>();
+  for (const k of track.keys) {
+    const frame = shiftStartFrame(k.frame, at, delta);
+    byFrame.set(frame, { frame, t: { ...k.t } });
+  }
+  return { ...track, keys: [...byFrame.values()].sort((a, b) => a.frame - b.frame) };
+}
+
+/** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track
+ *  keys, image reference ranges, video clip offsets, and the audio track. Drawing-layer cells are
+ *  handled by the callers, which splice them directly. */
 function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void {
   for (const layer of project.layers) {
+    // Transform keys are document-frame space for BOTH layer kinds — without this, everything else
+    // shifted while an animated layer's move stayed put, finishing a frame early and compounding
+    // with each ripple. Replace, never mutate in place.
+    if (layer.transformTrack)
+      layer.transformTrack = shiftTransformTrackFrames(layer.transformTrack, at, delta);
     if (layer.kind !== "ref") continue;
     if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
     if (layer.media.type === "video") {

@@ -651,6 +651,13 @@
     // Grab-time target identity: a mid-gesture active-layer/group switch must not retarget the drag.
     layerId: number;
     groupId: number | null;
+    // Grab-time playhead, and the ONLY frame this gesture reads or keys an animated layer at.
+    // Deliberately NOT frame scope's settle-on-playhead-change bail: frame scope settles because its
+    // target CELL changes identity mid-gesture, which cannot happen here (the layer is the same
+    // object), and settling would make it impossible to nudge a layer while playback loops — which
+    // is a natural way to work. Reading the live playhead instead scattered a key at every frame
+    // playback passed, each derived from the grab-frame's startT, all inside one undo entry.
+    keyFrame: number;
     // Did this gesture actually write a transform? Drives commit-vs-drop when we settle without a
     // readable end transform (undo/tool-switch), instead of committing an empty entry.
     dirty: boolean;
@@ -692,6 +699,11 @@
         // exist where none did — and no undo command is being pushed to fix that via
         // restoreStructure, since committing was just decided against above.
         if (refTrackFreeze) refTrackFreeze.layer.transformTrack = refTrackFreeze.prevTrack;
+        // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have
+        // written the TRANSIENT state (press and hold past it without moving). Reverting the live
+        // document is not enough — the saved slot has to be re-dirtied so the restore lands too.
+        // Covers the prevBox revert above as well, which is not value-neutral either.
+        bump();
       }
     }
     refDragUndo = null;
@@ -708,6 +720,12 @@
     const scope = appState.transformScope;
     const isDraw = layer.kind === "draw";
     const g = groupOf(layer, appState.project.groups);
+    // The frame this gesture reads and keys at. Before the grab (the hit test and the startT capture
+    // below) refDrag is null and this IS the live playhead, i.e. the grab frame; from the grab on it
+    // is frozen, so a playhead that moves mid-gesture (playback, or the global ←/→ keys) cannot
+    // scatter keys across the track. `finishTransformDragUndo`'s `endT` thunk runs while refDrag is
+    // still set, so its isSameTransform check compares the same frame startT was taken at.
+    const dragFrame = () => refDrag?.keyFrame ?? appState.playhead;
 
     // Resolve target + base + compose-steps (outer transforms above the target, inner-to-outer).
     let getT: () => typeof layer.transform, setT: (t: typeof layer.transform) => void;
@@ -759,7 +777,10 @@
       // Outer = layer, then group (inner-to-outer).
       outerSteps.push({
         base: { x: 0, y: 0, w: W, h: H },
-        t: transformAt(layer, appState.playhead),
+        // Frozen with the rest of the drag: on an ANIMATED layer a live read would move the outer
+        // step (and so the pointer inverse-map) out from under a startT captured at the grab frame.
+        // No change for a static layer — transformAt is frame-independent there.
+        t: transformAt(layer, dragFrame()),
       });
       if (g)
         outerSteps.push({
@@ -774,7 +795,7 @@
       // transform/transformTrack.
       base = transformBaseRect(layer, W, H);
       trackScopeLayer = layer;
-      getT = () => transformAt(layer, appState.playhead);
+      getT = () => transformAt(layer, dragFrame());
       setT = (nt) => {
         const track = layer.transformTrack;
         if (!track) {
@@ -782,7 +803,7 @@
           return;
         }
         // Replace the track object: undo snapshots share the layer (gotcha #8).
-        layer.transformTrack = withTransformKey(track, appState.playhead, nt);
+        layer.transformTrack = withTransformKey(track, dragFrame(), nt);
       };
       // Outer = group (if any).
       if (g)
@@ -854,6 +875,7 @@
         cell: isDraw && scope === "frame" ? (frameRk?.cell ?? null) : null,
         layerId: layer.id,
         groupId: g?.id ?? null,
+        keyFrame: appState.playhead,
         dirty: false,
       };
     }

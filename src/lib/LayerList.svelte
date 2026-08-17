@@ -172,6 +172,7 @@
     "no-layer-below": "no layer below to merge into",
     "not-drawing": "only drawing layers can be merged",
     "read-only": "a layer is locked or hidden",
+    animated: "a layer is animated — Stop animating first",
   };
   const mergeTitle = $derived(
     mergeBlock ? `Merge down — ${MERGE_BLOCK_REASON[mergeBlock]}` : "Merge down",
@@ -181,7 +182,10 @@
   // or the containing group's transform is non-identity (draw layers only).
   function hasTransform(layer: Layer): boolean {
     if (layer.kind !== "draw") return false;
-    if (!isIdentityTransform(layer.transform)) return true;
+    // On an ANIMATED layer the static `transform` is retained but IGNORED, so it says nothing about
+    // what is on screen — and Apply/Reset refuse on it anyway. The cell and group terms below are
+    // unaffected: neither is driven by the track.
+    if (!layer.transformTrack && !isIdentityTransform(layer.transform)) return true;
     const rk = resolvedKeyCell(layer, appState.playhead);
     if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
     const g = groupOf(layer, appState.project.groups);
@@ -192,7 +196,9 @@
   // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
   function activeTransformScope(layer: Layer): "frame" | "layer" | "group" | null {
     if (layer.kind !== "draw") return null;
-    const layerNI = !isIdentityTransform(layer.transform);
+    // Same reason as hasTransform: an animated layer's static transform is ignored, and Apply/Reset
+    // refuse on it — so it must not win the scope dispatch and offer an action that no-ops.
+    const layerNI = !layer.transformTrack && !isIdentityTransform(layer.transform);
     const rk = resolvedKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
     const g = groupOf(layer, appState.project.groups);
