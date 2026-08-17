@@ -664,6 +664,12 @@ function bakeLayerTransform(layer: DrawingLayer): void {
 
 export function applyLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
+  // Silent refusal matches the locked-layer convention; the status hint explains it.
+  if (layer?.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   if (layer?.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
   liftGuard.discard?.(); // bake replaces every key canvas
@@ -672,6 +678,12 @@ export function applyLayerTransform(layerId: number): void {
 
 export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
+  // Silent refusal matches the locked-layer convention; the status hint explains it.
+  if (layer?.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   if (!layer || isIdentityTransform(layer.transform)) return;
   if (layer.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   commitStructural(() => {

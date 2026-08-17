@@ -2499,3 +2499,71 @@ row's re-link button uses, so a finger scroll that happens to end on the row doe
   `renderFrame` only clears and fills the DOCUMENT rect, so the pad strip would otherwise encode as
   garbage — `exportVideo` paints `bgColor` across the whole surface before each frame.
   **Verified in the browser 2026-08-17.**
+
+**Layer transform track — animated layer transforms (2026-08-18, merged).** A drawing or reference
+layer's transform can now vary over time instead of being one static value, closing the
+"Transform later: animated/keyframed transforms" roadmap item. `Layer.transformTrack?: TransformTrack`
+(`{ keys: TransformKey[] (sorted, never empty), interp: "linear" | "hold", sampleEvery?: number, box:
+{...} | null }`) is **optional and additive** — absent means "static, behaves exactly as before",
+so every existing project loads unaffected and the save-format version does not move (still `1`); an
+old build opening a new save simply never reads a field it doesn't know about, and `projectToJson`/
+`projectFromJson` pass it through like any other optional layer field.
+**`track.box` is stored NULL for a layer track, never a frozen `transformBaseRect`.** This deliberately
+diverges from the cell/group freeze-the-pivot convention (gotcha #5): that rule exists for
+CONTENT-DERIVED boxes, which drift as you draw more: a layer's base rect is the document rect (or a
+reference's media contain-fit), and neither drifts from drawing — `resizeProject` never touches
+`transform`/`transformTrack`, so a box frozen at track-creation time would silently describe the OLD
+document size after a later resize. The gizmo instead recomputes `base` LIVE every frame via
+`transformBaseRect`, the same call the static (non-animated) path already made — animating a layer
+changes what feeds the pivot maths not at all. `box` stays a field on `TransformTrack` for a future
+group-level track, where the box genuinely would be content-derived and the freeze rule would apply.
+**Rotation interpolates ABSOLUTELY, with no shortest-path normalisation.** `lerpTransform` does plain
+`a + (b - a) * u` on `rotation` (radians), not an angle-wrapped slerp — the gizmo already accumulates
+rotation past ±360° for the static case (spin the handle twice, get 4π), and a track key just captures
+whatever that accumulated value is. Two keys 2π apart therefore hold a full visible spin between them
+rather than snapping to the "shorter" zero-rotation path a wrapped interpolation would silently
+substitute — the animator asked for two turns, not none.
+**`sampleEvery` quantises time GLOBALLY, then evaluates.** `transformAt` computes `q =
+quantiseFrame(frame, first.frame, sampleEvery)` — floored onto a grid anchored at the FIRST key's
+frame, never at the segment's own start — before doing the linear lerp between whichever two keys
+bracket `q`. Anchoring per-segment would make the held step change size/phase at every key (the same
+class of bug the drawing-side "step on 2s/3s" logic already avoids); anchoring once at the track's
+first key keeps the stepping rhythm constant across the whole track regardless of where keys land.
+`interp: "hold"` skips quantisation entirely (it already reads as a step function) and MAX_SAMPLE_EVERY
+(12) is clamped in the store, not just the widget's `max=`, per the established `MAX_GAP` pattern —
+a browser accepts a typed value past a number input's advisory max.
+**Keying rides inside the gizmo's existing `getT`/`setT` pair, so no drag lifecycle changed.** The
+Frame/Layer/Group scope dispatch in `Canvas.svelte`/`RefTransformGizmo.svelte` already reads/writes
+the active transform through one `getT`/`setT` closure per scope (gotcha #6); the "layer" branch's
+`setT` now checks `layer.transformTrack` and, when present, calls `withTransformKey(track, playhead,
+nt)` instead of writing `layer.transform` directly — auto-key is therefore not a new gesture or a new
+undo path, it is what the SAME drag already did, now landing in a different field. This is also why
+Apply/Reset had to gain their own guard in this task: those two actions bypass the gizmo entirely and
+write straight to `layer.transform`/bake the cells, which means nothing once a track exists — there is
+no single "the" transform to bake or reset.
+**A no-op gesture's transient key is reverted by restoring the grab-time track reference, not by
+diffing.** Both drag sites freeze `{ layer, prevTrack: layer.transformTrack }` at grab
+(`refTrackFreeze`/`trackFreeze`) the same way the existing `transformBox` freeze already captures a
+direct object ref rather than re-resolving by id at release (gotcha #6's documented reasoning applies
+unchanged: re-resolving risks a mid-gesture retarget stomping an unrelated layer's track). On an
+`isSameTransform` no-op the settle branch reassigns `layer.transformTrack = prevTrack`, discarding
+whatever key `setT` wrote mid-drag before any key even existed for the pointer-down frame — a
+click-without-move on an animated layer must not silently plant a key, matching the pre-existing
+"click-without-move pushes nothing" contract for static transforms.
+**The transform row carries no `data-layer-id`, which is what keeps it out of the timeline's
+selection/gutter axes for free.** Every layer-row gesture (marquee hit-testing, block move, the
+lock/hidden gutter marker, `TimelineSelectionBar`'s row lookup) keys off `[data-layer-id]` elements;
+the transform row is a read-only ◆-per-key strip with nothing to select or paste (a track holds no
+cells), so simply never emitting the attribute means none of that machinery has to learn a new row
+kind or a new exclusion — the row is inert to selection by omission, the same trick the group-header
+row already uses for the same reason.
+**Owed a browser pass** (Tasks 1-8 are build+review-verified per project convention; canvas/DOM has no
+node harness): Animate on a static layer starts a track at frame 0 and a first drag elsewhere tweens
+cleanly; scrubbing between keys shows the interpolated pose; Stop animating bakes the ON-SCREEN value
+(not the pre-animation one); Delete key on the last remaining key is a no-op; Hold vs Linear and
+`sampleEvery` visibly change playback; Apply/Reset on an animated layer refuse with the "Layer is
+animated" hint and leave the track untouched; the status bar names the frame a drag will key, and
+switches back to the plain hint once the track is removed; onion skins, export and the transformed-
+layer bounds hint all resolve per-frame rather than showing a stale static pose; undo/redo across
+Animate/Stop-animating/a keyed drag/Delete key/interpolation changes; a reference layer's track
+survives a re-link; iPad for the gizmo drag and the new ToolOptions controls.

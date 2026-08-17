@@ -27,6 +27,7 @@
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
+      animatedFrame: l.transformTrack ? appState.playhead : null,
     });
   });
 </script>
