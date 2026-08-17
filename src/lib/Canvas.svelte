@@ -65,6 +65,7 @@
     isLayerVisible,
     isRefVisibleAtFrame,
     groupTransform,
+    transformAt,
     type Layer,
     type Cell,
     type LayerGroup,
@@ -97,7 +98,9 @@
     const W = appState.project.width,
       H = appState.project.height;
     const steps: ComposeStep[] = [];
-    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+    // Resolved at the playhead, exactly as the group step below already is — an animated layer's
+    // paint inverse, bounds hint and selection mapping must all follow the frame you are on.
+    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: transformAt(layer, appState.playhead) });
     const g = groupOf(layer, appState.project.groups);
     if (g) {
       const gt = groupTransform(g);
@@ -737,7 +740,10 @@
       getT = () => cellTransform(frameRk!.cell);
       setT = (nt) => (frameRk!.cell.transform = nt);
       // Outer = layer, then group (inner-to-outer).
-      outerSteps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+      outerSteps.push({
+        base: { x: 0, y: 0, w: W, h: H },
+        t: transformAt(layer, appState.playhead),
+      });
       if (g)
         outerSteps.push({
           base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),

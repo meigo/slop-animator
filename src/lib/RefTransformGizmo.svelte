@@ -24,6 +24,7 @@
     isLayerVisible,
     isRefVisibleAtFrame,
     groupTransform,
+    transformAt,
     isIdentityTransform,
     isSameTransform,
     type Cell,
@@ -145,7 +146,7 @@
       const rk = resolvedKeyCell(l, appState.playhead);
       if (!rk) return null;
       const outer: ComposeStep[] = [
-        { base: { x: 0, y: 0, w: W, h: H }, t: l.transform },
+        { base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, appState.playhead) },
         ...groupStep,
       ];
       return {
