@@ -859,25 +859,21 @@
     }
     const d = refDrag;
     if (d.handle) {
-      const nt =
-        d.handle === "body"
-          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
-          : d.handle === "rotate"
-            ? applyRotate(d.startT, d.center, d.start, pc)
-            : applyScale(d.startT, d.center, d.start, pc);
-      // Gate the WRITE on the candidate value actually differing from startT (compared by value,
-      // not raw pointer coordinates, so this stays correct no matter how many calls land on the
-      // exact grab point — e.g. a click, same call as the grab, falls through to here with
-      // pc === d.start). Without this, setT ran unconditionally: harmless for a plain
-      // `layer.transform = nt` assignment, but for an animated layer setT goes through
-      // withTransformKey, which INSERTS a key even when the resulting value is unchanged. dirty
-      // still recomputes every call (from the freshly computed nt, equivalent to the old
-      // getT()-after-write comparison), so the existing no-op/commit decision below is unaffected.
-      d.dirty = !isSameTransform(d.startT, nt);
-      if (d.dirty) {
-        setT(nt);
-        bump();
-      }
+      // Unconditional, every event — including a pure click, which falls through to this same
+      // call right after the grab above with pc === d.start. For an animated layer this DOES
+      // transiently insert/replace a key via withTransformKey even when the value is unchanged,
+      // but that is fine: the key exists only between pointerdown and pointerup. On a no-op
+      // gesture the settle branch in finishTransformDragUndo restores refTrackFreeze.prevTrack
+      // before anything can persist it (commitStructuralEdit is not called on that branch, and
+      // autosave is debounced well past a click) — see the round-2 fix note in the task-6 report.
+      // An earlier round gated this write on the value actually changing, but the gate also
+      // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
+      // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
+      if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
+      else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
+      else setT(applyScale(d.startT, d.center, d.start, pc));
+      d.dirty = !isSameTransform(d.startT, getT());
+      bump();
     }
     if (done) {
       finishTransformDragUndo(() => getT());
