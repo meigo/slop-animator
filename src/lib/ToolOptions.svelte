@@ -8,12 +8,16 @@
     selectionActions,
     transformActions,
     fillActions,
+    animateLayer,
+    removeLayerAnimation,
+    deleteTransformKeyAtPlayhead,
+    setTransformTrackOptions,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
-  import { whyNotEditable } from "../anim/document";
+  import { whyNotEditable, hasKeyAt, isLayerLocked, isLayerVisible } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
   import { MAX_GAP } from "../core/fill-holes";
 
@@ -26,6 +30,18 @@
       !appState.selectionActive &&
       !appState.selectionFloating,
   );
+
+  // Whose transform the Animate controls act on, or null when none applies. A ref is animatable
+  // under any tool because its gizmo is always live — the same reason Reset-to-fit sits outside
+  // the per-tool branches. A locked or hidden layer is never a target.
+  const animTarget = $derived.by(() => {
+    const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
+    if (!l) return null;
+    if (isLayerLocked(l, appState.project.groups)) return null;
+    if (!isLayerVisible(l, appState.project.groups)) return null;
+    if (l.kind === "ref") return l;
+    return appState.tool === "transform" && appState.transformScope === "layer" ? l : null;
+  });
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
@@ -276,5 +292,68 @@
       title="Reset the current transform back to fit"
       onclick={() => transformActions.reset?.()}>Reset to fit</button
     >
+  {/if}
+  <!-- Animate / Delete key / Stop animating / interpolation. Vanishes (rather than disabling) for a
+       locked or hidden layer: a locked/hidden active layer already gets a top-precedence status-bar
+       hint and its transform gizmo doesn't render at all, so a visible-but-disabled Animate button
+       would point at chrome that isn't there — see task-8 report for the full reasoning. -->
+  {#if animTarget}
+    {@const track = animTarget.transformTrack}
+    {#if !track}
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Animate this layer's transform — its current position becomes a key at frame 0"
+        onclick={() => animateLayer(animTarget.id)}>Animate</button
+      >
+    {:else}
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!hasKeyAt(track, appState.playhead) || track.keys.length <= 1}
+        title={!hasKeyAt(track, appState.playhead)
+          ? "Delete key — no key on this frame"
+          : track.keys.length <= 1
+            ? "Delete key — this is the only key; use Stop animating"
+            : "Delete the key on this frame"}
+        onclick={() => {
+          if (hasKeyAt(track, appState.playhead) && track.keys.length > 1)
+            deleteTransformKeyAtPlayhead(animTarget.id);
+        }}>Delete key</button
+      >
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Stop animating — keeps the position you can see now"
+        onclick={() => removeLayerAnimation(animTarget.id)}>Stop animating</button
+      >
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        class:bg-surface-active={track.interp === "hold"}
+        title={track.interp === "hold"
+          ? "Hold — each key holds until the next (no interpolation)"
+          : "Linear — interpolate between keys"}
+        onclick={() =>
+          setTransformTrackOptions(animTarget.id, {
+            interp: track.interp === "hold" ? "linear" : "hold",
+          })}>{track.interp === "hold" ? "Hold" : "Linear"}</button
+      >
+      {#if track.interp === "linear"}
+        <label
+          class="flex items-center gap-1 text-xs text-text-secondary"
+          title="Update the move every N frames, so it can sit on 2s like the drawings"
+        >
+          Step
+          <input
+            class="w-12 bg-surface border border-border text-text px-1"
+            type="number"
+            min="1"
+            max="12"
+            value={track.sampleEvery ?? 1}
+            onchange={(e) =>
+              setTransformTrackOptions(animTarget.id, {
+                sampleEvery: Number((e.currentTarget as HTMLInputElement).value),
+              })}
+          />
+        </label>
+      {/if}
+    {/if}
   {/if}
 </div>
