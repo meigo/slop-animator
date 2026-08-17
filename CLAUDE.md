@@ -2423,6 +2423,13 @@ marquee dragged ACROSS a group row still spans the layers either side, via that 
 Anything added to the timeline later that is not a layer should follow this rule rather than adding
 guards.
 
+Group MEMBERS are indented 12px in the gutter, matching the panel's `.group-members pl-3` — with a
+group row now present, an un-indented member reads as the group's sibling rather than its child. This
+is the one deliberate exception to the rule that every row starts its name at the same x; the marker
+column is a separate sticky element pinned at `LABEL_W`, so it stays aligned regardless. Note the
+gutter's name column can be dragged down to 80px, where 12px is a real bite out of a truncating name —
+accepted, because the panel sets the convention and two views disagreeing about hierarchy is worse.
+
 The row is a collapse toggle (chevron + name + hidden-member count), so a collapsed group is finally
 visible and expandable from the timeline. Its frame strip is deliberately empty — that is where a
 transform track will live. `onclick` is guarded by `panEndedWithMovement`, the same latch the ref

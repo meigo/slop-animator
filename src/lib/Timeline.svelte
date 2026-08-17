@@ -1787,6 +1787,7 @@
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
+            class:pl-4={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:bg-surface-active={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
@@ -1803,7 +1804,11 @@
           >
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
-                 — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x. -->
+                 — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
+                 A GROUP MEMBER is the one deliberate exception: `pl-4` above indents it by the same
+                 12px the panel uses (`.group-members pl-3`), because with group rows now present an
+                 un-indented member reads as the group's SIBLING. The marker column is a separate
+                 sticky element pinned at LABEL_W, so it stays aligned regardless. -->
             <span
               class="flex w-3.5 shrink-0 justify-center"
               role="presentation"
