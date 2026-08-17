@@ -13,6 +13,7 @@ import {
   type RefTransform,
   type Layer,
   type LayerGroup,
+  type TransformTrack,
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
@@ -29,6 +30,7 @@ export interface DrawingLayerJson {
   groupId: number | null;
   cells: ("key" | "hold")[];
   transform: RefTransform;
+  transformTrack?: TransformTrack;
   cellTransforms?: {
     [index: number]: {
       transform?: RefTransform;
@@ -54,6 +56,7 @@ export interface ReferenceJson {
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
+  transformTrack?: TransformTrack;
 }
 
 /** Splice `refs` (by stack index, ascending) into `base`. Pure; rebuilds the original interleaving. */
@@ -191,6 +194,7 @@ export function projectToJson(project: Project): ProjectJson {
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
+      transformTrack: l.transformTrack,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
           c.kind === "key" &&
@@ -226,6 +230,7 @@ export function projectToJson(project: Project): ProjectJson {
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
+        transformTrack: l.transformTrack,
       })),
     // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
@@ -413,6 +418,7 @@ export async function loadProjectBlob(
       groupId: lj.groupId ?? null,
       cells,
       transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transformTrack: lj.transformTrack,
     });
   }
   const refsJson = json.references ?? [];
@@ -435,6 +441,7 @@ export async function loadProjectBlob(
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
+      transformTrack: rj.transformTrack,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer;
     const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;

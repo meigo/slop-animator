@@ -315,10 +315,30 @@ function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
   // in-place mutations (splice/replace) can't corrupt a stored snapshot. Deep-copy transform
   // so a future in-place field write cannot corrupt in-flight snapshots (groups already do this).
+  // The transform TRACK is deep-copied for the same reason, down to each key's transform: a
+  // snapshot that shared the keys array would be rewritten by the next key the artist drags in.
+  const track = (t: Layer["transformTrack"]) =>
+    t
+      ? {
+          ...t,
+          keys: t.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
+          box: t.box ? { ...t.box } : null,
+        }
+      : undefined;
   return layers.map((l) =>
     l.kind === "draw"
-      ? { ...l, cells: l.cells.slice(), transform: { ...l.transform } }
-      : { ...l, transform: { ...l.transform }, range: l.range ? { ...l.range } : undefined },
+      ? {
+          ...l,
+          cells: l.cells.slice(),
+          transform: { ...l.transform },
+          transformTrack: track(l.transformTrack),
+        }
+      : {
+          ...l,
+          transform: { ...l.transform },
+          range: l.range ? { ...l.range } : undefined,
+          transformTrack: track(l.transformTrack),
+        },
   );
 }
 function snapshotStructure(): StructSnapshot {
@@ -355,6 +375,14 @@ function restoreStructure(s: StructSnapshot) {
         live.cells = snap.cells.slice();
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
+      // Structural: it decides what renders at every frame, exactly like `range` does for a ref.
+      live.transformTrack = snap.transformTrack
+        ? {
+            ...snap.transformTrack,
+            keys: snap.transformTrack.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
+            box: snap.transformTrack.box ? { ...snap.transformTrack.box } : null,
+          }
+        : undefined;
       if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
         live.range = snap.range ? { ...snap.range } : undefined;

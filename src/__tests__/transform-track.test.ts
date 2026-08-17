@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { transformAt, type Layer, type TransformTrack } from "../anim/document";
+import {
+  transformAt,
+  createTransformTrack,
+  withTransformKey,
+  withoutTransformKey,
+  hasKeyAt,
+  createProject,
+  createDrawingLayer,
+  type Layer,
+  type TransformTrack,
+} from "../anim/document";
+import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
 
 const T = (dx: number, rotation = 0, scale = 1) => ({ dx, dy: 0, scale, rotation });
 const layer = (track?: TransformTrack) =>
@@ -97,13 +108,6 @@ describe("transformAt", () => {
   });
 });
 
-import {
-  createTransformTrack,
-  withTransformKey,
-  withoutTransformKey,
-  hasKeyAt,
-} from "../anim/document";
-
 describe("track mutations", () => {
   it("createTransformTrack seeds one key at frame 0 with the static value", () => {
     const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 });
@@ -156,5 +160,31 @@ describe("track mutations", () => {
   it("hasKeyAt reports an exact frame match", () => {
     expect(hasKeyAt(track(), 10)).toBe(true);
     expect(hasKeyAt(track(), 9)).toBe(false);
+  });
+});
+
+describe("transform track persistence", () => {
+  it("round-trips a track", async () => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    l.transformTrack = {
+      keys: [
+        { frame: 0, t: T(0) },
+        { frame: 8, t: T(80, 1.5) },
+      ],
+      interp: "hold",
+      sampleEvery: 2,
+      box: { x: 1, y: 2, w: 3, h: 4 },
+    };
+    project.layers.push(l);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const back = loaded.layers[loaded.layers.length - 1];
+    expect(back.transformTrack).toEqual(l.transformTrack);
+  });
+
+  it("a layer with no track round-trips as undefined (old saves)", async () => {
+    const project = createProject();
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.layers[0].transformTrack).toBeUndefined();
   });
 });
