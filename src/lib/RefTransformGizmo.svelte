@@ -32,6 +32,7 @@
     type Layer,
     type LayerGroup,
     type RefTransform,
+    type TransformTrack,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
   import {
@@ -76,6 +77,11 @@
     group: LayerGroup | null;
     prevBox: Rect | null;
   } | null = null;
+  // Same direct-object-ref shape as dragFreeze, for the layer-scope transformTrack: captured at
+  // grab so a no-op drag can put the track back exactly as it was. withTransformKey always
+  // REPLACES the track (never mutates in place), so the reference captured here is already a
+  // valid before-snapshot — nothing needs deep-copying, unlike the box freeze above.
+  let trackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
 
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
@@ -229,6 +235,12 @@
         tgt.group.transformBox = base;
       }
     }
+    // An animated layer's track is mutable state a no-op drag must be able to revert (see
+    // settleDragUndo) — capture it here, before any write.
+    if (tgt.scope === "layer") {
+      const l = activeTransformLayer();
+      if (l) trackFreeze = { layer: l, prevTrack: l.transformTrack };
+    }
     const start = inverseChain(tgt.outer, vp.screenToCanvas(e.clientX, e.clientY));
     drag = {
       handle,
@@ -294,12 +306,18 @@
       if (isSameTransform(drag.startT, drag.getT())) {
         if (dragFreeze?.cell) dragFreeze.cell.transformBox = dragFreeze.prevBox;
         else if (dragFreeze?.group) dragFreeze.group.transformBox = dragFreeze.prevBox;
+        // Also revert any key withTransformKey inserted along the way: the resulting VALUE
+        // matches startT (that's why we're here), but the TRACK OBJECT may not — a fresh key can
+        // exist where none did — and no undo command is being pushed to fix that via
+        // restoreStructure, since committing was just decided against above.
+        if (trackFreeze) trackFreeze.layer.transformTrack = trackFreeze.prevTrack;
       } else {
         commitStructuralEdit(dragUndo);
       }
     }
     dragUndo = null;
     dragFreeze = null;
+    trackFreeze = null;
     transformDragGuard.settle = null;
   }
 

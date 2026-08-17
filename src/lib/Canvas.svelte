@@ -71,6 +71,7 @@
     type Cell,
     type LayerGroup,
     type DrawingLayer,
+    type TransformTrack,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
@@ -664,6 +665,11 @@
     group: LayerGroup | null;
     prevBox: Rect | null;
   } | null = null;
+  // Same direct-object-ref shape as refDragFreeze, for the layer-scope transformTrack: captured at
+  // grab so a no-op drag can put the track back exactly as it was. withTransformKey always REPLACES
+  // the track (never mutates in place), so the reference captured here is already a valid
+  // before-snapshot — nothing needs deep-copying, unlike the box freeze above.
+  let refTrackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
 
   // endT is a thunk: at the early-return sites the target is gone and there is no getT — pass null
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
@@ -681,10 +687,16 @@
         // No-op drag: push nothing, revert the freeze we did at grab.
         if (refDragFreeze?.cell) refDragFreeze.cell.transformBox = refDragFreeze.prevBox;
         else if (refDragFreeze?.group) refDragFreeze.group.transformBox = refDragFreeze.prevBox;
+        // Also revert any key withTransformKey inserted along the way: the resulting VALUE
+        // matches startT (that's why we're here), but the TRACK OBJECT may not — a fresh key can
+        // exist where none did — and no undo command is being pushed to fix that via
+        // restoreStructure, since committing was just decided against above.
+        if (refTrackFreeze) refTrackFreeze.layer.transformTrack = refTrackFreeze.prevTrack;
       }
     }
     refDragUndo = null;
     refDragFreeze = null;
+    refTrackFreeze = null;
     transformDragGuard.settle = null;
   }
 
@@ -702,6 +714,10 @@
     let base: { x: number; y: number; w: number; h: number } | null;
     const outerSteps: ComposeStep[] = [];
     let frameRk: ReturnType<typeof resolvedKeyCell> = null;
+    // Set only by the layer-scope branch below (draw layer at layer scope, or a ref layer under
+    // any scope) — the grab site below uses it to know whether to freeze a transformTrack
+    // reference for a no-op-drag revert (frame/group scope have no track at their own level).
+    let trackScopeLayer: Layer | null = null;
 
     if (isDraw && scope === "group" && g) {
       if (groupHasLockedLayer(g, appState.project.layers)) {
@@ -757,6 +773,7 @@
       // drifts the way a content-derived transformBox does, and resizeProject never touches
       // transform/transformTrack.
       base = transformBaseRect(layer, W, H);
+      trackScopeLayer = layer;
       getT = () => transformAt(layer, appState.playhead);
       setT = (nt) => {
         const track = layer.transformTrack;
@@ -823,6 +840,11 @@
             g.transformBox = base;
           }
         }
+        // An animated layer's track is mutable state a no-op drag must be able to revert (see
+        // finishTransformDragUndo) — capture it here, before any write.
+        if (trackScopeLayer) {
+          refTrackFreeze = { layer: trackScopeLayer, prevTrack: trackScopeLayer.transformTrack };
+        }
       }
       refDrag = {
         handle,
@@ -837,11 +859,25 @@
     }
     const d = refDrag;
     if (d.handle) {
-      if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
-      else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
-      else setT(applyScale(d.startT, d.center, d.start, pc));
-      d.dirty = !isSameTransform(d.startT, getT());
-      bump();
+      const nt =
+        d.handle === "body"
+          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
+          : d.handle === "rotate"
+            ? applyRotate(d.startT, d.center, d.start, pc)
+            : applyScale(d.startT, d.center, d.start, pc);
+      // Gate the WRITE on the candidate value actually differing from startT (compared by value,
+      // not raw pointer coordinates, so this stays correct no matter how many calls land on the
+      // exact grab point — e.g. a click, same call as the grab, falls through to here with
+      // pc === d.start). Without this, setT ran unconditionally: harmless for a plain
+      // `layer.transform = nt` assignment, but for an animated layer setT goes through
+      // withTransformKey, which INSERTS a key even when the resulting value is unchanged. dirty
+      // still recomputes every call (from the freshly computed nt, equivalent to the old
+      // getT()-after-write comparison), so the existing no-op/commit decision below is unaffected.
+      d.dirty = !isSameTransform(d.startT, nt);
+      if (d.dirty) {
+        setT(nt);
+        bump();
+      }
     }
     if (done) {
       finishTransformDragUndo(() => getT());
