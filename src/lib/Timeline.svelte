@@ -1685,9 +1685,12 @@
         onkeydown={rulerKey}
       >
         <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
-             the frames it measures; absolutely positioned so it adds no column. -->
+             the frames it measures; absolutely positioned so it adds no column.
+             z-10 like the playhead badge beside it: the ruler's own sticky gutter spacer is z-20 and
+             comes EARLIER in the DOM, so at equal z this handle would win and paint over the spacer
+             once the animation's end is scrolled behind it. -->
         <div
-          class="absolute inset-y-0 z-20 w-2 cursor-ew-resize hover:bg-text/10"
+          class="absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-text/10"
           style="left: {GUTTER_W + appState.project.frameCount * CELL_W - 4}px; touch-action: none"
           role="separator"
           aria-orientation="vertical"
@@ -1947,9 +1950,14 @@
                 <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
                 <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing
                      on iPad (no cursor, no hover), which is the platform this app is used on most. The
-                     bars are pointer-events-none so the handle div stays the event target. -->
+                     bars are pointer-events-none so the handle div stays the event target.
+                     z-10, NOT z-20: at z-20 they tied with the sticky gutter label, and equal z plus
+                     later DOM order wins — so a handle scrolled behind the gutter painted OVER the
+                     layer names instead of sliding under them. z-10 still beats the clip's own label
+                     (also z-10, but earlier in the DOM), so a long name cannot cover a grip. Same
+                     mistake the audio trim handles made; see AudioLane. -->
                 <div
-                  class="absolute inset-y-0 left-0 z-20 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                  class="absolute inset-y-0 left-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
                   style="touch-action: none"
                   role="presentation"
                   title="Trim the start"
@@ -1962,7 +1970,7 @@
                   <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
                 </div>
                 <div
-                  class="absolute inset-y-0 right-0 z-20 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                  class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
                   style="touch-action: none"
                   role="presentation"
                   title="Trim the end"

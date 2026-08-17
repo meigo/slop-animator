@@ -1952,6 +1952,7 @@ rather than picking a number:
 |---|---|---|
 | 10 | playhead line, playhead badge | visual only; must not cover the ◆ you are grabbing |
 | 15 | full-height gutter plate | hides the playhead line in empty space below the last row |
+| 10 | clip trim handles, the ruler's length handle | must scroll UNDER the gutter, so they stay below 20 — and above their clip's own z-10 label by DOM order |
 | 20 | per-row sticky name labels and markers | above the plate, below everything structural |
 | 35 | the sticky RULER row | rows scroll under it; the playhead badge is its child and rides along |
 | 40 | gutter resize grip | crosses the whole height including the ruler, so it must stay grabbable there |
@@ -1963,6 +1964,14 @@ immediately whenever a selection is taller than the viewport, since the bar's fa
 `viewTop + 2`, i.e. exactly the ruler's band. The lesson generalises: when a ladder rung moves, every
 FLOATING thing that can be positioned over it has to be re-checked, because a float has no fixed
 neighbour to compare against.
+**Both clip trim handles and the ruler's length handle were z-20 and had to drop to z-10
+(2026-08-18).** At 20 they tied with the sticky gutter — the per-row label for the clip handles, the
+ruler's own spacer for the length handle — and came later in the DOM, so instead of sliding under the
+gutter they painted OVER the layer names. Reported from a screenshot. Anything that lives in the
+scrolling strip and must disappear behind the gutter belongs at 10, not 20; 20 is the gutter's own
+band. This is the third time this exact tie has produced a bug (audio trim handles stealing the
+mute/✕ presses, layer names leaking over the ruler, now these).
+
 **Equal z plus later DOM order is a win, not a tie** — that is what made this a bug rather than a
 coin flip, and it is the same mechanism behind the audio trim handles stealing gutter presses at
 z-20. When two things must not overlap, give them different numbers, not the same one.
