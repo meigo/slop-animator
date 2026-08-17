@@ -25,7 +25,6 @@ import {
   transformAt,
   createTransformTrack,
   withoutTransformKey,
-  transformBaseRect,
   type RefTransform,
   type Project,
   type Layer,
@@ -716,15 +715,20 @@ export function resetGroupTransform(groupId: number): void {
   });
 }
 
-/** Start animating a layer: its current static transform becomes the key at frame 0, and the pivot
- *  box is captured ONCE for the whole track (a per-key box would warp the motion path). */
+/** Start animating a layer: its current static transform becomes the key at frame 0. */
 export function animateLayer(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
   if (!l || l.transformTrack || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
-  const box = transformBaseRect(l, state.project.width, state.project.height);
   commitStructural(() => {
-    l.transformTrack = createTransformTrack(l.transform, box);
+    // `box: null`, not a frozen `transformBaseRect` — the freeze-the-pivot rule is for
+    // CONTENT-DERIVED boxes (a cell's/group's, built from content bounds, which drift as you draw).
+    // A layer's base rect (doc rect / media contain-fit) never drifts from drawing more — the gizmo
+    // already recomputes it live for the static case, so freezing here would be a second convention
+    // for the same quantity — and `resizeProject` never updates a frozen box, so one would silently
+    // describe the OLD document size after a resize. `box` stays on `TransformTrack` for a future
+    // group-level track, where it genuinely is content-derived.
+    l.transformTrack = createTransformTrack(l.transform, null);
   });
 }
 
@@ -732,7 +736,8 @@ export function animateLayer(layerId: number): void {
  *  WYSIWYG — the alternative (restoring the pre-animation value) would undo work invisibly. */
 export function removeLayerAnimation(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l?.transformTrack) return;
+  if (!l?.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
   const resolved = transformAt(l, state.playhead);
   commitStructural(() => {
     l.transform = { ...resolved };
@@ -745,7 +750,8 @@ export function removeLayerAnimation(layerId: number): void {
 export function deleteTransformKeyAtPlayhead(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
   const track = l?.transformTrack;
-  if (!l || !track) return;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
   const next = withoutTransformKey(track, state.playhead);
   if (next === track) return; // guard ABOVE the commit: a no-op must not push an empty entry
   commitStructural(() => {
@@ -760,7 +766,8 @@ export function setTransformTrackOptions(
 ): void {
   const l = state.project.layers.find((x) => x.id === layerId);
   const track = l?.transformTrack;
-  if (!l || !track) return;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
   const interp = opts.interp ?? track.interp;
   const sampleEvery = Math.max(1, Math.floor(opts.sampleEvery ?? track.sampleEvery ?? 1));
   if (interp === track.interp && sampleEvery === (track.sampleEvery ?? 1)) return;
