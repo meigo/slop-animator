@@ -2456,6 +2456,15 @@ because tracks are always replaced and never mutated. Finger pans, Pencil edits,
 **Deleting** is a tap then the existing ToolOptions button: a tap on a key SEEKS to it, which is
 exactly what "Delete key" is gated on. No new gesture, and it works with a Pencil where a hover-only
 ✕ would not.
+**Selecting the transform row selects its LAYER and sets the Transform scope to layer (2026-08-18).**
+The two things you always want next, and the only reason to click that row. It deliberately does NOT
+switch the TOOL: being yanked out of the brush mid-drawing to glance at a track would cost more than
+it saves, and the scope is persisted state that simply takes effect the moment you do reach for
+Transform. Highlight follows the OWNER (`isRowSelected(tl.id)`) rather than introducing a selection
+state of its own — a layer and its track are one thing, so both rows light together, and `activeRow`
+stays the two-case union it became when the audio lane needed one (see the accessor rule there: no
+view may combine `activeRow` with `activeLayerId`).
+
 **A keyed `{#each}` cannot hold a pointer capture (2026-08-18).** Reported as "I can move the key by
 only 1 frame, then it stops". The markers live in `{#each keys as k (k.frame)}`, so the instant the
 key changed frame Svelte destroyed the element under the pointer and built a new one — and per the

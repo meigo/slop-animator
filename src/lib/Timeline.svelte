@@ -1896,30 +1896,47 @@
           (k) => k.frame < appState.project.frameCount,
         )}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
-          <span
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-muted"
+          <!-- Selecting the track selects its LAYER and points the Transform tool at layer scope —
+               the two things you always want next, and the reason to click this row at all. It
+               deliberately does not switch the TOOL: yanking you out of the brush mid-drawing to
+               look at a track would cost more than it saves. Highlight follows the owner, because a
+               layer and its track are one thing; there is no separate selection state to track. -->
+          <button
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:pl-4={tl.groupId != null}
+            class:bg-surface={!isRowSelected(tl.id)}
+            class:bg-surface-active={isRowSelected(tl.id)}
+            class:text-text-secondary={isRowSelected(tl.id)}
+            class:text-text-muted={!isRowSelected(tl.id)}
             style="width: {LABEL_W}px; touch-action: none"
-            title="Transform keys for {tl.name}"
-            role="presentation"
+            title="Transform keys for {tl.name} — select the layer and aim the Transform tool at it"
             onpointerdown={(e) => {
               if (isFinePointer(e)) return;
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
               touchPanDown(e);
             }}
             onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
+              if (!isFinePointer(e) && touchPan) touchPanMove(e);
             }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
+            onpointerup={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            onpointercancel={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            onclick={() => {
+              if (panEndedWithMovement) return; // a finger scroll that happened to end here
+              setActiveLayer(tl.id);
+              appState.transformScope = "layer";
+            }}
           >
             <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
                  starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
                  sibling rather than as something belonging to the layer above. The indent itself
                  also mirrors the owner, so a grouped layer's track sits with it. -->
             <span class="flex w-3.5 shrink-0" role="presentation"></span>
-            <span class="min-w-0 flex-1 truncate">Transform</span>
-          </span>
+            <span class="min-w-0 flex-1 truncate">Transform</span></button
+          >
           <span
             class="sticky z-20 shrink-0 h-6 bg-surface border-r border-text-muted"
             role="presentation"
