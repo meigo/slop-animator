@@ -1699,28 +1699,34 @@
     <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
   </div>
   <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
-    <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
-      ><Plus size={16} /></button
-    >
-    <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}
-      ><DiamondPlus size={16} /></button
-    >
-    <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}
-      ><Copy size={16} class="rotate-45" /></button
-    >
-    <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}
-      ><Minus size={16} /></button
-    >
-    <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
-      ><Diamond size={16} /></button
-    >
-    <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
+    <!-- Per-layer CELL tools. Hidden on a property row: that row has no cells, and showing them
+         next to Add/Delete key is two keying strips for two different tracks. Click the layer
+         name to get them back. Ripple / trim / onion / boil stay — they are not this row's keys. -->
+    {#if appState.activeRow.kind !== "track"}
+      <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
+        ><Plus size={16} /></button
+      >
+      <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}
+        ><DiamondPlus size={16} /></button
+      >
+      <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}
+        ><Copy size={16} class="rotate-45" /></button
+      >
+      <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}
+        ><Minus size={16} /></button
+      >
+      <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
+        ><Diamond size={16} /></button
+      >
+      <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button
+      >
+    {/if}
 
     <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).
          Sit with the other per-row tools, not with document-wide ripple. Does not switch the tool.
-         Leading divider only when the group is shown, so drawing tools still get a divider before
-         ripple when the group is empty. -->
-    {#if animBar.kind !== "empty"}
+         Divider only between the cell tools and this group — not at the start of the bar when the
+         cell tools are hidden. -->
+    {#if animBar.kind !== "empty" && appState.activeRow.kind !== "track"}
       <span class="w-px h-5 bg-border mx-1"></span>
     {/if}
     {#if animBar.kind === "start"}
