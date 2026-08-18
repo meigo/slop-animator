@@ -655,6 +655,12 @@ export function removeLayer(id: number) {
       if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
   });
+  // A focused track on the removed layer (or left pointing at a now-missing owner) must fall back.
+  state.activeRow = resolveStaleTrackFocus(
+    state.activeRow,
+    state.project,
+    state.activeLayerId,
+  );
 }
 
 /** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
@@ -832,6 +838,8 @@ export function animateLayer(layerId: number): void {
     l.tracks = { ...l.tracks, transform: createTransformTrack(l.transform, null) };
     unfoldTracks(l);
   });
+  // Session focus, not undoable — after the commit, never inside it.
+  selectTrack({ owner: "layer", id: layerId, prop: "transform" });
 }
 
 /** Stop animating: bake what is on screen NOW into the static transform, then drop the track.
@@ -845,6 +853,12 @@ export function removeLayerAnimation(layerId: number): void {
     l.transform = { ...resolved };
     l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
   });
+  // Do not call setActiveLayer — that would also reset transformScope when the layer is ungrouped.
+  state.activeRow = resolveStaleTrackFocus(
+    state.activeRow,
+    state.project,
+    state.activeLayerId,
+  );
 }
 
 /** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
@@ -859,6 +873,7 @@ export function animateLayerOpacity(layerId: number): void {
     l.tracks = { ...l.tracks, opacity: { keys: [{ frame: 0, v: l.opacity }] } };
     unfoldTracks(l);
   });
+  selectTrack({ owner: "layer", id: layerId, prop: "opacity" });
 }
 
 /** Stop animating: bake what is on screen NOW into the static opacity, then drop the track.
@@ -872,6 +887,11 @@ export function removeLayerOpacityAnimation(layerId: number): void {
     l.opacity = resolved;
     l.tracks = normalizedTracks({ ...l.tracks, opacity: undefined });
   });
+  state.activeRow = resolveStaleTrackFocus(
+    state.activeRow,
+    state.project,
+    state.activeLayerId,
+  );
 }
 
 /** Start animating a GROUP's transform: its current static transform becomes the key at frame 0.
@@ -899,6 +919,7 @@ export function animateGroup(groupId: number): void {
     // shows you rows you can fold away again.
     g.collapsed = false;
   });
+  selectTrack({ owner: "group", id: groupId, prop: "transform" });
 }
 
 /** Stop animating a group: bake what is on screen NOW into the static transform, then drop the
@@ -918,6 +939,11 @@ export function removeGroupAnimation(groupId: number): void {
     if (box && !g.transformBox) g.transformBox = { ...box };
     g.tracks = normalizedTracks({ ...g.tracks, transform: undefined });
   });
+  state.activeRow = resolveStaleTrackFocus(
+    state.activeRow,
+    state.project,
+    state.activeLayerId,
+  );
 }
 
 /** The mutation an opacity-key write would perform, or null when it would change nothing (no track,
@@ -1185,6 +1211,12 @@ export function ungroup(groupId: number) {
       state.transformScope = "frame";
     }
   });
+  // Destroying the group also destroys its transform track — fall focus back if it was selected.
+  state.activeRow = resolveStaleTrackFocus(
+    state.activeRow,
+    state.project,
+    state.activeLayerId,
+  );
 }
 /** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
  *  group's `collapsed` directly below: mutated in place with a `bump()` and NOT undoable — the

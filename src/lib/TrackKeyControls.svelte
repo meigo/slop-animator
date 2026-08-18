@@ -8,16 +8,18 @@
    * deleted and its segment could never be set to `hold` — and a hard cut is the spec's stated way
    * to use an opacity track. A second copy of this markup is how that gap comes back.
    *
-   * WHERE it is rendered is the other half of the decision: each property's key controls sit with
-   * that property's own authoring control (the spec's "the property's existing control IS its
-   * gizmo", carried one step further) — layer and group transform in `ToolOptions` under the
-   * Transform tool, layer opacity in the layer panel beside its Animate button, because opacity is
-   * not a tool and has no business in a tool's options bar.
+   * Hosted on the timeline bar (and, until the old hosts are removed, ToolOptions / LayerList).
+   * Value authors (gizmo, opacity slider) stay with their properties; only these key tools move.
    *
    * The track is resolved from the `TrackRef` rather than passed in, so the ref and the track can
    * never disagree — and so the Step field can read the RESOLVED value straight back out of the
    * store after the action (see its handler).
    */
+  import {
+    DiamondMinus,
+    ClipboardCopy,
+    ClipboardPaste,
+  } from "@lucide/svelte";
   import {
     state as appState,
     deleteTrackKey,
@@ -49,7 +51,8 @@
      *  asks for it, never guessed at from the ref. */
     showCopyPaste?: boolean;
     /** Panel sizing: the layer panel's rows are `py-0.5`, the tool bar's controls `h-7`. Same
-     *  markup, so the two can't drift; only the padding follows its host. */
+     *  markup, so the two can't drift; only the padding follows its host. Kept until Task 4 removes
+     *  the layer-list host. */
     compact?: boolean;
     /** Why the owner refuses edits right now, phrased to follow "Delete key — ", or null when it
      *  doesn't. A control that silently no-ops explains nothing, so a host whose target can be
@@ -111,16 +114,22 @@
 
   // Two literal class strings rather than one interpolated one, so the Tailwind lint can still read
   // them. aria-disabled utilities keep the dimmed, inert look identical to a `disabled` control.
+  // Non-compact = timeline `toolBtn` (icon buttons); compact = layer-panel text chips.
   const BTN =
-    "h-7 shrink-0 whitespace-nowrap rounded border border-border bg-surface px-2 text-xs text-text-secondary hover:bg-surface-hover hover:text-text aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
+    "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
   const BTN_COMPACT =
     "shrink-0 whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
   const SELECT =
     "h-7 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:cursor-default aria-disabled:opacity-40";
   const SELECT_COMPACT =
     "rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:cursor-default aria-disabled:opacity-40";
+  const STEP =
+    "h-7 w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40";
+  const STEP_COMPACT =
+    "w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40";
   const btn = $derived(compact ? BTN_COMPACT : BTN);
   const select = $derived(compact ? SELECT_COMPACT : SELECT);
+  const step = $derived(compact ? STEP_COMPACT : STEP);
 </script>
 
 {#if track}
@@ -142,7 +151,8 @@
     onclick={(e) => {
       e.stopPropagation();
       if (canDelete) deleteTrackKey(trackRef, frame);
-    }}>Delete key</button
+    }}
+    >{#if compact}Delete key{:else}<DiamondMinus size={16} />{/if}</button
   >
   {#if clipLayerId !== null}
     <button
@@ -154,7 +164,8 @@
       onclick={(e) => {
         e.stopPropagation();
         if (hasKey) copyTransformKeyAtPlayhead(clipLayerId);
-      }}>Copy key</button
+      }}
+      >{#if compact}Copy key{:else}<ClipboardCopy size={16} />{/if}</button
     >
     <button
       class={btn}
@@ -165,7 +176,8 @@
       onclick={(e) => {
         e.stopPropagation();
         if (appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
-      }}>Paste key</button
+      }}
+      >{#if compact}Paste key{:else}<ClipboardPaste size={16} />{/if}</button
     >
   {/if}
   <!-- The title sits on this LABEL, not on the <select>, so `pointer-events-none` on the select
@@ -203,7 +215,7 @@
   >
     Step
     <input
-      class="w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40"
+      class={step}
       class:pointer-events-none={!!blocked}
       aria-disabled={!!blocked}
       type="number"

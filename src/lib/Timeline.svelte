@@ -20,8 +20,12 @@
     ChevronDown,
     EyeOff,
     Spline,
+    Blend,
+    Group,
+    CircleStop,
   } from "@lucide/svelte";
   import { buildSegments, timelineRows, type TrackProp } from "../anim/row-layout";
+  import { animationBar } from "../anim/animation-bar";
   import {
     state as appState,
     canvasOps,
@@ -49,6 +53,12 @@
     revertStructural,
     trimToPlayhead,
     trimToPlayheadInfo,
+    animateLayer,
+    animateLayerOpacity,
+    animateGroup,
+    removeLayerAnimation,
+    removeLayerOpacityAnimation,
+    removeGroupAnimation,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -116,6 +126,7 @@
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
+  import TrackKeyControls from "./TrackKeyControls.svelte";
 
   const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
   // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
@@ -1638,6 +1649,17 @@
 
   const toolBtn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
+
+  // Follows `activeRow` (+ project/playhead) so the animation tool group re-renders with focus.
+  const animBar = $derived(
+    animationBar({
+      activeRow: appState.activeRow,
+      layers: appState.project.layers,
+      groups: appState.project.groups,
+      playhead: appState.playhead,
+      fps: appState.project.fps,
+    }),
+  );
 </script>
 
 <svelte:window onresize={onWindowResize} />
@@ -1694,9 +1716,66 @@
     >
     <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button>
 
+    <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).
+         Sit with the other per-row tools, not with document-wide ripple. Does not switch the tool.
+         Leading divider only when the group is shown, so drawing tools still get a divider before
+         ripple when the group is empty. -->
+    {#if animBar.kind !== "empty"}
+      <span class="w-px h-5 bg-border mx-1"></span>
+    {/if}
+    {#if animBar.kind === "start"}
+      {#each animBar.items as item (item.action)}
+        <button
+          class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+          aria-disabled={item.blocked !== null}
+          title={item.action === "animate-transform"
+            ? item.blocked
+              ? `Animate transform — ${item.blocked}`
+              : "Animate this layer's transform — its current position becomes a key at frame 0"
+            : item.action === "animate-opacity"
+              ? item.blocked
+                ? `Animate opacity — ${item.blocked}`
+                : "Animate opacity — the current value becomes a key at frame 0"
+              : item.blocked
+                ? `Animate group — ${item.blocked}`
+                : "Animate this group's transform — its current position becomes a key at frame 0"}
+          onclick={() => {
+            if (item.blocked) return;
+            if (item.action === "animate-transform") animateLayer(item.layerId);
+            else if (item.action === "animate-opacity") animateLayerOpacity(item.layerId);
+            else animateGroup(item.groupId);
+          }}
+        >
+          {#if item.action === "animate-transform"}<Spline size={16} />
+          {:else if item.action === "animate-opacity"}<Blend size={16} />
+          {:else}<Group size={16} />{/if}
+        </button>
+      {/each}
+    {:else if animBar.kind === "keys"}
+      <TrackKeyControls
+        trackRef={animBar.track}
+        showCopyPaste={animBar.showCopyPaste}
+        blocked={animBar.blocked}
+      />
+      <button
+        class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+        aria-disabled={animBar.blocked !== null}
+        title={animBar.blocked
+          ? `Stop animating — ${animBar.blocked}`
+          : "Stop animating — keeps the value you can see now"}
+        onclick={() => {
+          if (animBar.blocked) return;
+          const t = animBar.track;
+          if (t.owner === "group") removeGroupAnimation(t.id);
+          else if (t.prop === "opacity") removeLayerOpacityAnimation(t.id);
+          else removeLayerAnimation(t.id);
+        }}><CircleStop size={16} /></button
+      >
+    {/if}
+
     <span class="w-px h-5 bg-border mx-1"></span>
 
-    <!-- Ripple ops: separated from the five per-layer tools above because they act on the WHOLE
+    <!-- Ripple ops: separated from the per-row tools above because they act on the WHOLE
          document — every layer, plus anything living in document-frame space (reference ranges,
          video clip offsets, the audio track). The titles carry that distinction to the status bar. -->
     <button
@@ -2170,11 +2249,11 @@
           })}
           {@const readOnly = spec.readOnly}
           <div class="flex w-max items-center" style="min-width: {stripMinW}px">
-            <!-- Selecting the track selects its OWNER and points the Transform tool at it — the two
-                 things you always want next, and the reason to click this row at all. It
-                 deliberately does not switch the TOOL: yanking you out of the brush mid-drawing to
-                 look at a track would cost more than it saves. Highlight follows the owner, because
-                 an owner and its tracks are one thing; there is no separate selection state. -->
+            <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
+                 Transform scope at it — without switching the TOOL, so glancing at a track mid-
+                 brush does not yank you out of drawing. The owner layer row stays lit via
+                 `isRowSelected` when its track is focused; the track row itself uses
+                 `isTrackSelected`. -->
             <button
               class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
               class:pl-4={spec.indent}
