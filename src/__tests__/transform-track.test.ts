@@ -4,12 +4,11 @@ import {
   transformAt,
   createTransformTrack,
   withTransformKey,
-  withoutTransformKey,
   withMovedKey,
   withMovedTransformKey,
   withPastedTransformKey,
   withKeyInterp,
-  withTransformKeyInterp,
+  withTrackKeys,
   withoutKey,
   withKey,
   groupTransformAt,
@@ -233,21 +232,6 @@ describe("track mutations", () => {
     expect(t.keys[0]).toEqual({ frame: 0, v: T(-1) });
   });
 
-  it("withoutTransformKey removes the key at that frame", () => {
-    expect(withoutTransformKey(track(), 10).keys.map((k) => k.frame)).toEqual([0]);
-  });
-
-  // Returning the SAME object is how callers detect a no-op and skip pushing an empty undo entry.
-  it("withoutTransformKey returns the same object when there is nothing at that frame", () => {
-    const t = track();
-    expect(withoutTransformKey(t, 7)).toBe(t);
-  });
-
-  it("withoutTransformKey refuses to empty the track", () => {
-    const t = track({ keys: [{ frame: 0, v: T(0) }] });
-    expect(withoutTransformKey(t, 0)).toBe(t);
-  });
-
   it("hasKeyAt reports an exact frame match", () => {
     expect(hasKeyAt(track(), 10)).toBe(true);
     expect(hasKeyAt(track(), 9)).toBe(false);
@@ -414,45 +398,32 @@ describe("copyTracks", () => {
   });
 });
 
-describe("withTransformKeyInterp", () => {
-  const holdFirst = () =>
-    track({
-      keys: [
-        { frame: 0, v: T(0), interp: "hold" },
-        { frame: 10, v: T(100) },
-      ],
-    });
-
-  it("sets the curve of the segment starting at that key", () => {
-    const t = withTransformKeyInterp(track(), 0, "ease-in");
-    expect(t.keys[0]).toEqual({ frame: 0, v: T(0), interp: "ease-in" });
-    expect(t.keys[1]).toEqual({ frame: 10, v: T(100) }); // the other segment is untouched
-  });
-
-  // Same-object returns are how a caller skips pushing an undo entry that changes nothing.
-  it("returns the SAME object when there is no key at that frame", () => {
-    const t = track();
-    expect(withTransformKeyInterp(t, 7, "ease-in")).toBe(t);
-  });
-
-  it("returns the SAME object when the value is unchanged", () => {
-    const t = holdFirst();
-    expect(withTransformKeyInterp(t, 0, "hold")).toBe(t);
-  });
-
-  // Absent means linear, so setting linear on an absent interp is genuinely a no-op.
-  it("treats an absent interp as linear", () => {
-    const t = track();
-    expect(withTransformKeyInterp(t, 0, "linear")).toBe(t);
-  });
-
-  it("leaves the input untouched and shares no mutable object with it", () => {
+/**
+ * The depth every transform-track writer goes through.
+ *
+ * `withKeyInterp`/`withoutKey`/`withMovedKey` are generic and know nothing about `box`, so a
+ * TransformTrack re-attaches their keys here — and this is the only place that copy can be lost. The
+ * generic editors' own behaviour (same-object no-ops, absent-means-linear, per-segment scope) is
+ * asserted for BOTH value types under "generic key editors" below; these two assert the one thing
+ * only a transform track has to lose.
+ */
+describe("withTrackKeys", () => {
+  it("shares no mutable object with the track it was derived from", () => {
     const src = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
-    const out = withTransformKeyInterp(src, 0, "ease-out");
+    const out = withTrackKeys(src, withKeyInterp(src, 0, "ease-out", (v) => ({ ...v })).keys);
+    expect(out).not.toBe(src);
+    expect(out.box).not.toBe(src.box);
+    expect(out.box).toEqual(src.box);
+    // The edited key is a fresh object with a fresh value, and the INPUT is untouched.
     expect(src.keys[0].interp).toBeUndefined();
     expect(out.keys[0]).not.toBe(src.keys[0]);
     expect(out.keys[0].v).not.toBe(src.keys[0].v);
-    expect(out.box).not.toBe(src.box);
+    expect(out.keys[0]).toEqual({ frame: 0, v: T(0), interp: "ease-out" });
+  });
+
+  it("carries a null box through rather than inventing one", () => {
+    const src = track();
+    expect(withTrackKeys(src, withoutKey(src, 10).keys).box).toBeNull();
   });
 });
 
@@ -925,10 +896,23 @@ describe("generic key editors", () => {
     expect(o.keys[0]).not.toBe(scalarTrack().keys[0]);
   });
 
+  // Same-object returns are how every caller detects a no-op and skips pushing an empty undo entry,
+  // so they are asserted for BOTH value types — a transform track reaching this through
+  // `withTrackKeys` must not start returning a fresh object.
   it("returns the SAME object for either value type when the curve is unchanged", () => {
     const o = scalarTrack();
+    const t = track({
+      keys: [
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100) },
+      ],
+    });
     expect(withKeyInterp(o, 0, "linear", (n) => n)).toBe(o); // absent means linear
     expect(withKeyInterp(o, 7, "hold", (n) => n)).toBe(o); // no key there
+    expect(withKeyInterp(t, 0, "hold", (v) => ({ ...v }))).toBe(t); // already that curve
+    expect(withKeyInterp(t, 7, "hold", (v) => ({ ...v }))).toBe(t);
+    const plain = track();
+    expect(withKeyInterp(plain, 0, "linear", (v) => ({ ...v }))).toBe(plain); // absent means linear
   });
 
   it("refuses to delete the only key in a track, whatever the value type", () => {
@@ -942,7 +926,9 @@ describe("generic key editors", () => {
     expect(withoutKey(scalarTrack(), 10).keys.map((k) => k.frame)).toEqual([0]);
     expect(withoutKey(track(), 10).keys.map((k) => k.frame)).toEqual([0]);
     const o = scalarTrack();
+    const t = track();
     expect(withoutKey(o, 7)).toBe(o);
+    expect(withoutKey(t, 7)).toBe(t);
   });
 
   it("hasKeyAt reads an exact frame match on a scalar track too", () => {

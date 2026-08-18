@@ -561,19 +561,16 @@ export function withTransformKey(
  *
  *  Generic over the value for the same reason `withKey` (writing) and `resolveTrack` (reading) are:
  *  a per-property copy of "a track is never empty" is how two properties come to answer the same
- *  question differently. No `copyValue`: this only FILTERS existing keys, it never builds one. */
+ *  question differently. No `copyValue`: this only FILTERS existing keys, it never builds one.
+ *
+ *  No `withoutTransformKey` twin, unlike `withKey`/`withMovedKey`: the one caller is the generic key
+ *  action, which re-attaches through `withTrackKeys` itself, so a wrapper would have had no callers
+ *  at all. Anything reaching for one wants `withTrackKeys(track, withoutKey(track, f).keys)` — the
+ *  same one line, at the same depth. */
 export function withoutKey<V>(track: Track<V>, frame: number): Track<V> {
   if (track.keys.length <= 1) return track;
   const keys = track.keys.filter((k) => k.frame !== frame);
   return keys.length === track.keys.length ? track : { ...track, keys };
-}
-
-/** `withoutKey` for a transform track. The generic remover knows nothing about `box`, so its keys
- *  are re-attached through `withTrackKeys` — the same split, and the same reason, as
- *  `withKey`/`withTransformKey`. */
-export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
-  const next = withoutKey(track, frame);
-  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /**
@@ -634,7 +631,8 @@ export function withPastedTransformKey(
  *  no key there or the value is unchanged, so a caller can skip an empty undo entry.
  *
  *  Generic over the value: `hold` on an opacity track is how the spec says you get a hard cut rather
- *  than a fade, so easing is not a transform-only idea and must not have a transform-only writer. */
+ *  than a fade, so easing is not a transform-only idea and must not have a transform-only writer.
+ *  No transform twin, for the reason given on `withoutKey` above. */
 export function withKeyInterp<V>(
   track: Track<V>,
   frame: number,
@@ -649,16 +647,6 @@ export function withKeyInterp<V>(
       x.frame === frame ? copyKeyframe({ ...x, interp }, copyValue) : x,
     ),
   };
-}
-
-/** `withKeyInterp` for a transform track — same split as `withKey`/`withTransformKey`. */
-export function withTransformKeyInterp(
-  track: TransformTrack,
-  frame: number,
-  interp: KeyInterp,
-): TransformTrack {
-  const next = withKeyInterp(track, frame, interp, copyRefTransform);
-  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /** The key whose segment contains `frame` — the latest key at or before it, or null when the
@@ -684,12 +672,13 @@ export function hasKeyAt<V>(track: Track<V>, frame: number): boolean {
  *
  * One address for a track means one set of key actions (delete / interpolation / step) rather than
  * one set per property, which is how a scalar track ended up able to be retimed but never deleted
- * and never set to `hold`. The property names are the keys of `LayerTracks`/`GroupTracks`, so the
- * union cannot name a track the bag does not have.
+ * and never set to `hold`. The property is `keyof` the bag rather than a hand-written literal union,
+ * so it cannot name a track the bag does not have — and a third property extends this type by
+ * existing, rather than by a hand edit somebody has to remember.
  */
 export type TrackRef =
-  | { owner: "layer"; id: number; prop: "transform" | "opacity" }
-  | { owner: "group"; id: number; prop: "transform" };
+  | { owner: "layer"; id: number; prop: keyof LayerTracks }
+  | { owner: "group"; id: number; prop: keyof GroupTracks };
 
 /** The track a `TrackRef` names, or undefined. Read-only, and deliberately value-erased: its callers
  *  (the key controls, which delete keys and set curves) never touch a VALUE, so handing them a typed
