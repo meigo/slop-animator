@@ -24,8 +24,11 @@ import {
   IDENTITY_TRANSFORM,
   resolvedKeyCell,
   transformAt,
+  opacityAt,
   createTransformTrack,
   copyTracks,
+  copyKeyframe,
+  normalizedTracks,
   layerTransformTrack,
   withoutTransformKey,
   withKeyInterp,
@@ -783,7 +786,59 @@ export function removeLayerAnimation(layerId: number): void {
   const resolved = transformAt(l, state.playhead);
   commitStructural(() => {
     l.transform = { ...resolved };
-    l.tracks = { ...l.tracks, transform: undefined };
+    l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
+  });
+}
+
+/** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
+ *  shape as `animateLayer` above, one property over. */
+export function animateLayerOpacity(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l || l.tracks?.opacity || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  commitStructural(() => {
+    // Replaces the BAG as well as the track (gotcha #8), keeping any sibling track this layer
+    // already carries — same convention `animateLayer` uses for the transform track.
+    l.tracks = { ...l.tracks, opacity: { keys: [{ frame: 0, v: l.opacity }] } };
+  });
+}
+
+/** Stop animating: bake what is on screen NOW into the static opacity, then drop the track.
+ *  WYSIWYG, mirroring `removeLayerAnimation` for the transform. */
+export function removeLayerOpacityAnimation(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l || !l.tracks?.opacity || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const resolved = opacityAt(l, state.playhead);
+  commitStructural(() => {
+    l.opacity = resolved;
+    l.tracks = normalizedTracks({ ...l.tracks, opacity: undefined });
+  });
+}
+
+/** Auto-key: called by the opacity slider while a track exists. Writes/replaces the key at `frame`,
+ *  preserving that key's own segment interpolation when one is already there (a value write must
+ *  not silently reset a segment's curve — same rule `withTransformKey` follows for the transform
+ *  track). Guard ABOVE `commitStructural`: a slider re-committing the value already at `frame` must
+ *  not push an empty undo entry. */
+export function setLayerOpacityAt(layerId: number, frame: number, value: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.tracks?.opacity;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const existing = track.keys.find((k) => k.frame === frame);
+  if (existing && existing.v === value) return;
+  commitStructural(() => {
+    const keys = track.keys
+      .filter((k) => k.frame !== frame)
+      .concat(
+        copyKeyframe(
+          { frame, v: value, ...(existing?.interp ? { interp: existing.interp } : {}) },
+          (n) => n,
+        ),
+      )
+      .sort((a, b) => a.frame - b.frame);
+    l.tracks = { ...l.tracks, opacity: { ...track, keys } };
   });
 }
 

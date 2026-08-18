@@ -133,6 +133,21 @@ export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
   return out;
 }
 
+/** A tracks bag with no track actually present, collapsed to `undefined`. Every REMOVER must route
+ *  its result through this: `{ ...tracks, transform: undefined }` leaves a truthy `{ transform:
+ *  undefined }` object in memory, while persistence (JSON drops `undefined`-valued keys) would
+ *  round-trip that same removal to a bare `undefined` — two representations of "no tracks" that
+ *  `if (layer.tracks)` would answer differently depending on whether a save/reload happened to sit
+ *  in between. Nothing observed the gap before a second property existed, because every READ already
+ *  went through an accessor (`layerTransformTrack`, `opacityAt`) rather than the raw field — but a
+ *  raw `if (layer.tracks)` is exactly the kind of check this codebase keeps reaching for, so the two
+ *  representations must not be allowed to diverge in the first place. */
+export function normalizedTracks<T extends LayerTracks | GroupTracks>(tracks: T): T | undefined {
+  return Object.values(tracks as Record<string, unknown>).some((v) => v !== undefined)
+    ? tracks
+    : undefined;
+}
+
 /** The layer's transform track, or undefined. There were 58 `transformTrack` mentions across
  *  src/anim, src/lib, src/state and src/persist — one accessor so they do not each reach into the
  *  bag, and so a future move of the bag is one edit rather than fifty-eight. */
@@ -417,6 +432,14 @@ export function resolveTrack<V>(
   return lerp(a.v, b.v, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
 }
 
+/** The layer's opacity (0..100) at `frame`: its static field when there is no track, otherwise the
+ *  track resolved. The frame-aware twin of `layer.opacity`, mirroring `transformAt` below. */
+export function opacityAt(layer: Layer, frame: number): number {
+  const track = layer.tracks?.opacity;
+  if (!track || track.keys.length === 0) return layer.opacity;
+  return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
+}
+
 /** The layer's transform at `frame`: its static value when there is no track, otherwise the track
  *  resolved (and held outside its key range — a track never extrapolates). */
 export function transformAt(layer: Layer, frame: number): RefTransform {
@@ -620,11 +643,16 @@ export function buildFrameDrawList(
     if (layer.kind === "draw") {
       const ki = resolveKeyframeIndex(layer.cells, frame);
       if (ki === null) continue;
-      ops.push({ kind: "draw", layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
+      ops.push({
+        kind: "draw",
+        layerId: layer.id,
+        keyframeIndex: ki,
+        opacity: opacityAt(layer, frame),
+      });
     } else {
       if (!includeReference) continue;
       if (!isRefVisibleAtFrame(layer, frame, project.fps)) continue;
-      ops.push({ kind: "ref", layerId: layer.id, opacity: layer.opacity });
+      ops.push({ kind: "ref", layerId: layer.id, opacity: opacityAt(layer, frame) });
     }
   }
   return ops;

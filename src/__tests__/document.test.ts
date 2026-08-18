@@ -951,3 +951,55 @@ describe("nextLayerName", () => {
     expect(nextLayerName(named("Layer 7", "Reference 2"), "Reference")).toBe("Reference 3");
   });
 });
+
+// Opacity enters the render at exactly ONE site, and that site is pure — so unlike the transform
+// track, an animated fade can be asserted end to end with no canvas at all. These are the cheapest
+// confidence in the whole feature; write them properly.
+describe("animated opacity through buildFrameDrawList", () => {
+  function animatedLayer() {
+    // 11 cells (index 0 a key, the rest holds) so `resolveKeyframeIndex` resolves for every frame
+    // 0..10 these tests scrub through — `buildFrameDrawList` looks up the draw op's keyframe
+    // independently of the opacity track, and a too-short `cells` array would make it return no op
+    // at all for a frame past the array's end, which is not what these tests are about.
+    const l = createDrawingLayer(11, "L");
+    l.cells[0] = { kind: "key", canvas: {} as HTMLCanvasElement };
+    l.opacity = 100;
+    l.tracks = {
+      opacity: {
+        keys: [
+          { frame: 0, v: 0 },
+          { frame: 10, v: 100 },
+        ],
+      },
+    };
+    return l;
+  }
+
+  it("stamps the RESOLVED opacity onto the draw op", () => {
+    const p = createProject();
+    p.layers = [animatedLayer()];
+    p.frameCount = 11;
+    expect(buildFrameDrawList(p, 0)[0].opacity).toBe(0);
+    expect(buildFrameDrawList(p, 5)[0].opacity).toBeCloseTo(50, 10);
+    expect(buildFrameDrawList(p, 10)[0].opacity).toBe(100);
+  });
+
+  it("a hold segment is a hard cut, not a fade", () => {
+    const p = createProject();
+    const l = animatedLayer();
+    l.tracks!.opacity!.keys[0].interp = "hold";
+    p.layers = [l];
+    p.frameCount = 11;
+    expect(buildFrameDrawList(p, 9)[0].opacity).toBe(0);
+    expect(buildFrameDrawList(p, 10)[0].opacity).toBe(100);
+  });
+
+  it("falls back to the static field with no track", () => {
+    const p = createProject();
+    const l = animatedLayer();
+    l.tracks = undefined;
+    l.opacity = 42;
+    p.layers = [l];
+    expect(buildFrameDrawList(p, 5)[0].opacity).toBe(42);
+  });
+});
