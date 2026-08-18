@@ -9,6 +9,8 @@ import {
   withMovedTransformKey,
   withPastedTransformKey,
   withKeyInterp,
+  withTransformKeyInterp,
+  withoutKey,
   withKey,
   groupTransformAt,
   copyTracks,
@@ -412,7 +414,7 @@ describe("copyTracks", () => {
   });
 });
 
-describe("withKeyInterp", () => {
+describe("withTransformKeyInterp", () => {
   const holdFirst = () =>
     track({
       keys: [
@@ -422,7 +424,7 @@ describe("withKeyInterp", () => {
     });
 
   it("sets the curve of the segment starting at that key", () => {
-    const t = withKeyInterp(track(), 0, "ease-in");
+    const t = withTransformKeyInterp(track(), 0, "ease-in");
     expect(t.keys[0]).toEqual({ frame: 0, v: T(0), interp: "ease-in" });
     expect(t.keys[1]).toEqual({ frame: 10, v: T(100) }); // the other segment is untouched
   });
@@ -430,23 +432,23 @@ describe("withKeyInterp", () => {
   // Same-object returns are how a caller skips pushing an undo entry that changes nothing.
   it("returns the SAME object when there is no key at that frame", () => {
     const t = track();
-    expect(withKeyInterp(t, 7, "ease-in")).toBe(t);
+    expect(withTransformKeyInterp(t, 7, "ease-in")).toBe(t);
   });
 
   it("returns the SAME object when the value is unchanged", () => {
     const t = holdFirst();
-    expect(withKeyInterp(t, 0, "hold")).toBe(t);
+    expect(withTransformKeyInterp(t, 0, "hold")).toBe(t);
   });
 
   // Absent means linear, so setting linear on an absent interp is genuinely a no-op.
   it("treats an absent interp as linear", () => {
     const t = track();
-    expect(withKeyInterp(t, 0, "linear")).toBe(t);
+    expect(withTransformKeyInterp(t, 0, "linear")).toBe(t);
   });
 
   it("leaves the input untouched and shares no mutable object with it", () => {
     const src = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
-    const out = withKeyInterp(src, 0, "ease-out");
+    const out = withTransformKeyInterp(src, 0, "ease-out");
     expect(src.keys[0].interp).toBeUndefined();
     expect(out.keys[0]).not.toBe(src.keys[0]);
     expect(out.keys[0].v).not.toBe(src.keys[0].v);
@@ -892,5 +894,59 @@ describe("withMovedKey", () => {
       ],
     };
     expect(withMovedKey(t, 0, 5, id).keys[0].interp).toBe("hold");
+  });
+});
+
+/**
+ * The key EDITORS, asserted for both value types.
+ *
+ * A scalar track must reach `hold`, because a hard cut is the spec's stated way to use an opacity
+ * track — the gap this pair of assertions exists to keep closed. Asserting the same thing twice, once
+ * per value type, is what stops the two drifting apart again, the same reason `withKey`'s
+ * hold-inheritance is asserted twice.
+ */
+describe("generic key editors", () => {
+  const scalarTrack = (): Track<number> => ({
+    keys: [
+      { frame: 0, v: 100 },
+      { frame: 10, v: 0 },
+    ],
+  });
+
+  it("sets hold on an opacity segment exactly as on a transform segment", () => {
+    const t = withKeyInterp(track(), 0, "hold", (v) => ({ ...v }));
+    const o = withKeyInterp(scalarTrack(), 0, "hold", (n) => n);
+    expect(t.keys[0].interp).toBe("hold");
+    expect(o.keys[0].interp).toBe("hold");
+    // The other segment is untouched in both — easing is per SEGMENT, not per track.
+    expect(t.keys[1].interp).toBeUndefined();
+    expect(o.keys[1].interp).toBeUndefined();
+    // Neither writer mutated its input (gotcha #8: snapshots share layer objects).
+    expect(o.keys[0]).not.toBe(scalarTrack().keys[0]);
+  });
+
+  it("returns the SAME object for either value type when the curve is unchanged", () => {
+    const o = scalarTrack();
+    expect(withKeyInterp(o, 0, "linear", (n) => n)).toBe(o); // absent means linear
+    expect(withKeyInterp(o, 7, "hold", (n) => n)).toBe(o); // no key there
+  });
+
+  it("refuses to delete the only key in a track, whatever the value type", () => {
+    const t = track({ keys: [{ frame: 0, v: T(0) }] });
+    const o: Track<number> = { keys: [{ frame: 0, v: 100 }] };
+    expect(withoutKey(t, 0)).toBe(t);
+    expect(withoutKey(o, 0)).toBe(o);
+  });
+
+  it("deletes a key of either value type, and reports a no-op the same way", () => {
+    expect(withoutKey(scalarTrack(), 10).keys.map((k) => k.frame)).toEqual([0]);
+    expect(withoutKey(track(), 10).keys.map((k) => k.frame)).toEqual([0]);
+    const o = scalarTrack();
+    expect(withoutKey(o, 7)).toBe(o);
+  });
+
+  it("hasKeyAt reads an exact frame match on a scalar track too", () => {
+    expect(hasKeyAt(scalarTrack(), 10)).toBe(true);
+    expect(hasKeyAt(scalarTrack(), 9)).toBe(false);
   });
 });

@@ -32,13 +32,18 @@ import {
   groupTransform,
   groupTransformAt,
   withKey,
-  withoutTransformKey,
+  withoutKey,
   withKeyInterp,
-  copyTransformTrack,
+  withTrackKeys,
+  copyKeyframe,
   copyTransformKey,
   withPastedTransformKey,
   type KeyInterp,
   type TransformKey,
+  type TransformTrack,
+  type Track,
+  type Keyframe,
+  type TrackRef,
   MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
@@ -923,36 +928,112 @@ export function applyLayerOpacityAt(layerId: number, frame: number, value: numbe
   bump();
 }
 
-/** Remove the key at the playhead. No-op (and no undo entry) when there is none, or when it is the
- *  last key — a track is never empty; Remove animation is the way out. */
-export function deleteTransformKeyAtPlayhead(layerId: number): void {
-  const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l && layerTransformTrack(l);
-  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
-  if (!isLayerVisible(l, state.project.groups)) return;
-  const next = withoutTransformKey(track, state.playhead);
-  if (next === track) return; // guard ABOVE the commit: a no-op must not push an empty entry
-  commitStructural(() => {
-    l.tracks = { ...l.tracks, transform: next };
-  });
+/**
+ * Everything a key action needs about ONE track, resolved from its `TrackRef` — or null when the
+ * track does not exist or its owner refuses edits.
+ *
+ * The generic key writers in `document.ts` know nothing about the two things that differ per
+ * property, so both live here: how deep to copy a value (identity for a scalar, a spread for a
+ * transform), and how to re-attach keys at the property's own copy depth (a `TransformTrack` must
+ * also copy its `box`, which is what `withTrackKeys` is for).
+ *
+ * The lock/visibility asymmetry is the ruling settled when group tracks landed, not an oversight: a
+ * LAYER is group-aware (`isLayerLocked`/`isLayerVisible`), while a GROUP is locked-only, because
+ * `activeTransformLayer` returns its layer unconditionally at group scope — a hidden group is still
+ * draggable, so refusing to edit its keys would be the inconsistency. `groupHasLockedLayer` already
+ * returns true for a locked group itself.
+ */
+interface TrackTarget {
+  /** The track as it stands, for the guards that must sit ABOVE `commitStructural`. */
+  track: Track<unknown>;
+  copyValue: (v: unknown) => unknown;
+  /** Assign a whole NEW track into a whole NEW bag — gotcha #8 reaches both levels, so no writer
+   *  may mutate either the bag or the track a snapshot shares. */
+  write: (keys: Keyframe<unknown>[], sampleEvery?: number) => void;
 }
 
-/** The track's step setting — how often the move updates, in frames. Track-wide, because it is the
+function trackTarget(ref: TrackRef): TrackTarget | null {
+  // The two casts are the whole cost of one address for every track, and they are confined here.
+  // Both are sound by construction: the transform branch only ever hands `withTrackKeys` keys that
+  // came out of this same `TransformTrack`, so the value type it erases is the one it restores.
+  const copyTransformValue = (v: unknown) => ({ ...(v as RefTransform) });
+  if (ref.owner === "group") {
+    const g = state.project.groups.find((x) => x.id === ref.id);
+    const track = g?.tracks?.transform;
+    if (!g || !track) return null;
+    if (groupHasLockedLayer(g, state.project.layers)) return null; // a locked member pins the group
+    return {
+      track,
+      copyValue: copyTransformValue,
+      write: (keys, sampleEvery) => {
+        const next = withTrackKeys(track, keys as TransformKey[]);
+        g.tracks = {
+          ...g.tracks,
+          transform: sampleEvery === undefined ? next : { ...next, sampleEvery },
+        };
+      },
+    };
+  }
+  const l = state.project.layers.find((x) => x.id === ref.id);
+  if (!l || isLayerLocked(l, state.project.groups)) return null;
+  if (!isLayerVisible(l, state.project.groups)) return null;
+  if (ref.prop === "opacity") {
+    const track = l.tracks?.opacity;
+    if (!track) return null;
+    return {
+      track,
+      copyValue: (v) => v,
+      write: (keys, sampleEvery) => {
+        const next = { ...track, keys: keys as Keyframe<number>[] };
+        l.tracks = {
+          ...l.tracks,
+          opacity: sampleEvery === undefined ? next : { ...next, sampleEvery },
+        };
+      },
+    };
+  }
+  const track = layerTransformTrack(l);
+  if (!track) return null;
+  return {
+    track,
+    copyValue: copyTransformValue,
+    write: (keys, sampleEvery) => {
+      const next: TransformTrack = withTrackKeys(track, keys as TransformKey[]);
+      l.tracks = {
+        ...l.tracks,
+        transform: sampleEvery === undefined ? next : { ...next, sampleEvery },
+      };
+    },
+  };
+}
+
+/** Remove the key at `frame`. No-op (and no undo entry) when there is none, or when it is the
+ *  last key — a track is never empty; Stop animating is the way out. */
+export function deleteTrackKey(ref: TrackRef, frame: number): void {
+  const t = trackTarget(ref);
+  if (!t) return;
+  const next = withoutKey(t.track, frame);
+  if (next === t.track) return; // guard ABOVE the commit: a no-op must not push an empty entry
+  commitStructural(() => t.write(next.keys));
+}
+
+/** The track's step setting — how often the value updates, in frames. Track-wide, because it is the
  *  rhythm the whole move is cut to. Replaces the track object (gotcha #8). */
-export function setTransformTrackSampleEvery(layerId: number, sampleEvery: number): void {
-  const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l && layerTransformTrack(l);
-  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
-  if (!isLayerVisible(l, state.project.groups)) return;
+export function setTrackSampleEvery(ref: TrackRef, sampleEvery: number): void {
+  const t = trackTarget(ref);
+  if (!t) return;
   // Clamped HERE, not at the widget: an input's `max` is advisory and a browser accepts a typed
   // value beyond it — the same reason the Fill tool clamps its gap in the logic.
   const next = Math.min(MAX_SAMPLE_EVERY, Math.max(1, Math.floor(sampleEvery)));
-  if (next === (track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
-  commitStructural(() => {
-    // Via `copyTransformTrack`, the single track-copy site — not a hand-spread, so it cannot drift
-    // from the depth every other track writer uses.
-    l.tracks = { ...l.tracks, transform: { ...copyTransformTrack(track), sampleEvery: next } };
-  });
+  if (next === (t.track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
+  commitStructural(() =>
+    // Keys deep-copied, matching the depth every other track writer uses: the new track must share
+    // no mutable object with the one a snapshot still holds.
+    t.write(
+      t.track.keys.map((k) => copyKeyframe(k, t.copyValue)),
+      next,
+    ),
+  );
 }
 
 /** Copy the key under the playhead. Reading is allowed on a locked or hidden layer — the lock
@@ -993,17 +1074,15 @@ export function pasteTransformKeyAtPlayhead(layerId: number): void {
 }
 
 /** The interpolation of the segment starting at `frame` — i.e. the curve from that key to the next.
- *  Per-key, because a track routinely wants different segments to behave differently. */
-export function setTransformKeyInterp(layerId: number, frame: number, interp: KeyInterp): void {
-  const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l && layerTransformTrack(l);
-  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
-  if (!isLayerVisible(l, state.project.groups)) return;
-  const next = withKeyInterp(track, frame, interp);
-  if (next === track) return; // same object = nothing changed; do not push an empty entry
-  commitStructural(() => {
-    l.tracks = { ...l.tracks, transform: next };
-  });
+ *  Per-key, because a track routinely wants different segments to behave differently. Generic over
+ *  the property because `hold` on an opacity track is how the spec says you get a hard cut rather
+ *  than a fade — easing is not a transform-only idea. */
+export function setTrackKeyInterp(ref: TrackRef, frame: number, interp: KeyInterp): void {
+  const t = trackTarget(ref);
+  if (!t) return;
+  const next = withKeyInterp(t.track, frame, interp, t.copyValue);
+  if (next === t.track) return; // same object = nothing changed; do not push an empty entry
+  commitStructural(() => t.write(next.keys));
 }
 
 /** Merge the drawing layer `id` down onto the drawing layer directly below it, then remove it. */

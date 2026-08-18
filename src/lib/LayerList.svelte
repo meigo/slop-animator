@@ -81,6 +81,7 @@
   import type { Layer, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
+  import TrackKeyControls from "./TrackKeyControls.svelte";
 
   let listEl: HTMLDivElement;
   let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
@@ -546,6 +547,17 @@
             }}>Animate</button
           >
         {:else}
+          <!-- The SAME key controls the tool bar shows for a transform track — one component, so an
+               opacity key can be deleted and its segment set to `hold` (the spec's way to get a hard
+               cut rather than a fade) without a second copy of this markup drifting from the first.
+               `compact` matches this row's button sizing; Copy/Paste are transform-only and are not
+               asked for. The row deliberately `flex-wrap`s, so these wrap onto another line in the
+               fixed-width panel rather than clipping. -->
+          <TrackKeyControls
+            trackRef={{ owner: "layer", id: layer.id, prop: "opacity" }}
+            compact
+            blocked={opacityOk ? null : "the layer is locked or hidden"}
+          />
           <button
             class="rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
             aria-disabled={!opacityOk}

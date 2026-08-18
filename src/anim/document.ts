@@ -557,11 +557,23 @@ export function withTransformKey(
 }
 
 /** Drop the key at `frame`. Returns the SAME object when nothing changes — including the attempt to
- *  remove the last key, since a track is never empty — so callers can skip an empty undo entry. */
-export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
+ *  remove the last key, since a track is never empty — so callers can skip an empty undo entry.
+ *
+ *  Generic over the value for the same reason `withKey` (writing) and `resolveTrack` (reading) are:
+ *  a per-property copy of "a track is never empty" is how two properties come to answer the same
+ *  question differently. No `copyValue`: this only FILTERS existing keys, it never builds one. */
+export function withoutKey<V>(track: Track<V>, frame: number): Track<V> {
   if (track.keys.length <= 1) return track;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  return keys.length === track.keys.length ? track : withTrackKeys(track, keys);
+  return keys.length === track.keys.length ? track : { ...track, keys };
+}
+
+/** `withoutKey` for a transform track. The generic remover knows nothing about `box`, so its keys
+ *  are re-attached through `withTrackKeys` — the same split, and the same reason, as
+ *  `withKey`/`withTransformKey`. */
+export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
+  const next = withoutKey(track, frame);
+  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /**
@@ -619,18 +631,34 @@ export function withPastedTransformKey(
 }
 
 /** Set the interpolation of the segment starting at `frame`. Returns the SAME object when there is
- *  no key there or the value is unchanged, so a caller can skip an empty undo entry. */
-export function withKeyInterp(
+ *  no key there or the value is unchanged, so a caller can skip an empty undo entry.
+ *
+ *  Generic over the value: `hold` on an opacity track is how the spec says you get a hard cut rather
+ *  than a fade, so easing is not a transform-only idea and must not have a transform-only writer. */
+export function withKeyInterp<V>(
+  track: Track<V>,
+  frame: number,
+  interp: KeyInterp,
+  copyValue: (v: V) => V,
+): Track<V> {
+  const k = track.keys.find((x) => x.frame === frame);
+  if (!k || (k.interp ?? "linear") === interp) return track;
+  return {
+    ...track,
+    keys: track.keys.map((x) =>
+      x.frame === frame ? copyKeyframe({ ...x, interp }, copyValue) : x,
+    ),
+  };
+}
+
+/** `withKeyInterp` for a transform track — same split as `withKey`/`withTransformKey`. */
+export function withTransformKeyInterp(
   track: TransformTrack,
   frame: number,
   interp: KeyInterp,
 ): TransformTrack {
-  const k = track.keys.find((x) => x.frame === frame);
-  if (!k || (k.interp ?? "linear") === interp) return track;
-  return withTrackKeys(
-    track,
-    track.keys.map((x) => (x.frame === frame ? copyTransformKey({ ...x, interp }) : x)),
-  );
+  const next = withKeyInterp(track, frame, interp, copyRefTransform);
+  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /** The key whose segment contains `frame` — the latest key at or before it, or null when the
@@ -646,8 +674,30 @@ export function segmentKeyAt<V>(track: Track<V>, frame: number): Keyframe<V> | n
   return found;
 }
 
-export function hasKeyAt(track: TransformTrack, frame: number): boolean {
+/** Generic over the value: every property's key controls ask this, not just the transform's. */
+export function hasKeyAt<V>(track: Track<V>, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
+}
+
+/**
+ * WHICH track — the owner and the property, rather than "the active layer's transform".
+ *
+ * One address for a track means one set of key actions (delete / interpolation / step) rather than
+ * one set per property, which is how a scalar track ended up able to be retimed but never deleted
+ * and never set to `hold`. The property names are the keys of `LayerTracks`/`GroupTracks`, so the
+ * union cannot name a track the bag does not have.
+ */
+export type TrackRef =
+  | { owner: "layer"; id: number; prop: "transform" | "opacity" }
+  | { owner: "group"; id: number; prop: "transform" };
+
+/** The track a `TrackRef` names, or undefined. Read-only, and deliberately value-erased: its callers
+ *  (the key controls, which delete keys and set curves) never touch a VALUE, so handing them a typed
+ *  track would only invite one branch per property back into the UI. */
+export function trackForRef(project: Project, ref: TrackRef): Track<unknown> | undefined {
+  if (ref.owner === "group") return project.groups.find((g) => g.id === ref.id)?.tracks?.transform;
+  const l = project.layers.find((x) => x.id === ref.id);
+  return ref.prop === "opacity" ? l?.tracks?.opacity : l?.tracks?.transform;
 }
 
 /** A group's own STATIC transform (identity when absent / undefined group). Frame-blind: on an
