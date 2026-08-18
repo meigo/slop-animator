@@ -662,20 +662,30 @@ export function withMovedTransformKey(
 /**
  * Write a COPIED key at `frame` — both its value and its segment interpolation.
  *
- * Distinct from `withTransformKey`, which deliberately preserves whatever interpolation the
- * destination already had (a drag rewrites a value, not a curve). A paste is the opposite: the whole
- * key travelled, curve included, so it replaces both.
+ * Distinct from `withKey`, which deliberately preserves whatever interpolation the destination
+ * already had (a drag rewrites a value, not a curve). A paste is the opposite: the whole key
+ * travelled, curve included, so it replaces both.
  */
+export function withPastedKey<V>(
+  track: Track<V>,
+  frame: number,
+  key: { v: V; interp?: KeyInterp },
+  copyValue: (v: V) => V,
+): Track<V> {
+  const keys = track.keys
+    .filter((k) => k.frame !== frame)
+    .concat(copyKeyframe({ ...key, frame }, copyValue))
+    .sort((a, b) => a.frame - b.frame);
+  return { ...track, keys: withoutLastInterp(keys) };
+}
+
+/** `withPastedKey` for a transform track — re-attaches `box` the same way `withTransformKey` does. */
 export function withPastedTransformKey(
   track: TransformTrack,
   frame: number,
   key: { v: RefTransform; interp?: KeyInterp },
 ): TransformTrack {
-  const keys = track.keys
-    .filter((k) => k.frame !== frame)
-    .concat(copyTransformKey({ ...key, frame }))
-    .sort((a, b) => a.frame - b.frame);
-  return withTrackKeys(track, keys);
+  return withTrackKeys(track, withPastedKey(track, frame, key, copyRefTransform).keys);
 }
 
 /** Set the interpolation of the segment starting at `frame`. Returns the SAME object when there is

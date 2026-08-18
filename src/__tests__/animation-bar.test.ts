@@ -32,10 +32,7 @@ describe("animationBar — start", () => {
     const bar = args();
     expect(bar.kind).toBe("start");
     if (bar.kind !== "start") return;
-    expect(bar.items.map((i) => i.action)).toEqual([
-      "animate-transform",
-      "animate-opacity",
-    ]);
+    expect(bar.items.map((i) => i.action)).toEqual(["animate-transform", "animate-opacity"]);
     expect(bar.items.every((i) => i.blocked === null)).toBe(true);
   });
 
@@ -164,7 +161,7 @@ describe("animationBar — start", () => {
 });
 
 describe("animationBar — keys", () => {
-  it("shows key tools for a focused layer track, with Copy/Paste only on layer transform", () => {
+  it("shows key tools for a focused layer track", () => {
     const bar = args({
       activeRow: { kind: "track", owner: "layer", id: 1, prop: "transform" },
       layers: [
@@ -181,17 +178,19 @@ describe("animationBar — keys", () => {
     expect(bar).toMatchObject({
       kind: "keys",
       track: { owner: "layer", id: 1, prop: "transform" },
-      showCopyPaste: true,
       blocked: null,
     });
   });
 
-  it("does not offer Copy/Paste on opacity or on a group track", () => {
+  it("shows key tools on opacity and group tracks too", () => {
     const opacity = args({
       activeRow: { kind: "track", owner: "layer", id: 1, prop: "opacity" },
       layers: [draw(1, { tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } })],
     });
-    expect(opacity).toMatchObject({ kind: "keys", showCopyPaste: false });
+    expect(opacity).toMatchObject({
+      kind: "keys",
+      track: { owner: "layer", id: 1, prop: "opacity" },
+    });
 
     const grp = args({
       activeRow: { kind: "track", owner: "group", id: 10, prop: "transform" },
@@ -207,15 +206,17 @@ describe("animationBar — keys", () => {
         }),
       ],
     });
-    expect(grp).toMatchObject({ kind: "keys", showCopyPaste: false, blocked: null });
+    expect(grp).toMatchObject({
+      kind: "keys",
+      track: { owner: "group", id: 10, prop: "transform" },
+      blocked: null,
+    });
   });
 
   it("dims key tools when the owner is locked; a hidden group stays allowed", () => {
     const locked = args({
       activeRow: { kind: "track", owner: "layer", id: 1, prop: "opacity" },
-      layers: [
-        draw(1, { locked: true, tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } }),
-      ],
+      layers: [draw(1, { locked: true, tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } })],
     });
     expect(locked).toMatchObject({ kind: "keys", blocked: "the layer is locked" });
 
@@ -244,8 +245,8 @@ describe("animationBar — empty / audio / missing", () => {
   });
 
   it("is empty when the focused track no longer exists", () => {
-    expect(
-      args({ activeRow: { kind: "track", owner: "layer", id: 1, prop: "opacity" } }),
-    ).toEqual({ kind: "empty" });
+    expect(args({ activeRow: { kind: "track", owner: "layer", id: 1, prop: "opacity" } })).toEqual({
+      kind: "empty",
+    });
   });
 });

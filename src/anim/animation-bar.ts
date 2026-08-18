@@ -20,7 +20,6 @@ export type AnimationBar =
   | {
       kind: "keys";
       track: TrackRef;
-      showCopyPaste: boolean;
       blocked: string | null;
     }
   | { kind: "empty" };
@@ -51,11 +50,7 @@ function groupAnimateBlocked(group: LayerGroup, layers: Layer[]): string | null 
 }
 
 /** Same lookup shape as `trackForRef`, without needing a full Project. */
-function trackExists(
-  layers: Layer[],
-  groups: LayerGroup[],
-  ref: TrackRef,
-): boolean {
+function trackExists(layers: Layer[], groups: LayerGroup[], ref: TrackRef): boolean {
   if (ref.owner === "group") {
     const g = groups.find((x) => x.id === ref.id);
     return !!g?.tracks?.transform;
@@ -65,11 +60,7 @@ function trackExists(
   return !!l.tracks[ref.prop];
 }
 
-function keysBlocked(
-  ref: TrackRef,
-  layers: Layer[],
-  groups: LayerGroup[],
-): string | null {
+function keysBlocked(ref: TrackRef, layers: Layer[], groups: LayerGroup[]): string | null {
   if (ref.owner === "group") {
     const g = groups.find((x) => x.id === ref.id);
     if (!g) return null;
@@ -100,7 +91,6 @@ export function animationBar(args: {
     return {
       kind: "keys",
       track,
-      showCopyPaste: track.owner === "layer" && track.prop === "transform",
       blocked: keysBlocked(track, layers, groups),
     };
   }

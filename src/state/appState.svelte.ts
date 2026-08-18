@@ -39,7 +39,8 @@ import {
   withTrackKeys,
   copyKeyframe,
   copyTransformKey,
-  withPastedTransformKey,
+  withPastedKey,
+  trackForRef,
   type KeyInterp,
   type TransformKey,
   type TransformTrack,
@@ -132,6 +133,11 @@ export type Tool =
   | "deform"
   | "pose";
 
+/** A copied animation key, tagged so a transform cannot be pasted into an opacity track. */
+export type KeyClipboard =
+  | { prop: "transform"; key: TransformKey }
+  | { prop: "opacity"; key: Keyframe<number> };
+
 interface AnimState {
   project: Project;
   playhead: number; // current frame index
@@ -172,12 +178,10 @@ interface AnimState {
    *  keys frame N" has to name the frame that will ACTUALLY be written, or the one mitigation for
    *  auto-key's silence is itself misleading. Null when no drag is in flight. */
   transformDragFrame: number | null;
-  /** A copied transform key. A WHOLE `TransformKey`, copied through `copyTransformKey` — not a
-   *  hand-listed subset. A field added to `TransformKey` later would be silently dropped by a
-   *  field list (exactly how `interp` was lost once), and no type error can catch a missing
-   *  OPTIONAL. Its `frame` is carried but deliberately IGNORED on paste — the destination is the
-   *  playhead, so a key can be pasted anywhere. Session-only, like the cell and pixel clipboards. */
-  transformKeyClipboard: TransformKey | null;
+  /** A copied track key, tagged by property so a transform cannot land in an opacity track.
+   *  The key is a spread-copy. Its `frame` is ignored on paste — the destination is the playhead.
+   *  Session-only, like the cell and pixel clipboards. */
+  keyClipboard: KeyClipboard | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -272,7 +276,7 @@ export const state: AnimState = $state({
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   transformDragFrame: null,
-  transformKeyClipboard: null,
+  keyClipboard: null,
   persistAlert: "",
   autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
@@ -1096,41 +1100,42 @@ export function setTrackSampleEvery(ref: TrackRef, sampleEvery: number): void {
   );
 }
 
-/** Copy the key under the playhead. Reading is allowed on a locked or hidden layer — the lock
+/** Copy the key under the playhead. Reading is allowed on a locked or hidden owner — the lock
  *  protects content from being CHANGED, and copying changes nothing. Not undoable: no document edit. */
-export function copyTransformKeyAtPlayhead(layerId: number): void {
-  const l = state.project.layers.find((x) => x.id === layerId);
-  const key = l && layerTransformTrack(l)?.keys.find((k) => k.frame === state.playhead);
+export function copyTrackKey(ref: TrackRef): void {
+  const track = trackForRef(state.project, ref);
+  const key = track?.keys.find((k) => k.frame === state.playhead);
   if (!key) return;
-  // Through `copyTransformKey`, the single key-copy site — a spread, so a field added to
-  // `TransformKey` later travels rather than being dropped here.
-  state.transformKeyClipboard = copyTransformKey(key);
+  state.keyClipboard =
+    ref.prop === "opacity"
+      ? { prop: "opacity", key: copyKeyframe(key as Keyframe<number>, (n) => n) }
+      : { prop: "transform", key: copyTransformKey(key as TransformKey) };
 }
 
-/** Paste the copied key at the playhead, replacing whatever is there. Refuses a layer with no track:
- *  a paste should not silently start animating something (press Animate for that). */
-export function pasteTransformKeyAtPlayhead(layerId: number): void {
-  const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l && layerTransformTrack(l);
-  const clip = state.transformKeyClipboard;
-  if (!l || !track || !clip || isLayerLocked(l, state.project.groups)) return;
-  if (!isLayerVisible(l, state.project.groups)) return;
-  // The clipboard's own `frame` is deliberately ignored: the destination is the PLAYHEAD, which is
-  // what makes a key pasteable anywhere (`withPastedTransformKey` overrides it).
-  // Guard ABOVE the commit, like every sibling action: pasting a key identical to the one already
-  // there (value AND curve) changes nothing, and an empty undo entry reads as a dead ⌘Z.
-  // `withPastedTransformKey` stays always-new — the sameness is a property of THIS caller's data.
+/** Paste the copied key at the playhead. Refuses a missing track (do not silently start animating)
+ *  and a clipboard whose property does not match the destination. */
+export function pasteTrackKey(ref: TrackRef): void {
+  const clip = state.keyClipboard;
+  if (!clip || clip.prop !== ref.prop) return;
+  const t = trackTarget(ref);
+  if (!t) return;
   const at = state.playhead;
-  const existing = track.keys.find((k) => k.frame === at);
-  if (
-    existing &&
-    isSameTransform(existing.v, clip.v) &&
-    (existing.interp ?? "linear") === (clip.interp ?? "linear")
-  )
-    return;
+  const existing = t.track.keys.find((k) => k.frame === at);
+  if (existing && samePastedKey(existing, clip, ref.prop)) return;
   commitStructural(() => {
-    l.tracks = { ...l.tracks, transform: withPastedTransformKey(track, at, clip) };
+    const next = withPastedKey(t.track, at, clip.key, t.copyValue);
+    t.write(next.keys);
   });
+}
+
+function samePastedKey(
+  existing: Keyframe<unknown>,
+  clip: KeyClipboard,
+  prop: TrackRef["prop"],
+): boolean {
+  if ((existing.interp ?? "linear") !== (clip.key.interp ?? "linear")) return false;
+  if (prop === "opacity") return existing.v === clip.key.v;
+  return isSameTransform(existing.v as RefTransform, clip.key.v as RefTransform);
 }
 
 /** The interpolation of the segment starting at `frame` — i.e. the curve from that key to the next.

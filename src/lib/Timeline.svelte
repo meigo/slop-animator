@@ -1758,11 +1758,7 @@
         </button>
       {/each}
     {:else if animBar.kind === "keys"}
-      <TrackKeyControls
-        trackRef={animBar.track}
-        showCopyPaste={animBar.showCopyPaste}
-        blocked={animBar.blocked}
-      />
+      <TrackKeyControls trackRef={animBar.track} blocked={animBar.blocked} />
       <button
         class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
         aria-disabled={animBar.blocked !== null}

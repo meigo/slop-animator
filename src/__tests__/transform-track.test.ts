@@ -6,6 +6,7 @@ import {
   withTransformKey,
   withMovedKey,
   withMovedTransformKey,
+  withPastedKey,
   withPastedTransformKey,
   withKeyInterp,
   withTrackKeys,
@@ -575,6 +576,19 @@ describe("withPastedTransformKey", () => {
     const t = withPastedTransformKey(src, 5, { v: T(55) });
     expect(t.keys.map((k) => k.frame)).toEqual([0, 5, 10]);
     expect(src.keys.map((k) => k.frame)).toEqual([0, 10]);
+  });
+});
+
+describe("withPastedKey — opacity", () => {
+  it("writes value and curve on a scalar track", () => {
+    const src: Track<number> = {
+      keys: [
+        { frame: 0, v: 0 },
+        { frame: 10, v: 100 },
+      ],
+    };
+    const t = withPastedKey(src, 5, { v: 50, interp: "hold" }, (n) => n);
+    expect(t.keys[1]).toEqual({ frame: 5, v: 50, interp: "hold" });
   });
 });
 

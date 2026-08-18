@@ -1,7 +1,6 @@
 <script lang="ts">
   /**
-   * The per-key controls for ONE animated property: Add key, Delete key, Ease, Step — plus the
-   * transform-only Copy/Paste pair when asked for.
+   * The per-key controls for ONE animated property: Add key, Delete key, Copy, Paste, Ease, Step.
    *
    * ONE component rendered from every host, rather than a copy per property. These controls were
    * written against the layer transform track alone, so an opacity key could be retimed but never
@@ -22,8 +21,8 @@
     deleteTrackKey,
     setTrackKeyInterp,
     setTrackSampleEvery,
-    copyTransformKeyAtPlayhead,
-    pasteTransformKeyAtPlayhead,
+    copyTrackKey,
+    pasteTrackKey,
   } from "../state/appState.svelte";
   import {
     hasKeyAt,
@@ -36,16 +35,10 @@
 
   let {
     trackRef,
-    showCopyPaste = false,
     blocked = null,
   }: {
     /** Which track: the owner and the property. */
     trackRef: TrackRef;
-    /** Copy key / Paste key are TRANSFORM-only: the clipboard holds a `TransformKey`, and carrying
-     *  any property's key needs a tagged clipboard plus a refusal story for pasting an opacity
-     *  value into a transform key. Deferred, deliberately — so the pair is rendered only when a host
-     *  asks for it, never guessed at from the ref. */
-    showCopyPaste?: boolean;
     /** Why the owner refuses edits right now, phrased to follow "Delete key — ", or null when it
      *  doesn't. A control that silently no-ops explains nothing, so the timeline bar passes
      *  `animBar.blocked` when the focused track's owner is locked (or otherwise inert). */
@@ -103,12 +96,17 @@
       : "Update this property every N frames, so it can sit on 2s like the drawings",
   );
 
-  /** Copy/Paste read and write the transform clipboard, so they only ever act on a LAYER's transform
-   *  track — the one shape `copyTransformKeyAtPlayhead`/`pasteTransformKeyAtPlayhead` accept. */
-  const clipLayerId = $derived(
-    showCopyPaste && trackRef.owner === "layer" && trackRef.prop === "transform"
-      ? trackRef.id
-      : null,
+  const clip = $derived(appState.keyClipboard);
+  const clipMatches = $derived(!!clip && clip.prop === trackRef.prop);
+  const canPaste = $derived(!blocked && clipMatches);
+  const pasteTitle = $derived(
+    blocked
+      ? `Paste key — ${blocked}`
+      : !clip
+        ? "Paste key — nothing copied yet"
+        : !clipMatches
+          ? `Paste key — copied key is ${clip.prop === "opacity" ? "opacity" : "a transform"}`
+          : "Paste the copied key here, replacing any key on this frame",
   );
 
   // Literal class strings rather than interpolated ones, so the Tailwind lint can still read them.
@@ -146,30 +144,24 @@
       if (canDelete) deleteTrackKey(trackRef, frame);
     }}><DiamondMinus size={16} /></button
   >
-  {#if clipLayerId !== null}
-    <button
-      class={BTN}
-      aria-disabled={!hasKey}
-      title={hasKey
-        ? "Copy this key — its position and its curve — to paste on another frame or layer"
-        : "Copy key — no key on this frame"}
-      onclick={() => {
-        if (hasKey) copyTransformKeyAtPlayhead(clipLayerId);
-      }}><ClipboardCopy size={16} /></button
-    >
-    <button
-      class={BTN}
-      aria-disabled={!!blocked || !appState.transformKeyClipboard}
-      title={blocked
-        ? `Paste key — ${blocked}`
-        : appState.transformKeyClipboard
-          ? "Paste the copied key here, replacing any key on this frame"
-          : "Paste key — nothing copied yet"}
-      onclick={() => {
-        if (!blocked && appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
-      }}><ClipboardPaste size={16} /></button
-    >
-  {/if}
+  <button
+    class={BTN}
+    aria-disabled={!hasKey}
+    title={hasKey
+      ? "Copy this key — its value and its curve — to paste on another frame or layer"
+      : "Copy key — no key on this frame"}
+    onclick={() => {
+      if (hasKey) copyTrackKey(trackRef);
+    }}><ClipboardCopy size={16} /></button
+  >
+  <button
+    class={BTN}
+    aria-disabled={!canPaste}
+    title={pasteTitle}
+    onclick={() => {
+      if (canPaste) pasteTrackKey(trackRef);
+    }}><ClipboardPaste size={16} /></button
+  >
   <!-- The title sits on this LABEL, not on the <select>, so `pointer-events-none` on the select
        (which is what actually stops the picker opening) still leaves the reason readable. -->
   <label
