@@ -771,10 +771,16 @@ export function resetGroupTransform(groupId: number): void {
   });
 }
 
-/** Show a layer's property rows. Every Animate entry point calls this, because `Stop animating`
- *  leaves `tracksCollapsed` behind: without it a later Animate creates a track whose row never
- *  appears — only the collapsed chevron comes back, and the artist is looking for a row that is
- *  there but folded. A view-prop, so `restoreStructure` keeps it live and undo does not re-fold. */
+/** Show a layer's property rows. Both LAYER Animate entry points call this, because `Stop
+ *  animating` leaves `tracksCollapsed` behind: without it a later Animate creates a track whose row
+ *  never appears — only the collapsed chevron comes back, and the artist is looking for a row that
+ *  is there but folded. A view-prop, so `restoreStructure` keeps it live and undo does not re-fold.
+ *
+ *  `animateGroup` deliberately does NOT call it, and that is not an oversight: a group's `collapsed`
+ *  means "show me only this group's header row" (see `timelineRows`), so unfolding would also reveal
+ *  every MEMBER row the artist folded away — a far larger view change than the one row just created.
+ *  A collapsed group still shows its chevron, so its new track row is one visible tap away, where a
+ *  layer's folded track row has no standing affordance of its own. */
 function unfoldTracks(layer: Layer): void {
   layer.tracksCollapsed = false;
 }
@@ -879,9 +885,13 @@ export function removeGroupAnimation(groupId: number): void {
   });
 }
 
-/** The mutation an opacity-key write would perform, or null when it would change nothing. Shared by
- *  the committing and the live writer below so the guard cannot drift between them. Guard ABOVE the
- *  commit: re-writing the value already at `frame` must not push an empty undo entry. */
+/** The mutation an opacity-key write would perform, or null when it would change nothing (no track,
+ *  a locked or hidden layer, or the value already sitting on `frame`). Split from its one caller so
+ *  the guard stays ABOVE the write: a re-write of the value already there must not reach history.
+ *  A one-shot COMMITTING writer is deliberately absent — the only authoring path is the layer
+ *  panel's slider, which brackets its own gesture; `commitStructural(write)` is a four-line re-add
+ *  if one is ever wanted, and an exported function with no callers is how this codebase has twice
+ *  ended up re-deriving why something existed. */
 function opacityKeyWrite(layerId: number, frame: number, value: number): (() => void) | null {
   const l = state.project.layers.find((x) => x.id === layerId);
   const track = l?.tracks?.opacity;
@@ -898,21 +908,14 @@ function opacityKeyWrite(layerId: number, frame: number, value: number): (() => 
   };
 }
 
-/** Auto-key with its OWN undo entry: writes/replaces the key at `frame`, preserving that key's
- *  segment interpolation when one is already there (a value write must not silently reset a
- *  segment's curve — same rule `withTransformKey` follows for the transform track). For a one-shot
- *  write; a DRAG brackets itself and uses `applyLayerOpacityAt` below. */
-export function setLayerOpacityAt(layerId: number, frame: number, value: number): void {
-  const write = opacityKeyWrite(layerId, frame, value);
-  if (!write) return;
-  commitStructural(write);
-}
-
-/** The same write with NO history entry, for a gesture that brackets its own undo (the layer
- *  panel's opacity slider). This is the `applyAnimationLength`/`setAnimationLength` split one
- *  property over, and for the same reason: a range input fires `input` per pixel of travel, so a
- *  self-committing writer would push ~100 entries for one drag and evict the whole 50-command
- *  history — a slider that quietly destroys your undo stack. */
+/** Auto-key with NO history entry, for the gesture that brackets its own undo (the layer panel's
+ *  opacity slider). Writes/replaces the key at `frame`, preserving that key's segment interpolation
+ *  when one is already there — a value write must not silently reset a segment's curve, the same
+ *  rule `withTransformKey` follows for the transform track.
+ *
+ *  Non-committing on purpose, the `applyAnimationLength` half of that split: a range input fires
+ *  `input` per pixel of travel, so a self-committing writer would push ~100 entries for one drag and
+ *  evict the whole 50-command history — a slider that quietly destroys your undo stack. */
 export function applyLayerOpacityAt(layerId: number, frame: number, value: number): void {
   const write = opacityKeyWrite(layerId, frame, value);
   if (!write) return;

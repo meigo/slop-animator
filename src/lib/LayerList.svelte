@@ -175,18 +175,41 @@
   // exactly as before (not undoable, like visibility and boil strength); with a track it writes a
   // key at the playhead instead.
   //
-  // The gesture brackets its OWN undo. A range input fires `input` per pixel of travel, so routing
-  // each one through the self-committing `setLayerOpacityAt` would push ~100 entries for one drag
-  // and evict the whole 50-command history — the same flood the animation-length drag was fixed for
-  // (2026-08-16). Snapshot at the first write, live-write through `applyLayerOpacityAt` (no
-  // history), commit once on `change`, which fires on release for pointer drags and after each
-  // keyboard step.
+  // The gesture brackets its OWN undo. A range input fires `input` per pixel of travel, so a
+  // self-committing write would push ~100 entries for one drag and evict the whole 50-command
+  // history — the same flood the animation-length drag was fixed for (2026-08-16). Snapshot at the
+  // first write, live-write through `applyLayerOpacityAt` (no history), commit once at settle.
   let opacityUndo: StructSnapshot | null = null;
   let opacityUndoLayerId: number | null = null;
-  /** The key sitting on the grab frame when the bracket opened, or null when there was none — the
-   *  no-op test at settle. A drag out and back onto a pre-existing key's own value changes nothing,
-   *  and an undo entry that visibly does nothing is worse than none. */
+  /** The frame the bracket was OPENED on. Every write of the gesture goes there and the settle test
+   *  reads there, rather than re-reading `appState.playhead`: both transform drag sites capture a
+   *  grab-time `keyFrame` for the same reason (a held drag keys its GRAB frame, which is what
+   *  `transformDragFrame` publishes). Re-reading would scatter keys across frames while playback
+   *  runs, and — worse — make the settle compare the grab frame's before-value against a DIFFERENT
+   *  frame's key, so a coincidental match would drop a bracket whose writes had already landed,
+   *  leaving them permanently un-undoable. */
+  let opacityUndoFrame = 0;
+  /** The key sitting on that frame when the bracket opened, or null when there was none — the no-op
+   *  test at settle. A drag out and back onto a pre-existing key's own value changes nothing, and an
+   *  undo entry that visibly does nothing is worse than none. */
   let opacityUndoStartV: number | null = null;
+  /** A range key is held down. Auto-repeat runs at ~30 Hz and fires `change` PER repeat, so a
+   *  two-second hold would push ~60 entries and evict the stack by the other door — the very flood
+   *  the non-committing writer exists to prevent. One held run is one gesture, so `change` defers to
+   *  `keyup` while this is set. A single tap still settles immediately, on its own keyup. */
+  let opacityKeyHeld = false;
+  /** The keys a range input responds to. Anything else (Tab, modifiers) must NOT latch the flag, or
+   *  tabbing away would leave it set with the keyup delivered to another element. */
+  const RANGE_KEYS = new Set([
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+  ]);
 
   function opacityKeyValue(layerId: number, frame: number): number | null {
     const l = appState.project.layers.find((x) => x.id === layerId);
@@ -202,30 +225,53 @@
     if (!opacityUndo) {
       opacityUndo = beginStructuralEdit();
       opacityUndoLayerId = layer.id;
-      opacityUndoStartV = opacityKeyValue(layer.id, appState.playhead);
+      opacityUndoFrame = appState.playhead;
+      opacityUndoStartV = opacityKeyValue(layer.id, opacityUndoFrame);
       // Undo/redo and Open settle an open bracket before they run — without this a ⌘Z mid-drag
       // would leave it open and the release would commit a snapshot of the pre-undo document.
       transformDragGuard.settle = settleOpacityDrag;
     }
-    applyLayerOpacityAt(layer.id, appState.playhead, value);
+    applyLayerOpacityAt(layer.id, opacityUndoFrame, value);
   }
 
   /** Idempotent (it guards on an open bracket), which is why the slider can bind it to `change`,
-   *  `pointerup` AND `pointercancel`: `change` alone carries the keyboard path but does not fire
-   *  when a drag ends back on the value it started from, and a cancelled pointer fires neither. */
+   *  `pointerup`, `pointercancel`, `keyup` AND `blur`: `change` does not fire when a drag ends back
+   *  on the value it started from, a cancelled pointer fires neither, and a held-key run must settle
+   *  once at `keyup` rather than per repeat. */
   function settleOpacityDrag() {
     const before = opacityUndo;
     const layerId = opacityUndoLayerId;
+    const frame = opacityUndoFrame;
     const startV = opacityUndoStartV;
     opacityUndo = null;
     opacityUndoLayerId = null;
     opacityUndoStartV = null;
     if (transformDragGuard.settle === settleOpacityDrag) transformDragGuard.settle = null;
     if (!before || layerId === null) return;
-    // Nothing net changed (dragged back onto the value the key already held, or every write was
-    // refused because the layer is locked/hidden) → drop the bracket rather than push an empty entry.
-    if (startV !== null && opacityKeyValue(layerId, appState.playhead) === startV) return;
+    // Nothing net changed — dragged back onto the value the key already held, OR every write was
+    // refused (locked/hidden layer, or a locked group) so no key exists where none did. Both are
+    // one comparison: no `startV !== null` term, because that would skip the test in exactly the
+    // refused case and push a `before === after` entry — a ⌘Z that visibly does nothing. A key
+    // CREATED where there was none still commits, since a number never equals null.
+    if (opacityKeyValue(layerId, frame) === startV) return;
     commitStructuralEdit(before);
+  }
+
+  function opacityKeyDown(e: KeyboardEvent) {
+    if (RANGE_KEYS.has(e.key)) opacityKeyHeld = true;
+  }
+  function opacityKeyUp() {
+    opacityKeyHeld = false;
+    settleOpacityDrag();
+  }
+  /** `change` settles the POINTER path immediately; during a held-key run it defers to `keyup`. */
+  function opacityChange() {
+    if (!opacityKeyHeld) settleOpacityDrag();
+  }
+  /** Backstop: focus can leave mid-hold (a click elsewhere), and then no `keyup` ever arrives here. */
+  function opacityBlur() {
+    opacityKeyHeld = false;
+    settleOpacityDrag();
   }
 
   /** Whether the opacity controls can act: the same lock/hidden guard the store actions apply, so a
@@ -469,9 +515,12 @@
             max="100"
             value={opacityNow}
             oninput={(e) => onOpacityInput(layer, Number(e.currentTarget.value))}
-            onchange={settleOpacityDrag}
+            onchange={opacityChange}
             onpointerup={settleOpacityDrag}
             onpointercancel={settleOpacityDrag}
+            onkeydown={opacityKeyDown}
+            onkeyup={opacityKeyUp}
+            onblur={opacityBlur}
             onclick={(e) => e.stopPropagation()}
           />
           <!-- ROUNDED: between two keys the resolved value is fractional, and the w-6 readout is
