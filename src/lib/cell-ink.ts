@@ -130,7 +130,18 @@ export function groupContentBoxLogical(
   };
 }
 
-/** The active gizmo/pivot box for a group: frozen box if set, else live `groupContentBoxLogical`. */
+/**
+ * The active gizmo/pivot box for a group: the ANIMATION track's frozen box if the group is
+ * animated, else the drag-time frozen box, else the live `groupContentBoxLogical`.
+ *
+ * The track's box wins because it is the pivot every key in that track was authored against — left
+ * live, the pivot would drift with the drawings and interpolate BETWEEN keys, warping the motion
+ * path invisibly. It is captured through this same function at `animateGroup` time, so a group that
+ * already carried a drag freeze simply keeps it; the two can never disagree.
+ *
+ * One consumer for every caller (render, gizmo, compose steps, bounds hint), so no site can be left
+ * reading the un-frozen box.
+ */
 export function groupBoxLogical(
   group: LayerGroup,
   project: Project,
@@ -138,6 +149,8 @@ export function groupBoxLogical(
   dpr: number,
   version: number,
 ): { x: number; y: number; w: number; h: number } {
+  const trackBox = group.tracks?.transform?.box;
+  if (trackBox) return trackBox;
   if (group.transformBox) return group.transformBox;
   return groupContentBoxLogical(group, project, frame, dpr, version);
 }

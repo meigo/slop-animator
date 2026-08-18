@@ -8,6 +8,8 @@ import {
   withMovedTransformKey,
   withPastedTransformKey,
   withKeyInterp,
+  withKey,
+  groupTransformAt,
   copyTracks,
   hasKeyAt,
   createProject,
@@ -17,6 +19,7 @@ import {
   copyKeyframe,
   copyTrack,
   type Layer,
+  type LayerGroup,
   type TransformTrack,
   type Track,
 } from "../anim/document";
@@ -683,5 +686,162 @@ describe("legacy transformTrack promotion", () => {
     const back = loaded.layers.find((x) => x.id === ref.id)!;
     expect(back.tracks?.transform?.keys[0].frame).toBe(3);
     expect(back.tracks?.transform?.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  });
+});
+
+describe("withKey — one writer for every property", () => {
+  // The interp-inheritance rule is the part that had already drifted: `withTransformKey` inherited
+  // the ENCLOSING segment's curve, while the opacity writer (written inline in appState) only
+  // preserved a curve when a key already sat on that exact frame. Same gesture, two answers — so
+  // both are asserted here, against the one generic writer they now share.
+  it("a key created inside a `hold` segment inherits hold — transform track", () => {
+    const tr = track({
+      keys: [
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100) },
+      ],
+    });
+    const out = withTransformKey(tr, 5, T(50));
+    expect(out.keys.find((k) => k.frame === 5)?.interp).toBe("hold");
+    // …and the segment it split still holds: 5..10 is a hard cut, not a fade.
+    expect(transformAt(layer(out), 7).dx).toBe(50);
+  });
+
+  it("a key created inside a `hold` segment inherits hold — opacity track", () => {
+    const tr: Track<number> = {
+      keys: [
+        { frame: 0, v: 0, interp: "hold" },
+        { frame: 10, v: 100 },
+      ],
+    };
+    const out = withKey(tr, 5, 50, (n) => n);
+    expect(out.keys.find((k) => k.frame === 5)?.interp).toBe("hold");
+    expect(resolveTrack(out, 7, (a, b, u) => a + (b - a) * u)).toBe(50);
+  });
+
+  it("past the last key nothing is being split, so the new segment is linear", () => {
+    const tr: Track<number> = { keys: [{ frame: 0, v: 0, interp: "hold" }] };
+    expect(withKey(tr, 10, 100, (n) => n).keys.find((k) => k.frame === 10)?.interp).toBeUndefined();
+  });
+
+  it("rewriting an existing key keeps that key's own curve", () => {
+    const tr: Track<number> = {
+      keys: [
+        { frame: 0, v: 0, interp: "ease-in" },
+        { frame: 10, v: 100 },
+      ],
+    };
+    expect(withKey(tr, 0, 42, (n) => n).keys[0].interp).toBe("ease-in");
+  });
+
+  it("returns a new track and leaves the input untouched", () => {
+    const tr: Track<number> = { keys: [{ frame: 0, v: 0 }] };
+    const out = withKey(tr, 5, 50, (n) => n);
+    expect(out).not.toBe(tr);
+    expect(out.keys).not.toBe(tr.keys);
+    expect(tr.keys).toHaveLength(1);
+    expect(out.keys.map((k) => k.frame)).toEqual([0, 5]);
+  });
+});
+
+describe("groupTransformAt", () => {
+  it("resolves the group's track at the frame, else its static transform", () => {
+    const g = { id: 1, name: "G", collapsed: false, visible: true, transform: T(7) } as LayerGroup;
+    expect(groupTransformAt(g, 5).dx).toBe(7);
+    g.tracks = {
+      transform: {
+        keys: [
+          { frame: 0, v: T(0) },
+          { frame: 10, v: T(100) },
+        ],
+        box: null,
+      },
+    };
+    expect(groupTransformAt(g, 5).dx).toBeCloseTo(50, 10);
+  });
+
+  it("is identity for a group with neither", () => {
+    const g = { id: 1, name: "G", collapsed: false, visible: true } as LayerGroup;
+    expect(groupTransformAt(g, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
+  });
+
+  it("is identity for no group at all (an ungrouped layer's outer step)", () => {
+    expect(groupTransformAt(null, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
+    expect(groupTransformAt(undefined, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
+  });
+
+  it("holds outside the key range rather than extrapolating", () => {
+    const g = {
+      id: 1,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      transform: T(7),
+      tracks: {
+        transform: {
+          keys: [
+            { frame: 2, v: T(10) },
+            { frame: 6, v: T(30) },
+          ],
+          box: null,
+        },
+      },
+    } as LayerGroup;
+    expect(groupTransformAt(g, 0).dx).toBe(10);
+    expect(groupTransformAt(g, 99).dx).toBe(30);
+  });
+});
+
+// The group is the second track OWNER, and the first one whose `box` is actually populated — so
+// the round trip has to carry it, or an animated rig reloads pivoting about the live content union
+// and its whole motion path shifts.
+describe("group transform track persistence", () => {
+  it("round-trips a group's track, frozen box and all", async () => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    project.layers.push(l);
+    project.groups.push({
+      id: 1,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      tracks: {
+        transform: {
+          keys: [
+            { frame: 0, v: T(0) },
+            { frame: 8, v: T(80), interp: "ease-out" },
+          ],
+          box: { x: 10, y: 20, w: 30, h: 40 },
+        },
+      },
+    });
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const track = loaded.groups[0].tracks?.transform;
+    expect(track?.keys.map((k) => k.frame)).toEqual([0, 8]);
+    expect(track?.keys[1].interp).toBe("ease-out");
+    expect(track?.box).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+    expect(groupTransformAt(loaded.groups[0], 4).dx).toBeCloseTo(40, 10);
+  });
+
+  it("sanitises an unsorted group track like any other", async () => {
+    const project = createProject();
+    project.layers.push(createDrawingLayer(1, "L"));
+    project.groups.push({
+      id: 1,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      tracks: {
+        transform: {
+          keys: [
+            { frame: 9, v: T(90) },
+            { frame: 2, v: T(20) },
+          ],
+          box: null,
+        },
+      },
+    });
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.groups[0].tracks?.transform?.keys.map((k) => k.frame)).toEqual([2, 9]);
   });
 });

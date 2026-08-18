@@ -499,13 +499,24 @@ export function createTransformTrack(
   return { keys: [{ frame: 0, v: { ...t } }], box: box ? { ...box } : null };
 }
 
-/** Write a key at `frame`, replacing any key already there. Returns a NEW track: snapshots share
- *  layer objects, so no writer may mutate the one it was given (gotcha #8). */
-export function withTransformKey(
-  track: TransformTrack,
+/**
+ * Write `v` at `frame`, replacing any key already there. THE key-WRITING skeleton, generic over the
+ * value for the same reason `resolveTrack` (reading) and `copyKeyframe` (copying) are: a
+ * per-property copy of this logic is how two properties come to answer the same question
+ * differently, and this one had already drifted — the transform writer inherited the enclosing
+ * segment's curve while the opacity writer, written inline, only preserved a curve when a key
+ * already sat on that exact frame, so auto-keying frame 5 of a `[0 hold, 10]` track left a hard cut
+ * for one property and silently made it a fade for the other.
+ *
+ * Returns a NEW track: snapshots share layer objects, so no writer may mutate the one it was given
+ * (gotcha #8).
+ */
+export function withKey<V>(
+  track: Track<V>,
   frame: number,
-  t: RefTransform,
-): TransformTrack {
+  v: V,
+  copyValue: (val: V) => V,
+): Track<V> {
   // A drag rewrites a key's VALUE; its segment easing is a separate choice and must survive, or
   // every nudge would silently reset the curve back to linear. A key CREATED inside an existing
   // segment inherits that segment's curve for exactly the same reason: defaulting to linear would
@@ -516,12 +527,23 @@ export function withTransformKey(
   const interp = existing
     ? existing.interp
     : last && frame < last.frame
-      ? segmentKeyAt(track, frame)?.interp
+      ? (segmentKeyAt(track, frame)?.interp ?? undefined)
       : undefined;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  keys.push(copyTransformKey({ frame, v: t, ...(interp ? { interp } : {}) }));
+  keys.push(copyKeyframe({ frame, v, ...(interp ? { interp } : {}) }, copyValue));
   keys.sort((a, b) => a.frame - b.frame);
-  return withTrackKeys(track, keys);
+  return { ...track, keys };
+}
+
+/** `withKey` for a transform track. The generic writer knows nothing about `box`, so the keys it
+ *  produces are re-attached through `withTrackKeys`, which copies at the depth a `TransformTrack`
+ *  needs. */
+export function withTransformKey(
+  track: TransformTrack,
+  frame: number,
+  t: RefTransform,
+): TransformTrack {
+  return withTrackKeys(track, withKey(track, frame, t, copyRefTransform).keys);
 }
 
 /** Drop the key at `frame`. Returns the SAME object when nothing changes — including the attempt to
@@ -589,9 +611,11 @@ export function withKeyInterp(
 }
 
 /** The key whose segment contains `frame` — the latest key at or before it, or null when the
- *  playhead sits before the track starts. This is what an easing control edits. */
-export function segmentKeyAt(track: TransformTrack, frame: number): TransformKey | null {
-  let found: TransformKey | null = null;
+ *  playhead sits before the track starts. This is what an easing control edits. Generic over the
+ *  value, because `withKey` (the shared key writer) needs it for every property, not just the
+ *  transform; a `TransformTrack` argument still returns a `TransformKey`. */
+export function segmentKeyAt<V>(track: Track<V>, frame: number): Keyframe<V> | null {
+  let found: Keyframe<V> | null = null;
   for (const k of track.keys) {
     if (k.frame <= frame) found = k;
     else break;
@@ -603,9 +627,24 @@ export function hasKeyAt(track: TransformTrack, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
 }
 
-/** A group's own transform (identity when absent / undefined group). */
+/** A group's own STATIC transform (identity when absent / undefined group). Frame-blind: on an
+ *  animated group this is the retained-but-ignored value, so every render/compose site wants
+ *  `groupTransformAt` below instead. */
 export function groupTransform(group: LayerGroup | null | undefined): RefTransform {
   return group && group.transform ? group.transform : IDENTITY_TRANSFORM;
+}
+
+/** A group's transform at `frame`: its track when animated, else its static transform, else
+ *  identity. The frame-aware twin of `groupTransform`, and the group-level mirror of `transformAt`
+ *  (which does the same for a layer). */
+export function groupTransformAt(
+  group: LayerGroup | null | undefined,
+  frame: number,
+): RefTransform {
+  if (!group) return IDENTITY_TRANSFORM;
+  const track = group.tracks?.transform;
+  if (track && track.keys.length > 0) return resolveTrack(track, frame, lerpTransform);
+  return group.transform ?? IDENTITY_TRANSFORM;
 }
 
 /** The resolved key cell shown at `frame` (follows holds), or null. */

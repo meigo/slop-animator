@@ -8,6 +8,7 @@ import {
   IDENTITY_TRANSFORM,
   groupOf,
   groupTransform,
+  groupTransformAt,
   transformAt,
   type Project,
   type BoilConfig,
@@ -74,7 +75,9 @@ export function drawReferenceMedia(
   if (size.w === 0 || size.h === 0) return;
   const base = containRect(size.w, size.h, docW * dpr, docH * dpr);
   const g = project ? groupOf(layer, project.groups) : null;
-  const groupT = groupTransform(g);
+  // Frame-aware whenever a frame was supplied, exactly like `lt` below. Without a frame this call
+  // is the legacy "just the ref's own transform" path, which the guard below then takes anyway.
+  const groupT = frame == null ? groupTransform(g) : groupTransformAt(g, frame);
   const lt = frame == null ? layer.transform : transformAt(layer, frame);
   if (!g || isIdentityTransform(groupT) || frame == null || project == null) {
     drawTransformed(ctx, layer.media.el, base, lt, dpr);
@@ -147,7 +150,9 @@ function groupComposeArgs(
   version: number,
 ): { groupT: RefTransform; groupBoxDev: { x: number; y: number; w: number; h: number } } {
   const g = groupOf(layer, project.groups);
-  const t = groupTransform(g);
+  // The RENDER frame, not the playhead: `renderFrame` is called per exported/onion frame, so a
+  // playhead read would paint every frame with the group's current pose.
+  const t = groupTransformAt(g, frame);
   const fullDocDev = { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr };
   if (!g || isIdentityTransform(t)) return { groupT: IDENTITY_TRANSFORM, groupBoxDev: fullDocDev };
   const box = groupBoxLogical(g, project, frame, dpr, version);

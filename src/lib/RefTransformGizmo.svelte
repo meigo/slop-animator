@@ -23,7 +23,7 @@
     isLayerLocked,
     isLayerVisible,
     isRefVisibleAtFrame,
-    groupTransform,
+    groupTransformAt,
     transformAt,
     layerTransformTrack,
     withTransformKey,
@@ -93,7 +93,11 @@
   // grab so a no-op drag can put the track back exactly as it was. withTransformKey always
   // REPLACES the track (never mutates in place), so the reference captured here is already a
   // valid before-snapshot — nothing needs deep-copying, unlike the box freeze above.
-  let trackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
+  let trackFreeze: {
+    layer: Layer | null;
+    group: LayerGroup | null;
+    prevTrack: TransformTrack;
+  } | null = null;
 
   function activeTransformLayer(): Layer | null {
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
@@ -151,7 +155,9 @@
       ? [
           {
             base: groupBoxLogical(g, appState.project, frame, DPR, appState.version),
-            t: groupTransform(g),
+            // At `frame` — the display path's playhead, or a drag's frozen grab frame, exactly
+            // like the layer step this composes over.
+            t: groupTransformAt(g, frame),
           },
         ]
       : [];
@@ -160,14 +166,29 @@
       if (!g) return null; // Group scope is disabled when ungrouped; safety fallback.
       if (groupHasLockedLayer(g, appState.project.layers)) return null; // a locked member pins the group
       return {
-        getT: () => groupTransform(g),
-        setT: (t: RefTransform) => (g.transform = t),
+        // An animated GROUP reads and writes THROUGH its track, exactly as the layer branch below
+        // does — the drag lifecycle (undo bracket, settle hook, isSameTransform no-op check) works
+        // unchanged because it all runs through this getT/setT pair.
+        getT: () => groupTransformAt(g, frame),
+        setT: (t: RefTransform) => {
+          const track = g.tracks?.transform;
+          if (!track) {
+            g.transform = t;
+            return;
+          }
+          // Replace the BAG and the track: undo snapshots share the GROUP object too (gotcha #8 at
+          // two levels), and the spread keeps any sibling track a group may gain later.
+          g.tracks = { ...g.tracks, transform: withTransformKey(track, frame, t) };
+        },
         base: groupBoxLogical(g, appState.project, frame, DPR, appState.version),
         outer: [], // group is top of the compose chain
         cell: null,
         group: g,
         scope: "group",
-        animated: false, // a group has no track of its own; an animated MEMBER does not block it
+        // An animated MEMBER still does not block a group drag — but an animated GROUP does block
+        // Reset-to-fit, for the same reason an animated layer does: the static field it clears is
+        // retained-but-ignored, so the button would do nothing (`resetGroupTransform` refuses).
+        animated: !!g.tracks?.transform,
       };
     }
 
@@ -272,11 +293,19 @@
         tgt.group.transformBox = base;
       }
     }
-    // An animated layer's track is mutable state a no-op drag must be able to revert (see
-    // settleDragUndo) — capture it here, before any write.
+    // An animated layer's (or group's) track is mutable state a no-op drag must be able to revert
+    // (see settleDragUndo) — capture it here, before any write. ONLY when a track actually exists:
+    // with none, the revert would write `tracks = { transform: undefined }` where the field had
+    // been ABSENT, leaving an empty bag behind after the most common gesture in the app — and a
+    // revert of nothing is a no-op anyway, since `setT` writes the static field on an unanimated
+    // target.
     if (tgt.scope === "layer") {
       const l = activeTransformLayer();
-      if (l) trackFreeze = { layer: l, prevTrack: layerTransformTrack(l) };
+      const tr = l && layerTransformTrack(l);
+      if (l && tr) trackFreeze = { layer: l, group: null, prevTrack: tr };
+    } else if (tgt.scope === "group" && tgt.group) {
+      const tr = tgt.group.tracks?.transform;
+      if (tr) trackFreeze = { layer: null, group: tgt.group, prevTrack: tr };
     }
     const start = inverseChain(tgt.outer, vp.screenToCanvas(e.clientX, e.clientY));
     drag = {
@@ -358,9 +387,14 @@
         // restoreStructure, since committing was just decided against above.
         // Put the frozen track back into a FRESH bag, so the revert cannot clobber a sibling
         // track the same layer may have gained — and never mutate the bag in place (gotcha #8).
-        if (trackFreeze)
+        if (trackFreeze?.layer)
           trackFreeze.layer.tracks = {
             ...trackFreeze.layer.tracks,
+            transform: trackFreeze.prevTrack,
+          };
+        else if (trackFreeze?.group)
+          trackFreeze.group.tracks = {
+            ...trackFreeze.group.tracks,
             transform: trackFreeze.prevTrack,
           };
         // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have

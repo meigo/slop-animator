@@ -64,7 +64,7 @@
     isLayerLocked,
     isLayerVisible,
     isRefVisibleAtFrame,
-    groupTransform,
+    groupTransformAt,
     transformAt,
     layerTransformTrack,
     withTransformKey,
@@ -106,7 +106,9 @@
     steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: transformAt(layer, appState.playhead) });
     const g = groupOf(layer, appState.project.groups);
     if (g) {
-      const gt = groupTransform(g);
+      // At the playhead, exactly as the layer step above — an animated group's paint inverse,
+      // bounds hint and selection mapping must follow the frame you are on.
+      const gt = groupTransformAt(g, appState.playhead);
       steps.push({
         base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
         t: gt,
@@ -677,7 +679,11 @@
   // grab so a no-op drag can put the track back exactly as it was. withTransformKey always REPLACES
   // the track (never mutates in place), so the reference captured here is already a valid
   // before-snapshot — nothing needs deep-copying, unlike the box freeze above.
-  let refTrackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
+  let refTrackFreeze: {
+    layer: Layer | null;
+    group: LayerGroup | null;
+    prevTrack: TransformTrack;
+  } | null = null;
 
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
   // this feature removes).
@@ -707,9 +713,14 @@
         // restoreStructure, since committing was just decided against above.
         // Put the frozen track back into a FRESH bag, so the revert cannot clobber a sibling
         // track the same layer may have gained — and never mutate the bag in place (gotcha #8).
-        if (refTrackFreeze)
+        if (refTrackFreeze?.layer)
           refTrackFreeze.layer.tracks = {
             ...refTrackFreeze.layer.tracks,
+            transform: refTrackFreeze.prevTrack,
+          };
+        else if (refTrackFreeze?.group)
+          refTrackFreeze.group.tracks = {
+            ...refTrackFreeze.group.tracks,
             transform: refTrackFreeze.prevTrack,
           };
         // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have
@@ -758,6 +769,8 @@
     // any scope) — the grab site below uses it to know whether to freeze a transform track
     // reference for a no-op-drag revert (frame/group scope have no track at their own level).
     let trackScopeLayer: Layer | null = null;
+    // The group-scope twin of `trackScopeLayer` above.
+    let trackScopeGroup: LayerGroup | null = null;
 
     if (isDraw && scope === "group" && g) {
       if (groupHasLockedLayer(g, appState.project.layers)) {
@@ -767,8 +780,21 @@
         }
         return;
       }
-      getT = () => groupTransform(g);
-      setT = (nt) => (g.transform = nt);
+      // An animated GROUP reads and writes THROUGH its track, exactly as the layer-scope branch
+      // below does — same auto-key, same undo bracket, same no-op revert, because the whole drag
+      // lifecycle already runs through this getT/setT pair.
+      trackScopeGroup = g;
+      getT = () => groupTransformAt(g, dragFrame());
+      setT = (nt) => {
+        const track = g.tracks?.transform;
+        if (!track) {
+          g.transform = nt;
+          return;
+        }
+        // Replace the BAG and the track: undo snapshots share the GROUP object too (gotcha #8 at
+        // two levels), and the spread keeps any sibling track a group may gain later.
+        g.tracks = { ...g.tracks, transform: withTransformKey(track, dragFrame(), nt) };
+      };
       base = groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version);
     } else if (isDraw && scope === "frame") {
       frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
@@ -807,7 +833,10 @@
       if (g)
         outerSteps.push({
           base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
-          t: groupTransform(g),
+          // The DRAG frame, frozen at grab, for the same reason the layer step above is: on an
+          // animated group a live read would slide the outer step (and so the pointer inverse-map)
+          // out from under a startT captured at the grab frame.
+          t: groupTransformAt(g, dragFrame()),
         });
     } else {
       // scope = "layer" (or ref layer). An animated layer reads and writes THROUGH the track;
@@ -832,7 +861,7 @@
       if (g)
         outerSteps.push({
           base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
-          t: groupTransform(g),
+          t: groupTransformAt(g, dragFrame()), // frozen drag frame — see the frame-scope note above
         });
     }
     if (!base) {
@@ -881,12 +910,20 @@
             g.transformBox = base;
           }
         }
-        // An animated layer's track is mutable state a no-op drag must be able to revert (see
-        // finishTransformDragUndo) — capture it here, before any write.
-        if (trackScopeLayer) {
+        // An animated layer's (or group's) track is mutable state a no-op drag must be able to
+        // revert (see finishTransformDragUndo) — capture it here, before any write.
+        // ONLY when a track actually exists: with none, the revert would write
+        // `tracks = { transform: undefined }` where the field had been ABSENT, leaving an empty bag
+        // behind after the single most common gesture in the app — and a revert of nothing is a
+        // no-op anyway, since `setT` writes the static field on an unanimated target.
+        const scopeTrack = trackScopeLayer
+          ? layerTransformTrack(trackScopeLayer)
+          : trackScopeGroup?.tracks?.transform;
+        if (scopeTrack) {
           refTrackFreeze = {
             layer: trackScopeLayer,
-            prevTrack: layerTransformTrack(trackScopeLayer),
+            group: trackScopeLayer ? null : trackScopeGroup,
+            prevTrack: scopeTrack,
           };
         }
       }
@@ -1278,7 +1315,11 @@
     const H = appState.project.height;
     const cellT = cellTransform(rk.cell);
     const g = groupOf(al, appState.project.groups);
-    const groupT = groupTransform(g);
+    // At the playhead, and frame-aware for a reason worth stating: this feeds the IDENTITY
+    // FAST-PATH below. A static read on an animated group would report identity on the frames its
+    // track happens to pass through zero and take the lossless cell blit where the composed crop
+    // was needed — a silent, pixel-level wrong answer rather than a visible one.
+    const groupT = groupTransformAt(g, appState.playhead);
     const layerT = transformAt(al, appState.playhead);
     if (isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT)) {
       // Document space == cell space: crop the cell bitmap at this.rect (same blit as today).

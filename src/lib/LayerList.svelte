@@ -190,7 +190,10 @@
     const rk = resolvedKeyCell(layer, appState.playhead);
     if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
     const g = groupOf(layer, appState.project.groups);
-    return !!g && !isIdentityTransform(groupTransform(g));
+    // Same rule as the layer term above, one level out: an ANIMATED group's static transform is
+    // retained but IGNORED, and Reset refuses on it — so it must not light this indicator or win
+    // the scope dispatch below and offer an action that no-ops.
+    return !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g));
   }
 
   // Act on whichever transform is actually non-identity; when multiple are, the scope toggle decides.
@@ -203,7 +206,7 @@
     const rk = resolvedKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
     const g = groupOf(layer, appState.project.groups);
-    const groupNI = !!g && !isIdentityTransform(groupTransform(g));
+    const groupNI = !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g)); // see hasTransform
     if (!layerNI && !cellNI && !groupNI) return null;
     // Honour the active toolbar scope when it points at a non-identity transform.
     if (appState.transformScope === "frame" && cellNI) return "frame";

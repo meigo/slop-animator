@@ -27,9 +27,11 @@ import {
   opacityAt,
   createTransformTrack,
   copyTracks,
-  copyKeyframe,
   normalizedTracks,
   layerTransformTrack,
+  groupTransform,
+  groupTransformAt,
+  withKey,
   withoutTransformKey,
   withKeyInterp,
   copyTransformTrack,
@@ -68,6 +70,10 @@ import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
 import { bumpPersistGeneration } from "../persist/generation";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
+// A state→lib import, which nothing else here does — but the group's base rect lives with the
+// content-bounds caches it is built from, and appState is browser-only by construction anyway
+// (it touches window/audio at module load, so it is not node-importable either way).
+import { groupBoxLogical } from "../lib/cell-ink";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -750,6 +756,13 @@ export function resetCellTransform(layerId: number, frame: number): void {
 export function resetGroupTransform(groupId: number): void {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (!g) return;
+  // Resetting to fit only means something for a transform that does not vary — on an animated
+  // group the static field is retained but IGNORED, so clearing it would change nothing on screen.
+  // Silent-with-a-hint, exactly as `resetLayerTransform` refuses an animated layer.
+  if (g.tracks?.transform) {
+    state.statusHint = "Group is animated — Stop animating first";
+    return;
+  }
   if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group
   if ((!g.transform || isIdentityTransform(g.transform)) && !g.transformBox) return;
   commitStructural(() => {
@@ -816,6 +829,46 @@ export function removeLayerOpacityAnimation(layerId: number): void {
   });
 }
 
+/** Start animating a GROUP's transform: its current static transform becomes the key at frame 0.
+ *  The group-level twin of `animateLayer` — a rig moved as one thing over time. */
+export function animateGroup(groupId: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g || g.tracks?.transform) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group
+  // Captured BEFORE the commit so the read cannot be mistaken for part of the mutation.
+  const box = groupBoxLogical(g, state.project, state.playhead, DPR, state.version);
+  commitStructural(() => {
+    // The box is FROZEN here, where `animateLayer` deliberately stores `null` — the asymmetry is
+    // the point, not an inconsistency. A GROUP's base rect is the union of its members' content
+    // bounds at a frame (`groupContentBoxLogical`), so it genuinely drifts as the drawings change;
+    // left live, the pivot would interpolate between keys and warp the motion path invisibly. A
+    // LAYER's base is the document rect or a media contain-fit, which does not drift from drawing,
+    // so freezing one there would only risk describing the OLD document size after a resize.
+    // Replaces the BAG as well as the track — gotcha #8 reaches groups too, and the spread keeps
+    // any sibling track a group may gain later.
+    g.tracks = { ...g.tracks, transform: createTransformTrack(groupTransform(g), box) };
+  });
+}
+
+/** Stop animating a group: bake what is on screen NOW into the static transform, then drop the
+ *  track. WYSIWYG, mirroring `removeLayerAnimation`. */
+export function removeGroupAnimation(groupId: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g || !g.tracks?.transform) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return;
+  const resolved = groupTransformAt(g, state.playhead);
+  const box = g.tracks.transform.box;
+  commitStructural(() => {
+    g.transform = { ...resolved };
+    // Carry the track's frozen pivot onto the group so the baked value keeps rendering where it
+    // rendered a moment ago: the static path resolves its box through `groupBoxLogical`, which
+    // falls back to the LIVE content union — a different pivot for the same numbers is a visible
+    // jump. Only when the group has no freeze of its own; that one is the more recent choice.
+    if (box && !g.transformBox) g.transformBox = { ...box };
+    g.tracks = normalizedTracks({ ...g.tracks, transform: undefined });
+  });
+}
+
 /** Auto-key: called by the opacity slider while a track exists. Writes/replaces the key at `frame`,
  *  preserving that key's own segment interpolation when one is already there (a value write must
  *  not silently reset a segment's curve — same rule `withTransformKey` follows for the transform
@@ -829,16 +882,11 @@ export function setLayerOpacityAt(layerId: number, frame: number, value: number)
   const existing = track.keys.find((k) => k.frame === frame);
   if (existing && existing.v === value) return;
   commitStructural(() => {
-    const keys = track.keys
-      .filter((k) => k.frame !== frame)
-      .concat(
-        copyKeyframe(
-          { frame, v: value, ...(existing?.interp ? { interp: existing.interp } : {}) },
-          (n) => n,
-        ),
-      )
-      .sort((a, b) => a.frame - b.frame);
-    l.tracks = { ...l.tracks, opacity: { ...track, keys } };
+    // Through `withKey`, the single key-WRITING site — this was hand-rolled here and had already
+    // drifted from `withTransformKey`: it only preserved a curve when a key already sat on `frame`,
+    // so a key created INSIDE a `hold` segment silently became a fade where the same gesture on a
+    // transform track kept the hard cut.
+    l.tracks = { ...l.tracks, opacity: withKey(track, frame, value, (n) => n) };
   });
 }
 

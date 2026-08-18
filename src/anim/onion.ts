@@ -63,7 +63,7 @@ import {
   isIdentityTransform,
   cellTransform,
   groupOf,
-  groupTransform,
+  groupTransformAt,
   transformAt,
   type Project,
 } from "./document";
@@ -113,7 +113,9 @@ function drawGhost(
       if (cell && cell.kind === "key") {
         const cellT = cellTransform(cell);
         const g = groupOf(layer, project.groups);
-        const groupT = groupTransform(g);
+        // `ghostFrame`, not the playhead — see the note below; the group's track is subject to
+        // exactly the same rule as the layer's.
+        const groupT = groupTransformAt(g, ghostFrame);
         // This ghost renders `ghostFrame`, not the playhead — each ghost is a different frame, so
         // its layer transform must resolve at ITS frame or every ghost would collapse onto the
         // playhead's position.
