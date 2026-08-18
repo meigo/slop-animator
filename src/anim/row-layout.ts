@@ -1,9 +1,17 @@
-import { groupOf, TRACK_PROPS, type Layer, type LayerGroup, type TrackProp } from "./document";
+import {
+  groupOf,
+  GROUP_TRACK_PROPS,
+  TRACK_PROPS,
+  type GroupTrackProp,
+  type Layer,
+  type LayerGroup,
+  type TrackProp,
+} from "./document";
 
 // Re-exported so a row-building consumer can take the row order from the module that lays out rows.
 // The list itself lives in `document.ts`: it is the canonical set of animatable properties, and
 // non-UI code (the frame shifter, the "is this animated at all?" gates) has to loop it too.
-export { TRACK_PROPS, type TrackProp };
+export { GROUP_TRACK_PROPS, TRACK_PROPS, type GroupTrackProp, type TrackProp };
 
 /**
  * Display ordering for the layer stack, shared by the layer panel and the timeline.
@@ -52,7 +60,7 @@ export type TimelineRow =
   | { kind: "layer"; layer: Layer }
   | { kind: "group"; group: LayerGroup; hiddenCount: number }
   | { kind: "track"; layer: Layer; prop: TrackProp }
-  | { kind: "grouptrack"; group: LayerGroup; prop: "transform" };
+  | { kind: "grouptrack"; group: LayerGroup; prop: GroupTrackProp };
 
 /** Push a layer row, and — directly under it — one row per track it actually carries. Shared by
  *  both branches of `timelineRows` so the two can't drift.
@@ -81,13 +89,13 @@ export function timelineRows(segments: Segment[]): TimelineRow[] {
       hiddenCount: seg.group.collapsed ? seg.layers.length : 0,
     });
     if (seg.group.collapsed) continue;
-    // The group's OWN property row sits directly under its header, above the members — a group
-    // transform composes above its layers, so the rows read in the order the transforms apply.
-    // Collapsing hides it along with the members: `collapsed` means "show me only this group's
+    // The group's OWN property rows sit directly under its header, above the members — a group
+    // transform/opacity compose above its layers, so the rows read in the order they apply.
+    // Collapsing hides them along with the members: `collapsed` means "show me only this group's
     // header row", which is the reading that keeps ONE collapse concept in the timeline rather
     // than a second flag for a group's own tracks.
-    if (seg.group.tracks?.transform)
-      rows.push({ kind: "grouptrack", group: seg.group, prop: "transform" });
+    for (const prop of GROUP_TRACK_PROPS)
+      if (seg.group.tracks?.[prop]) rows.push({ kind: "grouptrack", group: seg.group, prop });
     for (const layer of seg.layers) pushLayer(rows, layer);
   }
   return rows;

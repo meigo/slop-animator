@@ -30,6 +30,8 @@ export interface LayerGroup {
   /** Locks every member. DERIVED like `visible` — children's own flags are never touched, so
    *  unlocking the group restores each member's individual state with nothing to snapshot. */
   locked?: boolean;
+  /** Static group opacity 0..100. Absent means 100. Ignored when `tracks.opacity` is present. */
+  opacity?: number;
   transform?: RefTransform;
   transformBox?: { x: number; y: number; w: number; h: number } | null;
   tracks?: GroupTracks;
@@ -126,11 +128,17 @@ export interface LayerTracks {
 }
 export interface GroupTracks {
   transform?: TransformTrack;
+  opacity?: Track<number>;
 }
 
 /** An animatable layer property. `keyof LayerTracks` rather than a hand-written union, so it cannot
  *  name a property the bag does not have and a fourth one extends it by existing. */
 export type TrackProp = keyof LayerTracks;
+
+/** An animatable group property. Separate from `TrackProp` — groups loop `GROUP_TRACK_PROPS`, layers
+ *  loop `TRACK_PROPS`, and conflating the two lists is how a property ends up handled for one owner
+ *  and silently ignored for the other. */
+export type GroupTrackProp = keyof GroupTracks;
 
 /** THE property set, in the order the timeline stacks its rows. That order is FIXED, and
  *  deliberately not "whichever track was added first": rows must never reorder under the artist as
@@ -138,6 +146,10 @@ export type TrackProp = keyof LayerTracks;
  *  order — the frame shifter and the "is this layer animated at all?" gates loop the same list, and
  *  a second copy of it is exactly how a property comes to be handled everywhere except one place. */
 export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
+
+/** Group track row / shifter order. Same fixed-order rule as `TRACK_PROPS`; a separate list so a
+ *  layer-only property cannot sneak onto a group by sharing the layer loop. */
+export const GROUP_TRACK_PROPS: GroupTrackProp[] = ["transform", "opacity"];
 
 /** Does this layer carry ANY track? Every "is it animated?" gate asks through here rather than
  *  enumerating properties by hand: a hand-written `tracks?.transform || tracks?.opacity` still
@@ -756,6 +768,8 @@ export function trackForRef(project: Project, ref: TrackRef): Track<unknown> | u
     switch (prop) {
       case "transform":
         return g?.tracks?.transform;
+      case "opacity":
+        return g?.tracks?.opacity;
       default: {
         const unreachable: never = prop;
         return unreachable;
@@ -794,6 +808,15 @@ export function groupTransformAt(
   const track = group.tracks?.transform;
   if (track && track.keys.length > 0) return resolveTrack(track, frame, lerpTransform);
   return group.transform ?? IDENTITY_TRANSFORM;
+}
+
+/** A group's opacity (0..100) at `frame`: 100 when missing, its static field when there is no track,
+ *  otherwise the track resolved. The group-level mirror of `opacityAt`. */
+export function groupOpacityAt(group: LayerGroup | null | undefined, frame: number): number {
+  if (!group) return 100;
+  const track = group.tracks?.opacity;
+  if (!track || track.keys.length === 0) return group.opacity ?? 100;
+  return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
 }
 
 /** The resolved key cell shown at `frame` (follows holds), or null. */

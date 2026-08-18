@@ -193,4 +193,17 @@ describe("timelineRows — group tracks", () => {
     const rows = timelineRows(buildSegments([layer(1, 10)], [animatedGroup(10, true)]));
     expect(ids(rows)).toEqual(["G10"]);
   });
+
+  it("emits an opacity grouptrack under the header when only tracks.opacity is present", () => {
+    const g = {
+      id: 10,
+      name: "G10",
+      collapsed: false,
+      visible: true,
+      tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } },
+    } as LayerGroup;
+    const rows = timelineRows(buildSegments([layer(1, 10)], [g]));
+    expect(rows.map((r) => r.kind)).toEqual(["group", "grouptrack", "layer"]);
+    expect(rows[1]).toMatchObject({ kind: "grouptrack", prop: "opacity" });
+  });
 });

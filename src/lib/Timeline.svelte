@@ -24,7 +24,12 @@
     Group,
     CircleStop,
   } from "@lucide/svelte";
-  import { buildSegments, timelineRows, type TrackProp } from "../anim/row-layout";
+  import {
+    buildSegments,
+    timelineRows,
+    type GroupTrackProp,
+    type TrackProp,
+  } from "../anim/row-layout";
   import { animationBar } from "../anim/animation-bar";
   import {
     state as appState,
@@ -107,6 +112,7 @@
     type DrawingLayer,
     type Layer,
     type LayerGroup,
+    type GroupTracks,
     type LayerTracks,
     type Track,
     type TransformTrack,
@@ -1042,8 +1048,8 @@
     };
   }
 
-  function groupTrackSpec(group: LayerGroup): TrackRowSpec | null {
-    const track = group.tracks?.transform;
+  function groupTrackSpec(group: LayerGroup, prop: GroupTrackProp): TrackRowSpec | null {
+    const track = group.tracks?.[prop];
     if (!track) return null;
     // `selectTrack` aims the draw target at a DRAW member of this group (or leaves it alone when
     // there is none) — never a ref. See that function for why a wrong member is worse than none.
@@ -1059,21 +1065,24 @@
     const locked = groupHasLockedLayer(group, appState.project.layers);
     return {
       track,
-      label: "Transform",
+      label: TRACK_LABEL[prop],
       owner: group.name,
       indent: false,
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
       // `activeRow` with `activeLayerId`-derived state has shipped a forgotten term twice here.
-      selected: isTrackSelected("group", group.id, "transform"),
+      selected: isTrackSelected("group", group.id, prop),
       readOnly: locked,
       // Reports the LOCK whenever the lock is what refuses — a row that refuses without stating why
       // is the actual defect, and this row's marker/title is the only place the reason appears.
       block: locked ? "locked" : null,
-      select: () => selectTrack({ owner: "group", id: group.id, prop: "transform" }),
+      select: () => selectTrack({ owner: "group", id: group.id, prop }),
       setTrack: (t) => {
-        group.tracks = { ...group.tracks, transform: t as TransformTrack | undefined };
+        group.tracks = { ...group.tracks, [prop]: t } as GroupTracks;
       },
-      moved: (t, from, to) => withMovedTransformKey(t as TransformTrack, from, to),
+      moved: (t, from, to) =>
+        prop === "transform"
+          ? withMovedTransformKey(t as TransformTrack, from, to)
+          : withMovedKey(t as Track<number>, from, to, (n) => n),
     };
   }
 
@@ -2164,7 +2173,7 @@
     />
 
     <!-- layer rows (top layer first) -->
-    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}` : `g${row.group.id}`)}
+    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}:${row.prop}` : `g${row.group.id}`)}
       {#if row.kind === "group"}
         {@const g = row.group}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
@@ -2231,7 +2240,9 @@
              select. A marquee dragged ACROSS one still spans the layers either side, through the
              existing nearest-row fallback. -->
         {@const spec =
-          row.kind === "track" ? layerTrackSpec(row.layer, row.prop) : groupTrackSpec(row.group)}
+          row.kind === "track"
+            ? layerTrackSpec(row.layer, row.prop)
+            : groupTrackSpec(row.group, row.prop)}
         {#if spec}
           <!-- Clamped to the strip: shortening the animation does not move keys, and an
                absolutely-positioned dot past the last frame would draw over the ruler's end and add

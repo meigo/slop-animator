@@ -4,7 +4,7 @@ export type ActiveRow =
   | { kind: "layer"; id: number }
   | { kind: "audio" }
   | { kind: "track"; owner: "layer"; id: number; prop: "transform" | "opacity" }
-  | { kind: "track"; owner: "group"; id: number; prop: "transform" };
+  | { kind: "track"; owner: "group"; id: number; prop: "transform" | "opacity" };
 
 export function layerRowSelected(
   row: ActiveRow,
@@ -16,8 +16,7 @@ export function layerRowSelected(
   if (row.kind === "track" && row.owner === "layer") return row.id === layerId;
   if (row.kind === "track" && row.owner === "group") {
     return (
-      layerId === activeLayerId &&
-      layers.some((l) => l.id === layerId && l.groupId === row.id)
+      layerId === activeLayerId && layers.some((l) => l.id === layerId && l.groupId === row.id)
     );
   }
   return false;
@@ -48,6 +47,6 @@ export function resolveStaleTrackFocus(
     return { kind: "layer", id: activeLayerId };
   }
   const g = doc.groups.find((x) => x.id === row.id);
-  if (g?.tracks?.transform) return row;
+  if (row.prop === "opacity" ? g?.tracks?.opacity : g?.tracks?.transform) return row;
   return { kind: "layer", id: activeLayerId };
 }

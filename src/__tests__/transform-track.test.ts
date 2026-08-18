@@ -13,6 +13,7 @@ import {
   withoutKey,
   withKey,
   groupTransformAt,
+  groupOpacityAt,
   copyTracks,
   hasKeyAt,
   createProject,
@@ -895,6 +896,34 @@ describe("groupTransformAt", () => {
     } as LayerGroup;
     expect(groupTransformAt(g, 0).dx).toBe(10);
     expect(groupTransformAt(g, 99).dx).toBe(30);
+  });
+});
+
+describe("groupOpacityAt", () => {
+  const g = (over: Partial<LayerGroup> = {}): LayerGroup =>
+    ({ id: 1, name: "G", collapsed: false, visible: true, ...over }) as LayerGroup;
+
+  it("is 100 when the group is missing or has no opacity", () => {
+    expect(groupOpacityAt(null, 0)).toBe(100);
+    expect(groupOpacityAt(undefined, 0)).toBe(100);
+    expect(groupOpacityAt(g(), 0)).toBe(100);
+  });
+
+  it("reads the static field when there is no track", () => {
+    expect(groupOpacityAt(g({ opacity: 40 }), 7)).toBe(40);
+  });
+
+  it("resolves the track, holding outside the key range", () => {
+    const track = {
+      keys: [
+        { frame: 0, v: 100 },
+        { frame: 10, v: 0 },
+      ],
+    };
+    const grp = g({ opacity: 80, tracks: { opacity: track } });
+    expect(groupOpacityAt(grp, -1)).toBe(100);
+    expect(groupOpacityAt(grp, 5)).toBeCloseTo(50, 10);
+    expect(groupOpacityAt(grp, 99)).toBe(0);
   });
 });
 

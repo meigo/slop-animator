@@ -64,10 +64,7 @@ describe("audioRowSelected", () => {
 
 describe("resolveStaleTrackFocus", () => {
   const project = {
-    layers: [
-      { ...layer(1), tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } },
-      layer(2),
-    ],
+    layers: [{ ...layer(1), tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } }, layer(2)],
     groups: [
       {
         id: 10,
@@ -97,6 +94,28 @@ describe("resolveStaleTrackFocus", () => {
   it("keeps a live group track", () => {
     const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "transform" };
     expect(resolveStaleTrackFocus(row, project, 1)).toEqual(row);
+  });
+
+  it("keeps a live group opacity track", () => {
+    const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "opacity" };
+    const withOpacity = {
+      ...project,
+      groups: [
+        {
+          id: 10,
+          name: "G",
+          collapsed: false,
+          visible: true,
+          tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } },
+        },
+      ],
+    };
+    expect(resolveStaleTrackFocus(row, withOpacity as typeof project, 1)).toEqual(row);
+  });
+
+  it("falls back when only the group transform remains", () => {
+    const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "opacity" };
+    expect(resolveStaleTrackFocus(row, project, 1)).toEqual({ kind: "layer", id: 1 });
   });
 
   it("falls back when the group track is gone", () => {

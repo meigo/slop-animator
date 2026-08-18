@@ -53,7 +53,7 @@ function groupAnimateBlocked(group: LayerGroup, layers: Layer[]): string | null 
 function trackExists(layers: Layer[], groups: LayerGroup[], ref: TrackRef): boolean {
   if (ref.owner === "group") {
     const g = groups.find((x) => x.id === ref.id);
-    return !!g?.tracks?.transform;
+    return !!g?.tracks?.[ref.prop];
   }
   const l = layers.find((x) => x.id === ref.id);
   if (!l?.tracks) return false;
@@ -85,7 +85,7 @@ export function animationBar(args: {
   if (activeRow.kind === "track") {
     const track: TrackRef =
       activeRow.owner === "group"
-        ? { owner: "group", id: activeRow.id, prop: "transform" }
+        ? { owner: "group", id: activeRow.id, prop: activeRow.prop }
         : { owner: "layer", id: activeRow.id, prop: activeRow.prop };
     if (!trackExists(layers, groups, track)) return { kind: "empty" };
     return {
