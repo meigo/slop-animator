@@ -898,10 +898,18 @@
       // An earlier round gated this write on the value actually changing, but the gate also
       // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
       // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
-      if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
-      else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
-      else setT(applyScale(d.startT, d.center, d.start, pc));
-      d.dirty = !isSameTransform(d.startT, getT());
+      const nt =
+        d.handle === "body"
+          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
+          : d.handle === "rotate"
+            ? applyRotate(d.startT, d.center, d.start, pc)
+            : applyScale(d.startT, d.center, d.start, pc);
+      setT(nt);
+      // Compare what was WRITTEN, not a read-back. With `sampleEvery > 1` a track quantises the
+      // sampled frame, so reading at a frame off the grid returns a lerp toward the key rather than
+      // the key itself: algebraically the same value, but `isSameTransform` is exact field equality,
+      // so float rounding could make a click-without-move look like a change and push an undo entry.
+      d.dirty = !isSameTransform(d.startT, nt);
       bump();
     }
     if (done) {

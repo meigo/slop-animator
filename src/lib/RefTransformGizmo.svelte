@@ -74,6 +74,10 @@
      *  already read and key at this frame for the whole gesture — this field records WHICH frame
      *  that is, so the freeze is visible in the drag state rather than only inside a closure. */
     keyFrame: number;
+    /** The last value written by `setT`, or null when the drag never moved. The settle compares
+     *  against this rather than re-reading, because a `sampleEvery > 1` track resolves a frame off
+     *  its sample grid to a lerp — equal in value, not guaranteed equal under exact field equality. */
+    lastT: RefTransform | null;
   } | null = null;
   let dragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
   let dragFreeze: {
@@ -270,6 +274,7 @@
       setT: tgt.setT,
       getT: tgt.getT,
       keyFrame,
+      lastT: null,
     };
     appState.transformDragFrame = keyFrame; // see the note in Canvas.finishTransformDragUndo
     window.addEventListener("pointermove", onDragMove);
@@ -290,8 +295,12 @@
     }
     e.preventDefault();
     const p = inverseChain(d.outer, vp.screenToCanvas(e.clientX, e.clientY));
-    if (d.handle === "rotate") d.setT(applyRotate(d.startT, d.center, d.start, p));
-    else d.setT(applyScale(d.startT, d.center, d.start, p)); // any corner = uniform scale
+    const nt =
+      d.handle === "rotate"
+        ? applyRotate(d.startT, d.center, d.start, p)
+        : applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+    d.setT(nt);
+    d.lastT = nt; // settle compares what was WRITTEN — see the note in Canvas.onTransformDrag
     bump();
   }
 
@@ -324,7 +333,7 @@
 
   function settleDragUndo() {
     if (dragUndo && drag) {
-      if (isSameTransform(drag.startT, drag.getT())) {
+      if (drag.lastT === null || isSameTransform(drag.startT, drag.lastT)) {
         if (dragFreeze?.cell) dragFreeze.cell.transformBox = dragFreeze.prevBox;
         else if (dragFreeze?.group) dragFreeze.group.transformBox = dragFreeze.prevBox;
         // Also revert any key withTransformKey inserted along the way: the resulting VALUE
