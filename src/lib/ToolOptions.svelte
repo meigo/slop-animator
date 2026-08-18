@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { animateTargetLayer } from "./transform-target";
+  import { animateTargetGroup, animateTargetLayer } from "./transform-target";
   import {
     state as appState,
     pressureCurve,
@@ -11,6 +11,8 @@
     fillActions,
     animateLayer,
     removeLayerAnimation,
+    animateGroup,
+    removeGroupAnimation,
     deleteTransformKeyAtPlayhead,
     setTransformKeyInterp,
     copyTransformKeyAtPlayhead,
@@ -52,6 +54,18 @@
       appState.transformScope,
       appState.playhead,
       appState.project.fps,
+    ),
+  );
+  // At GROUP scope the drag writes the group's transform, so the layer predicate above is right to
+  // return null and this is who the key belongs to. Without it `animateGroup`/`removeGroupAnimation`
+  // would have no caller at all and a group track could never be created.
+  const animGroup = $derived(
+    animateTargetGroup(
+      appState.project.layers.find((x) => x.id === appState.activeLayerId),
+      appState.project.groups,
+      appState.project.layers,
+      appState.tool,
+      appState.transformScope,
     ),
   );
 
@@ -424,6 +438,27 @@
           }}
         />
       </label>
+    {/if}
+  {/if}
+  <!-- Group scope: the same two controls, one level out. Deliberately Animate / Stop animating only
+       — Delete key / Copy / Paste / Ease / Step still read a LAYER's track and are generalised in
+       their own task. Guarded on LOCK alone, not lock-plus-hidden: `activeTransformLayer` returns
+       its layer unconditionally at group scope so a hidden or locked anchor cannot veto a group
+       drag, so a hidden group is draggable — refusing to animate what you may still drag would be
+       the inconsistency. See `animateTargetGroup`. -->
+  {#if animGroup}
+    {#if !animGroup.tracks?.transform}
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Animate this group's transform — its current position becomes a key at frame 0"
+        onclick={() => animateGroup(animGroup.id)}>Animate</button
+      >
+    {:else}
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Stop animating — keeps the position you can see now"
+        onclick={() => removeGroupAnimation(animGroup.id)}>Stop animating</button
+      >
     {/if}
   {/if}
 </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { animateTargetLayer } from "../lib/transform-target";
+import { animateTargetGroup, animateTargetLayer } from "../lib/transform-target";
 import type { Layer, LayerGroup } from "../anim/document";
 
 const FPS = 12;
@@ -75,5 +75,55 @@ describe("animateTargetLayer", () => {
     const trimmed = ref({ range: { start: 0, end: 10 } });
     expect(animateTargetLayer(trimmed, [], "brush", "frame", 5, FPS)).not.toBeNull();
     expect(animateTargetLayer(trimmed, [], "brush", "frame", 30, FPS)).toBeNull();
+  });
+});
+
+describe("animateTargetGroup", () => {
+  const grouped = draw({ groupId: 9 });
+  const g = (over: Record<string, unknown> = {}) =>
+    [{ id: 9, name: "G", collapsed: false, visible: true, ...over }] as LayerGroup[];
+
+  it("is null with no layer", () => {
+    expect(animateTargetGroup(null, g(), [], "transform", "group")).toBeNull();
+  });
+
+  // The exact complement of animateTargetLayer: it declines at group scope because the drag writes
+  // the GROUP's transform, and this is who that key belongs to. Without the pair, Task 5's
+  // animateGroup/removeGroupAnimation would have no caller and a group track could never exist.
+  it("takes the group only under the Transform tool at group scope", () => {
+    expect(animateTargetGroup(grouped, g(), [grouped], "transform", "group")).not.toBeNull();
+    expect(animateTargetGroup(grouped, g(), [grouped], "transform", "layer")).toBeNull();
+    expect(animateTargetGroup(grouped, g(), [grouped], "transform", "frame")).toBeNull();
+    expect(animateTargetGroup(grouped, g(), [grouped], "brush", "group")).toBeNull();
+  });
+
+  it("is null for a layer that is in no group", () => {
+    expect(animateTargetGroup(draw(), g(), [draw()], "transform", "group")).toBeNull();
+  });
+
+  // A locked MEMBER pins the whole group's transform (Photoshop-style), and groupHasLockedLayer
+  // already reports a locked group itself — so this needs no separate `group.locked` check.
+  it("refuses a locked group, and a group with a locked member", () => {
+    expect(
+      animateTargetGroup(grouped, g({ locked: true }), [grouped], "transform", "group"),
+    ).toBeNull();
+    const lockedMember = draw({ id: 3, groupId: 9, locked: true });
+    expect(
+      animateTargetGroup(grouped, g(), [grouped, lockedMember], "transform", "group"),
+    ).toBeNull();
+  });
+
+  // Deliberately NOT symmetric with animateTargetLayer, which refuses a hidden layer: the gizmo
+  // returns its layer unconditionally at group scope so a hidden anchor cannot veto a group drag,
+  // so a hidden group IS draggable today — refusing to animate what you may still drag would be
+  // the inconsistency, and Task 5's actions guard on lock alone for the same reason.
+  it("allows a hidden group and a hidden anchor layer", () => {
+    expect(
+      animateTargetGroup(grouped, g({ visible: false }), [grouped], "transform", "group"),
+    ).not.toBeNull();
+    const hiddenLayer = draw({ groupId: 9, visible: false });
+    expect(
+      animateTargetGroup(hiddenLayer, g(), [hiddenLayer], "transform", "group"),
+    ).not.toBeNull();
   });
 });
