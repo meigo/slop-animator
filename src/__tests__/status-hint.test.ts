@@ -95,8 +95,12 @@ describe("contextHint — animated layer", () => {
 
   // Auto-key's one real hazard is silence: a nudge made while scrubbed between keys bends the
   // motion with nothing said. Naming the frame is the mitigation, so it is not optional.
-  it("names the frame a drag will key", () => {
-    expect(contextHint({ ...base, animatedFrame: 12 })).toContain("12");
+  // 1-BASED, matching every other number the artist sees (the f n/n readout, the ruler, a key's
+  // tooltip). `animatedFrame` itself is a model frame, so it is 0-based — asserting "12" would pass
+  // against a hint that forgot to convert, and read one frame off against the ruler beside it.
+  it("names the frame a drag will key, numbered as the artist sees it", () => {
+    expect(contextHint({ ...base, animatedFrame: 12 })).toContain("13");
+    expect(contextHint({ ...base, animatedFrame: 0 })).toContain("1");
   });
 
   it("falls back to the plain transform hint when the layer is not animated", () => {

@@ -2456,6 +2456,19 @@ because tracks are always replaced and never mutated. Finger pans, Pencil edits,
 **Deleting** is a tap then the existing ToolOptions button: a tap on a key SEEKS to it, which is
 exactly what "Delete key" is gated on. No new gesture, and it works with a Pencil where a hover-only
 ✕ would not.
+**A keyed `{#each}` cannot hold a pointer capture (2026-08-18).** Reported as "I can move the key by
+only 1 frame, then it stops". The markers live in `{#each keys as k (k.frame)}`, so the instant the
+key changed frame Svelte destroyed the element under the pointer and built a new one — and per the
+Pointer Events spec, removing the capture target from the document implicitly RELEASES the capture.
+The drag went deaf after exactly one column. Worse than it looked: with a 24px cell and a 16px hit
+box, the 4px either side of every column boundary is bare cell, so once capture was lost no handler
+could ever see the boundary crossing — and a release on bare cell never reached the marker's
+`pointerup` at all, leaving the undo bracket OPEN. A later ⌘Z would then settle that stale bracket
+and roll back everything drawn since. Fixed by moving move/up/cancel to WINDOW listeners for the
+duration of the drag, which is what `RefTransformGizmo`'s handle drag has always done and for
+exactly this reason. **Any drag whose own target can be re-rendered by the drag must listen on
+window; `setPointerCapture` is not enough.**
+
 **Owed a browser pass:** the indent lining up with the owner; keys distinguishable from drawing keys;
 the line unbroken across cell borders; drag a key onto another (the far one is replaced, one undo
 restores both); drag across a third key without eating it; tap a key seeks; undo mid-drag; iPad with

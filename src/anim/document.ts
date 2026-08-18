@@ -391,7 +391,9 @@ export function withMovedTransformKey(
     .filter((k) => k.frame !== from && k.frame !== to)
     .concat({ frame: to, t: { ...moved.t } })
     .sort((a, b) => a.frame - b.frame);
-  return { ...track, keys };
+  // `box` copied, not shared: the returned track must not alias the input's nested objects — the
+  // same reason `shiftTransformTrackFrames` copies it. True of today's code, not of the type.
+  return { ...track, box: track.box ? { ...track.box } : null, keys };
 }
 
 export function hasKeyAt(track: TransformTrack, frame: number): boolean {

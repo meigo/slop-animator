@@ -945,6 +945,22 @@
     undo: ReturnType<typeof beginStructuralEdit>;
   } | null = null;
 
+  // Bound to WINDOW for the duration of a key drag, not to the marker. The markers live in an
+  // `{#each keys as k (k.frame)}` keyed BY FRAME, so the moment the key moves Svelte destroys the
+  // element under the pointer and builds a new one — taking its pointer capture with it, which
+  // stopped the drag dead after exactly one frame. The gizmo's handle drag has always used window
+  // listeners for the same reason.
+  function addKeyDragListeners() {
+    window.addEventListener("pointermove", keyMove);
+    window.addEventListener("pointerup", settleKeyDrag);
+    window.addEventListener("pointercancel", settleKeyDrag);
+  }
+  function removeKeyDragListeners() {
+    window.removeEventListener("pointermove", keyMove);
+    window.removeEventListener("pointerup", settleKeyDrag);
+    window.removeEventListener("pointercancel", settleKeyDrag);
+  }
+
   function keyDown(e: PointerEvent, layer: Layer, frame: number) {
     // Finger navigates, Pencil edits — the app-wide rule. A touch falls through to the row's own
     // pan handling instead of retiming a key by accident.
@@ -957,9 +973,12 @@
     }
     if (!layer.transformTrack) return;
     // No stopPropagation: it would suppress App.svelte's window-level status-hint listener, so this
-    // marker's title would never reach the status bar. Nothing above needs blocking — the transform
-    // row has no pointerdown handler, and gridWrapper's fling-catcher runs in the capture phase.
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // marker's title would never reach the status bar. Nothing above needs blocking — the strip's
+    // own pointerdown returns immediately for a fine pointer, and gridWrapper's fling-catcher runs
+    // in the capture phase, which stopPropagation cannot reach anyway.
+    // No setPointerCapture either: this element is about to be destroyed and rebuilt (see
+    // addKeyDragListeners), so capturing on it would be pointless.
+    addKeyDragListeners();
     keyDrag = {
       layer,
       prevTrack: layer.transformTrack,
@@ -967,14 +986,10 @@
       cur: frame,
       undo: beginStructuralEdit(),
     };
-    transformDragGuard.settle = () => settleKeyDrag();
+    transformDragGuard.settle = settleKeyDrag;
   }
 
   function keyMove(e: PointerEvent) {
-    if (touchPan) {
-      touchPanMove(e);
-      return;
-    }
     if (!keyDrag) return;
     const to = columnAtX(
       e.clientX -
@@ -994,15 +1009,13 @@
     bump();
   }
 
-  function keyUp() {
-    touchPanUp();
-    settleKeyDrag();
-  }
-
   function settleKeyDrag() {
     const d = keyDrag;
     keyDrag = null;
-    transformDragGuard.settle = null;
+    removeKeyDragListeners();
+    // Only release the shared hook if this drag still owns it, matching resetRowDrag's idiom —
+    // clearing another gesture's settle would leave that one unable to close its bracket.
+    if (transformDragGuard.settle === settleKeyDrag) transformDragGuard.settle = null;
     if (!d) return;
     if (d.cur === d.from) {
       // Nothing moved: put the grab-time track back and push nothing, so a tap on a key is not an
@@ -1010,9 +1023,12 @@
       // deleted, since ToolOptions' "Delete key" acts on the key under the playhead. Two taps, no
       // new gesture, and it works with a Pencil where a hover-only ✕ would not.
       d.layer.transformTrack = d.prevTrack;
+      // Select the key's OWNER as well as seeking. "Delete key" acts on the ACTIVE layer's key at
+      // the playhead, so tapping a key on some other layer's row would otherwise arm the button
+      // against a different layer's key at the same frame — deleting the one you did not tap.
+      setActiveLayer(d.layer.id);
       seekPlayhead(d.from);
-      bump();
-      return;
+      return; // no bump(): nothing changed, and bumping re-arms a full autosave re-encode
     }
     commitStructuralEdit(d.undo);
   }
@@ -1873,7 +1889,12 @@
         {@const tl = row.layer}
         <!-- A transform row. Like the group row, it carries NO `data-layer-id` — a track holds no
              cells, so there is nothing on it to select. -->
-        {@const keys = tl.transformTrack?.keys ?? []}
+        <!-- Clamped to the strip: shortening the animation does not move transform keys, and an
+             absolutely-positioned dot past the last frame would draw over the ruler's end and add
+             scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
+        {@const keys = (tl.transformTrack?.keys ?? []).filter(
+          (k) => k.frame < appState.project.frameCount,
+        )}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <span
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-muted"
@@ -1961,9 +1982,15 @@
                 role="presentation"
                 title="Transform key at frame {k.frame + 1} — drag to retime"
                 onpointerdown={(e) => keyDown(e, tl, k.frame)}
-                onpointermove={keyMove}
-                onpointerup={keyUp}
-                onpointercancel={keyUp}
+                onpointermove={(e) => {
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
               >
                 <div class="size-2 rounded-full bg-selection"></div>
               </div>

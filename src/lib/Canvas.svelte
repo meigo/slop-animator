@@ -678,10 +678,9 @@
   // before-snapshot — nothing needs deep-copying, unlike the box freeze above.
   let refTrackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
 
-  // endT is a thunk: at the early-return sites the target is gone and there is no getT — pass null
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
   // this feature removes).
-  function finishTransformDragUndo(endT: (() => Layer["transform"]) | null) {
+  function finishTransformDragUndo() {
     // Every `refDrag = null` in this file is paired with a call to this function, so this is the one
     // place the published drag frame has to be retired — pointerup, pointercancel, the retarget
     // bail, and transformDragGuard.settle (undo/redo, tool switch, replaceProject) all route here.
@@ -690,9 +689,12 @@
       // Nothing was written (grab missed a handle, or settled from undo()/a tool switch before the
       // pointer moved) → drop the snapshot. Committing here pushed a before==after entry that the
       // caller's own undo then popped, so the user's undo silently did nothing.
+      // `dirty` is already computed from the value WRITTEN (see onTransformDrag), so a second
+      // read-back here would undo that care: with `sampleEvery > 1` a track resolves a frame off its
+      // sample grid to a lerp, so a genuine key could read back as "unchanged" and be reverted with
+      // no undo entry — a real edit silently discarded. `dirty` alone decides.
       const wrote = !!refDrag?.handle && refDrag.dirty;
-      const unchanged = wrote && endT && isSameTransform(refDrag!.startT, endT());
-      if (wrote && !unchanged) {
+      if (wrote) {
         commitStructuralEdit(refDragUndo);
       } else if (wrote || refDrag?.handle) {
         // No-op drag: push nothing, revert the freeze we did at grab.
@@ -744,7 +746,7 @@
     if (isDraw && scope === "group" && g) {
       if (groupHasLockedLayer(g, appState.project.layers)) {
         if (done) {
-          finishTransformDragUndo(null);
+          finishTransformDragUndo();
           refDrag = null;
         }
         return;
@@ -756,7 +758,7 @@
       frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
         if (done) {
-          finishTransformDragUndo(null);
+          finishTransformDragUndo();
           refDrag = null;
         }
         return;
@@ -764,7 +766,7 @@
       // Playhead moved mid-drag onto a different (un-cloned) cell: settle the in-flight drag on
       // the grab-time clone instead of writing to a snapshot-shared cell (gotcha #8 corruption).
       if (refDrag !== null && refDrag.cell && refDrag.cell !== frameRk.cell) {
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
         return;
       }
@@ -818,7 +820,7 @@
     }
     if (!base) {
       if (done) {
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
       }
       return;
@@ -832,7 +834,7 @@
     // own cell-identity bail; layer/group scope had none and would apply the grab-time transform to
     // whatever layer became active. Settle the bracket and end the gesture instead.
     if (refDrag && (refDrag.layerId !== layer.id || refDrag.groupId !== (g?.id ?? null))) {
-      finishTransformDragUndo(null);
+      finishTransformDragUndo();
       refDrag = null;
       return;
     }
@@ -843,7 +845,7 @@
       if (handle) {
         refDragUndo = beginStructuralEdit(); // FIRST: snapshot must capture the old shared cell (gotcha #8)
         transformDragGuard.settle = () => {
-          finishTransformDragUndo(null);
+          finishTransformDragUndo();
           refDrag = null;
         };
         if (isDraw && scope === "frame" && frameRk) {
@@ -913,7 +915,7 @@
       bump();
     }
     if (done) {
-      finishTransformDragUndo(() => getT());
+      finishTransformDragUndo();
       refDrag = null;
     }
   }
@@ -1010,7 +1012,7 @@
       if (!groupScope && !isLayerEditable(al, appState.project.groups)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
         return;
       }
