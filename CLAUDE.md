@@ -2958,3 +2958,25 @@ releasing a slider drag that spanned a playhead change (the thumb must follow ag
 drag while a second finger reorders the layer list (one clean undo entry, and the next drag keys the
 right frame); a group Transform row whose group has only reference members (selecting it must not
 move the gizmo onto a ref).
+
+**A rename is compiler-caught everywhere except the JSON boundary (2026-08-18, hotfix).** The
+multi-property branch renamed a keyframe's value field `t` → `v`, and the task brief reasoned that
+the rename was safe because `v` is required, so every miss is a type error. That is true of every
+site the compiler can see, and false at exactly one: `project.json`. A type on a persisted shape is
+an **assertion about bytes on disk**, not a fact — so the loader compiled cleanly, read `k.v` from
+parent-build files that carry `t`, found `undefined`, and dropped every key through the value guard.
+The emptied track collapsed to `undefined`, the project opened parked at the static `layer.transform`
+(a pose the layer may never have rendered), and the next edit autosaved that over the only restorable
+copy. It shipped, and was caught by an independent review after the merge.
+**The migration test could not have caught it, and that is the more useful half.** The fixture helper
+took a `TransformTrack`, so the already-renamed shape was the only one it could express — the tests
+fabricated `v` keys, asserted the FIELD promotion (`transformTrack` → `tracks.transform`) and passed,
+while the KEY shape inside it was never exercised. Typing a legacy on-disk shape as the current model
+type makes the wrong fixture the only writable one. `LegacyTransformKeyJson` is now declared
+separately for that reason, and the regression test hand-writes what `git show
+b898b14:src/anim/document.ts` actually shipped.
+**The rule: when a persisted field is renamed or reshaped, the migration test's fixture must be
+written in the OLD shape, by hand, typed independently of the model — and the assertion must check a
+VALUE that came through it, not merely that something survived.** A test that builds its input with
+today's types is testing today's code against itself. Applies to any future `tracks` change; the
+format version deliberately does not move for additive fields, so the loader is the only guard.
