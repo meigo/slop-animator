@@ -63,10 +63,12 @@ export interface RefTransform {
 /** How the value travels from one key to the NEXT one. */
 export type KeyInterp = "linear" | "hold" | "ease-in" | "ease-out" | "ease-in-out";
 
-export interface TransformKey {
+export interface Keyframe<V> {
   /** Project frame, >= 0. Unique within a track. */
   frame: number;
-  t: RefTransform;
+  /** The value at this key. Named `v`, not `t`: this track is generic over its value type now, and
+   *  `t` would read as "transform" on an opacity track and as "time" to anyone used to easing. */
+  v: V;
   /**
    * The interpolation of the segment that STARTS at this key — so it describes the curve between
    * this key and the next, which is how an artist thinks about easing ("this move eases out"), and
@@ -85,13 +87,17 @@ export interface TransformKey {
   interp?: KeyInterp;
 }
 
-export interface TransformTrack {
+export interface Track<V> {
   /** Sorted by `frame`, never empty. */
-  keys: TransformKey[];
+  keys: Keyframe<V>[];
   /** Quantise the sampled frame to a multiple of this, so a move updates on 2s/3s like the drawings
    *  do. 1 (or absent) = every frame. Track-wide, unlike `interp`: it is a property of the RHYTHM
    *  the whole move is cut to, not of one segment. */
   sampleEvery?: number;
+}
+
+export type TransformKey = Keyframe<RefTransform>;
+export interface TransformTrack extends Track<RefTransform> {
   /** The pivot box, captured ONCE at track creation and shared by every key. A per-key box would
    *  make the pivot interpolate and warp the motion path between keys, invisibly. */
   box: { x: number; y: number; w: number; h: number } | null;
@@ -347,16 +353,22 @@ function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransfor
   };
 }
 
-/** The layer's transform at `frame`: its static value when there is no track, otherwise the track
- *  resolved (and held outside its key range — a track never extrapolates). */
-export function transformAt(layer: Layer, frame: number): RefTransform {
-  const track = layer.transformTrack;
-  if (!track || track.keys.length === 0) return layer.transform;
+/**
+ * The value a track holds at `frame`. THE resolution skeleton — bracket search, `sampleEvery`
+ * quantisation, per-key easing, hold at both ends — parameterised by the one thing that differs
+ * between properties: how two values blend. Duplicating this per property is how two
+ * implementations drift apart, which is the whole reason it is generic.
+ */
+export function resolveTrack<V>(
+  track: Track<V>,
+  frame: number,
+  lerp: (a: V, b: V, u: number) => V,
+): V {
   const keys = track.keys;
   const first = keys[0];
   const last = keys[keys.length - 1];
-  if (keys.length === 1 || frame <= first.frame) return first.t;
-  if (frame >= last.frame) return last.t;
+  if (keys.length === 1 || frame <= first.frame) return first.v;
+  if (frame >= last.frame) return last.v;
 
   // `q` is inside [first.frame, last.frame) — quantising only ever moves it earlier, and the
   // out-of-range cases already returned. Quantise BEFORE picking the segment, so the sampled time
@@ -367,11 +379,19 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
   const a = keys[i];
   const b = keys[i + 1];
   // The segment's own interpolation — `a` starts it, so `a.interp` describes it.
-  if (a.interp === "hold" || q <= a.frame) return a.t;
-  if (q >= b.frame) return b.t;
+  if (a.interp === "hold" || q <= a.frame) return a.v;
+  if (q >= b.frame) return b.v;
   // Ease the TIME, not the value: `sampleEvery` has already quantised `q`, so a stepped move still
   // steps — it just steps along a curved timing instead of an even one.
-  return lerpTransform(a.t, b.t, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
+  return lerp(a.v, b.v, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
+}
+
+/** The layer's transform at `frame`: its static value when there is no track, otherwise the track
+ *  resolved (and held outside its key range — a track never extrapolates). */
+export function transformAt(layer: Layer, frame: number): RefTransform {
+  const track = layer.transformTrack;
+  if (!track || track.keys.length === 0) return layer.transform;
+  return resolveTrack(track, frame, lerpTransform);
 }
 
 /**
@@ -383,7 +403,7 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
  * routing every writer through here means the next field costs nothing.
  */
 export function copyTransformKey(k: TransformKey): TransformKey {
-  return { ...k, t: { ...k.t } };
+  return { ...k, v: { ...k.v } };
 }
 
 /** A track carrying `keys`, with every OTHER nested object copied — the returned track must share
@@ -400,7 +420,7 @@ export function createTransformTrack(
   t: RefTransform,
   box: { x: number; y: number; w: number; h: number } | null,
 ): TransformTrack {
-  return { keys: [{ frame: 0, t: { ...t } }], box: box ? { ...box } : null };
+  return { keys: [{ frame: 0, v: { ...t } }], box: box ? { ...box } : null };
 }
 
 /** Write a key at `frame`, replacing any key already there. Returns a NEW track: snapshots share
@@ -423,7 +443,7 @@ export function withTransformKey(
       ? segmentKeyAt(track, frame)?.interp
       : undefined;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  keys.push(copyTransformKey({ frame, t, ...(interp ? { interp } : {}) }));
+  keys.push(copyTransformKey({ frame, v: t, ...(interp ? { interp } : {}) }));
   keys.sort((a, b) => a.frame - b.frame);
   return withTrackKeys(track, keys);
 }
@@ -468,7 +488,7 @@ export function withMovedTransformKey(
 export function withPastedTransformKey(
   track: TransformTrack,
   frame: number,
-  key: { t: RefTransform; interp?: KeyInterp },
+  key: { v: RefTransform; interp?: KeyInterp },
 ): TransformTrack {
   const keys = track.keys
     .filter((k) => k.frame !== frame)

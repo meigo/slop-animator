@@ -22,8 +22,8 @@ const layer = (track?: TransformTrack) =>
   ({ kind: "draw", id: 1, name: "L", transform: T(5), transformTrack: track }) as Layer;
 const track = (over: Partial<TransformTrack> = {}): TransformTrack => ({
   keys: [
-    { frame: 0, t: T(0) },
-    { frame: 10, t: T(100) },
+    { frame: 0, v: T(0) },
+    { frame: 10, v: T(100) },
   ],
   box: null,
   ...over,
@@ -33,8 +33,8 @@ const track = (over: Partial<TransformTrack> = {}): TransformTrack => ({
 const holdTrack = (): TransformTrack =>
   track({
     keys: [
-      { frame: 0, t: T(0), interp: "hold" },
-      { frame: 10, t: T(100) },
+      { frame: 0, v: T(0), interp: "hold" },
+      { frame: 10, v: T(100) },
     ],
   });
 
@@ -44,7 +44,7 @@ describe("transformAt", () => {
   });
 
   it("holds the single key everywhere", () => {
-    const t = track({ keys: [{ frame: 4, t: T(20) }] });
+    const t = track({ keys: [{ frame: 4, v: T(20) }] });
     expect(transformAt(layer(t), 0).dx).toBe(20);
     expect(transformAt(layer(t), 99).dx).toBe(20);
   });
@@ -83,9 +83,9 @@ describe("transformAt", () => {
   it("quantises into an earlier bracket when the grid is coarse", () => {
     const t = track({
       keys: [
-        { frame: 0, t: T(0) },
-        { frame: 3, t: T(30) },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0) },
+        { frame: 3, v: T(30) },
+        { frame: 10, v: T(100) },
       ],
       sampleEvery: 5,
     });
@@ -96,8 +96,8 @@ describe("transformAt", () => {
   it("a hold segment ignores sampleEvery — there is nothing to sample", () => {
     const t = track({
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100) },
       ],
       sampleEvery: 5,
     });
@@ -109,8 +109,8 @@ describe("transformAt", () => {
   it("interpolates rotation absolutely, without shortest-path normalisation", () => {
     const spin = track({
       keys: [
-        { frame: 0, t: T(0, 0) },
-        { frame: 10, t: T(0, 4 * Math.PI) },
+        { frame: 0, v: T(0, 0) },
+        { frame: 10, v: T(0, 4 * Math.PI) },
       ],
     });
     expect(transformAt(layer(spin), 5).rotation).toBeCloseTo(2 * Math.PI, 10);
@@ -119,8 +119,8 @@ describe("transformAt", () => {
   it("interpolates scale linearly", () => {
     const z = track({
       keys: [
-        { frame: 0, t: T(0, 0, 1) },
-        { frame: 10, t: T(0, 0, 3) },
+        { frame: 0, v: T(0, 0, 1) },
+        { frame: 10, v: T(0, 0, 3) },
       ],
     });
     expect(transformAt(layer(z), 5).scale).toBeCloseTo(2, 10);
@@ -130,7 +130,7 @@ describe("transformAt", () => {
 describe("track mutations", () => {
   it("createTransformTrack seeds one key at frame 0 with the static value", () => {
     const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 });
-    expect(t.keys).toEqual([{ frame: 0, t: T(9) }]);
+    expect(t.keys).toEqual([{ frame: 0, v: T(9) }]);
     expect(t.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
   });
 
@@ -138,7 +138,7 @@ describe("track mutations", () => {
     const src = T(9);
     const box = { x: 1, y: 2, w: 3, h: 4 };
     const t = createTransformTrack(src, box);
-    expect(t.keys[0].t).not.toBe(src);
+    expect(t.keys[0].v).not.toBe(src);
     expect(t.box).not.toBe(box);
   });
 
@@ -150,7 +150,7 @@ describe("track mutations", () => {
   it("withTransformKey replaces a key at the same frame", () => {
     const t = withTransformKey(track(), 10, T(999));
     expect(t.keys).toHaveLength(2);
-    expect(t.keys[1].t.dx).toBe(999);
+    expect(t.keys[1].v.dx).toBe(999);
   });
 
   // Undo snapshots share layer objects, so a writer must never touch the track it was handed.
@@ -166,14 +166,14 @@ describe("track mutations", () => {
     const t = withTransformKey(
       track({
         keys: [
-          { frame: 0, t: T(0), interp: "hold" },
-          { frame: 10, t: T(100), interp: "ease-in" },
+          { frame: 0, v: T(0), interp: "hold" },
+          { frame: 10, v: T(100), interp: "ease-in" },
         ],
       }),
       10,
       T(999),
     );
-    expect(t.keys[1]).toEqual({ frame: 10, t: T(999), interp: "ease-in" });
+    expect(t.keys[1]).toEqual({ frame: 10, v: T(999), interp: "ease-in" });
     expect(t.keys[0].interp).toBe("hold"); // the other key is carried across untouched
   });
 
@@ -184,42 +184,42 @@ describe("track mutations", () => {
     const t = withTransformKey(
       track({
         keys: [
-          { frame: 0, t: T(0), interp: "hold" },
-          { frame: 10, t: T(100) },
+          { frame: 0, v: T(0), interp: "hold" },
+          { frame: 10, v: T(100) },
         ],
       }),
       5,
       T(55),
     );
-    expect(t.keys[1]).toEqual({ frame: 5, t: T(55), interp: "hold" });
+    expect(t.keys[1]).toEqual({ frame: 5, v: T(55), interp: "hold" });
   });
 
   it("withTransformKey does not inherit past the last key — nothing is being split there", () => {
     const t = withTransformKey(
       track({
         keys: [
-          { frame: 0, t: T(0) },
-          { frame: 10, t: T(100), interp: "hold" },
+          { frame: 0, v: T(0) },
+          { frame: 10, v: T(100), interp: "hold" },
         ],
       }),
       20,
       T(200),
     );
-    expect(t.keys[2]).toEqual({ frame: 20, t: T(200) });
+    expect(t.keys[2]).toEqual({ frame: 20, v: T(200) });
   });
 
   it("withTransformKey creates a linear key before the track starts", () => {
     const t = withTransformKey(
       track({
         keys: [
-          { frame: 5, t: T(0), interp: "hold" },
-          { frame: 10, t: T(100) },
+          { frame: 5, v: T(0), interp: "hold" },
+          { frame: 10, v: T(100) },
         ],
       }),
       0,
       T(-1),
     );
-    expect(t.keys[0]).toEqual({ frame: 0, t: T(-1) });
+    expect(t.keys[0]).toEqual({ frame: 0, v: T(-1) });
   });
 
   it("withoutTransformKey removes the key at that frame", () => {
@@ -233,7 +233,7 @@ describe("track mutations", () => {
   });
 
   it("withoutTransformKey refuses to empty the track", () => {
-    const t = track({ keys: [{ frame: 0, t: T(0) }] });
+    const t = track({ keys: [{ frame: 0, v: T(0) }] });
     expect(withoutTransformKey(t, 0)).toBe(t);
   });
 
@@ -249,8 +249,8 @@ describe("transform track persistence", () => {
     const l = createDrawingLayer(1, "L");
     l.transformTrack = {
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 8, t: T(80, 1.5) },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 8, v: T(80, 1.5) },
       ],
       sampleEvery: 2,
       box: { x: 1, y: 2, w: 3, h: 4 },
@@ -266,8 +266,8 @@ describe("transform track persistence", () => {
     const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
     ref.transformTrack = {
       keys: [
-        { frame: 0, t: T(0), interp: "ease-in-out" },
-        { frame: 5, t: T(50, 0.5) },
+        { frame: 0, v: T(0), interp: "ease-in-out" },
+        { frame: 5, v: T(50, 0.5) },
       ],
       sampleEvery: 3,
       box: { x: 10, y: 20, w: 30, h: 40 },
@@ -289,14 +289,14 @@ describe("withMovedTransformKey", () => {
   it("moves a key to a free frame, keeping the array sorted", () => {
     const t = withMovedTransformKey(track(), 0, 5);
     expect(t.keys.map((k) => k.frame)).toEqual([5, 10]);
-    expect(t.keys[0].t.dx).toBe(0); // the moved key's own value travels with it
+    expect(t.keys[0].v.dx).toBe(0); // the moved key's own value travels with it
   });
 
   // Overwrite, matching how a timeline block move treats the cells it lands on. It is one undo away.
   it("overwrites a key already at the destination", () => {
     const t = withMovedTransformKey(track(), 0, 10);
     expect(t.keys).toHaveLength(1);
-    expect(t.keys[0]).toEqual({ frame: 10, t: T(0) });
+    expect(t.keys[0]).toEqual({ frame: 10, v: T(0) });
   });
 
   // Same-object returns are what let a caller skip pushing an undo entry for a gesture that
@@ -316,13 +316,13 @@ describe("withMovedTransformKey", () => {
   it("leaves the input untouched, nested transform included", () => {
     const t = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
     const key = t.keys[0];
-    const before = { ...key.t };
+    const before = { ...key.v };
     const moved = withMovedTransformKey(t, 0, 5);
     expect(t.keys.map((k) => k.frame)).toEqual([0, 10]);
     expect(key.frame).toBe(0);
-    expect(key.t).toEqual(before);
+    expect(key.v).toEqual(before);
     expect(moved.keys[0]).not.toBe(key);
-    expect(moved.keys[0].t).not.toBe(key.t);
+    expect(moved.keys[0].v).not.toBe(key.v);
     expect(moved.box).not.toBe(t.box);
   });
 
@@ -331,13 +331,13 @@ describe("withMovedTransformKey", () => {
   it("carries the moved key's segment interpolation with it", () => {
     const t = track({
       keys: [
-        { frame: 0, t: T(0), interp: "ease-in" },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp: "ease-in" },
+        { frame: 10, v: T(100) },
       ],
     });
     expect(withMovedTransformKey(t, 0, 5).keys[0]).toEqual({
       frame: 5,
-      t: T(0),
+      v: T(0),
       interp: "ease-in",
     });
   });
@@ -353,8 +353,8 @@ describe("cloneTransformTrack", () => {
   it("preserves each key's segment interpolation", () => {
     const src = track({
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 10, t: T(100), interp: "ease-out" },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100), interp: "ease-out" },
       ],
       sampleEvery: 3,
     });
@@ -369,7 +369,7 @@ describe("cloneTransformTrack", () => {
     expect(copy).not.toBe(src);
     expect(copy.keys).not.toBe(src.keys);
     expect(copy.keys[0]).not.toBe(src.keys[0]);
-    expect(copy.keys[0].t).not.toBe(src.keys[0].t);
+    expect(copy.keys[0].v).not.toBe(src.keys[0].v);
     expect(copy.box).not.toBe(src.box);
     expect(copy.box).toEqual(src.box);
   });
@@ -379,15 +379,15 @@ describe("withKeyInterp", () => {
   const holdFirst = () =>
     track({
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100) },
       ],
     });
 
   it("sets the curve of the segment starting at that key", () => {
     const t = withKeyInterp(track(), 0, "ease-in");
-    expect(t.keys[0]).toEqual({ frame: 0, t: T(0), interp: "ease-in" });
-    expect(t.keys[1]).toEqual({ frame: 10, t: T(100) }); // the other segment is untouched
+    expect(t.keys[0]).toEqual({ frame: 0, v: T(0), interp: "ease-in" });
+    expect(t.keys[1]).toEqual({ frame: 10, v: T(100) }); // the other segment is untouched
   });
 
   // Same-object returns are how a caller skips pushing an undo entry that changes nothing.
@@ -412,7 +412,7 @@ describe("withKeyInterp", () => {
     const out = withKeyInterp(src, 0, "ease-out");
     expect(src.keys[0].interp).toBeUndefined();
     expect(out.keys[0]).not.toBe(src.keys[0]);
-    expect(out.keys[0].t).not.toBe(src.keys[0].t);
+    expect(out.keys[0].v).not.toBe(src.keys[0].v);
     expect(out.box).not.toBe(src.box);
   });
 });
@@ -422,8 +422,8 @@ describe("per-segment easing", () => {
   const eased = (interp: "ease-in" | "ease-out" | "ease-in-out") =>
     track({
       keys: [
-        { frame: 0, t: T(0), interp },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp },
+        { frame: 10, v: T(100) },
       ],
     });
 
@@ -449,9 +449,9 @@ describe("per-segment easing", () => {
   it("applies each segment's own curve, not the track's", () => {
     const t = track({
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 10, t: T(100), interp: "ease-in" },
-        { frame: 20, t: T(200) },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100), interp: "ease-in" },
+        { frame: 20, v: T(200) },
       ],
     });
     expect(transformAt(layer(t), 5).dx).toBe(0); // held by the first segment
@@ -466,8 +466,8 @@ describe("per-segment easing", () => {
   it("composes with sampleEvery — a stepped move steps along the curve", () => {
     const t = track({
       keys: [
-        { frame: 0, t: T(0), interp: "ease-in" },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp: "ease-in" },
+        { frame: 10, v: T(100) },
       ],
       sampleEvery: 2,
     });
@@ -480,25 +480,75 @@ describe("withPastedTransformKey", () => {
   // A paste carries the whole key. `withTransformKey` deliberately does the opposite — it preserves
   // the destination's curve, because a DRAG rewrites a value, not a curve.
   it("writes both the value and the segment interpolation", () => {
-    const t = withPastedTransformKey(track(), 5, { t: T(55), interp: "ease-in" });
-    expect(t.keys[1]).toEqual({ frame: 5, t: T(55), interp: "ease-in" });
+    const t = withPastedTransformKey(track(), 5, { v: T(55), interp: "ease-in" });
+    expect(t.keys[1]).toEqual({ frame: 5, v: T(55), interp: "ease-in" });
   });
 
   it("replaces an existing key outright, curve included", () => {
     const src = track({
       keys: [
-        { frame: 0, t: T(0), interp: "hold" },
-        { frame: 10, t: T(100) },
+        { frame: 0, v: T(0), interp: "hold" },
+        { frame: 10, v: T(100) },
       ],
     });
-    const t = withPastedTransformKey(src, 0, { t: T(9) });
-    expect(t.keys[0]).toEqual({ frame: 0, t: T(9) }); // the old "hold" did not survive
+    const t = withPastedTransformKey(src, 0, { v: T(9) });
+    expect(t.keys[0]).toEqual({ frame: 0, v: T(9) }); // the old "hold" did not survive
   });
 
   it("keeps the array sorted and leaves the input untouched", () => {
     const src = track();
-    const t = withPastedTransformKey(src, 5, { t: T(55) });
+    const t = withPastedTransformKey(src, 5, { v: T(55) });
     expect(t.keys.map((k) => k.frame)).toEqual([0, 5, 10]);
     expect(src.keys.map((k) => k.frame)).toEqual([0, 10]);
+  });
+});
+
+import { resolveTrack, type Track } from "../anim/document";
+
+// The skeleton is the part that took the most care — bracket search, quantisation, easing, holding
+// at both ends. Proving it works for a SECOND value type is what says it was genuinely generic
+// rather than transform-shaped with the names filed off.
+describe("resolveTrack over a scalar", () => {
+  const lerpNum = (a: number, b: number, u: number) => a + (b - a) * u;
+  const t: Track<number> = {
+    keys: [
+      { frame: 0, v: 0 },
+      { frame: 10, v: 100 },
+    ],
+  };
+
+  it("interpolates, and holds at both ends", () => {
+    expect(resolveTrack(t, -5, lerpNum)).toBe(0);
+    expect(resolveTrack(t, 5, lerpNum)).toBeCloseTo(50, 10);
+    expect(resolveTrack(t, 999, lerpNum)).toBe(100);
+  });
+
+  it("applies the segment's own easing", () => {
+    const eased: Track<number> = {
+      keys: [
+        { frame: 0, v: 0, interp: "ease-in" },
+        { frame: 10, v: 100 },
+      ],
+    };
+    expect(resolveTrack(eased, 5, lerpNum)).toBeCloseTo(25, 10);
+  });
+
+  it("holds a `hold` segment without calling lerp at all", () => {
+    let called = 0;
+    const held: Track<number> = {
+      keys: [
+        { frame: 0, v: 0, interp: "hold" },
+        { frame: 10, v: 100 },
+      ],
+    };
+    resolveTrack(held, 5, (a, b, u) => {
+      called++;
+      return lerpNum(a, b, u);
+    });
+    expect(called).toBe(0);
+  });
+
+  it("quantises with sampleEvery", () => {
+    expect(resolveTrack({ ...t, sampleEvery: 2 }, 5, lerpNum)).toBeCloseTo(40, 10);
   });
 });

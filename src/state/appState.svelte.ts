@@ -149,7 +149,7 @@ interface AnimState {
   transformDragFrame: number | null;
   /** A copied transform key — its value and its segment's curve, without a frame, so it can be
    *  pasted anywhere. Session-only, like the cell and pixel clipboards; nothing persists it. */
-  transformKeyClipboard: { t: RefTransform; interp?: KeyInterp } | null;
+  transformKeyClipboard: { v: RefTransform; interp?: KeyInterp } | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -815,7 +815,7 @@ export function copyTransformKeyAtPlayhead(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
   const key = l?.transformTrack?.keys.find((k) => k.frame === state.playhead);
   if (!key) return;
-  state.transformKeyClipboard = { t: { ...key.t }, ...(key.interp ? { interp: key.interp } : {}) };
+  state.transformKeyClipboard = { v: { ...key.v }, ...(key.interp ? { interp: key.interp } : {}) };
 }
 
 /** Paste the copied key at the playhead, replacing whatever is there. Refuses a layer with no track:
@@ -833,7 +833,7 @@ export function pasteTransformKeyAtPlayhead(layerId: number): void {
   const existing = track.keys.find((k) => k.frame === at);
   if (
     existing &&
-    isSameTransform(existing.t, clip.t) &&
+    isSameTransform(existing.v, clip.v) &&
     (existing.interp ?? "linear") === (clip.interp ?? "linear")
   )
     return;

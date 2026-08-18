@@ -620,7 +620,7 @@ describe("ripple insert/delete shift document-space clips", () => {
     const animLayer = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
       l.transformTrack = {
-        keys: frames.map((f) => ({ frame: f, t: T(f) })),
+        keys: frames.map((f) => ({ frame: f, v: T(f) })),
         box: null,
       };
       return l;
@@ -630,7 +630,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       const l = animLayer([0, 10, 24]);
       insertFrameAllLayers(proj([l]), 10);
       expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 11, 25]);
-      expect(l.transformTrack!.keys.map((k) => k.t.dx)).toEqual([0, 10, 24]); // values ride along
+      expect(l.transformTrack!.keys.map((k) => k.v.dx)).toEqual([0, 10, 24]); // values ride along
     });
 
     it("shifts keys after the delete point", () => {
@@ -642,7 +642,7 @@ describe("ripple insert/delete shift document-space clips", () => {
     it("collapses a delete collision, keeping the LATER key's value", () => {
       const l = animLayer([4, 5]); // 5 → 4, colliding with the key already at 4
       deleteFrameAllLayers(proj([l]), 4);
-      expect(l.transformTrack!.keys).toEqual([{ frame: 4, t: T(5) }]);
+      expect(l.transformTrack!.keys).toEqual([{ frame: 4, v: T(5) }]);
     });
 
     it("leaves a layer with no track untouched", () => {
@@ -664,7 +664,7 @@ describe("ripple insert/delete shift document-space clips", () => {
     it("shifts a REFERENCE layer's track too", () => {
       const ref = imageRef() as unknown as DrawingLayer;
       (ref as unknown as { transformTrack: unknown }).transformTrack = {
-        keys: [{ frame: 6, t: T(6) }],
+        keys: [{ frame: 6, v: T(6) }],
         box: null,
       };
       insertFrameAllLayers(proj([ref]), 2);
@@ -685,14 +685,14 @@ describe("ripple insert/delete shift document-space clips", () => {
     it("shiftTransformTrackFrames keeps interpolation on a delete collision too", () => {
       const track = {
         keys: [
-          { frame: 4, t: T(4), interp: "hold" as const },
-          { frame: 5, t: T(5), interp: "ease-in" as const },
+          { frame: 4, v: T(4), interp: "hold" as const },
+          { frame: 5, v: T(5), interp: "ease-in" as const },
         ],
         box: null,
       };
       // The LATER key survives the collision, so its curve must survive with it.
       expect(shiftTransformTrackFrames(track, 4, -1).keys).toEqual([
-        { frame: 4, t: T(5), interp: "ease-in" },
+        { frame: 4, v: T(5), interp: "ease-in" },
       ]);
     });
   });
@@ -703,7 +703,7 @@ describe("ripple insert/delete shift document-space clips", () => {
     const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
     const withTrack = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-      l.transformTrack = { keys: frames.map((f) => ({ frame: f, t: T(f) })), box: null };
+      l.transformTrack = { keys: frames.map((f) => ({ frame: f, v: T(f) })), box: null };
       return l;
     };
 

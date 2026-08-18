@@ -554,8 +554,8 @@ describe("pasteBlockInsert and transform keys", () => {
     const l = drawLayer(1, [key(), hold(), hold(), hold(), key()]);
     l.transformTrack = {
       keys: [
-        { frame: 0, t: T0 },
-        { frame: 4, t: T0, interp: "hold" },
+        { frame: 0, v: T0 },
+        { frame: 4, v: T0, interp: "hold" },
       ],
       box: null,
     };
