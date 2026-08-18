@@ -27,7 +27,8 @@
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
-      animatedFrame: l.transformTrack ? appState.playhead : null,
+      // A held drag keys its GRAB frame, not wherever the playhead has since moved to.
+      animatedFrame: l.transformTrack ? (appState.transformDragFrame ?? appState.playhead) : null,
     });
   });
 </script>

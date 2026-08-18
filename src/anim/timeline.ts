@@ -173,7 +173,14 @@ export function shiftTransformTrackFrames(
     const frame = shiftStartFrame(k.frame, at, delta);
     byFrame.set(frame, { frame, t: { ...k.t } });
   }
-  return { ...track, keys: [...byFrame.values()].sort((a, b) => a.frame - b.frame) };
+  // `box` is copied, not carried by reference: sharing it would alias the pre- and post-ripple
+  // tracks, which is exactly the drift `cloneTransformTrack` exists to prevent. Harmless while
+  // nothing writes `box` in place — but that is a property of today's code, not of the type.
+  return {
+    ...track,
+    box: track.box ? { ...track.box } : null,
+    keys: [...byFrame.values()].sort((a, b) => a.frame - b.frame),
+  };
 }
 
 /** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track

@@ -682,6 +682,10 @@
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
   // this feature removes).
   function finishTransformDragUndo(endT: (() => Layer["transform"]) | null) {
+    // Every `refDrag = null` in this file is paired with a call to this function, so this is the one
+    // place the published drag frame has to be retired — pointerup, pointercancel, the retarget
+    // bail, and transformDragGuard.settle (undo/redo, tool switch, replaceProject) all route here.
+    appState.transformDragFrame = null;
     if (refDragUndo) {
       // Nothing was written (grab missed a handle, or settled from undo()/a tool switch before the
       // pointer moved) → drop the snapshot. Committing here pushed a before==after entry that the
@@ -878,6 +882,9 @@
         keyFrame: appState.playhead,
         dirty: false,
       };
+      // The status hint promises "a drag keys frame N"; publish the frozen frame so it names the
+      // one that will actually be written rather than a playhead that may move under a held drag.
+      appState.transformDragFrame = refDrag.keyFrame;
     }
     const d = refDrag;
     if (d.handle) {

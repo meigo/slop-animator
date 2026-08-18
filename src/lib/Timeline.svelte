@@ -83,7 +83,6 @@
     isLayerVisible,
     countKeyframesPastLengthIn,
     refVisibleSpan,
-    hasKeyAt,
     type DrawingLayer,
     type ReferenceLayer,
     type Cell,
@@ -1787,12 +1786,19 @@
         {@const tl = row.layer}
         <!-- A transform row. Like the group row, it carries NO `data-layer-id` — a track holds no
              cells, so there is nothing on it to select. -->
+        {@const keys = tl.transformTrack?.keys ?? []}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <span
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pl-4 pr-1 text-left bg-surface text-text-muted"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-muted"
+            class:pl-4={tl.groupId != null}
             style="width: {LABEL_W}px"
             title="Transform keys for {tl.name}"
           >
+            <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
+                 starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
+                 sibling rather than as something belonging to the layer above. The indent itself
+                 also mirrors the owner, so a grouped layer's track sits with it. -->
+            <span class="flex w-3.5 shrink-0" role="presentation"></span>
             <span class="min-w-0 flex-1 truncate">Transform</span>
           </span>
           <span
@@ -1800,14 +1806,34 @@
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px"
           ></span>
-          <div class="flex select-none">
+          <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
+               per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
+               carries its own 1px border, so adjacent segments never meet. Absolute positioning
+               also makes a key a real hit target for dragging it to another frame. -->
+          <div class="relative flex select-none">
             {#each Array(appState.project.frameCount) as _, f (f)}
+              <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
+            {/each}
+            {#if keys.length > 1}
+              <!-- Continuous, not dashed: a tween genuinely interpolates between its keys, where a
+                   drawing's hold dashes mark frames that repeat one drawing. Different meaning,
+                   different mark. -->
               <div
-                class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center text-text-secondary"
-                style="width: {CELL_W}px"
-              >
-                {tl.transformTrack && hasKeyAt(tl.transformTrack, f) ? "◆" : ""}
-              </div>
+                class="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-selection"
+                style="left: {keys[0].frame * CELL_W + CELL_W / 2}px; width: {(keys[keys.length - 1]
+                  .frame -
+                  keys[0].frame) *
+                  CELL_W}px"
+              ></div>
+            {/if}
+            {#each keys as k (k.frame)}
+              <!-- A circle in the selection colour, against the layer rows' white ◆ — distinct in
+                   both shape and colour, because a transform key and a drawing key are only ever
+                   confusable at a glance. -->
+              <div
+                class="pointer-events-none absolute top-1/2 size-2 -translate-y-1/2 rounded-full bg-selection"
+                style="left: {k.frame * CELL_W + CELL_W / 2 - 4}px"
+              ></div>
             {/each}
           </div>
         </div>

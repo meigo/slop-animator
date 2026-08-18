@@ -136,6 +136,11 @@ interface AnimState {
    *  overwrites it on the next pointer move, which is no way to carry a condition that lasts the
    *  session. Same carve-out, same reason, as `poseFillWarning`. Set by App.svelte/Toolbar; cleared
    *  only by a subsequent success. */
+  /** While a transform drag is held, the frame it will key — frozen at grab. The playhead can move
+   *  under a held drag (playback, or the global arrow keys), and the status hint promising "a drag
+   *  keys frame N" has to name the frame that will ACTUALLY be written, or the one mitigation for
+   *  auto-key's silence is itself misleading. Null when no drag is in flight. */
+  transformDragFrame: number | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -229,6 +234,7 @@ export const state: AnimState = $state({
   pose: { fillHoles: true, gap: 0 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
+  transformDragFrame: null,
   persistAlert: "",
   autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,

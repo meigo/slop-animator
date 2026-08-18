@@ -271,6 +271,7 @@
       getT: tgt.getT,
       keyFrame,
     };
+    appState.transformDragFrame = keyFrame; // see the note in Canvas.finishTransformDragUndo
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endHandleDrag);
     window.addEventListener("pointercancel", endHandleDrag);
@@ -340,6 +341,7 @@
         commitStructuralEdit(dragUndo);
       }
     }
+    appState.transformDragFrame = null;
     dragUndo = null;
     dragFreeze = null;
     trackFreeze = null;
