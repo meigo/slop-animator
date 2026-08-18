@@ -372,6 +372,28 @@ export function withoutTransformKey(track: TransformTrack, frame: number): Trans
   return keys.length === track.keys.length ? track : { ...track, keys };
 }
 
+/**
+ * Move the key at `from` to `to`, replacing any key already there.
+ *
+ * Overwrite rather than refuse, matching how a timeline block move treats the cells it lands on —
+ * and it is one undo step away. Returns the SAME object when nothing changes (no key at `from`, or
+ * `from === to`), so a caller can skip pushing an empty undo entry.
+ */
+export function withMovedTransformKey(
+  track: TransformTrack,
+  from: number,
+  to: number,
+): TransformTrack {
+  if (from === to) return track;
+  const moved = track.keys.find((k) => k.frame === from);
+  if (!moved) return track;
+  const keys = track.keys
+    .filter((k) => k.frame !== from && k.frame !== to)
+    .concat({ frame: to, t: { ...moved.t } })
+    .sort((a, b) => a.frame - b.frame);
+  return { ...track, keys };
+}
+
 export function hasKeyAt(track: TransformTrack, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
 }

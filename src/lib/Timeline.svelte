@@ -83,7 +83,10 @@
     isLayerVisible,
     countKeyframesPastLengthIn,
     refVisibleSpan,
+    withMovedTransformKey,
     type DrawingLayer,
+    type Layer,
+    type TransformTrack,
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
@@ -930,6 +933,77 @@
    *  auto-scroll has no event, so there is no `currentTarget` to measure — and every row shares the
    *  same horizontal geometry, so any one of them gives the right left edge. */
   let dragRowEl: HTMLElement | null = null;
+  // Dragging a transform key to another frame. Same bracket shape as every other undoable drag
+  // here: snapshot at grab, write live, commit at release only if something actually moved, and
+  // register the settle hook so an undo or a tool switch mid-drag cannot leave the bracket open.
+  // `prevTrack` is a valid snapshot by itself because tracks are always REPLACED, never mutated.
+  let keyDrag: {
+    layer: Layer;
+    prevTrack: TransformTrack | undefined;
+    from: number;
+    cur: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function keyDown(e: PointerEvent, layer: Layer, frame: number) {
+    // Finger navigates, Pencil edits — the app-wide rule. A touch falls through to the row's own
+    // pan handling instead of retiming a key by accident.
+    if (!isFinePointer(e)) return;
+    if (!layer.transformTrack) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    keyDrag = {
+      layer,
+      prevTrack: layer.transformTrack,
+      from: frame,
+      cur: frame,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = () => settleKeyDrag();
+  }
+
+  function keyMove(e: PointerEvent) {
+    if (!keyDrag) return;
+    const to = columnAtX(
+      e.clientX -
+        (gridWrapper?.getBoundingClientRect().left ?? 0) +
+        (gridWrapper?.scrollLeft ?? 0) -
+        GUTTER_W,
+      CELL_W,
+      appState.project.frameCount,
+    );
+    if (to === keyDrag.cur) return;
+    const track = keyDrag.layer.transformTrack;
+    if (!track) return;
+    // Always move from the ORIGINAL frame against the grab-time track, so a drag that passes over
+    // another key does not eat it on the way through — only where it is released.
+    keyDrag.layer.transformTrack = withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to);
+    keyDrag.cur = to;
+    bump();
+  }
+
+  function keyUp() {
+    settleKeyDrag();
+  }
+
+  function settleKeyDrag() {
+    const d = keyDrag;
+    keyDrag = null;
+    transformDragGuard.settle = null;
+    if (!d) return;
+    if (d.cur === d.from) {
+      // Nothing moved: put the grab-time track back and push nothing, so a tap on a key is not an
+      // undo entry that does nothing. A tap SEEKS to the key instead — which is also how a key is
+      // deleted, since ToolOptions' "Delete key" acts on the key under the playhead. Two taps, no
+      // new gesture, and it works with a Pencil where a hover-only ✕ would not.
+      d.layer.transformTrack = d.prevTrack;
+      seekPlayhead(d.from);
+      bump();
+      return;
+    }
+    commitStructuralEdit(d.undo);
+  }
+
   function rowColumnAt(clientX: number): number {
     const left = dragRowEl?.getBoundingClientRect().left ?? 0;
     return columnAtX(clientX - left, CELL_W, appState.project.frameCount);
@@ -1829,11 +1903,22 @@
             {#each keys as k (k.frame)}
               <!-- A circle in the selection colour, against the layer rows' white ◆ — distinct in
                    both shape and colour, because a transform key and a drawing key are only ever
-                   confusable at a glance. -->
+                   confusable at a glance. The hit area is deliberately larger than the dot: 8px is
+                   a fine target with a Pencil and an impossible one with anything else. -->
               <div
-                class="pointer-events-none absolute top-1/2 size-2 -translate-y-1/2 rounded-full bg-selection"
-                style="left: {k.frame * CELL_W + CELL_W / 2 - 4}px"
-              ></div>
+                class="absolute top-0 flex h-6 w-4 items-center justify-center"
+                style="left: {k.frame * CELL_W +
+                  CELL_W / 2 -
+                  8}px; touch-action: none; cursor: ew-resize"
+                role="presentation"
+                title="Transform key at frame {k.frame + 1} — drag to retime"
+                onpointerdown={(e) => keyDown(e, tl, k.frame)}
+                onpointermove={keyMove}
+                onpointerup={keyUp}
+                onpointercancel={keyUp}
+              >
+                <div class="size-2 rounded-full bg-selection"></div>
+              </div>
             {/each}
           </div>
         </div>

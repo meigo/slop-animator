@@ -2435,6 +2435,32 @@ visible and expandable from the timeline. Its frame strip is deliberately empty 
 transform track will live. `onclick` is guarded by `panEndedWithMovement`, the same latch the ref
 row's re-link button uses, so a finger scroll that happens to end on the row does not toggle it.
 
+**Transform keys are editable, and read as the layer's own (2026-08-18).** Follow-up to the track
+itself. Four changes, three of them about telling a tween apart from a drawing at a glance.
+**Indent + an empty type slot:** the row mirrors its owner's indent AND reserves the same `w-3.5`
+glyph slot the layer rows do — without the slot its name started 18px left of the layer's and read
+as a sibling rather than as something belonging to it. **Keys are circles in the selection colour**
+against the layer rows' white ◆: confusable at a glance is the only way these two ever get confused.
+**The line between keys is continuous, not dashed** — a tween genuinely interpolates between its
+keys, where a hold's dashes mark frames repeating one drawing; different meaning, different mark.
+Both the line and the keys are ABSOLUTE over an empty cell grid, because a per-cell glyph cannot
+produce an unbroken line (every cell carries its own 1px border, so adjacent segments never meet) —
+and absolute positioning is also what makes a key a real hit target.
+**Retiming:** drag a key to another frame (pure `withMovedTransformKey`, unit-tested). It OVERWRITES
+a key at the destination, matching how a timeline block move treats the cells it lands on, and it is
+one undo away. The move is always computed from the GRAB-TIME track, so dragging across another key
+does not eat it in passing — only where you release. Same bracket as every other undoable drag here:
+snapshot at grab, write live, commit only if the frame actually changed, `transformDragGuard.settle`
+registered so an undo mid-drag cannot leave it open. `prevTrack` is a valid snapshot on its own,
+because tracks are always replaced and never mutated. Finger pans, Pencil edits, per the app rule.
+**Deleting** is a tap then the existing ToolOptions button: a tap on a key SEEKS to it, which is
+exactly what "Delete key" is gated on. No new gesture, and it works with a Pencil where a hover-only
+✕ would not.
+**Owed a browser pass:** the indent lining up with the owner; keys distinguishable from drawing keys;
+the line unbroken across cell borders; drag a key onto another (the far one is replaced, one undo
+restores both); drag across a third key without eating it; tap a key seeks; undo mid-drag; iPad with
+a Pencil, and that a finger still pans the row.
+
 **Deferred by this wave — decided, not forgotten:**
 
 - ~~`ensureDrawableKeyframe` performs an UNCAPTURED structural mutation.~~ **FIXED 2026-08-16** —

@@ -4,6 +4,7 @@ import {
   createTransformTrack,
   withTransformKey,
   withoutTransformKey,
+  withMovedTransformKey,
   hasKeyAt,
   createProject,
   createDrawingLayer,
@@ -205,5 +206,38 @@ describe("transform track persistence", () => {
     const project = createProject();
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     expect(loaded.layers[0].transformTrack).toBeUndefined();
+  });
+});
+
+describe("withMovedTransformKey", () => {
+  it("moves a key to a free frame, keeping the array sorted", () => {
+    const t = withMovedTransformKey(track(), 0, 5);
+    expect(t.keys.map((k) => k.frame)).toEqual([5, 10]);
+    expect(t.keys[0].t.dx).toBe(0); // the moved key's own value travels with it
+  });
+
+  // Overwrite, matching how a timeline block move treats the cells it lands on. It is one undo away.
+  it("overwrites a key already at the destination", () => {
+    const t = withMovedTransformKey(track(), 0, 10);
+    expect(t.keys).toHaveLength(1);
+    expect(t.keys[0]).toEqual({ frame: 10, t: T(0) });
+  });
+
+  // Same-object returns are what let a caller skip pushing an undo entry for a gesture that
+  // changed nothing.
+  it("returns the same object when the frame does not change", () => {
+    const t = track();
+    expect(withMovedTransformKey(t, 10, 10)).toBe(t);
+  });
+
+  it("returns the same object when there is no key to move", () => {
+    const t = track();
+    expect(withMovedTransformKey(t, 7, 3)).toBe(t);
+  });
+
+  it("leaves the input untouched", () => {
+    const t = track();
+    withMovedTransformKey(t, 0, 5);
+    expect(t.keys.map((k) => k.frame)).toEqual([0, 10]);
   });
 });
