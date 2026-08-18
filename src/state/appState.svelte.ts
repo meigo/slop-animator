@@ -879,6 +879,12 @@ export function animateGroup(groupId: number): void {
     // Replaces the BAG as well as the track — gotcha #8 reaches groups too, and the spread keeps
     // any sibling track a group may gain later.
     g.tracks = { ...g.tracks, transform: createTransformTrack(groupTransform(g), box) };
+    // …and unfold, exactly as `animateLayer`/`animateLayerOpacity` do. A group's `collapsed` also
+    // hides its MEMBER rows, so this reveals more than the new track — but pressing Animate on a
+    // collapsed group otherwise produced no visible change whatsoever (the row is suppressed and
+    // the header carried nothing), and a button that appears to do nothing is worse than one that
+    // shows you rows you can fold away again.
+    g.collapsed = false;
   });
 }
 

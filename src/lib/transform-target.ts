@@ -67,6 +67,12 @@ export function animateTargetGroup(
 ): LayerGroup | null {
   if (tool !== "transform" || scope !== "group") return null;
   if (!layer) return null;
+  // A REFERENCE anchor is never a group target, matching the two drag sites this module's doc says
+  // it must agree with: `RefTransformGizmo.activeTransformLayer` and `Canvas`'s drag dispatch both
+  // gate their group branch on `kind === "draw"`, so a group track created from a ref could never be
+  // keyed by dragging. Without this a ref group-member rendered BOTH sets of Animate controls at
+  // once — two identical buttons, one of them dead, and on iPad a tap IS the activation.
+  if (layer.kind !== "draw") return null;
   const group = groupOf(layer, groups);
   if (!group) return null;
   return groupHasLockedLayer(group, layers) ? null : group;

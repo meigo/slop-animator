@@ -1039,14 +1039,23 @@
     // The topmost member, so selecting the row puts the Transform tool's GROUP scope on this group
     // — the scope resolves through the active layer's `groupId`, so without this the row would aim
     // the gizmo at whatever group the previously-active layer happened to be in.
-    const member = [...appState.project.layers].reverse().find((l) => l.groupId === group.id);
+    // A DRAW member by preference: `activeTransformLayer` returns the active layer itself at group
+    // scope only for a draw layer, so aiming this row at a ref member would leave the gizmo editing
+    // that REF's own transform while the row promised the group's — silently keying the wrong
+    // target. The unfiltered lookup stays as the fallback, for an all-ref group.
+    const layersTop = [...appState.project.layers].reverse();
+    const member =
+      layersTop.find((l) => l.groupId === group.id && l.kind === "draw") ??
+      layersTop.find((l) => l.groupId === group.id);
     // A locked MEMBER pins the group, exactly as it does for the gizmo drag, Reset and
     // Stop-animating (`groupHasLockedLayer` — which already returns true for a locked group itself,
     // so it subsumes the group's own flag rather than needing to be ORed with it). Without this,
     // retiming a key here moved a locked member's rendered content at those frames — the one group
     // transform writer that did not refuse.
-    // The VISIBILITY term stays the group's own, deliberately: visibility is scope-aware, so a
-    // hidden MEMBER must not block a group transform while a locked one must. Not an inconsistency.
+    // LOCK ONLY, matching `trackTarget` and `animateTargetGroup`, which are deliberately lock-only
+    // too, and `activeTransformLayer`, which keeps a hidden group draggable. Hiding a group used to
+    // put an EyeOff here claiming its keys could not be retimed while ToolOptions still deleted and
+    // re-eased those same keys and the gizmo still dragged them — a refusal nothing else honoured.
     const locked = groupHasLockedLayer(group, appState.project.layers);
     return {
       track,
@@ -1056,10 +1065,10 @@
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
       // `activeRow` with `activeLayerId`-derived state has shipped a forgotten term twice here.
       selected: appState.project.layers.some((l) => l.groupId === group.id && isRowSelected(l.id)),
-      readOnly: locked || !group.visible,
+      readOnly: locked,
       // Reports the LOCK whenever the lock is what refuses — a row that refuses without stating why
       // is the actual defect, and this row's marker/title is the only place the reason appears.
-      block: locked ? "locked" : !group.visible ? "hidden" : null,
+      block: locked ? "locked" : null,
       select: () => {
         if (member) setActiveLayer(member.id);
         appState.transformScope = "group";
@@ -2111,10 +2120,14 @@
               touchPanDown(e);
             }}
             onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
+              if (!isFinePointer(e) && touchPan) touchPanMove(e);
             }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
+            onpointerup={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            onpointercancel={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
             onclick={() => {
               if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
             }}
@@ -2123,6 +2136,15 @@
               {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
             </span>
             <span class="min-w-0 flex-1 truncate font-semibold">{g.name}</span>
+            {#if g.tracks?.transform}
+              <!-- Says "this group is animated" when its property row is folded away — the same
+                   glyph, in the same job, that an animated LAYER's disclosure carries. Without it a
+                   collapsed group showed nothing at all: the row is suppressed by `collapsed`, so
+                   pressing Animate at group scope had no visible effect whatsoever. -->
+              <span class="shrink-0 text-text-secondary" title="Group is animated"
+                ><Spline size={11} /></span
+              >
+            {/if}
             {#if row.hiddenCount > 0}
               <!-- Says the content is still there. Collapsing used to remove it from the timeline
                    with nothing left to indicate it existed. -->
@@ -2400,10 +2422,14 @@
                 touchPanDown(e);
               }}
               onpointermove={(e) => {
-                if (touchPan) touchPanMove(e);
+                if (!isFinePointer(e) && touchPan) touchPanMove(e);
               }}
-              onpointerup={touchPanUp}
-              onpointercancel={touchPanUp}
+              onpointerup={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onpointercancel={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
               onclick={() => {
                 if (!panEndedWithMovement) toggleTracksCollapsed(layer.id);
               }}

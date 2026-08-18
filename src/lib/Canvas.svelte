@@ -795,7 +795,12 @@
         // two levels), and the spread keeps any sibling track a group may gain later.
         g.tracks = { ...g.tracks, transform: withTransformKey(track, dragFrame(), nt) };
       };
-      base = groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version);
+      // The DRAG frame, not the live playhead, for the same reason the transform beside it uses it:
+      // the box and the transform it is paired with must be read at ONE frame or an animated group's
+      // pivot would slide out from under a startT captured at the grab frame. (Group boxes are
+      // frame-independent today, so this is coherence rather than a visible bug — but
+      // `RefTransformGizmo.transformTarget` already pairs them, so the two must not disagree.)
+      base = groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version);
     } else if (isDraw && scope === "frame") {
       frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
@@ -832,7 +837,7 @@
       });
       if (g)
         outerSteps.push({
-          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+          base: groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version),
           // The DRAG frame, frozen at grab, for the same reason the layer step above is: on an
           // animated group a live read would slide the outer step (and so the pointer inverse-map)
           // out from under a startT captured at the grab frame.
@@ -860,7 +865,7 @@
       // Outer = group (if any).
       if (g)
         outerSteps.push({
-          base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
+          base: groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version),
           t: groupTransformAt(g, dragFrame()), // frozen drag frame — see the frame-scope note above
         });
     }

@@ -212,6 +212,16 @@
     "End",
   ]);
 
+  /** The frame this layer's opacity controls are TALKING ABOUT: the bracket's grab frame while a
+   *  gesture is open, else the playhead. Every write of a gesture goes to `opacityUndoFrame`, so
+   *  reading the live playhead for the title and the thumb made both lie the moment playback moved
+   *  it — the title named a frame nothing would be written to, and the thumb jumped to the resolved
+   *  value at the new frame, fighting the pointer. `transformDragFrame` freezes the transform drags
+   *  for the same reason. */
+  function opacityFrameFor(layer: Layer): number {
+    return opacityUndo && opacityUndoLayerId === layer.id ? opacityUndoFrame : appState.playhead;
+  }
+
   function opacityKeyValue(layerId: number, frame: number): number | null {
     const l = appState.project.layers.find((x) => x.id === layerId);
     return l?.tracks?.opacity?.keys.find((k) => k.frame === frame)?.v ?? null;
@@ -505,7 +515,8 @@
       <!-- Reads through `opacityAt`, never the raw field: on an animated layer the static number is
            retained but IGNORED, so a slider bound to it would sit still while the drawing faded. -->
       {@const opacityTrack = layer.tracks?.opacity}
-      {@const opacityNow = opacityAt(layer, appState.playhead)}
+      {@const opacityFrame = opacityFrameFor(layer)}
+      {@const opacityNow = opacityAt(layer, opacityFrame)}
       {@const opacityOk = opacityEditable(layer)}
       <!-- A LOCKED or hidden layer keeps its STATIC opacity editable (a lock protects content, not
            organization), but the store's key writers refuse it — so an ANIMATED one is dimmed rather
@@ -522,7 +533,7 @@
           title={opacityInert
             ? "Opacity — animated, and the layer is locked or hidden, so its keys can't be edited"
             : opacityTrack
-              ? `Opacity — animated; a change keys frame ${appState.playhead + 1}`
+              ? `Opacity — animated; a change keys frame ${opacityFrame + 1}`
               : "Opacity"}
         >
           <input
