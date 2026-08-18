@@ -29,6 +29,7 @@ import {
   copyTracks,
   normalizedTracks,
   layerTransformTrack,
+  isLayerAnimated,
   groupTransform,
   groupTransformAt,
   withKey,
@@ -579,11 +580,12 @@ export function rasterizeReference(layerId: number): void {
   // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
   // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
   // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
-  // The whole BAG, not just the transform: `animateLayerOpacity` has no `kind` guard and the panel
-  // offers Animate on reference rows, so a ref can carry an opacity track — and `buildFrameDrawList`
-  // resolves it. Keeping only `ref.opacity` below would bake in the seed value the layer may render
-  // at on no frame, and hand the new drawing layer no track at all.
-  if (ref.tracks?.transform || ref.tracks?.opacity) {
+  // ANY property, through the shared predicate rather than a hand-written list of them:
+  // `animateLayerOpacity` has no `kind` guard and the panel offers Animate on reference rows, so a
+  // ref can carry an opacity track — and `buildFrameDrawList` resolves it. Keeping only
+  // `ref.opacity` below would bake in the seed value the layer may render at on no frame, and hand
+  // the new drawing layer no track at all.
+  if (isLayerAnimated(ref)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
   }

@@ -1,4 +1,9 @@
-import { groupOf, type Layer, type LayerGroup } from "./document";
+import { groupOf, TRACK_PROPS, type Layer, type LayerGroup, type TrackProp } from "./document";
+
+// Re-exported so a row-building consumer can take the row order from the module that lays out rows.
+// The list itself lives in `document.ts`: it is the canonical set of animatable properties, and
+// non-UI code (the frame shifter, the "is this animated at all?" gates) has to loop it too.
+export { TRACK_PROPS, type TrackProp };
 
 /**
  * Display ordering for the layer stack, shared by the layer panel and the timeline.
@@ -48,14 +53,6 @@ export type TimelineRow =
   | { kind: "group"; group: LayerGroup; hiddenCount: number }
   | { kind: "track"; layer: Layer; prop: TrackProp }
   | { kind: "grouptrack"; group: LayerGroup; prop: "transform" };
-
-/** An animatable layer property, one timeline row each. */
-export type TrackProp = "transform" | "opacity";
-
-/** Row order for a layer's property rows. FIXED, and deliberately not "whichever track was added
- *  first": rows must never reorder under the artist as tracks come and go, so a layer that gains
- *  opacity after transform reads the same as one that gained them the other way round. */
-export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
 
 /** Push a layer row, and — directly under it — one row per track it actually carries. Shared by
  *  both branches of `timelineRows` so the two can't drift.

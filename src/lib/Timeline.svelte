@@ -21,7 +21,7 @@
     EyeOff,
     Spline,
   } from "@lucide/svelte";
-  import { buildSegments, timelineRows, TRACK_PROPS, type TrackProp } from "../anim/row-layout";
+  import { buildSegments, timelineRows, type TrackProp } from "../anim/row-layout";
   import {
     state as appState,
     canvasOps,
@@ -84,6 +84,7 @@
   import {
     isLayerEditable,
     isLayerLocked,
+    isLayerAnimated,
     isLayerVisible,
     countKeyframesPastLengthIn,
     groupHasLockedLayer,
@@ -1039,14 +1040,16 @@
     // The topmost member, so selecting the row puts the Transform tool's GROUP scope on this group
     // — the scope resolves through the active layer's `groupId`, so without this the row would aim
     // the gizmo at whatever group the previously-active layer happened to be in.
-    // A DRAW member by preference: `activeTransformLayer` returns the active layer itself at group
-    // scope only for a draw layer, so aiming this row at a ref member would leave the gizmo editing
-    // that REF's own transform while the row promised the group's — silently keying the wrong
-    // target. The unfiltered lookup stays as the fallback, for an all-ref group.
-    const layersTop = [...appState.project.layers].reverse();
-    const member =
-      layersTop.find((l) => l.groupId === group.id && l.kind === "draw") ??
-      layersTop.find((l) => l.groupId === group.id);
+    // A DRAW member, or NONE — never a ref. `activeTransformLayer` returns the active layer itself
+    // at group scope only for a draw layer, so aiming this row at a ref member would leave the gizmo
+    // editing that REF's own transform while the row promised the group's, silently keying the wrong
+    // target. An all-ref group is reachable (group a draw layer with a ref, animate at group scope,
+    // then delete or ungroup the draw member — the row survives with its track intact), so the
+    // no-member case is real: `select` then sets the SCOPE and leaves the active layer alone, which
+    // is the honest outcome. A wrong member is worse than no member.
+    const member = [...appState.project.layers]
+      .reverse()
+      .find((l) => l.groupId === group.id && l.kind === "draw");
     // A locked MEMBER pins the group, exactly as it does for the gizmo drag, Reset and
     // Stop-animating (`groupHasLockedLayer` — which already returns true for a locked group itself,
     // so it subsumes the group's own flag rather than needing to be ORed with it). Without this,
@@ -1078,11 +1081,6 @@
       },
       moved: (t, from, to) => withMovedTransformKey(t as TransformTrack, from, to),
     };
-  }
-
-  /** Does this layer own any track at all? Decides whether its row shows the disclosure. */
-  function hasAnyTrack(layer: Layer): boolean {
-    return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
   }
 
   // Dragging a property key to another frame. Same bracket shape as every other undoable drag
@@ -2355,7 +2353,7 @@
         {/if}
       {:else}
         {@const layer = row.layer}
-        {@const animated = hasAnyTrack(layer)}
+        {@const animated = isLayerAnimated(layer)}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"

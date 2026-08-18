@@ -3,6 +3,7 @@ import {
   refreshLength,
   copyKeyframe,
   withTrackKeys,
+  TRACK_PROPS,
   type Cell,
   type DrawingLayer,
   type Keyframe,
@@ -14,7 +15,6 @@ import {
   type TransformKey,
   type TransformTrack,
 } from "./document";
-import { TRACK_PROPS } from "./row-layout";
 import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
 
 /** The per-property value copiers the shifter needs. `document.ts` keeps its own copies private, and

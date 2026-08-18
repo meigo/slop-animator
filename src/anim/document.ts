@@ -128,6 +128,25 @@ export interface GroupTracks {
   transform?: TransformTrack;
 }
 
+/** An animatable layer property. `keyof LayerTracks` rather than a hand-written union, so it cannot
+ *  name a property the bag does not have and a fourth one extends it by existing. */
+export type TrackProp = keyof LayerTracks;
+
+/** THE property set, in the order the timeline stacks its rows. That order is FIXED, and
+ *  deliberately not "whichever track was added first": rows must never reorder under the artist as
+ *  tracks come and go. It lives here rather than with the row layout because it is not only a row
+ *  order — the frame shifter and the "is this layer animated at all?" gates loop the same list, and
+ *  a second copy of it is exactly how a property comes to be handled everywhere except one place. */
+export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
+
+/** Does this layer carry ANY track? Every "is it animated?" gate asks through here rather than
+ *  enumerating properties by hand: a hand-written `tracks?.transform || tracks?.opacity` still
+ *  COMPILES when a third property arrives, it just quietly answers the old question — which is how
+ *  merge-down and rasterize each came to destroy an opacity track that the transform check missed. */
+export function isLayerAnimated(layer: Layer): boolean {
+  return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
+}
+
 /** Deep-copy a whole bag. The no-mutation rule (gotcha #8: undo snapshots share layer objects)
  *  now reaches TWO levels — a copied bag must share neither the bag object nor any track in it. */
 export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
@@ -267,12 +286,11 @@ export function whyNotMergeDown(
   // transform that does not vary — the same reason Apply/Reset refuse. On an animated layer the
   // static `transform` is retained but IGNORED, so baking it would place the pixels where the layer
   // renders at no frame at all, and the track would then vanish with the merged layer.
-  if (layerTransformTrack(upper) || layerTransformTrack(below)) return "animated";
-  // Same argument, one property over, and it was simply never widened when tracks became plural:
-  // `mergeDown` composites the upper layer at its STATIC `upper.opacity`, which on an animated layer
-  // is retained but ignored — so a fade-out would be burned in at its seed alpha and the track would
-  // then vanish with the merged layer.
-  if (upper.tracks?.opacity || below.tracks?.opacity) return "animated";
+  // ANY property, through the shared predicate — the same argument holds one property over, and
+  // enumerating the two by hand is exactly what let opacity through: `mergeDown` composites the
+  // upper layer at its STATIC `upper.opacity`, which on an animated layer is retained but ignored,
+  // so a fade-out would be burned in at its seed alpha and the track would vanish with the layer.
+  if (isLayerAnimated(upper) || isLayerAnimated(below)) return "animated";
   return null;
 }
 
