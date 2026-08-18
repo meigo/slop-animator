@@ -218,6 +218,12 @@
   }
 
   function onOpacityInput(layer: Layer, value: number) {
+    // A bracket may never span two layers. Every settle route below is bound to the SLIDER element,
+    // and the slider lives inside `{#if active}` — so a row that unmounts mid-drag (a second contact
+    // selecting another row, or the audio lane, which deselects every layer) fires none of them and
+    // loses its implicit pointer capture. Without this the next layer's drag would inherit the open
+    // bracket and write ITS keys to the abandoned gesture's layer id and frame.
+    if (opacityUndo && opacityUndoLayerId !== layer.id) settleOpacityDrag();
     if (!layer.tracks?.opacity) {
       layer.opacity = value; // static: unchanged behaviour, straight assignment + repaint
       bump();
@@ -257,6 +263,18 @@
     if (opacityKeyValue(layerId, frame) === startV) return;
     commitStructuralEdit(before);
   }
+
+  /** The unmount backstop. `settleOpacityDrag` is reachable only through the slider's own events,
+   *  which a removed element never fires — so the ROW's selection is watched instead: the slider
+   *  exists exactly while its layer is the selected row, and `activeRow` becoming any other layer
+   *  (or the audio lane, which selects no layer at all) is precisely the moment it goes away. The
+   *  bracket then commits or drops on its own terms rather than leaking into the next gesture.
+   *  Nothing else narrows that window: `seekPlayhead`, `setActiveLayer` and `commitStructural` all
+   *  leave `transformDragGuard` alone, and only undo/redo/Open and the Canvas tool effect settle it. */
+  $effect(() => {
+    const id = appState.activeRow.kind === "layer" ? appState.activeRow.id : null;
+    if (opacityUndoLayerId !== null && opacityUndoLayerId !== id) settleOpacityDrag();
+  });
 
   function opacityKeyDown(e: KeyboardEvent) {
     if (RANGE_KEYS.has(e.key)) opacityKeyHeld = true;
