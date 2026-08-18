@@ -26,6 +26,8 @@ import {
   createTransformTrack,
   cloneTransformTrack,
   withoutTransformKey,
+  withKeyInterp,
+  type KeyInterp,
   MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
@@ -778,23 +780,33 @@ export function deleteTransformKeyAtPlayhead(layerId: number): void {
   });
 }
 
-/** Interpolation settings. Replaces the track object (gotcha #8) rather than writing in place. */
-export function setTransformTrackOptions(
-  layerId: number,
-  opts: { interp?: "linear" | "hold"; sampleEvery?: number },
-): void {
+/** The track's step setting — how often the move updates, in frames. Track-wide, because it is the
+ *  rhythm the whole move is cut to. Replaces the track object (gotcha #8). */
+export function setTransformTrackSampleEvery(layerId: number, sampleEvery: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
   const track = l?.transformTrack;
   if (!l || !track || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
-  const interp = opts.interp ?? track.interp;
-  const sampleEvery = Math.min(
-    MAX_SAMPLE_EVERY,
-    Math.max(1, Math.floor(opts.sampleEvery ?? track.sampleEvery ?? 1)),
-  );
-  if (interp === track.interp && sampleEvery === (track.sampleEvery ?? 1)) return;
+  // Clamped HERE, not at the widget: an input's `max` is advisory and a browser accepts a typed
+  // value beyond it — the same reason the Fill tool clamps its gap in the logic.
+  const next = Math.min(MAX_SAMPLE_EVERY, Math.max(1, Math.floor(sampleEvery)));
+  if (next === (track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
   commitStructural(() => {
-    l.transformTrack = { ...track, interp, sampleEvery };
+    l.transformTrack = { ...track, sampleEvery: next };
+  });
+}
+
+/** The interpolation of the segment starting at `frame` — i.e. the curve from that key to the next.
+ *  Per-key, because a track routinely wants different segments to behave differently. */
+export function setTransformKeyInterp(layerId: number, frame: number, interp: KeyInterp): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const next = withKeyInterp(track, frame, interp);
+  if (next === track) return; // same object = nothing changed; do not push an empty entry
+  commitStructural(() => {
+    l.transformTrack = next;
   });
 }
 

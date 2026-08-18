@@ -60,19 +60,37 @@ export interface RefTransform {
   rotation: number; // radians, clockwise, about the center
 }
 
+/** How the value travels from one key to the NEXT one. */
+export type KeyInterp = "linear" | "hold" | "ease-in" | "ease-out" | "ease-in-out";
+
 export interface TransformKey {
   /** Project frame, >= 0. Unique within a track. */
   frame: number;
   t: RefTransform;
+  /**
+   * The interpolation of the segment that STARTS at this key — so it describes the curve between
+   * this key and the next, which is how an artist thinks about easing ("this move eases out"), and
+   * how every animation tool models it. Absent = `linear`.
+   *
+   * On the KEY rather than the track because a track routinely wants different segments to behave
+   * differently: a camera that eases out of rest, holds, then eases into a stop is three segments
+   * and one track. The last key's value is unused — nothing follows it.
+   *
+   * `hold` gives pose-to-pose blocking (no interpolation at all). The eases are quadratic and
+   * CLOSED-FORM on purpose: an editable bezier needs a solve or a cached lookup per curve, and
+   * `transformAt` is a pure function called once per layer per frame. A custom curve can arrive
+   * later as one more member plus a stored control pair — additive, and an unknown value read from
+   * a newer file degrades to linear rather than breaking.
+   */
+  interp?: KeyInterp;
 }
 
 export interface TransformTrack {
   /** Sorted by `frame`, never empty. */
   keys: TransformKey[];
-  /** "linear" interpolates between keys; "hold" keeps each key's value until the next. */
-  interp: "linear" | "hold";
-  /** Linear only: quantise the sampled frame to a multiple of this, so a move updates on 2s/3s
-   *  like the drawings do. 1 (or absent) = every frame. */
+  /** Quantise the sampled frame to a multiple of this, so a move updates on 2s/3s like the drawings
+   *  do. 1 (or absent) = every frame. Track-wide, unlike `interp`: it is a property of the RHYTHM
+   *  the whole move is cut to, not of one segment. */
   sampleEvery?: number;
   /** The pivot box, captured ONCE at track creation and shared by every key. A per-key box would
    *  make the pivot interpolate and warp the motion path between keys, invisibly. */
@@ -307,6 +325,15 @@ function quantiseFrame(frame: number, origin: number, every: number): number {
   return origin + Math.floor((frame - origin) / n) * n;
 }
 
+/** Curve the normalised time `u` (0..1). Quadratic: gentle enough to read as easing at the low
+ *  frame rates this app works at, without the overshoot a cubic can imply. */
+function easeU(u: number, interp: KeyInterp | undefined): number {
+  if (interp === "ease-in") return u * u;
+  if (interp === "ease-out") return 1 - (1 - u) * (1 - u);
+  if (interp === "ease-in-out") return u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u);
+  return u;
+}
+
 function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransform {
   return {
     dx: a.dx + (b.dx - a.dx) * u,
@@ -330,16 +357,19 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
   if (frame >= last.frame) return last.t;
 
   // `q` is inside [first.frame, last.frame) — quantising only ever moves it earlier, and the
-  // out-of-range cases already returned.
-  const q =
-    track.interp === "hold" ? frame : quantiseFrame(frame, first.frame, track.sampleEvery ?? 1);
+  // out-of-range cases already returned. Quantise BEFORE picking the segment, so the sampled time
+  // and the segment it lands in always agree.
+  const q = quantiseFrame(frame, first.frame, track.sampleEvery ?? 1);
   let i = 0;
   while (i < keys.length - 2 && keys[i + 1].frame <= q) i++;
   const a = keys[i];
   const b = keys[i + 1];
-  if (track.interp === "hold" || q <= a.frame) return a.t;
+  // The segment's own interpolation — `a` starts it, so `a.interp` describes it.
+  if (a.interp === "hold" || q <= a.frame) return a.t;
   if (q >= b.frame) return b.t;
-  return lerpTransform(a.t, b.t, (q - a.frame) / (b.frame - a.frame));
+  // Ease the TIME, not the value: `sampleEvery` has already quantised `q`, so a stepped move still
+  // steps — it just steps along a curved timing instead of an even one.
+  return lerpTransform(a.t, b.t, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
 }
 
 /** A fresh track holding `t` at frame 0 — that value has been true for every frame, so frame 0 is
@@ -348,7 +378,7 @@ export function createTransformTrack(
   t: RefTransform,
   box: { x: number; y: number; w: number; h: number } | null,
 ): TransformTrack {
-  return { keys: [{ frame: 0, t: { ...t } }], interp: "linear", box: box ? { ...box } : null };
+  return { keys: [{ frame: 0, t: { ...t } }], box: box ? { ...box } : null };
 }
 
 /** Write a key at `frame`, replacing any key already there. Returns a NEW track: snapshots share
@@ -358,8 +388,11 @@ export function withTransformKey(
   frame: number,
   t: RefTransform,
 ): TransformTrack {
+  // A drag rewrites a key's VALUE; its segment easing is a separate choice and must survive, or
+  // every nudge would silently reset the curve back to linear.
+  const interp = track.keys.find((k) => k.frame === frame)?.interp;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  keys.push({ frame, t: { ...t } });
+  keys.push({ frame, t: { ...t }, ...(interp ? { interp } : {}) });
   keys.sort((a, b) => a.frame - b.frame);
   return { ...track, keys };
 }
@@ -389,11 +422,40 @@ export function withMovedTransformKey(
   if (!moved) return track;
   const keys = track.keys
     .filter((k) => k.frame !== from && k.frame !== to)
-    .concat({ frame: to, t: { ...moved.t } })
+    .concat({ frame: to, t: { ...moved.t }, ...(moved.interp ? { interp: moved.interp } : {}) })
     .sort((a, b) => a.frame - b.frame);
   // `box` copied, not shared: the returned track must not alias the input's nested objects — the
   // same reason `shiftTransformTrackFrames` copies it. True of today's code, not of the type.
   return { ...track, box: track.box ? { ...track.box } : null, keys };
+}
+
+/** Set the interpolation of the segment starting at `frame`. Returns the SAME object when there is
+ *  no key there or the value is unchanged, so a caller can skip an empty undo entry. */
+export function withKeyInterp(
+  track: TransformTrack,
+  frame: number,
+  interp: KeyInterp,
+): TransformTrack {
+  const k = track.keys.find((x) => x.frame === frame);
+  if (!k || (k.interp ?? "linear") === interp) return track;
+  return {
+    ...track,
+    box: track.box ? { ...track.box } : null,
+    keys: track.keys.map((x) =>
+      x.frame === frame ? { frame: x.frame, t: { ...x.t }, interp } : x,
+    ),
+  };
+}
+
+/** The key whose segment contains `frame` — the latest key at or before it, or null when the
+ *  playhead sits before the track starts. This is what an easing control edits. */
+export function segmentKeyAt(track: TransformTrack, frame: number): TransformKey | null {
+  let found: TransformKey | null = null;
+  for (const k of track.keys) {
+    if (k.frame <= frame) found = k;
+    else break;
+  }
+  return found;
 }
 
 export function hasKeyAt(track: TransformTrack, frame: number): boolean {

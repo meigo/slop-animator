@@ -1974,30 +1974,36 @@
             {#each Array(appState.project.frameCount) as _, f (f)}
               <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
             {/each}
-            {#if keys.length > 1}
-              <!-- Continuous, not dashed: a tween genuinely interpolates between its keys, where a
-                   drawing's hold dashes mark frames that repeat one drawing. Different meaning,
-                   different mark. -->
-              <div
-                class="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-selection"
-                style="left: {keys[0].frame * CELL_W + CELL_W / 2}px; width: {(keys[keys.length - 1]
-                  .frame -
-                  keys[0].frame) *
-                  CELL_W}px"
-              ></div>
-            {/if}
+            <!-- One line PER SEGMENT, and none across a hold: continuous means "this genuinely
+                 interpolates", so drawing it over a segment that holds would say the opposite. (The
+                 layer rows' dashes mean the other thing again — frames repeating one drawing.) -->
+            {#each keys.slice(0, -1) as k, i (k.frame)}
+              {#if (k.interp ?? "linear") !== "hold"}
+                <div
+                  class="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-selection"
+                  style="left: {k.frame * CELL_W + CELL_W / 2}px; width: {(keys[i + 1].frame -
+                    k.frame) *
+                    CELL_W}px"
+                ></div>
+              {/if}
+            {/each}
             {#each keys as k (k.frame)}
-              <!-- A circle in the selection colour, against the layer rows' white ◆ — distinct in
-                   both shape and colour, because a transform key and a drawing key are only ever
-                   confusable at a glance. The hit area is deliberately larger than the dot: 8px is
-                   a fine target with a Pencil and an impossible one with anything else. -->
+              <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and
+                   colour, because a transform key and a drawing key are only ever confusable at a
+                   glance. The SHAPE then says how the segment leaving this key behaves, so the
+                   timing is readable without selecting anything: square = hold (blocky, stepped),
+                   circle = eased (round, curved), diamond = linear. Ease-in and ease-out share the
+                   circle — at 8px a half-filled disc is a smudge, and the Ease control names which.
+                   The hit area is deliberately larger than the mark: 8px is a fine target with a
+                   Pencil and an impossible one with anything else. -->
+              {@const ki = k.interp ?? "linear"}
               <div
                 class="absolute top-0 flex h-6 w-4 items-center justify-center"
                 style="left: {k.frame * CELL_W +
                   CELL_W / 2 -
                   8}px; touch-action: none; cursor: ew-resize"
                 role="presentation"
-                title="Transform key at frame {k.frame + 1} — drag to retime"
+                title="Transform key at frame {k.frame + 1} ({ki}) — drag to retime"
                 onpointerdown={(e) => keyDown(e, tl, k.frame)}
                 onpointermove={(e) => {
                   if (!isFinePointer(e) && touchPan) touchPanMove(e);
@@ -2009,7 +2015,11 @@
                   if (!isFinePointer(e)) touchPanUp(e);
                 }}
               >
-                <div class="size-2 rounded-full bg-selection"></div>
+                <div
+                  class="size-2 bg-selection"
+                  class:rounded-full={ki !== "hold" && ki !== "linear"}
+                  class:rotate-45={ki === "linear"}
+                ></div>
               </div>
             {/each}
           </div>

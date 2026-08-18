@@ -2456,6 +2456,32 @@ because tracks are always replaced and never mutated. Finger pans, Pencil edits,
 **Deleting** is a tap then the existing ToolOptions button: a tap on a key SEEKS to it, which is
 exactly what "Delete key" is gated on. No new gesture, and it works with a Pencil where a hover-only
 ✕ would not.
+**Interpolation is PER KEY, describing the segment that starts at it (2026-08-18).** It began on the
+track; the artist's framing — "this move eases out" is about one stretch of it — is per segment, and
+a real track wants different segments to differ: ease out of rest, hold, ease into a stop is three
+segments and one track. So `TransformKey.interp?: KeyInterp` ("linear" | "hold" | "ease-in" |
+"ease-out" | "ease-in-out"), absent = linear, and `TransformTrack.interp` is GONE. `sampleEvery`
+stays on the track, because it is the rhythm the whole move is cut to rather than a property of one
+segment. The model changed rather than gaining a second level because the branch had not shipped —
+had it, this would have been a migration and a "key overrides track" rule to explain forever.
+
+**The eases are quadratic and closed-form, deliberately.** The pressure-curve widget IS a cubic
+bezier with two control points, so reusing it as a custom easing editor is tempting and genuinely a
+good fit for the STORAGE. What stops it is evaluation: an easing needs `y` for a given `x`, a bezier
+gives both in terms of `t`, so you either solve per sample or build a lookup table — and
+`transformAt` is a pure function called once per layer per frame, so a LUT would need a cache keyed
+on curve identity. Presets cost nothing and cover the workhorse cases. A custom curve can arrive as
+one more `KeyInterp` member plus a stored control pair; an unknown value read from a newer file
+already degrades to linear.
+
+**The key's SHAPE says how its segment behaves** — square = hold, circle = eased, diamond = linear —
+so timing is readable without selecting anything. Ease-in and ease-out share the circle on purpose:
+at 8px a half-filled disc is a smudge, and the Ease control names which. The connecting line is
+drawn PER SEGMENT and omitted across a hold, because a continuous line asserts "this interpolates"
+and a hold does the opposite. (Three marks now mean three different things on one timeline: a
+layer row's dashes = frames repeating one drawing, a solid transform line = interpolation, no line
+between transform keys = a hold.)
+
 **Selecting the transform row selects its LAYER and sets the Transform scope to layer (2026-08-18).**
 The two things you always want next, and the only reason to click that row. It deliberately does NOT
 switch the TOOL: being yanked out of the brush mid-drawing to glance at a track would cost more than

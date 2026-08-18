@@ -70,7 +70,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (704); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (710); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

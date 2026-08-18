@@ -22,10 +22,18 @@ const track = (over: Partial<TransformTrack> = {}): TransformTrack => ({
     { frame: 0, t: T(0) },
     { frame: 10, t: T(100) },
   ],
-  interp: "linear",
   box: null,
   ...over,
 });
+/** Interpolation lives on the key that STARTS a segment, so a "hold track" is a track whose first
+ *  key holds. */
+const holdTrack = (): TransformTrack =>
+  track({
+    keys: [
+      { frame: 0, t: T(0), interp: "hold" },
+      { frame: 10, t: T(100) },
+    ],
+  });
 
 describe("transformAt", () => {
   it("returns the static transform when there is no track", () => {
@@ -53,8 +61,8 @@ describe("transformAt", () => {
     expect(transformAt(layer(track()), 10).dx).toBe(100);
   });
 
-  it("hold mode does not interpolate", () => {
-    const t = track({ interp: "hold" });
+  it("hold does not interpolate", () => {
+    const t = holdTrack();
     expect(transformAt(layer(t), 9).dx).toBe(0);
     expect(transformAt(layer(t), 10).dx).toBe(100);
   });
@@ -82,8 +90,14 @@ describe("transformAt", () => {
     expect(transformAt(layer(t), 5).dx).toBeCloseTo(50, 10); // q = 5, between 3 and 10
   });
 
-  it("sampleEvery is ignored in hold mode", () => {
-    const t = track({ interp: "hold", sampleEvery: 5 });
+  it("a hold segment ignores sampleEvery — there is nothing to sample", () => {
+    const t = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "hold" },
+        { frame: 10, t: T(100) },
+      ],
+      sampleEvery: 5,
+    });
     expect(transformAt(layer(t), 9).dx).toBe(0);
   });
 
@@ -114,7 +128,6 @@ describe("track mutations", () => {
   it("createTransformTrack seeds one key at frame 0 with the static value", () => {
     const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 });
     expect(t.keys).toEqual([{ frame: 0, t: T(9) }]);
-    expect(t.interp).toBe("linear");
     expect(t.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
   });
 
@@ -171,10 +184,9 @@ describe("transform track persistence", () => {
     const l = createDrawingLayer(1, "L");
     l.transformTrack = {
       keys: [
-        { frame: 0, t: T(0) },
+        { frame: 0, t: T(0), interp: "hold" },
         { frame: 8, t: T(80, 1.5) },
       ],
-      interp: "hold",
       sampleEvery: 2,
       box: { x: 1, y: 2, w: 3, h: 4 },
     };
@@ -189,10 +201,9 @@ describe("transform track persistence", () => {
     const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
     ref.transformTrack = {
       keys: [
-        { frame: 0, t: T(0) },
+        { frame: 0, t: T(0), interp: "ease-in-out" },
         { frame: 5, t: T(50, 0.5) },
       ],
-      interp: "linear",
       sampleEvery: 3,
       box: { x: 10, y: 20, w: 30, h: 40 },
     };
@@ -239,5 +250,64 @@ describe("withMovedTransformKey", () => {
     const t = track();
     withMovedTransformKey(t, 0, 5);
     expect(t.keys.map((k) => k.frame)).toEqual([0, 10]);
+  });
+});
+
+// Easing curves the TIME of one segment, so it belongs to the key that starts that segment.
+describe("per-segment easing", () => {
+  const eased = (interp: "ease-in" | "ease-out" | "ease-in-out") =>
+    track({
+      keys: [
+        { frame: 0, t: T(0), interp },
+        { frame: 10, t: T(100) },
+      ],
+    });
+
+  it("ease-in starts slow and still lands exactly on both keys", () => {
+    const t = eased("ease-in");
+    expect(transformAt(layer(t), 0).dx).toBe(0);
+    expect(transformAt(layer(t), 10).dx).toBe(100);
+    expect(transformAt(layer(t), 5).dx).toBeCloseTo(25, 10); // u² at the midpoint
+  });
+
+  it("ease-out is ease-in mirrored", () => {
+    expect(transformAt(layer(eased("ease-out")), 5).dx).toBeCloseTo(75, 10);
+  });
+
+  it("ease-in-out is symmetric about the midpoint", () => {
+    const t = eased("ease-in-out");
+    expect(transformAt(layer(t), 5).dx).toBeCloseTo(50, 10);
+    expect(transformAt(layer(t), 2).dx).toBeCloseTo(8, 10);
+    expect(transformAt(layer(t), 8).dx).toBeCloseTo(92, 10);
+  });
+
+  // The point of putting it on the key: one track, different segments.
+  it("applies each segment's own curve, not the track's", () => {
+    const t = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "hold" },
+        { frame: 10, t: T(100), interp: "ease-in" },
+        { frame: 20, t: T(200) },
+      ],
+    });
+    expect(transformAt(layer(t), 5).dx).toBe(0); // held by the first segment
+    expect(transformAt(layer(t), 15).dx).toBeCloseTo(125, 10); // eased by the second
+  });
+
+  it("an unknown or absent interp behaves as linear", () => {
+    expect(transformAt(layer(track()), 5).dx).toBeCloseTo(50, 10);
+  });
+
+  // Easing curves the time; sampleEvery quantises it. They compose rather than override.
+  it("composes with sampleEvery — a stepped move steps along the curve", () => {
+    const t = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "ease-in" },
+        { frame: 10, t: T(100) },
+      ],
+      sampleEvery: 2,
+    });
+    expect(transformAt(layer(t), 5).dx).toBeCloseTo(16, 10); // q = 4 → (0.4)² × 100
+    expect(transformAt(layer(t), 4).dx).toBeCloseTo(16, 10);
   });
 });

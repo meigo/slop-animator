@@ -11,7 +11,8 @@
     animateLayer,
     removeLayerAnimation,
     deleteTransformKeyAtPlayhead,
-    setTransformTrackOptions,
+    setTransformKeyInterp,
+    setTransformTrackSampleEvery,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
@@ -20,6 +21,8 @@
   import {
     whyNotEditable,
     hasKeyAt,
+    segmentKeyAt,
+    type KeyInterp,
     isLayerLocked,
     isLayerVisible,
     isRefVisibleAtFrame,
@@ -335,36 +338,55 @@
         title="Stop animating — keeps the position you can see now"
         onclick={() => removeLayerAnimation(animTarget.id)}>Stop animating</button
       >
-      <button
-        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-        class:bg-surface-active={track.interp === "hold"}
-        title={track.interp === "hold"
-          ? "Hold — each key holds until the next (no interpolation)"
-          : "Linear — interpolate between keys"}
-        onclick={() =>
-          setTransformTrackOptions(animTarget.id, {
-            interp: track.interp === "hold" ? "linear" : "hold",
-          })}>{track.interp === "hold" ? "Hold" : "Linear"}</button
+      <!-- Easing belongs to the SEGMENT, so this edits the key the playhead currently sits in — the
+           curve from that key to the next — not the whole track. Scrub into a segment to shape it.
+           Disabled before the first key, where there is no segment to describe. -->
+      {@const seg = segmentKeyAt(track, appState.playhead)}
+      <label
+        class="flex items-center gap-1 text-xs text-text-secondary"
+        title={seg
+          ? `Interpolation from the key at frame ${seg.frame + 1} to the next`
+          : "Interpolation — the playhead is before the first key, so there is no segment here"}
       >
-      {#if track.interp === "linear"}
-        <label
-          class="flex items-center gap-1 text-xs text-text-secondary"
-          title="Update the move every N frames, so it can sit on 2s like the drawings"
+        Ease
+        <select
+          class="h-7 bg-surface border border-border text-text px-1 text-xs disabled:opacity-40"
+          disabled={!seg}
+          value={seg?.interp ?? "linear"}
+          onchange={(e) => {
+            if (seg)
+              setTransformKeyInterp(
+                animTarget.id,
+                seg.frame,
+                (e.currentTarget as HTMLSelectElement).value as KeyInterp,
+              );
+          }}
         >
-          Step
-          <input
-            class="w-12 bg-surface border border-border text-text px-1"
-            type="number"
-            min="1"
-            max={MAX_SAMPLE_EVERY}
-            value={track.sampleEvery ?? 1}
-            onchange={(e) =>
-              setTransformTrackOptions(animTarget.id, {
-                sampleEvery: Number((e.currentTarget as HTMLInputElement).value),
-              })}
-          />
-        </label>
-      {/if}
+          <option value="linear">Linear</option>
+          <option value="ease-in">Ease in</option>
+          <option value="ease-out">Ease out</option>
+          <option value="ease-in-out">Ease in-out</option>
+          <option value="hold">Hold</option>
+        </select>
+      </label>
+      <label
+        class="flex items-center gap-1 text-xs text-text-secondary"
+        title="Update the move every N frames, so it can sit on 2s like the drawings"
+      >
+        Step
+        <input
+          class="w-12 bg-surface border border-border text-text px-1"
+          type="number"
+          min="1"
+          max={MAX_SAMPLE_EVERY}
+          value={track.sampleEvery ?? 1}
+          onchange={(e) =>
+            setTransformTrackSampleEvery(
+              animTarget.id,
+              Number((e.currentTarget as HTMLInputElement).value),
+            )}
+        />
+      </label>
     {/if}
   {/if}
 </div>

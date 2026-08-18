@@ -88,7 +88,6 @@ const animated = (id: number, groupId: number | null = null) =>
     groupId,
     transformTrack: {
       keys: [{ frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
-      interp: "linear",
       box: null,
     },
   }) as Layer;

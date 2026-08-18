@@ -619,7 +619,6 @@ describe("ripple insert/delete shift document-space clips", () => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
       l.transformTrack = {
         keys: frames.map((f) => ({ frame: f, t: T(f) })),
-        interp: "linear",
         box: null,
       };
       return l;
@@ -664,7 +663,6 @@ describe("ripple insert/delete shift document-space clips", () => {
       const ref = imageRef() as unknown as DrawingLayer;
       (ref as unknown as { transformTrack: unknown }).transformTrack = {
         keys: [{ frame: 6, t: T(6) }],
-        interp: "linear",
         box: null,
       };
       insertFrameAllLayers(proj([ref]), 2);
