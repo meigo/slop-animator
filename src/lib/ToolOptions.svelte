@@ -12,6 +12,8 @@
     removeLayerAnimation,
     deleteTransformKeyAtPlayhead,
     setTransformKeyInterp,
+    copyTransformKeyAtPlayhead,
+    pasteTransformKeyAtPlayhead,
     setTransformTrackSampleEvery,
   } from "../state/appState.svelte";
 
@@ -332,6 +334,29 @@
           if (hasKeyAt(track, appState.playhead) && track.keys.length > 1)
             deleteTransformKeyAtPlayhead(animTarget.id);
         }}>Delete key</button
+      >
+      <!-- aria-disabled, never `disabled`: a disabled button dispatches no pointer events, so the
+           status bar's delegated listener could not read the title explaining WHY it is unavailable
+           — the control that most needs to explain itself would be the only one unable to. -->
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!hasKeyAt(track, appState.playhead)}
+        title={hasKeyAt(track, appState.playhead)
+          ? "Copy this key — its position and its curve — to paste on another frame or layer"
+          : "Copy key — no key on this frame"}
+        onclick={() => {
+          if (hasKeyAt(track, appState.playhead)) copyTransformKeyAtPlayhead(animTarget.id);
+        }}>Copy key</button
+      >
+      <button
+        class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!appState.transformKeyClipboard}
+        title={appState.transformKeyClipboard
+          ? "Paste the copied key here, replacing any key on this frame"
+          : "Paste key — nothing copied yet"}
+        onclick={() => {
+          if (appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(animTarget.id);
+        }}>Paste key</button
       >
       <button
         class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"

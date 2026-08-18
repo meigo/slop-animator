@@ -5,6 +5,7 @@ import {
   withTransformKey,
   withoutTransformKey,
   withMovedTransformKey,
+  withPastedTransformKey,
   hasKeyAt,
   createProject,
   createDrawingLayer,
@@ -309,5 +310,32 @@ describe("per-segment easing", () => {
     });
     expect(transformAt(layer(t), 5).dx).toBeCloseTo(16, 10); // q = 4 → (0.4)² × 100
     expect(transformAt(layer(t), 4).dx).toBeCloseTo(16, 10);
+  });
+});
+
+describe("withPastedTransformKey", () => {
+  // A paste carries the whole key. `withTransformKey` deliberately does the opposite — it preserves
+  // the destination's curve, because a DRAG rewrites a value, not a curve.
+  it("writes both the value and the segment interpolation", () => {
+    const t = withPastedTransformKey(track(), 5, { t: T(55), interp: "ease-in" });
+    expect(t.keys[1]).toEqual({ frame: 5, t: T(55), interp: "ease-in" });
+  });
+
+  it("replaces an existing key outright, curve included", () => {
+    const src = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "hold" },
+        { frame: 10, t: T(100) },
+      ],
+    });
+    const t = withPastedTransformKey(src, 0, { t: T(9) });
+    expect(t.keys[0]).toEqual({ frame: 0, t: T(9) }); // the old "hold" did not survive
+  });
+
+  it("keeps the array sorted and leaves the input untouched", () => {
+    const src = track();
+    const t = withPastedTransformKey(src, 5, { t: T(55) });
+    expect(t.keys.map((k) => k.frame)).toEqual([0, 5, 10]);
+    expect(src.keys.map((k) => k.frame)).toEqual([0, 10]);
   });
 });

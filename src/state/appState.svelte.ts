@@ -27,6 +27,7 @@ import {
   cloneTransformTrack,
   withoutTransformKey,
   withKeyInterp,
+  withPastedTransformKey,
   type KeyInterp,
   MAX_SAMPLE_EVERY,
   type RefTransform,
@@ -143,6 +144,9 @@ interface AnimState {
    *  keys frame N" has to name the frame that will ACTUALLY be written, or the one mitigation for
    *  auto-key's silence is itself misleading. Null when no drag is in flight. */
   transformDragFrame: number | null;
+  /** A copied transform key — its value and its segment's curve, without a frame, so it can be
+   *  pasted anywhere. Session-only, like the cell and pixel clipboards; nothing persists it. */
+  transformKeyClipboard: { t: RefTransform; interp?: KeyInterp } | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -237,6 +241,7 @@ export const state: AnimState = $state({
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   transformDragFrame: null,
+  transformKeyClipboard: null,
   persistAlert: "",
   autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
@@ -793,6 +798,28 @@ export function setTransformTrackSampleEvery(layerId: number, sampleEvery: numbe
   if (next === (track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
   commitStructural(() => {
     l.transformTrack = { ...track, sampleEvery: next };
+  });
+}
+
+/** Copy the key under the playhead. Reading is allowed on a locked or hidden layer — the lock
+ *  protects content from being CHANGED, and copying changes nothing. Not undoable: no document edit. */
+export function copyTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const key = l?.transformTrack?.keys.find((k) => k.frame === state.playhead);
+  if (!key) return;
+  state.transformKeyClipboard = { t: { ...key.t }, ...(key.interp ? { interp: key.interp } : {}) };
+}
+
+/** Paste the copied key at the playhead, replacing whatever is there. Refuses a layer with no track:
+ *  a paste should not silently start animating something (press Animate for that). */
+export function pasteTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  const clip = state.transformKeyClipboard;
+  if (!l || !track || !clip || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  commitStructural(() => {
+    l.transformTrack = withPastedTransformKey(track, state.playhead, clip);
   });
 }
 

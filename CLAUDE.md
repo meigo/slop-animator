@@ -2485,6 +2485,18 @@ transform. An earlier version omitted the line on a hold and justified it as "th
 meanings"; that was wrong, and reusing the existing dash concept is both simpler and one less thing
 to learn. There are two marks meaning two things.
 
+**Copy/paste a transform key (2026-08-18).** The key's VALUE and its segment's CURVE travel
+together — pasting reproduces both, which is why `withPastedTransformKey` exists rather than reusing
+`withTransformKey`: that one deliberately PRESERVES the destination's curve, because a drag rewrites
+a value and not a curve. Opposite intents, so opposite functions.
+Cross-layer paste is the point (matching two parallax plates to the same move), and the stored value
+is layer-relative — `dx`/`dy` from the fit-centre, `scale`, `rotation` — so it transfers meaningfully
+between layers of different sizes. Copy is allowed on a LOCKED or hidden layer, since a lock protects
+content from being changed and copying changes nothing; paste refuses both. A paste onto a layer with
+NO track is refused rather than creating one: silently starting an animation is a bigger act than the
+button implies, and Animate is right there. The clipboard is session-only, like the cell and pixel
+clipboards.
+
 **Selecting the transform row selects its LAYER and sets the Transform scope to layer (2026-08-18).**
 The two things you always want next, and the only reason to click that row. It deliberately does NOT
 switch the TOOL: being yanked out of the brush mid-drawing to glance at a track would cost more than
