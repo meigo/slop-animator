@@ -979,6 +979,9 @@
     // No setPointerCapture either: this element is about to be destroyed and rebuilt (see
     // addKeyDragListeners), so capturing on it would be pointless.
     addKeyDragListeners();
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    startEdgeScroll(keyMoveAt, "key");
     keyDrag = {
       layer,
       prevTrack: layer.transformTrack,
@@ -991,8 +994,18 @@
 
   function keyMove(e: PointerEvent) {
     if (!keyDrag) return;
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    keyMoveAt(e.clientX);
+  }
+  /** Positional, so the edge-scroll tick can RE-APPLY the drag while the pointer sits still past an
+   *  edge — without that the view scrolls but the key stays where it was. Measured absolutely from
+   *  the scroller's rect plus its scrollLeft, so it needs no grab-time scroll correction: the
+   *  measurement already moves with the content. */
+  function keyMoveAt(clientX: number) {
+    if (!keyDrag) return;
     const to = columnAtX(
-      e.clientX -
+      clientX -
         (gridWrapper?.getBoundingClientRect().left ?? 0) +
         (gridWrapper?.scrollLeft ?? 0) -
         GUTTER_W,
@@ -1013,6 +1026,7 @@
     const d = keyDrag;
     keyDrag = null;
     removeKeyDragListeners();
+    stopEdgeScroll("key");
     // Only release the shared hook if this drag still owns it, matching resetRowDrag's idiom —
     // clearing another gesture's settle would leave that one unable to close its bracket.
     if (transformDragGuard.settle === settleKeyDrag) transformDragGuard.settle = null;

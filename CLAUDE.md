@@ -2485,6 +2485,15 @@ transform. An earlier version omitted the line on a hold and justified it as "th
 meanings"; that was wrong, and reusing the existing dash concept is both simpler and one less thing
 to learn. There are two marks meaning two things.
 
+**The key drag gained edge auto-scroll (2026-08-18)**, joining the other seven horizontal timeline
+drags. Two things it needed, both established by that earlier work: the move had to SPLIT into an
+event handler and a positional `keyMoveAt(clientX)` the tick can re-apply — while the pointer sits
+still past an edge there are no pointermove events, so without the split the view would scroll while
+the key stayed put — and `stopEdgeScroll` is paired on the SETTLE path, not on pointerup, since undo
+and Open reach the settle through `transformDragGuard`. It needs NO grab-time scroll correction,
+unlike the five drags that store a screen-space origin: it measures absolutely from the scroller's
+rect plus its `scrollLeft`, so the measurement already moves with the content.
+
 **Copy/paste a transform key (2026-08-18).** The key's VALUE and its segment's CURVE travel
 together — pasting reproduces both, which is why `withPastedTransformKey` exists rather than reusing
 `withTransformKey`: that one deliberately PRESERVES the destination's curve, because a drag rewrites
