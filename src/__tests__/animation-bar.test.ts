@@ -83,6 +83,7 @@ describe("animationBar — start", () => {
       "animate-transform",
       "animate-opacity",
       "animate-group",
+      "animate-group-opacity",
     ]);
   });
 
@@ -103,6 +104,26 @@ describe("animationBar — start", () => {
     expect(bar.kind).toBe("start");
     if (bar.kind !== "start") return;
     expect(bar.items.map((i) => i.action)).not.toContain("animate-group");
+  });
+
+  it("offers Animate group opacity when the member's group has no opacity track", () => {
+    const bar = args({
+      layers: [draw(1, { groupId: 10 })],
+      groups: [group(10)],
+    });
+    expect(bar.kind).toBe("start");
+    if (bar.kind !== "start") return;
+    expect(bar.items.map((i) => i.action)).toContain("animate-group-opacity");
+  });
+
+  it("omits Animate group opacity once the group track exists", () => {
+    const bar = args({
+      layers: [draw(1, { groupId: 10 })],
+      groups: [group(10, { tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } })],
+    });
+    expect(bar.kind).toBe("start");
+    if (bar.kind !== "start") return;
+    expect(bar.items.map((i) => i.action)).not.toContain("animate-group-opacity");
   });
 
   it("dims transform/opacity when the layer is locked, and says locked not hidden", () => {
@@ -210,6 +231,18 @@ describe("animationBar — keys", () => {
       kind: "keys",
       track: { owner: "group", id: 10, prop: "transform" },
       blocked: null,
+    });
+  });
+
+  it("shows key tools for a focused group opacity row", () => {
+    const bar = args({
+      activeRow: { kind: "track", owner: "group", id: 10, prop: "opacity" },
+      layers: [draw(1, { groupId: 10 })],
+      groups: [group(10, { tracks: { opacity: { keys: [{ frame: 0, v: 40 }] } } })],
+    });
+    expect(bar).toMatchObject({
+      kind: "keys",
+      track: { owner: "group", id: 10, prop: "opacity" },
     });
   });
 

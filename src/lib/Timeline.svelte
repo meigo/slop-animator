@@ -27,6 +27,7 @@
   import {
     buildSegments,
     timelineRows,
+    GROUP_TRACK_PROPS,
     type GroupTrackProp,
     type TrackProp,
   } from "../anim/row-layout";
@@ -61,9 +62,11 @@
     animateLayer,
     animateLayerOpacity,
     animateGroup,
+    animateGroupOpacity,
     removeLayerAnimation,
     removeLayerOpacityAnimation,
     removeGroupAnimation,
+    removeGroupOpacityAnimation,
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
@@ -1740,6 +1743,10 @@
     {/if}
     {#if animBar.kind === "start"}
       {#each animBar.items as item (item.action)}
+        {@const groupName =
+          item.action === "animate-group" || item.action === "animate-group-opacity"
+            ? (appState.project.groups.find((x) => x.id === item.groupId)?.name ?? "group")
+            : ""}
         <button
           class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
           aria-disabled={item.blocked !== null}
@@ -1751,18 +1758,24 @@
               ? item.blocked
                 ? `Animate opacity — ${item.blocked}`
                 : "Animate opacity — the current value becomes a key at frame 0"
-              : item.blocked
-                ? `Animate group — ${item.blocked}`
-                : "Animate this group's transform — its current position becomes a key at frame 0"}
+              : item.action === "animate-group-opacity"
+                ? item.blocked
+                  ? `Animate group opacity — ${item.blocked}`
+                  : `Animate group opacity — ${groupName}`
+                : item.blocked
+                  ? `Animate group — ${item.blocked}`
+                  : "Animate this group's transform — its current position becomes a key at frame 0"}
           onclick={() => {
             if (item.blocked) return;
             if (item.action === "animate-transform") animateLayer(item.layerId);
             else if (item.action === "animate-opacity") animateLayerOpacity(item.layerId);
+            else if (item.action === "animate-group-opacity") animateGroupOpacity(item.groupId);
             else animateGroup(item.groupId);
           }}
         >
           {#if item.action === "animate-transform"}<Spline size={16} />
-          {:else if item.action === "animate-opacity"}<Blend size={16} />
+          {:else if item.action === "animate-opacity" || item.action === "animate-group-opacity"}
+            <Blend size={16} />
           {:else}<Group size={16} />{/if}
         </button>
       {/each}
@@ -1777,7 +1790,8 @@
         onclick={() => {
           if (animBar.blocked) return;
           const t = animBar.track;
-          if (t.owner === "group") removeGroupAnimation(t.id);
+          if (t.owner === "group" && t.prop === "opacity") removeGroupOpacityAnimation(t.id);
+          else if (t.owner === "group") removeGroupAnimation(t.id);
           else if (t.prop === "opacity") removeLayerOpacityAnimation(t.id);
           else removeLayerAnimation(t.id);
         }}><CircleStop size={16} /></button
@@ -2207,11 +2221,12 @@
               {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
             </span>
             <span class="min-w-0 flex-1 truncate font-semibold">{g.name}</span>
-            {#if g.tracks?.transform}
+            {#if GROUP_TRACK_PROPS.some((p) => !!g.tracks?.[p])}
               <!-- Says "this group is animated" when its property row is folded away — the same
                    glyph, in the same job, that an animated LAYER's disclosure carries. Without it a
                    collapsed group showed nothing at all: the row is suppressed by `collapsed`, so
-                   pressing Animate at group scope had no visible effect whatsoever. -->
+                   pressing Animate at group scope had no visible effect whatsoever. Any
+                   GROUP_TRACK_PROPS track counts — opacity alone used to leave the header blank. -->
               <span class="shrink-0 text-text-secondary" title="Group is animated"
                 ><Spline size={11} /></span
               >

@@ -32,6 +32,7 @@ import {
   isLayerAnimated,
   groupTransform,
   groupTransformAt,
+  groupOpacityAt,
   withKey,
   withoutKey,
   hasKeyAt,
@@ -456,6 +457,10 @@ function restoreStructure(s: StructSnapshot) {
     if (live) {
       live.transform = snap.transform ? { ...snap.transform } : undefined;
       live.transformBox = snap.transformBox ? { ...snap.transformBox } : snap.transformBox;
+      // Same opacity-flip rule as layers: static `opacity` is a view-prop UNLESS the animation
+      // state itself is what is being restored — Stop bakes into the static field, and nothing
+      // else could put that number back. Compare BEFORE overwriting tracks.
+      if (!!snap.tracks?.opacity !== !!live.tracks?.opacity) live.opacity = snap.opacity;
       live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       // name/collapsed/visible are view-props — keep `live` values (mirror layer pattern).
       return live;
@@ -931,6 +936,54 @@ export function removeGroupAnimation(groupId: number): void {
   state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
+/** Start animating a group's opacity: the static value becomes the key at frame 0. No box — a
+ *  scalar has no pivot. Unfolds the group for the same reason `animateGroup` does. */
+export function animateGroupOpacity(groupId: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g || g.tracks?.opacity) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return;
+  commitStructural(() => {
+    g.tracks = {
+      ...g.tracks,
+      opacity: { keys: [{ frame: 0, v: groupOpacityAt(g, 0) }] },
+    };
+    g.collapsed = false;
+  });
+  selectTrack({ owner: "group", id: groupId, prop: "opacity" });
+}
+
+/** Stop animating group opacity: bake the on-screen value into the static field, then drop the
+ *  track. WYSIWYG, mirroring `removeLayerOpacityAnimation`. */
+export function removeGroupOpacityAnimation(groupId: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g || !g.tracks?.opacity) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return;
+  const resolved = groupOpacityAt(g, state.playhead);
+  commitStructural(() => {
+    g.opacity = resolved;
+    g.tracks = normalizedTracks({ ...g.tracks, opacity: undefined });
+  });
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
+}
+
+/** Auto-key (or write the static field) with NO history entry — for Task 4's group opacity slider
+ *  gesture that brackets its own undo. Key writes refuse a locked member; static writes always
+ *  go through (opacity stays a view-prop when there is no track). */
+export function applyGroupOpacityAt(groupId: number, frame: number, value: number): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g) return;
+  if (g.tracks?.opacity) {
+    if (groupHasLockedLayer(g, state.project.layers)) return;
+    const track = g.tracks.opacity;
+    const existing = track.keys.find((k) => k.frame === frame);
+    if (existing && existing.v === value) return;
+    g.tracks = { ...g.tracks, opacity: withKey(track, frame, value, (n) => n) };
+  } else {
+    g.opacity = value;
+  }
+  bump();
+}
+
 /** The mutation an opacity-key write would perform, or null when it would change nothing (no track,
  *  a locked or hidden layer, or the value already sitting on `frame`). Split from its one caller so
  *  the guard stays ABOVE the write: a re-write of the value already there must not reach history.
@@ -1000,9 +1053,25 @@ function trackTarget(ref: TrackRef): TrackTarget | null {
   const copyTransformValue = (v: unknown) => ({ ...(v as RefTransform) });
   if (ref.owner === "group") {
     const g = state.project.groups.find((x) => x.id === ref.id);
-    const track = g?.tracks?.transform;
-    if (!g || !track) return null;
+    if (!g) return null;
     if (groupHasLockedLayer(g, state.project.layers)) return null; // a locked member pins the group
+    if (ref.prop === "opacity") {
+      const track = g.tracks?.opacity;
+      if (!track) return null;
+      return {
+        track,
+        copyValue: (v) => v,
+        write: (keys, sampleEvery) => {
+          const next = { ...track, keys: keys as Keyframe<number>[] };
+          g.tracks = {
+            ...g.tracks,
+            opacity: sampleEvery === undefined ? next : { ...next, sampleEvery },
+          };
+        },
+      };
+    }
+    const track = g.tracks?.transform;
+    if (!track) return null;
     return {
       track,
       copyValue: copyTransformValue,
@@ -1064,7 +1133,8 @@ export function addTrackKey(ref: TrackRef, frame: number): void {
 function resolvedTrackValue(ref: TrackRef, frame: number): unknown {
   if (ref.owner === "group") {
     const g = state.project.groups.find((x) => x.id === ref.id);
-    return g ? groupTransformAt(g, frame) : undefined;
+    if (!g) return undefined;
+    return ref.prop === "opacity" ? groupOpacityAt(g, frame) : groupTransformAt(g, frame);
   }
   const l = state.project.layers.find((x) => x.id === ref.id);
   if (!l) return undefined;
@@ -1460,8 +1530,9 @@ export function selectTrack(ref: TrackRef): void {
     if (layerChanged && state.onion.enabled && !state.onion.allLayers) repaint();
     return;
   }
-  state.activeRow = { kind: "track", owner: "group", id: ref.id, prop: "transform" };
-  state.transformScope = "group";
+  state.activeRow = { kind: "track", owner: "group", id: ref.id, prop: ref.prop };
+  // Only a transform track is a reason to aim the gizmo at group scope — opacity does not.
+  if (ref.prop === "transform") state.transformScope = "group";
   // DRAW member, or NONE — never a ref. Group scope resolves through the active layer's
   // `groupId`, and `activeTransformLayer` only returns a draw layer at group scope; aiming a
   // ref member would silently key that REF's own transform. An all-ref group is reachable, so

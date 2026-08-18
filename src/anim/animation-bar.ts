@@ -13,7 +13,8 @@ import {
 export type AnimationStartItem =
   | { action: "animate-transform"; layerId: number; blocked: string | null }
   | { action: "animate-opacity"; layerId: number; blocked: string | null }
-  | { action: "animate-group"; groupId: number; blocked: string | null };
+  | { action: "animate-group"; groupId: number; blocked: string | null }
+  | { action: "animate-group-opacity"; groupId: number; blocked: string | null };
 
 export type AnimationBar =
   | { kind: "start"; items: AnimationStartItem[] }
@@ -120,6 +121,13 @@ export function animationBar(args: {
   if (g && !g.tracks?.transform) {
     items.push({
       action: "animate-group",
+      groupId: g.id,
+      blocked: groupAnimateBlocked(g, layers),
+    });
+  }
+  if (g && !g.tracks?.opacity) {
+    items.push({
+      action: "animate-group-opacity",
       groupId: g.id,
       blocked: groupAnimateBlocked(g, layers),
     });
