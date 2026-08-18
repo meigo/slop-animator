@@ -148,12 +148,14 @@
     >
     <button
       class={BTN}
-      aria-disabled={!appState.transformKeyClipboard}
-      title={appState.transformKeyClipboard
-        ? "Paste the copied key here, replacing any key on this frame"
-        : "Paste key — nothing copied yet"}
+      aria-disabled={!!blocked || !appState.transformKeyClipboard}
+      title={blocked
+        ? `Paste key — ${blocked}`
+        : appState.transformKeyClipboard
+          ? "Paste the copied key here, replacing any key on this frame"
+          : "Paste key — nothing copied yet"}
       onclick={() => {
-        if (appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
+        if (!blocked && appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
       }}
       ><ClipboardPaste size={16} /></button
     >
