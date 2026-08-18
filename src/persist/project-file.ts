@@ -15,7 +15,10 @@ import {
   type Layer,
   type LayerGroup,
   type TransformTrack,
-  type TransformKey,
+  type Track,
+  type Keyframe,
+  type LayerTracks,
+  type GroupTracks,
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
@@ -32,6 +35,9 @@ export interface DrawingLayerJson {
   groupId: number | null;
   cells: ("key" | "hold")[];
   transform: RefTransform;
+  tracks?: LayerTracks;
+  /** LEGACY, read-only. The single-property shape that SHIPPED before `tracks` existed, so it is in
+   *  real projects and autosaves; the loader promotes it. Never written. */
   transformTrack?: TransformTrack;
   cellTransforms?: {
     [index: number]: {
@@ -58,6 +64,8 @@ export interface ReferenceJson {
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
+  tracks?: LayerTracks;
+  /** LEGACY, read-only — see `DrawingLayerJson.transformTrack`. */
   transformTrack?: TransformTrack;
 }
 
@@ -134,6 +142,7 @@ export interface ProjectJson {
     locked?: boolean;
     transform?: RefTransform;
     transformBox?: { x: number; y: number; w: number; h: number } | null;
+    tracks?: GroupTracks;
   }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
@@ -183,6 +192,7 @@ export function projectToJson(project: Project): ProjectJson {
         collapsed: g.collapsed,
         visible: g.visible,
         locked: g.locked,
+        tracks: g.tracks,
         ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
       };
     }),
@@ -196,7 +206,7 @@ export function projectToJson(project: Project): ProjectJson {
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
-      transformTrack: l.transformTrack,
+      tracks: l.tracks,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
           c.kind === "key" &&
@@ -232,7 +242,7 @@ export function projectToJson(project: Project): ProjectJson {
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
-        transformTrack: l.transformTrack,
+        tracks: l.tracks,
       })),
     // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
@@ -383,9 +393,9 @@ export async function saveProjectBlob(
  * empty key array becomes no track at all: a track is documented never-empty, and `transformAt`
  * already falls back to the static transform.
  */
-function sanitiseTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
+function sanitiseTrack<T extends Track<unknown>>(track: T | undefined): T | undefined {
   if (!track || !Array.isArray(track.keys)) return undefined;
-  const byFrame = new Map<number, TransformKey>();
+  const byFrame = new Map<number, Keyframe<unknown>>();
   const sorted = track.keys
     .filter((k) => k && Number.isFinite(k.frame))
     .sort((a, b) => a.frame - b.frame);
@@ -396,6 +406,26 @@ function sanitiseTransformTrack(track: TransformTrack | undefined): TransformTra
   if (every === undefined) return { ...track, keys };
   const n = Math.floor(Number.isFinite(every) ? every : 1);
   return { ...track, keys, sampleEvery: Math.min(MAX_SAMPLE_EVERY, Math.max(1, n)) };
+}
+
+/** Sort, de-duplicate and clamp every track in a persisted bag. A bag whose tracks all sanitise
+ *  away is `undefined`, not an empty object — "no animation" has one representation in the model. */
+function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
+  if (!tracks) return undefined;
+  const out = {} as T;
+  const transform = sanitiseTrack(tracks.transform);
+  if (transform) out.transform = transform;
+  if ("opacity" in tracks) {
+    const opacity = sanitiseTrack(tracks.opacity);
+    if (opacity) (out as LayerTracks).opacity = opacity;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Promote the LEGACY single-track field into a bag. `transformTrack` shipped, so it is in real
+ *  files and autosaves — dropping this read would make a saved animation silently disappear. */
+function legacyTracks(track: TransformTrack | undefined): LayerTracks | undefined {
+  return track ? { transform: track } : undefined;
 }
 
 export async function loadProjectBlob(
@@ -446,7 +476,9 @@ export async function loadProjectBlob(
       groupId: lj.groupId ?? null,
       cells,
       transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
-      transformTrack: sanitiseTransformTrack(lj.transformTrack),
+      // Read both shapes: `transformTrack` shipped and is in real projects, including autosaves.
+      // `tracks` wins when a file carries both.
+      tracks: sanitiseTracks(lj.tracks ?? legacyTracks(lj.transformTrack)),
     });
   }
   const refsJson = json.references ?? [];
@@ -469,7 +501,7 @@ export async function loadProjectBlob(
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
-      transformTrack: sanitiseTransformTrack(rj.transformTrack),
+      tracks: sanitiseTracks(rj.tracks ?? legacyTracks(rj.transformTrack)),
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer;
     const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;
@@ -497,6 +529,7 @@ export async function loadProjectBlob(
     locked: g.locked ?? false,
     transform: g.transform ? { ...g.transform } : undefined,
     transformBox: g.transformBox ? { ...g.transformBox } : null,
+    tracks: sanitiseTracks(g.tracks),
   }));
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);

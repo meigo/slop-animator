@@ -1,6 +1,6 @@
 <script lang="ts">
   import { state as appState, activeLayer } from "../state/appState.svelte";
-  import { isLayerLocked, isLayerVisible } from "../anim/document";
+  import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetLayer } from "./transform-target";
 
@@ -25,15 +25,15 @@
     // is not enough, because at FRAME scope a drag writes the cell's transform and at GROUP scope
     // the group's — neither writes a key. Those are exactly the scopes where the ToolOptions
     // controls vanish, so the status bar is the only thing talking and must not promise a key.
-    const keys =
-      animateTargetLayer(
-        l,
-        appState.project.groups,
-        appState.tool,
-        appState.transformScope,
-        appState.playhead,
-        appState.project.fps,
-      )?.transformTrack != null;
+    const target = animateTargetLayer(
+      l,
+      appState.project.groups,
+      appState.tool,
+      appState.transformScope,
+      appState.playhead,
+      appState.project.fps,
+    );
+    const keys = !!target && layerTransformTrack(target) != null;
     return contextHint({
       tool: appState.tool,
       locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's

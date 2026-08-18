@@ -67,6 +67,7 @@
     canRemoveLayer,
     canDuplicateLayer,
     whyNotMergeDown,
+    layerTransformTrack,
   } from "../anim/document";
   import type { Layer, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
@@ -185,7 +186,7 @@
     // On an ANIMATED layer the static `transform` is retained but IGNORED, so it says nothing about
     // what is on screen — and Apply/Reset refuse on it anyway. The cell and group terms below are
     // unaffected: neither is driven by the track.
-    if (!layer.transformTrack && !isIdentityTransform(layer.transform)) return true;
+    if (!layerTransformTrack(layer) && !isIdentityTransform(layer.transform)) return true;
     const rk = resolvedKeyCell(layer, appState.playhead);
     if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
     const g = groupOf(layer, appState.project.groups);
@@ -198,7 +199,7 @@
     if (layer.kind !== "draw") return null;
     // Same reason as hasTransform: an animated layer's static transform is ignored, and Apply/Reset
     // refuse on it — so it must not win the scope dispatch and offer an action that no-ops.
-    const layerNI = !layer.transformTrack && !isIdentityTransform(layer.transform);
+    const layerNI = !layerTransformTrack(layer) && !isIdentityTransform(layer.transform);
     const rk = resolvedKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
     const g = groupOf(layer, appState.project.groups);

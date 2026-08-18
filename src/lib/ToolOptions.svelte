@@ -24,6 +24,7 @@
   import {
     whyNotEditable,
     hasKeyAt,
+    layerTransformTrack,
     segmentKeyAt,
     type KeyInterp,
     MAX_SAMPLE_EVERY,
@@ -309,7 +310,7 @@
        hint and its transform gizmo doesn't render at all, so a visible-but-disabled Animate button
        would point at chrome that isn't there — see task-8 report for the full reasoning. -->
   {#if animTarget}
-    {@const track = animTarget.transformTrack}
+    {@const track = layerTransformTrack(animTarget)}
     {#if !track}
       <button
         class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
@@ -419,7 +420,7 @@
             // Write the RESOLVED value back. The action early-returns when the clamp lands on the
             // value already stored, so the bound expression never changes and Svelte leaves the DOM
             // alone: typing `0` and blurring left the field showing 0 while the store held 1.
-            el.value = String(animTarget.transformTrack?.sampleEvery ?? 1);
+            el.value = String(layerTransformTrack(animTarget)?.sampleEvery ?? 1);
           }}
         />
       </label>

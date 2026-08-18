@@ -765,8 +765,12 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       };
       const below = layer(1, [makeKey()]);
       const upper = layer(2, [makeKey()]);
-      expect(whyNotMergeDown([{ ...below, transformTrack: track }, upper], [], 2)).toBe("animated");
-      expect(whyNotMergeDown([below, { ...upper, transformTrack: track }], [], 2)).toBe("animated");
+      expect(whyNotMergeDown([{ ...below, tracks: { transform: track } }, upper], [], 2)).toBe(
+        "animated",
+      );
+      expect(whyNotMergeDown([below, { ...upper, tracks: { transform: track } }], [], 2)).toBe(
+        "animated",
+      );
     });
 
     it("reports the structural block before the read-only one", () => {

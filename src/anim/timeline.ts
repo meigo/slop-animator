@@ -3,6 +3,7 @@ import {
   refreshLength,
   copyTransformKey,
   withTrackKeys,
+  layerTransformTrack,
   type Cell,
   type DrawingLayer,
   type Layer,
@@ -197,8 +198,10 @@ export function shiftTransformTrackFrames(
  * every call site can call it unconditionally.
  */
 export function shiftLayerTransformKeys(layer: Layer, at: number, delta: 1 | -1): void {
-  if (!layer.transformTrack) return;
-  layer.transformTrack = shiftTransformTrackFrames(layer.transformTrack, at, delta);
+  const track = layerTransformTrack(layer);
+  if (!track) return;
+  // Replaces the BAG as well as the track: the no-mutation rule reaches both levels now.
+  layer.tracks = { ...layer.tracks, transform: shiftTransformTrackFrames(track, at, delta) };
 }
 
 /** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track

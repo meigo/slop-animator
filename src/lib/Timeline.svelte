@@ -86,6 +86,7 @@
     countKeyframesPastLengthIn,
     refVisibleSpan,
     withMovedTransformKey,
+    layerTransformTrack,
     type KeyInterp,
     type DrawingLayer,
     type Layer,
@@ -1008,7 +1009,7 @@
     // permanently un-undoable. A right-click during a left drag is enough, hence the button filter
     // too (mouse `button` is 0 for the primary button and for every pen/touch contact).
     if (keyDrag || !e.isPrimary || e.button !== 0) return;
-    if (!layer.transformTrack) return;
+    if (!layerTransformTrack(layer)) return;
     // Group-aware, never the raw `.locked`/`.visible` flags. NOT `isLayerEditable`: that is a
     // `layer is DrawingLayer` predicate and a REFERENCE layer can be animated too. A read-only
     // owner keeps the tap-to-seek path (see settleKeyDrag) and loses only the retime — which is
@@ -1033,7 +1034,7 @@
       startX: e.clientX,
       startY: e.clientY,
       moved: false,
-      prevTrack: layer.transformTrack,
+      prevTrack: layerTransformTrack(layer),
       from: frame,
       cur: frame,
       undo: readOnly ? null : beginStructuralEdit(),
@@ -1073,7 +1074,7 @@
       appState.project.frameCount,
     );
     if (to === keyDrag.cur) return;
-    const track = keyDrag.layer.transformTrack;
+    const track = layerTransformTrack(keyDrag.layer);
     if (!track) return;
     // Retiming a key re-resolves the segment, so a lifted selection/pose would bake back through
     // its GRAB-TIME compose and land at the old placement. Discarded here, at the first write that
@@ -1091,7 +1092,12 @@
     }
     // Always move from the ORIGINAL frame against the grab-time track, so a drag that passes over
     // another key does not eat it on the way through — only where it is released.
-    keyDrag.layer.transformTrack = withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to);
+    // Replaces the BAG as well as the track (gotcha #8 reaches both levels now); the spread
+    // keeps any sibling track this layer carries.
+    keyDrag.layer.tracks = {
+      ...keyDrag.layer.tracks,
+      transform: withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to),
+    };
     keyDrag.cur = to;
     bump();
   }
@@ -1114,7 +1120,8 @@
       // undo entry that does nothing. A tap SEEKS to the key instead — which is also how a key is
       // deleted, since ToolOptions' "Delete key" acts on the key under the playhead. Two taps, no
       // new gesture, and it works with a Pencil where a hover-only ✕ would not.
-      d.layer.transformTrack = d.prevTrack;
+      // Into a FRESH bag, so putting the frozen track back cannot clobber a sibling track.
+      d.layer.tracks = { ...d.layer.tracks, transform: d.prevTrack };
       // Select the key's OWNER as well as seeking. "Delete key" acts on the ACTIVE layer's key at
       // the playhead, so tapping a key on some other layer's row would otherwise arm the button
       // against a different layer's key at the same frame — deleting the one you did not tap.
@@ -2026,7 +2033,7 @@
         <!-- Clamped to the strip: shortening the animation does not move transform keys, and an
              absolutely-positioned dot past the last frame would draw over the ruler's end and add
              scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
-        {@const trackKeys = tl.transformTrack?.keys ?? []}
+        {@const trackKeys = layerTransformTrack(tl)?.keys ?? []}
         {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
         {@const stripW = appState.project.frameCount * CELL_W}
         <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past

@@ -1,4 +1,4 @@
-import { groupOf, type Layer, type LayerGroup } from "./document";
+import { groupOf, layerTransformTrack, type Layer, type LayerGroup } from "./document";
 
 /**
  * Display ordering for the layer stack, shared by the layer panel and the timeline.
@@ -52,7 +52,7 @@ export type TimelineRow =
  *  both branches of `timelineRows` so the two can't drift. */
 function pushLayer(rows: TimelineRow[], layer: Layer): void {
   rows.push({ kind: "layer", layer });
-  if (layer.transformTrack) rows.push({ kind: "transform", layer });
+  if (layerTransformTrack(layer)) rows.push({ kind: "transform", layer });
 }
 
 /** Flatten segments into timeline rows, top-first. A collapsed group contributes only its own row,

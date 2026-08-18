@@ -32,6 +32,7 @@ export interface LayerGroup {
   locked?: boolean;
   transform?: RefTransform;
   transformBox?: { x: number; y: number; w: number; h: number } | null;
+  tracks?: GroupTracks;
 }
 
 export interface DrawingLayer {
@@ -45,7 +46,7 @@ export interface DrawingLayer {
   groupId: number | null;
   cells: Cell[]; // independent per-layer length; document length = the longest layer
   transform: RefTransform;
-  transformTrack?: TransformTrack;
+  tracks?: LayerTracks;
 }
 
 export type ReferenceMedia =
@@ -109,6 +110,36 @@ export interface TransformTrack extends Track<RefTransform> {
  *  beyond a number input's `max`, so the clamp must live in the logic, not just the widget). */
 export const MAX_SAMPLE_EVERY = 12;
 
+/**
+ * The animated properties of a layer. A typed bag, not a `Record<string, Track<unknown>>`: the set
+ * is small and closed, and a record would lose the value type at every call site and push casts
+ * into the render path.
+ */
+export interface LayerTracks {
+  transform?: TransformTrack;
+  opacity?: Track<number>;
+}
+export interface GroupTracks {
+  transform?: TransformTrack;
+}
+
+/** Deep-copy a whole bag. The no-mutation rule (gotcha #8: undo snapshots share layer objects)
+ *  now reaches TWO levels — a copied bag must share neither the bag object nor any track in it. */
+export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
+  const out = {} as T;
+  if (tracks.transform) out.transform = copyTransformTrack(tracks.transform);
+  if ("opacity" in tracks && tracks.opacity)
+    (out as LayerTracks).opacity = copyTrack(tracks.opacity, (n: number) => n);
+  return out;
+}
+
+/** The layer's transform track, or undefined. There were 58 `transformTrack` mentions across
+ *  src/anim, src/lib, src/state and src/persist — one accessor so they do not each reach into the
+ *  bag, and so a future move of the bag is one edit rather than fifty-eight. */
+export function layerTransformTrack(layer: Layer): TransformTrack | undefined {
+  return layer.tracks?.transform;
+}
+
 export interface ReferenceLayer {
   kind: "ref";
   id: number;
@@ -130,7 +161,7 @@ export interface ReferenceLayer {
   groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
-  transformTrack?: TransformTrack;
+  tracks?: LayerTracks;
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
@@ -211,7 +242,7 @@ export function whyNotMergeDown(
   // transform that does not vary — the same reason Apply/Reset refuse. On an animated layer the
   // static `transform` is retained but IGNORED, so baking it would place the pixels where the layer
   // renders at no frame at all, and the track would then vanish with the merged layer.
-  if (upper.transformTrack || below.transformTrack) return "animated";
+  if (layerTransformTrack(upper) || layerTransformTrack(below)) return "animated";
   return null;
 }
 
@@ -389,7 +420,7 @@ export function resolveTrack<V>(
 /** The layer's transform at `frame`: its static value when there is no track, otherwise the track
  *  resolved (and held outside its key range — a track never extrapolates). */
 export function transformAt(layer: Layer, frame: number): RefTransform {
-  const track = layer.transformTrack;
+  const track = layerTransformTrack(layer);
   if (!track || track.keys.length === 0) return layer.transform;
   return resolveTrack(track, frame, lerpTransform);
 }
@@ -547,14 +578,6 @@ export function segmentKeyAt(track: TransformTrack, frame: number): TransformKey
 
 export function hasKeyAt(track: TransformTrack, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
-}
-
-/** Deep-copy a track (or pass `undefined` through) via `copyTransformTrack` — keys array, each key's
- *  transform, and the box. THE single copy site: undo snapshots share layer objects, so
- *  `cloneLayers`, `restoreStructure` and `duplicateLayer` all need exactly this depth, and a
- *  hand-written copy anywhere else would drift the moment a field is added to `TransformTrack`. */
-export function cloneTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
-  return track ? copyTransformTrack(track) : undefined;
 }
 
 /** A group's own transform (identity when absent / undefined group). */

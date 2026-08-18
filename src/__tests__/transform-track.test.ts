@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { unzipSync, zipSync, strToU8, strFromU8 } from "fflate";
 import {
   transformAt,
   createTransformTrack,
@@ -7,7 +8,7 @@ import {
   withMovedTransformKey,
   withPastedTransformKey,
   withKeyInterp,
-  cloneTransformTrack,
+  copyTracks,
   hasKeyAt,
   createProject,
   createDrawingLayer,
@@ -23,7 +24,7 @@ import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
 
 const T = (dx: number, rotation = 0, scale = 1) => ({ dx, dy: 0, scale, rotation });
 const layer = (track?: TransformTrack) =>
-  ({ kind: "draw", id: 1, name: "L", transform: T(5), transformTrack: track }) as Layer;
+  ({ kind: "draw", id: 1, name: "L", transform: T(5), tracks: { transform: track } }) as Layer;
 const track = (over: Partial<TransformTrack> = {}): TransformTrack => ({
   keys: [
     { frame: 0, v: T(0) },
@@ -251,41 +252,57 @@ describe("transform track persistence", () => {
   it("round-trips a track", async () => {
     const project = createProject();
     const l = createDrawingLayer(1, "L");
-    l.transformTrack = {
-      keys: [
-        { frame: 0, v: T(0), interp: "hold" },
-        { frame: 8, v: T(80, 1.5) },
-      ],
-      sampleEvery: 2,
-      box: { x: 1, y: 2, w: 3, h: 4 },
+    l.tracks = {
+      transform: {
+        keys: [
+          { frame: 0, v: T(0), interp: "hold" },
+          { frame: 8, v: T(80, 1.5) },
+        ],
+        sampleEvery: 2,
+        box: { x: 1, y: 2, w: 3, h: 4 },
+      },
     };
     project.layers.push(l);
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     const back = loaded.layers[loaded.layers.length - 1];
-    expect(back.transformTrack).toEqual(l.transformTrack);
+    expect(back.tracks?.transform).toEqual(l.tracks.transform);
   });
 
   it("round-trips a track on a REFERENCE layer", async () => {
     const project = createProject();
     const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
-    ref.transformTrack = {
-      keys: [
-        { frame: 0, v: T(0), interp: "ease-in-out" },
-        { frame: 5, v: T(50, 0.5) },
-      ],
-      sampleEvery: 3,
-      box: { x: 10, y: 20, w: 30, h: 40 },
+    ref.tracks = {
+      transform: {
+        keys: [
+          { frame: 0, v: T(0), interp: "ease-in-out" },
+          { frame: 5, v: T(50, 0.5) },
+        ],
+        sampleEvery: 3,
+        box: { x: 10, y: 20, w: 30, h: 40 },
+      },
     };
     project.layers.push(ref);
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     const back = loaded.layers[loaded.layers.length - 1];
-    expect(back.transformTrack).toEqual(ref.transformTrack);
+    expect(back.tracks?.transform).toEqual(ref.tracks.transform);
+  });
+
+  // "Stop animating" leaves the bag present but empty (`{ ...l.tracks, transform: undefined }`).
+  // A bag with nothing in it is not an animation, so it must load back as `undefined` — one
+  // representation of "no animation", not two that a future `if (layer.tracks)` could disagree on.
+  it("loads an EMPTY bag back as undefined", async () => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    l.tracks = { transform: undefined };
+    project.layers.push(l);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.layers.find((x) => x.id === l.id)!.tracks).toBeUndefined();
   });
 
   it("a layer with no track round-trips as undefined (old saves)", async () => {
     const project = createProject();
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
-    expect(loaded.layers[0].transformTrack).toBeUndefined();
+    expect(loaded.layers[0].tracks?.transform).toBeUndefined();
   });
 });
 
@@ -348,10 +365,11 @@ describe("withMovedTransformKey", () => {
 });
 
 // THE copy site for `cloneLayers`, `restoreStructure` (undo AND redo) and `duplicateLayer`: a field
-// dropped here is erased from the snapshot too, so redo cannot bring it back.
-describe("cloneTransformTrack", () => {
-  it("passes undefined through", () => {
-    expect(cloneTransformTrack(undefined)).toBeUndefined();
+// dropped here is erased from the snapshot too, so redo cannot bring it back. The bag adds a SECOND
+// level the no-mutation rule has to reach — a shared bag object is as corrupting as a shared track.
+describe("copyTracks", () => {
+  it("copies an empty bag to an empty bag", () => {
+    expect(copyTracks({})).toEqual({});
   });
 
   it("preserves each key's segment interpolation", () => {
@@ -362,20 +380,31 @@ describe("cloneTransformTrack", () => {
       ],
       sampleEvery: 3,
     });
-    const copy = cloneTransformTrack(src)!;
+    const copy = copyTracks({ transform: src }).transform!;
     expect(copy.keys).toEqual(src.keys);
     expect(copy.sampleEvery).toBe(3);
   });
 
-  it("shares no mutable object with its input", () => {
+  it("shares no mutable object with its input, at either level", () => {
     const src = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
-    const copy = cloneTransformTrack(src)!;
+    const bag = { transform: src };
+    const copiedBag = copyTracks(bag);
+    const copy = copiedBag.transform!;
+    expect(copiedBag).not.toBe(bag);
     expect(copy).not.toBe(src);
     expect(copy.keys).not.toBe(src.keys);
     expect(copy.keys[0]).not.toBe(src.keys[0]);
     expect(copy.keys[0].v).not.toBe(src.keys[0].v);
     expect(copy.box).not.toBe(src.box);
     expect(copy.box).toEqual(src.box);
+  });
+
+  it("copies an opacity track too, without sharing its keys", () => {
+    const bag = { opacity: { keys: [{ frame: 0, v: 100 }], sampleEvery: 2 } };
+    const copy = copyTracks(bag);
+    expect(copy.opacity).toEqual(bag.opacity);
+    expect(copy.opacity!.keys).not.toBe(bag.opacity.keys);
+    expect(copy.opacity!.keys[0]).not.toBe(bag.opacity.keys[0]);
   });
 });
 
@@ -580,5 +609,79 @@ describe("generic copy helpers", () => {
     expect(c).toEqual(t);
     expect(c.keys).not.toBe(t.keys);
     expect(c.keys[0]).not.toBe(t.keys[0]);
+  });
+});
+
+// transformTrack SHIPPED and is in real projects, including autosaves. The loader must promote it,
+// or a saved animation silently disappears on the next open.
+describe("legacy transformTrack promotion", () => {
+  /** Add the LEGACY `transformTrack` field to a saved blob's `project.json`. Hand-building the zip
+   *  is the only way to produce a field this build can no longer write. It deliberately does NOT
+   *  strip `tracks`: a layer saved without a bag has no `tracks` key anyway (so the first test gets
+   *  a pure legacy file), and leaving it is what lets the second test present a file carrying BOTH. */
+  async function withLegacyTransformTrack(
+    blob: Blob,
+    layerId: number,
+    track: TransformTrack,
+  ): Promise<Blob> {
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"])) as {
+      layers: { id: number; tracks?: unknown; transformTrack?: TransformTrack }[];
+      references: { id: number; tracks?: unknown; transformTrack?: TransformTrack }[];
+    };
+    for (const lj of [...json.layers, ...(json.references ?? [])]) {
+      if (lj.id !== layerId) continue;
+      lj.transformTrack = track;
+    }
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    return new Blob([zipSync(zip) as Uint8Array<ArrayBuffer>]);
+  }
+
+  it("promotes a legacy track into the tracks bag on load", async () => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    project.layers.push(l);
+    const blob = await saveProjectBlob(project);
+    // Hand-build the legacy shape: write the new file, then rewrite its JSON the old way.
+    const legacy = await withLegacyTransformTrack(blob, l.id, {
+      keys: [
+        { frame: 0, v: T(0) },
+        { frame: 6, v: T(60), interp: "hold" },
+      ],
+      box: null,
+    });
+    const loaded = await loadProjectBlob(legacy, 1);
+    const back = loaded.layers.find((x) => x.id === l.id)!;
+    expect(back.tracks?.transform?.keys.map((k) => k.frame)).toEqual([0, 6]);
+    expect(back.tracks?.transform?.keys[1].interp).toBe("hold");
+    expect((back as unknown as { transformTrack?: unknown }).transformTrack).toBeUndefined();
+  });
+
+  it("prefers the new shape when a file carries both", async () => {
+    // A file written by this build and then edited by hand could hold both; `tracks` is authoritative.
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    l.tracks = { transform: { keys: [{ frame: 9, v: T(90) }], box: null } };
+    project.layers.push(l);
+    const blob = await withLegacyTransformTrack(await saveProjectBlob(project), l.id, {
+      keys: [{ frame: 0, v: T(0) }],
+      box: null,
+    });
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.layers.find((x) => x.id === l.id)!.tracks?.transform?.keys[0].frame).toBe(9);
+  });
+
+  it("promotes a legacy track on a REFERENCE layer too", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "image", name: "a.png" }, "R");
+    project.layers.push(ref);
+    const legacy = await withLegacyTransformTrack(await saveProjectBlob(project), ref.id, {
+      keys: [{ frame: 3, v: T(30), interp: "ease-in" }],
+      box: { x: 1, y: 2, w: 3, h: 4 },
+    });
+    const loaded = await loadProjectBlob(legacy, 1);
+    const back = loaded.layers.find((x) => x.id === ref.id)!;
+    expect(back.tracks?.transform?.keys[0].frame).toBe(3);
+    expect(back.tracks?.transform?.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
   });
 });

@@ -25,6 +25,7 @@
     isRefVisibleAtFrame,
     groupTransform,
     transformAt,
+    layerTransformTrack,
     withTransformKey,
     isIdentityTransform,
     isSameTransform,
@@ -88,7 +89,7 @@
     group: LayerGroup | null;
     prevBox: Rect | null;
   } | null = null;
-  // Same direct-object-ref shape as dragFreeze, for the layer-scope transformTrack: captured at
+  // Same direct-object-ref shape as dragFreeze, for the layer-scope transform track: captured at
   // grab so a no-op drag can put the track back exactly as it was. withTransformKey always
   // REPLACES the track (never mutates in place), so the reference captured here is already a
   // valid before-snapshot — nothing needs deep-copying, unlike the box freeze above.
@@ -197,23 +198,24 @@
       // because the whole lifecycle already goes through this getT/setT pair. `base` stays live
       // (never frozen to `track.box`, which Task 5 fixed at null for layer tracks): a layer's
       // base rect is the document rect / a media contain-fit, neither of which drifts the way a
-      // content-derived transformBox does, and resizeProject never touches transform/transformTrack.
+      // content-derived transformBox does, and resizeProject never touches transform/tracks.
       getT: () => transformAt(l, frame),
       setT: (t: RefTransform) => {
-        const track = l.transformTrack;
+        const track = layerTransformTrack(l);
         if (!track) {
           l.transform = t;
           return;
         }
-        // Replace the track object: undo snapshots share the layer (gotcha #8).
-        l.transformTrack = withTransformKey(track, frame, t);
+        // Replace the BAG and the track: undo snapshots share the layer (gotcha #8), and the
+        // no-mutation rule now reaches both levels. The spread keeps any sibling track.
+        l.tracks = { ...l.tracks, transform: withTransformKey(track, frame, t) };
       },
       base: baseRect(l),
       outer,
       cell: null,
       group: g,
       scope: "layer",
-      animated: !!l.transformTrack,
+      animated: !!layerTransformTrack(l),
     };
   }
 
@@ -274,7 +276,7 @@
     // settleDragUndo) — capture it here, before any write.
     if (tgt.scope === "layer") {
       const l = activeTransformLayer();
-      if (l) trackFreeze = { layer: l, prevTrack: l.transformTrack };
+      if (l) trackFreeze = { layer: l, prevTrack: layerTransformTrack(l) };
     }
     const start = inverseChain(tgt.outer, vp.screenToCanvas(e.clientX, e.clientY));
     drag = {
@@ -354,7 +356,13 @@
         // matches startT (that's why we're here), but the TRACK OBJECT may not — a fresh key can
         // exist where none did — and no undo command is being pushed to fix that via
         // restoreStructure, since committing was just decided against above.
-        if (trackFreeze) trackFreeze.layer.transformTrack = trackFreeze.prevTrack;
+        // Put the frozen track back into a FRESH bag, so the revert cannot clobber a sibling
+        // track the same layer may have gained — and never mutate the bag in place (gotcha #8).
+        if (trackFreeze)
+          trackFreeze.layer.tracks = {
+            ...trackFreeze.layer.tracks,
+            transform: trackFreeze.prevTrack,
+          };
         // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have
         // written the TRANSIENT state (press and hold past it without moving). Reverting the live
         // document is not enough — the saved slot has to be re-dirtied so the restore lands too.

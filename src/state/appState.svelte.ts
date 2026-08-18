@@ -25,12 +25,15 @@ import {
   resolvedKeyCell,
   transformAt,
   createTransformTrack,
-  cloneTransformTrack,
+  copyTracks,
+  layerTransformTrack,
   withoutTransformKey,
   withKeyInterp,
   copyTransformTrack,
+  copyTransformKey,
   withPastedTransformKey,
   type KeyInterp,
+  type TransformKey,
   MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
@@ -146,9 +149,12 @@ interface AnimState {
    *  keys frame N" has to name the frame that will ACTUALLY be written, or the one mitigation for
    *  auto-key's silence is itself misleading. Null when no drag is in flight. */
   transformDragFrame: number | null;
-  /** A copied transform key — its value and its segment's curve, without a frame, so it can be
-   *  pasted anywhere. Session-only, like the cell and pixel clipboards; nothing persists it. */
-  transformKeyClipboard: { v: RefTransform; interp?: KeyInterp } | null;
+  /** A copied transform key. A WHOLE `TransformKey`, copied through `copyTransformKey` — not a
+   *  hand-listed subset. A field added to `TransformKey` later would be silently dropped by a
+   *  field list (exactly how `interp` was lost once), and no type error can catch a missing
+   *  OPTIONAL. Its `frame` is carried but deliberately IGNORED on paste — the destination is the
+   *  playhead, so a key can be pasted anywhere. Session-only, like the cell and pixel clipboards. */
+  transformKeyClipboard: TransformKey | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -337,22 +343,23 @@ function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
   // in-place mutations (splice/replace) can't corrupt a stored snapshot. Deep-copy transform
   // so a future in-place field write cannot corrupt in-flight snapshots (groups already do this).
-  // The transform TRACK is deep-copied for the same reason, down to each key's transform: a
-  // snapshot that shared the keys array would be rewritten by the next key the artist drags in.
-  // `cloneTransformTrack` is the single copy site (shared with restoreStructure/duplicateLayer).
+  // The track BAG is deep-copied for the same reason, down to each key's value: a snapshot that
+  // shared the keys array would be rewritten by the next key the artist drags in. `copyTracks` is
+  // the single copy site (shared with restoreStructure/duplicateLayer), and it copies at BOTH
+  // levels — the bag object and every track in it.
   return layers.map((l) =>
     l.kind === "draw"
       ? {
           ...l,
           cells: l.cells.slice(),
           transform: { ...l.transform },
-          transformTrack: cloneTransformTrack(l.transformTrack),
+          tracks: l.tracks ? copyTracks(l.tracks) : undefined,
         }
       : {
           ...l,
           transform: { ...l.transform },
           range: l.range ? { ...l.range } : undefined,
-          transformTrack: cloneTransformTrack(l.transformTrack),
+          tracks: l.tracks ? copyTracks(l.tracks) : undefined,
         },
   );
 }
@@ -363,6 +370,9 @@ function snapshotStructure(): StructSnapshot {
       ...g,
       transform: g.transform ? { ...g.transform } : undefined,
       transformBox: g.transformBox ? { ...g.transformBox } : g.transformBox,
+      // A bare spread would SHARE the bag with the live group — the same hazard the layer path
+      // has always guarded against, reaching groups for the first time now that they can carry a track.
+      tracks: g.tracks ? copyTracks(g.tracks) : undefined,
     })),
     frameCount: state.project.frameCount,
     width: state.project.width,
@@ -390,8 +400,8 @@ function restoreStructure(s: StructSnapshot) {
         live.cells = snap.cells.slice();
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
-      // Structural: it decides what renders at every frame, exactly like `range` does for a ref.
-      live.transformTrack = cloneTransformTrack(snap.transformTrack);
+      // Structural: they decide what renders at every frame, exactly like `range` does for a ref.
+      live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
         live.range = snap.range ? { ...snap.range } : undefined;
@@ -412,6 +422,7 @@ function restoreStructure(s: StructSnapshot) {
     if (live) {
       live.transform = snap.transform ? { ...snap.transform } : undefined;
       live.transformBox = snap.transformBox ? { ...snap.transformBox } : snap.transformBox;
+      live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       // name/collapsed/visible are view-props — keep `live` values (mirror layer pattern).
       return live;
     }
@@ -419,6 +430,7 @@ function restoreStructure(s: StructSnapshot) {
       ...snap,
       transform: snap.transform ? { ...snap.transform } : undefined,
       transformBox: snap.transformBox ? { ...snap.transformBox } : snap.transformBox,
+      tracks: snap.tracks ? copyTracks(snap.tracks) : undefined,
     };
   });
   state.project.frameCount = s.frameCount;
@@ -546,7 +558,7 @@ export function rasterizeReference(layerId: number): void {
   // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
   // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
   // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
-  if (ref.transformTrack) {
+  if (layerTransformTrack(ref)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
   }
@@ -630,7 +642,7 @@ export function duplicateLayer(id: number) {
     // …and the same MOTION: without this the copy of an animated layer came back static, parked at
     // the ignored static transform (a position it may never have rendered at). Same deep copy the
     // undo snapshot uses — one helper, so the two cannot drift.
-    dup.transformTrack = cloneTransformTrack(src.transformTrack);
+    dup.tracks = src.tracks ? copyTracks(src.tracks) : undefined;
     dup.cells = src.cells.map(
       (c): Cell =>
         c.kind === "key"
@@ -681,7 +693,7 @@ export function applyLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
   // Silent refusal matches the locked-layer convention; the status hint explains it.
-  if (layer?.transformTrack) {
+  if (layer && layerTransformTrack(layer)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
   }
@@ -695,7 +707,7 @@ export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
   // Silent refusal matches the locked-layer convention; the status hint explains it.
-  if (layer?.transformTrack) {
+  if (layer && layerTransformTrack(layer)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
   }
@@ -746,7 +758,7 @@ export function resetGroupTransform(groupId: number): void {
 /** Start animating a layer: its current static transform becomes the key at frame 0. */
 export function animateLayer(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l || l.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!l || layerTransformTrack(l) || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   commitStructural(() => {
     // `box: null`, not a frozen `transformBaseRect` — the freeze-the-pivot rule is for
@@ -756,7 +768,9 @@ export function animateLayer(layerId: number): void {
     // for the same quantity — and `resizeProject` never updates a frozen box, so one would silently
     // describe the OLD document size after a resize. `box` stays on `TransformTrack` for a future
     // group-level track, where it genuinely is content-derived.
-    l.transformTrack = createTransformTrack(l.transform, null);
+    // Replaces the BAG as well as the track — gotcha #8 now applies at two levels, and the
+    // spread keeps any sibling track this layer already carries.
+    l.tracks = { ...l.tracks, transform: createTransformTrack(l.transform, null) };
   });
 }
 
@@ -764,12 +778,12 @@ export function animateLayer(layerId: number): void {
  *  WYSIWYG — the alternative (restoring the pre-animation value) would undo work invisibly. */
 export function removeLayerAnimation(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l?.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!l || !layerTransformTrack(l) || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const resolved = transformAt(l, state.playhead);
   commitStructural(() => {
     l.transform = { ...resolved };
-    l.transformTrack = undefined;
+    l.tracks = { ...l.tracks, transform: undefined };
   });
 }
 
@@ -777,13 +791,13 @@ export function removeLayerAnimation(layerId: number): void {
  *  last key — a track is never empty; Remove animation is the way out. */
 export function deleteTransformKeyAtPlayhead(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.transformTrack;
+  const track = l && layerTransformTrack(l);
   if (!l || !track || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const next = withoutTransformKey(track, state.playhead);
   if (next === track) return; // guard ABOVE the commit: a no-op must not push an empty entry
   commitStructural(() => {
-    l.transformTrack = next;
+    l.tracks = { ...l.tracks, transform: next };
   });
 }
 
@@ -791,7 +805,7 @@ export function deleteTransformKeyAtPlayhead(layerId: number): void {
  *  rhythm the whole move is cut to. Replaces the track object (gotcha #8). */
 export function setTransformTrackSampleEvery(layerId: number, sampleEvery: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.transformTrack;
+  const track = l && layerTransformTrack(l);
   if (!l || !track || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   // Clamped HERE, not at the widget: an input's `max` is advisory and a browser accepts a typed
@@ -801,7 +815,7 @@ export function setTransformTrackSampleEvery(layerId: number, sampleEvery: numbe
   commitStructural(() => {
     // Via `copyTransformTrack`, the single track-copy site — not a hand-spread, so it cannot drift
     // from the depth every other track writer uses.
-    l.transformTrack = { ...copyTransformTrack(track), sampleEvery: next };
+    l.tracks = { ...l.tracks, transform: { ...copyTransformTrack(track), sampleEvery: next } };
   });
 }
 
@@ -809,19 +823,23 @@ export function setTransformTrackSampleEvery(layerId: number, sampleEvery: numbe
  *  protects content from being CHANGED, and copying changes nothing. Not undoable: no document edit. */
 export function copyTransformKeyAtPlayhead(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const key = l?.transformTrack?.keys.find((k) => k.frame === state.playhead);
+  const key = l && layerTransformTrack(l)?.keys.find((k) => k.frame === state.playhead);
   if (!key) return;
-  state.transformKeyClipboard = { v: { ...key.v }, ...(key.interp ? { interp: key.interp } : {}) };
+  // Through `copyTransformKey`, the single key-copy site — a spread, so a field added to
+  // `TransformKey` later travels rather than being dropped here.
+  state.transformKeyClipboard = copyTransformKey(key);
 }
 
 /** Paste the copied key at the playhead, replacing whatever is there. Refuses a layer with no track:
  *  a paste should not silently start animating something (press Animate for that). */
 export function pasteTransformKeyAtPlayhead(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.transformTrack;
+  const track = l && layerTransformTrack(l);
   const clip = state.transformKeyClipboard;
   if (!l || !track || !clip || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
+  // The clipboard's own `frame` is deliberately ignored: the destination is the PLAYHEAD, which is
+  // what makes a key pasteable anywhere (`withPastedTransformKey` overrides it).
   // Guard ABOVE the commit, like every sibling action: pasting a key identical to the one already
   // there (value AND curve) changes nothing, and an empty undo entry reads as a dead ⌘Z.
   // `withPastedTransformKey` stays always-new — the sameness is a property of THIS caller's data.
@@ -834,7 +852,7 @@ export function pasteTransformKeyAtPlayhead(layerId: number): void {
   )
     return;
   commitStructural(() => {
-    l.transformTrack = withPastedTransformKey(track, at, clip);
+    l.tracks = { ...l.tracks, transform: withPastedTransformKey(track, at, clip) };
   });
 }
 
@@ -842,13 +860,13 @@ export function pasteTransformKeyAtPlayhead(layerId: number): void {
  *  Per-key, because a track routinely wants different segments to behave differently. */
 export function setTransformKeyInterp(layerId: number, frame: number, interp: KeyInterp): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.transformTrack;
+  const track = l && layerTransformTrack(l);
   if (!l || !track || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const next = withKeyInterp(track, frame, interp);
   if (next === track) return; // same object = nothing changed; do not push an empty entry
   commitStructural(() => {
-    l.transformTrack = next;
+    l.tracks = { ...l.tracks, transform: next };
   });
 }
 
