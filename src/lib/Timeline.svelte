@@ -948,9 +948,17 @@
   function keyDown(e: PointerEvent, layer: Layer, frame: number) {
     // Finger navigates, Pencil edits — the app-wide rule. A touch falls through to the row's own
     // pan handling instead of retiming a key by accident.
-    if (!isFinePointer(e)) return;
+    if (!isFinePointer(e)) {
+      // Finger navigates: hand it to the row pan, or this row would be a dead zone for scrolling
+      // while every other row scrolls.
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      touchPanDown(e);
+      return;
+    }
     if (!layer.transformTrack) return;
-    e.stopPropagation();
+    // No stopPropagation: it would suppress App.svelte's window-level status-hint listener, so this
+    // marker's title would never reach the status bar. Nothing above needs blocking — the transform
+    // row has no pointerdown handler, and gridWrapper's fling-catcher runs in the capture phase.
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     keyDrag = {
       layer,
@@ -963,6 +971,10 @@
   }
 
   function keyMove(e: PointerEvent) {
+    if (touchPan) {
+      touchPanMove(e);
+      return;
+    }
     if (!keyDrag) return;
     const to = columnAtX(
       e.clientX -
@@ -983,6 +995,7 @@
   }
 
   function keyUp() {
+    touchPanUp();
     settleKeyDrag();
   }
 
@@ -1865,8 +1878,19 @@
           <span
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-muted"
             class:pl-4={tl.groupId != null}
-            style="width: {LABEL_W}px"
+            style="width: {LABEL_W}px; touch-action: none"
             title="Transform keys for {tl.name}"
+            role="presentation"
+            onpointerdown={(e) => {
+              if (isFinePointer(e)) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              touchPanDown(e);
+            }}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
           >
             <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
                  starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
@@ -1878,13 +1902,37 @@
           <span
             class="sticky z-20 shrink-0 h-6 bg-surface border-r border-text-muted"
             role="presentation"
-            style="left: {LABEL_W}px; width: {MARKER_W}px"
+            style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
+            onpointerdown={(e) => {
+              if (isFinePointer(e)) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              touchPanDown(e);
+            }}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
           ></span>
           <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
                per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
                carries its own 1px border, so adjacent segments never meet. Absolute positioning
                also makes a key a real hit target for dragging it to another frame. -->
-          <div class="relative flex select-none">
+          <div
+            class="relative flex select-none"
+            style="touch-action: none"
+            role="presentation"
+            onpointerdown={(e) => {
+              if (isFinePointer(e)) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              touchPanDown(e);
+            }}
+            onpointermove={(e) => {
+              if (touchPan) touchPanMove(e);
+            }}
+            onpointerup={touchPanUp}
+            onpointercancel={touchPanUp}
+          >
             {#each Array(appState.project.frameCount) as _, f (f)}
               <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
             {/each}
