@@ -16,10 +16,23 @@ import {
   nonEmptyGroups,
   mediaIntrinsicSize,
   isIdentityTransform,
+  isSameTransform,
   groupHasLockedLayer,
   isLayerEditable,
+  isLayerLocked,
+  isLayerVisible,
   IDENTITY_TRANSFORM,
   resolvedKeyCell,
+  transformAt,
+  createTransformTrack,
+  cloneTransformTrack,
+  withoutTransformKey,
+  withKeyInterp,
+  withTrackKeys,
+  copyTransformKey,
+  withPastedTransformKey,
+  type KeyInterp,
+  MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
   type Layer,
@@ -129,6 +142,14 @@ interface AnimState {
    *  overwrites it on the next pointer move, which is no way to carry a condition that lasts the
    *  session. Same carve-out, same reason, as `poseFillWarning`. Set by App.svelte/Toolbar; cleared
    *  only by a subsequent success. */
+  /** While a transform drag is held, the frame it will key — frozen at grab. The playhead can move
+   *  under a held drag (playback, or the global arrow keys), and the status hint promising "a drag
+   *  keys frame N" has to name the frame that will ACTUALLY be written, or the one mitigation for
+   *  auto-key's silence is itself misleading. Null when no drag is in flight. */
+  transformDragFrame: number | null;
+  /** A copied transform key — its value and its segment's curve, without a frame, so it can be
+   *  pasted anywhere. Session-only, like the cell and pixel clipboards; nothing persists it. */
+  transformKeyClipboard: { t: RefTransform; interp?: KeyInterp } | null;
   persistAlert: string;
   /** The startup restore failed, so autosave stayed disarmed for the whole session. A manual save
    *  puts the CURRENT work on disk but does not re-arm it, so it must not retire the warning —
@@ -222,6 +243,8 @@ export const state: AnimState = $state({
   pose: { fillHoles: true, gap: 0 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
+  transformDragFrame: null,
+  transformKeyClipboard: null,
   persistAlert: "",
   autosaveOff: false,
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
@@ -315,10 +338,23 @@ function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
   // in-place mutations (splice/replace) can't corrupt a stored snapshot. Deep-copy transform
   // so a future in-place field write cannot corrupt in-flight snapshots (groups already do this).
+  // The transform TRACK is deep-copied for the same reason, down to each key's transform: a
+  // snapshot that shared the keys array would be rewritten by the next key the artist drags in.
+  // `cloneTransformTrack` is the single copy site (shared with restoreStructure/duplicateLayer).
   return layers.map((l) =>
     l.kind === "draw"
-      ? { ...l, cells: l.cells.slice(), transform: { ...l.transform } }
-      : { ...l, transform: { ...l.transform }, range: l.range ? { ...l.range } : undefined },
+      ? {
+          ...l,
+          cells: l.cells.slice(),
+          transform: { ...l.transform },
+          transformTrack: cloneTransformTrack(l.transformTrack),
+        }
+      : {
+          ...l,
+          transform: { ...l.transform },
+          range: l.range ? { ...l.range } : undefined,
+          transformTrack: cloneTransformTrack(l.transformTrack),
+        },
   );
 }
 function snapshotStructure(): StructSnapshot {
@@ -355,6 +391,8 @@ function restoreStructure(s: StructSnapshot) {
         live.cells = snap.cells.slice();
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
+      // Structural: it decides what renders at every frame, exactly like `range` does for a ref.
+      live.transformTrack = cloneTransformTrack(snap.transformTrack);
       if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
         live.range = snap.range ? { ...snap.range } : undefined;
@@ -505,6 +543,14 @@ export function rasterizeReference(layerId: number): void {
   const ref = layers[idx];
   if (!ref || ref.kind !== "ref" || ref.media.type !== "image") return; // image refs only
   if (mediaIntrinsicSize(ref.media).w === 0) return; // media not loaded
+  // Rasterizing bakes ONE placement into pixels, which only means something for a transform that
+  // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
+  // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
+  // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
+  if (ref.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   commitStructural(() => {
     const cell = createCellCanvas(state.project.width, state.project.height, DPR);
     const ctx = cell.getContext("2d")!;
@@ -582,6 +628,10 @@ export function duplicateLayer(id: number) {
     dup.boilStrength = src.boilStrength; // match the source's line-boil strength
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
     dup.transform = { ...src.transform }; // copy renders at the same placement as the source
+    // …and the same MOTION: without this the copy of an animated layer came back static, parked at
+    // the ignored static transform (a position it may never have rendered at). Same deep copy the
+    // undo snapshot uses — one helper, so the two cannot drift.
+    dup.transformTrack = cloneTransformTrack(src.transformTrack);
     dup.cells = src.cells.map(
       (c): Cell =>
         c.kind === "key"
@@ -630,6 +680,12 @@ function bakeLayerTransform(layer: DrawingLayer): void {
 
 export function applyLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
+  // Silent refusal matches the locked-layer convention; the status hint explains it.
+  if (layer?.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   if (layer?.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
   liftGuard.discard?.(); // bake replaces every key canvas
@@ -638,6 +694,12 @@ export function applyLayerTransform(layerId: number): void {
 
 export function resetLayerTransform(layerId: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
+  // Baking pixels, or resetting to fit, only means something for a transform that does not vary.
+  // Silent refusal matches the locked-layer convention; the status hint explains it.
+  if (layer?.transformTrack) {
+    state.statusHint = "Layer is animated — Stop animating first";
+    return;
+  }
   if (!layer || isIdentityTransform(layer.transform)) return;
   if (layer.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   commitStructural(() => {
@@ -679,6 +741,118 @@ export function resetGroupTransform(groupId: number): void {
   commitStructural(() => {
     g.transform = { ...IDENTITY_TRANSFORM };
     g.transformBox = null;
+  });
+}
+
+/** Start animating a layer: its current static transform becomes the key at frame 0. */
+export function animateLayer(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l || l.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  commitStructural(() => {
+    // `box: null`, not a frozen `transformBaseRect` — the freeze-the-pivot rule is for
+    // CONTENT-DERIVED boxes (a cell's/group's, built from content bounds, which drift as you draw).
+    // A layer's base rect (doc rect / media contain-fit) never drifts from drawing more — the gizmo
+    // already recomputes it live for the static case, so freezing here would be a second convention
+    // for the same quantity — and `resizeProject` never updates a frozen box, so one would silently
+    // describe the OLD document size after a resize. `box` stays on `TransformTrack` for a future
+    // group-level track, where it genuinely is content-derived.
+    l.transformTrack = createTransformTrack(l.transform, null);
+  });
+}
+
+/** Stop animating: bake what is on screen NOW into the static transform, then drop the track.
+ *  WYSIWYG — the alternative (restoring the pre-animation value) would undo work invisibly. */
+export function removeLayerAnimation(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (!l?.transformTrack || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const resolved = transformAt(l, state.playhead);
+  commitStructural(() => {
+    l.transform = { ...resolved };
+    l.transformTrack = undefined;
+  });
+}
+
+/** Remove the key at the playhead. No-op (and no undo entry) when there is none, or when it is the
+ *  last key — a track is never empty; Remove animation is the way out. */
+export function deleteTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const next = withoutTransformKey(track, state.playhead);
+  if (next === track) return; // guard ABOVE the commit: a no-op must not push an empty entry
+  commitStructural(() => {
+    l.transformTrack = next;
+  });
+}
+
+/** The track's step setting — how often the move updates, in frames. Track-wide, because it is the
+ *  rhythm the whole move is cut to. Replaces the track object (gotcha #8). */
+export function setTransformTrackSampleEvery(layerId: number, sampleEvery: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  // Clamped HERE, not at the widget: an input's `max` is advisory and a browser accepts a typed
+  // value beyond it — the same reason the Fill tool clamps its gap in the logic.
+  const next = Math.min(MAX_SAMPLE_EVERY, Math.max(1, Math.floor(sampleEvery)));
+  if (next === (track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
+  commitStructural(() => {
+    // via withTrackKeys so the `box` copy stays single-sited — this was the one construction site
+    // still spreading the track by hand, i.e. the one free to diverge from that depth later.
+    l.transformTrack = {
+      ...withTrackKeys(track, track.keys.map(copyTransformKey)),
+      sampleEvery: next,
+    };
+  });
+}
+
+/** Copy the key under the playhead. Reading is allowed on a locked or hidden layer — the lock
+ *  protects content from being CHANGED, and copying changes nothing. Not undoable: no document edit. */
+export function copyTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const key = l?.transformTrack?.keys.find((k) => k.frame === state.playhead);
+  if (!key) return;
+  state.transformKeyClipboard = { t: { ...key.t }, ...(key.interp ? { interp: key.interp } : {}) };
+}
+
+/** Paste the copied key at the playhead, replacing whatever is there. Refuses a layer with no track:
+ *  a paste should not silently start animating something (press Animate for that). */
+export function pasteTransformKeyAtPlayhead(layerId: number): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  const clip = state.transformKeyClipboard;
+  if (!l || !track || !clip || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  // Guard ABOVE the commit, like every sibling action: pasting a key identical to the one already
+  // there (value AND curve) changes nothing, and an empty undo entry reads as a dead ⌘Z.
+  // `withPastedTransformKey` stays always-new — the sameness is a property of THIS caller's data.
+  const at = state.playhead;
+  const existing = track.keys.find((k) => k.frame === at);
+  if (
+    existing &&
+    isSameTransform(existing.t, clip.t) &&
+    (existing.interp ?? "linear") === (clip.interp ?? "linear")
+  )
+    return;
+  commitStructural(() => {
+    l.transformTrack = withPastedTransformKey(track, at, clip);
+  });
+}
+
+/** The interpolation of the segment starting at `frame` — i.e. the curve from that key to the next.
+ *  Per-key, because a track routinely wants different segments to behave differently. */
+export function setTransformKeyInterp(layerId: number, frame: number, interp: KeyInterp): void {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  const track = l?.transformTrack;
+  if (!l || !track || isLayerLocked(l, state.project.groups)) return;
+  if (!isLayerVisible(l, state.project.groups)) return;
+  const next = withKeyInterp(track, frame, interp);
+  if (next === track) return; // same object = nothing changed; do not push an empty entry
+  commitStructural(() => {
+    l.transformTrack = next;
   });
 }
 

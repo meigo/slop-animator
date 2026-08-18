@@ -30,6 +30,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Transform & deform**
 
 - Free transform at four scopes: selection, current-frame cell, whole layer, and layer group (transforms compose `group ∘ layer ∘ cell` at render)
+- A layer's transform can be animated: keys at any frame, linear or hold interpolation, and a step
+  setting so a move can land on 2s/3s like the drawings
 - Painting on a transformed layer shows its paintable edge as a hairline, so a scaled-down layer no longer cuts strokes off without warning
 - **Deform tool** — FFD grid warp plus a rigid (MLS) mode
 - **Pose tool** — silhouette triangulation + geodesic-weighted MLS with per-handle rotation/reach gizmos, for posing a character drawing without redrawing it
@@ -68,7 +70,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (662); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (742); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
@@ -84,9 +86,10 @@ npm run deploy     # build, then wrangler deploy (Cloudflare Workers static asse
 
 ## Roadmap (rough)
 
-Animated/keyframed transforms, group-transform apply
-(pixel flatten), tiled copy-on-write cell storage for an expandable canvas. See `CLAUDE.md`
-for the detailed state and deferred-work list.
+Group-level transform tracks and group-transform apply (pixel flatten), easing curves and
+retiming keys by dragging them on the track row, a camera with per-layer parallax depth, and
+tiled copy-on-write cell storage for an expandable canvas. See `CLAUDE.md` for the detailed
+state and deferred-work list.
 
 ## Contributors
 

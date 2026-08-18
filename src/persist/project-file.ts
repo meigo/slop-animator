@@ -5,6 +5,7 @@ import {
   setMinLayerId,
   refreshLength,
   defaultBoilConfig,
+  MAX_SAMPLE_EVERY,
   type Project,
   type Cell,
   type DrawingLayer,
@@ -13,6 +14,8 @@ import {
   type RefTransform,
   type Layer,
   type LayerGroup,
+  type TransformTrack,
+  type TransformKey,
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
@@ -29,6 +32,7 @@ export interface DrawingLayerJson {
   groupId: number | null;
   cells: ("key" | "hold")[];
   transform: RefTransform;
+  transformTrack?: TransformTrack;
   cellTransforms?: {
     [index: number]: {
       transform?: RefTransform;
@@ -54,6 +58,7 @@ export interface ReferenceJson {
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
+  transformTrack?: TransformTrack;
 }
 
 /** Splice `refs` (by stack index, ascending) into `base`. Pure; rebuilds the original interleaving. */
@@ -191,6 +196,7 @@ export function projectToJson(project: Project): ProjectJson {
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
+      transformTrack: l.transformTrack,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
           c.kind === "key" &&
@@ -226,6 +232,7 @@ export function projectToJson(project: Project): ProjectJson {
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
+        transformTrack: l.transformTrack,
       })),
     // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
@@ -365,6 +372,32 @@ export async function saveProjectBlob(
 /** Rebuild a Project from a saved zip. `dpr` sizes the rebuilt cell canvases for the current display.
  *  `onSeeked` fires as each hydrated video reference's first frame becomes available (repaint hook).
  *  `onMediaPersistFailed` fires if seeding the local media store for a hydrated file fails (quota). */
+/**
+ * A track read back from a file is untrusted input. `transformAt` assumes `keys[0]` is the earliest
+ * key and the last is the latest — that assumption is what makes it CLAMP outside the key range
+ * instead of extrapolating — so unsorted or duplicated keys from a hand-edited file produce motion
+ * the file never described. A `sampleEvery` outside its range quantises every sampled frame to
+ * nonsense, and a non-finite one makes the whole transform NaN.
+ *
+ * Sort, de-duplicate (the later key wins, the same collision rule the ripple uses) and clamp. An
+ * empty key array becomes no track at all: a track is documented never-empty, and `transformAt`
+ * already falls back to the static transform.
+ */
+function sanitiseTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
+  if (!track || !Array.isArray(track.keys)) return undefined;
+  const byFrame = new Map<number, TransformKey>();
+  const sorted = track.keys
+    .filter((k) => k && Number.isFinite(k.frame))
+    .sort((a, b) => a.frame - b.frame);
+  for (const k of sorted) byFrame.set(k.frame, k);
+  if (byFrame.size === 0) return undefined;
+  const every = track.sampleEvery;
+  const keys = [...byFrame.values()];
+  if (every === undefined) return { ...track, keys };
+  const n = Math.floor(Number.isFinite(every) ? every : 1);
+  return { ...track, keys, sampleEvery: Math.min(MAX_SAMPLE_EVERY, Math.max(1, n)) };
+}
+
 export async function loadProjectBlob(
   blob: Blob,
   dpr: number,
@@ -413,6 +446,7 @@ export async function loadProjectBlob(
       groupId: lj.groupId ?? null,
       cells,
       transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transformTrack: sanitiseTransformTrack(lj.transformTrack),
     });
   }
   const refsJson = json.references ?? [];
@@ -435,6 +469,7 @@ export async function loadProjectBlob(
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
+      transformTrack: sanitiseTransformTrack(rj.transformTrack),
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer;
     const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;

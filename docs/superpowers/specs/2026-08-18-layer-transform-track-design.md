@@ -65,12 +65,11 @@ export interface TransformTrack {
    */
   sampleEvery?: number;
   /**
-   * The pivot box, captured ONCE when the track is created and shared by every key.
+   * The pivot box: ONE box per track, shared by every key. A per-key box would make the pivot
+   * *interpolate*, so the motion path would warp between keys for reasons invisible in the UI.
    *
-   * This is the load-bearing difference from the static case. `transformBox` is frozen per gesture
-   * today (gotcha #5) to stop the pivot moving under a drag; with a track, a per-key box would make
-   * the pivot *interpolate*, so the motion path would warp between keys for reasons invisible in the
-   * UI. One box per track keeps the path predictable.
+   * **`null` for a layer track** — see Authoring. The field stays on the type for a future
+   * group-level track, where the box genuinely is content-derived and must be frozen.
    */
   box: { x: number; y: number; w: number; h: number } | null;
 }
@@ -78,9 +77,8 @@ export interface TransformTrack {
 
 Added to both layer kinds as `transformTrack?: TransformTrack`.
 
-While a track exists, `track.box` **supersedes** the layer's own `transformBox` everywhere the pivot
-is read. The layer's box is left untouched rather than cleared, so Remove animation restores the
-static behaviour intact.
+Because a layer track stores `box: null`, the base rect is recomputed live and the layer's own
+`transformBox` is left untouched, so Remove animation restores the static behaviour intact.
 
 **Absent means static** — the same convention as `ReferenceLayer.range` and the audio trim fields, so
 old projects load unchanged and the save-format version does not move. When a track is present it
@@ -118,9 +116,17 @@ layer** it means any tool, because a ref's gizmo is live under all of them (the 
 Reset-to-fit is rendered outside the per-tool branches). A locked or hidden layer never shows it.
 
 Pressing it creates a track with **one key at frame 0** carrying the layer's current static
-transform, and captures `box` from the layer's current `transformBox` (or its base rect when
-absent). Frame 0 because that value has been true for every
+transform. Frame 0 because that value has been true for every
 frame; anchoring it there makes the first drag at frame N produce a clean 0→N tween.
+
+**`box` is stored `null` for a layer track, and the base rect is recomputed live** (a controller
+ruling that supersedes the earlier "capture it from `transformBox`, or the base rect when absent").
+The freeze-the-pivot rule exists for CONTENT-DERIVED boxes — a cell's or a group's, built from
+content bounds that drift as you draw. A layer's base is the document rect, or a media contain-fit;
+neither drifts from drawing more, and the gizmo already recomputes it live for the static case, so
+freezing here would be a second convention for the same quantity. Worse, `resizeProject` never
+touches `transform`/`transformTrack`, so a frozen box would silently describe the OLD document size
+after a canvas resize, with no invalidation path.
 
 **Keying** — with a track present, both transform drag paths (the gizmo's handle drag and the
 Canvas on-canvas drag) commit a key at the current playhead on release. They already bracket one

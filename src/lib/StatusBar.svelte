@@ -2,6 +2,7 @@
   import { state as appState, activeLayer } from "../state/appState.svelte";
   import { isLayerLocked, isLayerVisible } from "../anim/document";
   import { contextHint } from "./status-hint";
+  import { animateTargetLayer } from "./transform-target";
 
   // Ambient readout: frame, tool (brush/eraser show their stroke type), and the active layer.
   // Split rather than one string: the readout is right-anchored, so a frame number gaining a digit
@@ -20,6 +21,19 @@
   // (sourced from any title=) always wins; this only fills the gap, which on touch is always.
   const idleHint = $derived.by(() => {
     const l = activeLayer();
+    // The SAME predicate the Animate controls use (shared, so the two cannot drift): a track alone
+    // is not enough, because at FRAME scope a drag writes the cell's transform and at GROUP scope
+    // the group's — neither writes a key. Those are exactly the scopes where the ToolOptions
+    // controls vanish, so the status bar is the only thing talking and must not promise a key.
+    const keys =
+      animateTargetLayer(
+        l,
+        appState.project.groups,
+        appState.tool,
+        appState.transformScope,
+        appState.playhead,
+        appState.project.fps,
+      )?.transformTrack != null;
     return contextHint({
       tool: appState.tool,
       locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's
@@ -27,6 +41,8 @@
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
+      // A held drag keys its GRAB frame, not wherever the playhead has since moved to.
+      animatedFrame: keys ? (appState.transformDragFrame ?? appState.playhead) : null,
     });
   });
 </script>

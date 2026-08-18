@@ -84,7 +84,9 @@
     };
     onEdgePointerX(e.clientX);
     onEdgeScrollStart(laneMoveAt, "audio-offset");
-    transformDragGuard.settle = () => settleLaneDrag(); // undo / Open mid-drag settles the bracket
+    // Named reference, not a fresh closure: the settle slot is SHARED, so releasing it has to be
+    // conditional on this drag still owning it (see settleLaneDrag).
+    transformDragGuard.settle = settleLaneDrag; // undo / Open mid-drag settles the bracket
   }
   function laneMove(e: PointerEvent) {
     if (e.pointerType === "touch") {
@@ -113,7 +115,9 @@
     const audio = state.project.audio;
     if (audio && audio.offsetFrames !== dragStart.offset) commitStructuralEdit(dragStart.undo);
     dragStart = null;
-    transformDragGuard.settle = null;
+    // Only release the shared hook if this drag still owns it — clearing another gesture's settle
+    // would leave that one's bracket unsettleable by undo.
+    if (transformDragGuard.settle === settleLaneDrag) transformDragGuard.settle = null;
   }
 
   function laneUp() {
@@ -163,7 +167,7 @@
     };
     onEdgePointerX(e.clientX);
     onEdgeScrollStart(trimMoveAt, "audio-trim");
-    transformDragGuard.settle = () => settleTrimDrag();
+    transformDragGuard.settle = settleTrimDrag; // named, so settleTrimDrag can check it still owns it
   }
 
   function trimMove(e: PointerEvent) {
@@ -218,7 +222,7 @@
         trimLen !== f.trimLenFrames);
     if (changed) commitStructuralEdit(trimDrag.undo);
     trimDrag = null;
-    transformDragGuard.settle = null;
+    if (transformDragGuard.settle === settleTrimDrag) transformDragGuard.settle = null;
   }
 
   function trimUp(e: PointerEvent) {

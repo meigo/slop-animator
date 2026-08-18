@@ -8,6 +8,7 @@ const base: HintContext = {
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
+  animatedFrame: null,
 };
 const ctx = (over: Partial<HintContext>): HintContext => ({ ...base, ...over });
 
@@ -79,5 +80,37 @@ describe("contextHint per tool state", () => {
     }
     // The eyedropper doesn't paint, so a selection changes nothing for it.
     expect(contextHint(ctx({ tool: "eyedropper", selectionActive: true }))).toBe("");
+  });
+});
+
+describe("contextHint — animated layer", () => {
+  const base = {
+    tool: "transform",
+    locked: false,
+    hiddenLayer: false,
+    selectionActive: false,
+    selectionFloating: false,
+    poseActive: false,
+  };
+
+  // Auto-key's one real hazard is silence: a nudge made while scrubbed between keys bends the
+  // motion with nothing said. Naming the frame is the mitigation, so it is not optional.
+  // 1-BASED, matching every other number the artist sees (the f n/n readout, the ruler, a key's
+  // tooltip). `animatedFrame` itself is a model frame, so it is 0-based — asserting "12" would pass
+  // against a hint that forgot to convert, and read one frame off against the ruler beside it.
+  it("names the frame a drag will key, numbered as the artist sees it", () => {
+    expect(contextHint({ ...base, animatedFrame: 12 })).toContain("13");
+    expect(contextHint({ ...base, animatedFrame: 0 })).toContain("1");
+  });
+
+  it("falls back to the plain transform hint when the layer is not animated", () => {
+    expect(contextHint({ ...base, animatedFrame: null })).toBe(
+      "Drag to move · corners scale · top handle rotates",
+    );
+  });
+
+  // A hint for a gesture that currently does nothing is worse than none.
+  it("still puts the locked refusal first", () => {
+    expect(contextHint({ ...base, locked: true, animatedFrame: 12 })).toContain("locked");
   });
 });

@@ -65,10 +65,13 @@
     isLayerVisible,
     isRefVisibleAtFrame,
     groupTransform,
+    transformAt,
+    withTransformKey,
     type Layer,
     type Cell,
     type LayerGroup,
     type DrawingLayer,
+    type TransformTrack,
   } from "../anim/document";
   import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
@@ -97,7 +100,9 @@
     const W = appState.project.width,
       H = appState.project.height;
     const steps: ComposeStep[] = [];
-    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+    // Resolved at the playhead, exactly as the group step below already is — an animated layer's
+    // paint inverse, bounds hint and selection mapping must all follow the frame you are on.
+    steps.push({ base: { x: 0, y: 0, w: W, h: H }, t: transformAt(layer, appState.playhead) });
     const g = groupOf(layer, appState.project.groups);
     if (g) {
       const gt = groupTransform(g);
@@ -646,6 +651,13 @@
     // Grab-time target identity: a mid-gesture active-layer/group switch must not retarget the drag.
     layerId: number;
     groupId: number | null;
+    // Grab-time playhead, and the ONLY frame this gesture reads or keys an animated layer at.
+    // Deliberately NOT frame scope's settle-on-playhead-change bail: frame scope settles because its
+    // target CELL changes identity mid-gesture, which cannot happen here (the layer is the same
+    // object), and settling would make it impossible to nudge a layer while playback loops — which
+    // is a natural way to work. Reading the live playhead instead scattered a key at every frame
+    // playback passed, each derived from the grab-frame's startT, all inside one undo entry.
+    keyFrame: number;
     // Did this gesture actually write a transform? Drives commit-vs-drop when we settle without a
     // readable end transform (undo/tool-switch), instead of committing an empty entry.
     dirty: boolean;
@@ -660,28 +672,59 @@
     group: LayerGroup | null;
     prevBox: Rect | null;
   } | null = null;
+  // Same direct-object-ref shape as refDragFreeze, for the layer-scope transformTrack: captured at
+  // grab so a no-op drag can put the track back exactly as it was. withTransformKey always REPLACES
+  // the track (never mutates in place), so the reference captured here is already a valid
+  // before-snapshot — nothing needs deep-copying, unlike the box freeze above.
+  let refTrackFreeze: { layer: Layer; prevTrack: TransformTrack | undefined } | null = null;
 
-  // endT is a thunk: at the early-return sites the target is gone and there is no getT — pass null
   // there and commit unconditionally (the drag DID change state; an unrecorded change is the bug
   // this feature removes).
-  function finishTransformDragUndo(endT: (() => Layer["transform"]) | null) {
+  function finishTransformDragUndo() {
+    // Every `refDrag = null` in this file is paired with a call to this function, so this is the one
+    // place the published drag frame has to be retired — pointerup, pointercancel, the retarget
+    // bail, and transformDragGuard.settle (undo/redo, tool switch, replaceProject) all route here.
+    appState.transformDragFrame = null;
     if (refDragUndo) {
       // Nothing was written (grab missed a handle, or settled from undo()/a tool switch before the
       // pointer moved) → drop the snapshot. Committing here pushed a before==after entry that the
       // caller's own undo then popped, so the user's undo silently did nothing.
+      // `dirty` is already computed from the value WRITTEN (see onTransformDrag), so a second
+      // read-back here would undo that care: with `sampleEvery > 1` a track resolves a frame off its
+      // sample grid to a lerp, so a genuine key could read back as "unchanged" and be reverted with
+      // no undo entry — a real edit silently discarded. `dirty` alone decides.
       const wrote = !!refDrag?.handle && refDrag.dirty;
-      const unchanged = wrote && endT && isSameTransform(refDrag!.startT, endT());
-      if (wrote && !unchanged) {
+      if (wrote) {
         commitStructuralEdit(refDragUndo);
       } else if (wrote || refDrag?.handle) {
         // No-op drag: push nothing, revert the freeze we did at grab.
         if (refDragFreeze?.cell) refDragFreeze.cell.transformBox = refDragFreeze.prevBox;
         else if (refDragFreeze?.group) refDragFreeze.group.transformBox = refDragFreeze.prevBox;
+        // Also revert any key withTransformKey inserted along the way: the resulting VALUE
+        // matches startT (that's why we're here), but the TRACK OBJECT may not — a fresh key can
+        // exist where none did — and no undo command is being pushed to fix that via
+        // restoreStructure, since committing was just decided against above.
+        if (refTrackFreeze) refTrackFreeze.layer.transformTrack = refTrackFreeze.prevTrack;
+        // The drag bumped persistTick on every move, so the ~3s autosave debounce may already have
+        // written the TRANSIENT state (press and hold past it without moving). Reverting the live
+        // document is not enough — the saved slot has to be re-dirtied so the restore lands too.
+        // Covers the prevBox revert above as well, which is not value-neutral either.
+        bump();
       }
     }
     refDragUndo = null;
     refDragFreeze = null;
-    transformDragGuard.settle = null;
+    refTrackFreeze = null;
+    // Only release the shared hook if this drag still owns it. It is one slot shared by six
+    // registrants, so clearing it unconditionally could null a hook belonging to another gesture
+    // and leave that one's bracket unsettleable by undo.
+    if (transformDragGuard.settle === settleRefDrag) transformDragGuard.settle = null;
+  }
+
+  /** Named (rather than a fresh closure per grab) so the ownership check above can compare it. */
+  function settleRefDrag() {
+    finishTransformDragUndo();
+    refDrag = null;
   }
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
@@ -692,17 +735,27 @@
     const scope = appState.transformScope;
     const isDraw = layer.kind === "draw";
     const g = groupOf(layer, appState.project.groups);
+    // The frame this gesture reads and keys at. Before the grab (the hit test and the startT capture
+    // below) refDrag is null and this IS the live playhead, i.e. the grab frame; from the grab on it
+    // is frozen, so a playhead that moves mid-gesture (playback, or the global ←/→ keys) cannot
+    // scatter keys across the track. `finishTransformDragUndo`'s `endT` thunk runs while refDrag is
+    // still set, so its isSameTransform check compares the same frame startT was taken at.
+    const dragFrame = () => refDrag?.keyFrame ?? appState.playhead;
 
     // Resolve target + base + compose-steps (outer transforms above the target, inner-to-outer).
     let getT: () => typeof layer.transform, setT: (t: typeof layer.transform) => void;
     let base: { x: number; y: number; w: number; h: number } | null;
     const outerSteps: ComposeStep[] = [];
     let frameRk: ReturnType<typeof resolvedKeyCell> = null;
+    // Set only by the layer-scope branch below (draw layer at layer scope, or a ref layer under
+    // any scope) — the grab site below uses it to know whether to freeze a transformTrack
+    // reference for a no-op-drag revert (frame/group scope have no track at their own level).
+    let trackScopeLayer: Layer | null = null;
 
     if (isDraw && scope === "group" && g) {
       if (groupHasLockedLayer(g, appState.project.layers)) {
         if (done) {
-          finishTransformDragUndo(null);
+          finishTransformDragUndo();
           refDrag = null;
         }
         return;
@@ -714,7 +767,7 @@
       frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
         if (done) {
-          finishTransformDragUndo(null);
+          finishTransformDragUndo();
           refDrag = null;
         }
         return;
@@ -722,7 +775,7 @@
       // Playhead moved mid-drag onto a different (un-cloned) cell: settle the in-flight drag on
       // the grab-time clone instead of writing to a snapshot-shared cell (gotcha #8 corruption).
       if (refDrag !== null && refDrag.cell && refDrag.cell !== frameRk.cell) {
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
         return;
       }
@@ -737,17 +790,36 @@
       getT = () => cellTransform(frameRk!.cell);
       setT = (nt) => (frameRk!.cell.transform = nt);
       // Outer = layer, then group (inner-to-outer).
-      outerSteps.push({ base: { x: 0, y: 0, w: W, h: H }, t: layer.transform });
+      outerSteps.push({
+        base: { x: 0, y: 0, w: W, h: H },
+        // Frozen with the rest of the drag: on an ANIMATED layer a live read would move the outer
+        // step (and so the pointer inverse-map) out from under a startT captured at the grab frame.
+        // No change for a static layer — transformAt is frame-independent there.
+        t: transformAt(layer, dragFrame()),
+      });
       if (g)
         outerSteps.push({
           base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
           t: groupTransform(g),
         });
     } else {
-      // scope = "layer" (or ref layer)
+      // scope = "layer" (or ref layer). An animated layer reads and writes THROUGH the track;
+      // `base` stays live (never frozen to `track.box`, which Task 5 fixed at null for layer
+      // tracks) since a layer's base rect is the document rect / a media contain-fit — neither
+      // drifts the way a content-derived transformBox does, and resizeProject never touches
+      // transform/transformTrack.
       base = transformBaseRect(layer, W, H);
-      getT = () => layer.transform;
-      setT = (nt) => (layer.transform = nt);
+      trackScopeLayer = layer;
+      getT = () => transformAt(layer, dragFrame());
+      setT = (nt) => {
+        const track = layer.transformTrack;
+        if (!track) {
+          layer.transform = nt;
+          return;
+        }
+        // Replace the track object: undo snapshots share the layer (gotcha #8).
+        layer.transformTrack = withTransformKey(track, dragFrame(), nt);
+      };
       // Outer = group (if any).
       if (g)
         outerSteps.push({
@@ -757,7 +829,7 @@
     }
     if (!base) {
       if (done) {
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
       }
       return;
@@ -771,7 +843,7 @@
     // own cell-identity bail; layer/group scope had none and would apply the grab-time transform to
     // whatever layer became active. Settle the bracket and end the gesture instead.
     if (refDrag && (refDrag.layerId !== layer.id || refDrag.groupId !== (g?.id ?? null))) {
-      finishTransformDragUndo(null);
+      finishTransformDragUndo();
       refDrag = null;
       return;
     }
@@ -781,10 +853,7 @@
       const handle = hitTestHandle(base, getT(), pc, tol, gap);
       if (handle) {
         refDragUndo = beginStructuralEdit(); // FIRST: snapshot must capture the old shared cell (gotcha #8)
-        transformDragGuard.settle = () => {
-          finishTransformDragUndo(null);
-          refDrag = null;
-        };
+        transformDragGuard.settle = settleRefDrag;
         if (isDraw && scope === "frame" && frameRk) {
           const dl = layer as Extract<Layer, { kind: "draw" }>;
           dl.cells[frameRk.index] = { ...frameRk.cell }; // fresh object; in-drag writes can't corrupt the snapshot
@@ -804,6 +873,11 @@
             g.transformBox = base;
           }
         }
+        // An animated layer's track is mutable state a no-op drag must be able to revert (see
+        // finishTransformDragUndo) — capture it here, before any write.
+        if (trackScopeLayer) {
+          refTrackFreeze = { layer: trackScopeLayer, prevTrack: trackScopeLayer.transformTrack };
+        }
       }
       refDrag = {
         handle,
@@ -813,19 +887,43 @@
         cell: isDraw && scope === "frame" ? (frameRk?.cell ?? null) : null,
         layerId: layer.id,
         groupId: g?.id ?? null,
+        keyFrame: appState.playhead,
         dirty: false,
       };
+      // The status hint promises "a drag keys frame N"; publish the frozen frame so it names the
+      // one that will actually be written rather than a playhead that may move under a held drag.
+      // Only once a HANDLE is engaged: a press that missed every handle writes nothing, so
+      // publishing there froze the hint's frame for a gesture that will never key.
+      if (refDrag.handle) appState.transformDragFrame = refDrag.keyFrame;
     }
     const d = refDrag;
     if (d.handle) {
-      if (d.handle === "body") setT(applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y));
-      else if (d.handle === "rotate") setT(applyRotate(d.startT, d.center, d.start, pc));
-      else setT(applyScale(d.startT, d.center, d.start, pc));
-      d.dirty = !isSameTransform(d.startT, getT());
+      // Unconditional, every event — including a pure click, which falls through to this same
+      // call right after the grab above with pc === d.start. For an animated layer this DOES
+      // transiently insert/replace a key via withTransformKey even when the value is unchanged,
+      // but that is fine: the key exists only between pointerdown and pointerup. On a no-op
+      // gesture the settle branch in finishTransformDragUndo restores refTrackFreeze.prevTrack
+      // before anything can persist it (commitStructuralEdit is not called on that branch, and
+      // autosave is debounced well past a click) — see the round-2 fix note in the task-6 report.
+      // An earlier round gated this write on the value actually changing, but the gate also
+      // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
+      // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
+      const nt =
+        d.handle === "body"
+          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
+          : d.handle === "rotate"
+            ? applyRotate(d.startT, d.center, d.start, pc)
+            : applyScale(d.startT, d.center, d.start, pc);
+      setT(nt);
+      // Compare what was WRITTEN, not a read-back. With `sampleEvery > 1` a track quantises the
+      // sampled frame, so reading at a frame off the grid returns a lerp toward the key rather than
+      // the key itself: algebraically the same value, but `isSameTransform` is exact field equality,
+      // so float rounding could make a click-without-move look like a change and push an undo entry.
+      d.dirty = !isSameTransform(d.startT, nt);
       bump();
     }
     if (done) {
-      finishTransformDragUndo(() => getT());
+      finishTransformDragUndo();
       refDrag = null;
     }
   }
@@ -922,7 +1020,7 @@
       if (!groupScope && !isLayerEditable(al, appState.project.groups)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
-        finishTransformDragUndo(null);
+        finishTransformDragUndo();
         refDrag = null;
         return;
       }
@@ -1170,11 +1268,8 @@
     const cellT = cellTransform(rk.cell);
     const g = groupOf(al, appState.project.groups);
     const groupT = groupTransform(g);
-    if (
-      isIdentityTransform(al.transform) &&
-      isIdentityTransform(cellT) &&
-      isIdentityTransform(groupT)
-    ) {
+    const layerT = transformAt(al, appState.playhead);
+    if (isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT)) {
       // Document space == cell space: crop the cell bitmap at this.rect (same blit as today).
       const ctx = rk.cell.canvas.getContext("2d", { willReadFrequently: true })!;
       return selection.copyPixelsFromDoc(ctx, DPR);
@@ -1208,7 +1303,7 @@
       rk.cell.canvas,
       W * DPR,
       H * DPR,
-      al.transform,
+      layerT,
       cellT,
       boxDev,
       DPR,

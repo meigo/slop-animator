@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { animateTargetLayer } from "./transform-target";
   import {
     state as appState,
     pressureCurve,
@@ -8,12 +9,25 @@
     selectionActions,
     transformActions,
     fillActions,
+    animateLayer,
+    removeLayerAnimation,
+    deleteTransformKeyAtPlayhead,
+    setTransformKeyInterp,
+    copyTransformKeyAtPlayhead,
+    pasteTransformKeyAtPlayhead,
+    setTransformTrackSampleEvery,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
-  import { whyNotEditable } from "../anim/document";
+  import {
+    whyNotEditable,
+    hasKeyAt,
+    segmentKeyAt,
+    type KeyInterp,
+    MAX_SAMPLE_EVERY,
+  } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
   import { MAX_GAP } from "../core/fill-holes";
 
@@ -25,6 +39,19 @@
       WRITING_TOOLS.includes(appState.tool) &&
       !appState.selectionActive &&
       !appState.selectionFloating,
+  );
+
+  // Whose transform the Animate controls act on — see `animateTargetLayer` in the module script
+  // above, which StatusBar shares so the controls and the status hint cannot drift apart.
+  const animTarget = $derived(
+    animateTargetLayer(
+      appState.project.layers.find((x) => x.id === appState.activeLayerId),
+      appState.project.groups,
+      appState.tool,
+      appState.transformScope,
+      appState.playhead,
+      appState.project.fps,
+    ),
   );
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
@@ -276,5 +303,126 @@
       title="Reset the current transform back to fit"
       onclick={() => transformActions.reset?.()}>Reset to fit</button
     >
+  {/if}
+  <!-- Animate / Delete key / Stop animating / interpolation. Vanishes (rather than disabling) for a
+       locked or hidden layer: a locked/hidden active layer already gets a top-precedence status-bar
+       hint and its transform gizmo doesn't render at all, so a visible-but-disabled Animate button
+       would point at chrome that isn't there — see task-8 report for the full reasoning. -->
+  {#if animTarget}
+    {@const track = animTarget.transformTrack}
+    {#if !track}
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Animate this layer's transform — its current position becomes a key at frame 0"
+        onclick={() => animateLayer(animTarget.id)}>Animate</button
+      >
+    {:else}
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!hasKeyAt(track, appState.playhead) || track.keys.length <= 1}
+        title={!hasKeyAt(track, appState.playhead)
+          ? "Delete key — no key on this frame"
+          : track.keys.length <= 1
+            ? "Delete key — this is the only key; use Stop animating"
+            : "Delete the key on this frame"}
+        onclick={() => {
+          if (hasKeyAt(track, appState.playhead) && track.keys.length > 1)
+            deleteTransformKeyAtPlayhead(animTarget.id);
+        }}>Delete key</button
+      >
+      <!-- aria-disabled, never `disabled`: a disabled button dispatches no pointer events, so the
+           status bar's delegated listener could not read the title explaining WHY it is unavailable
+           — the control that most needs to explain itself would be the only one unable to. -->
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!hasKeyAt(track, appState.playhead)}
+        title={hasKeyAt(track, appState.playhead)
+          ? "Copy this key — its position and its curve — to paste on another frame or layer"
+          : "Copy key — no key on this frame"}
+        onclick={() => {
+          if (hasKeyAt(track, appState.playhead)) copyTransformKeyAtPlayhead(animTarget.id);
+        }}>Copy key</button
+      >
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        aria-disabled={!appState.transformKeyClipboard}
+        title={appState.transformKeyClipboard
+          ? "Paste the copied key here, replacing any key on this frame"
+          : "Paste key — nothing copied yet"}
+        onclick={() => {
+          if (appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(animTarget.id);
+        }}>Paste key</button
+      >
+      <button
+        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
+        title="Stop animating — keeps the position you can see now"
+        onclick={() => removeLayerAnimation(animTarget.id)}>Stop animating</button
+      >
+      <!-- Easing belongs to the SEGMENT, so this edits the key the playhead currently sits in — the
+           curve from that key to the next — not the whole track. Scrub into a segment to shape it.
+           Unavailable before the first key (no segment yet) and ON OR PAST THE LAST key, where
+           `segmentKeyAt` returns that key but no segment starts at it: choosing a value there
+           pushed a real undo entry, changed no rendered frame, and turned the marker into a circle
+           implying easing that does not exist. A one-key track right after Animate is that case. -->
+      {@const seg = segmentKeyAt(track, appState.playhead)}
+      {@const segLast = !!seg && seg.frame === track.keys[track.keys.length - 1].frame}
+      {@const noSeg = !seg || segLast}
+      <label
+        class="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-text-secondary"
+        title={!seg
+          ? "Ease — the playhead is before the first key, so there is no segment here"
+          : segLast
+            ? "Ease — this is the last key, and no segment starts at it; add a later key first"
+            : `Interpolation from the key at frame ${seg.frame + 1} to the next`}
+      >
+        Ease
+        <!-- aria-disabled, never `disabled`: a disabled control dispatches no pointer events, so the
+             status bar's delegated listener could not read the title explaining WHY it is
+             unavailable — and on iPad a tap is the only route to that explanation. The title sits on
+             this LABEL, so `pointer-events-none` on the select (which is what actually stops the
+             picker opening) still leaves the reason readable. -->
+        <select
+          class="h-7 rounded bg-surface border border-border text-text px-1 text-xs aria-disabled:opacity-40 aria-disabled:cursor-default"
+          class:pointer-events-none={noSeg}
+          aria-disabled={noSeg}
+          value={seg?.interp ?? "linear"}
+          onchange={(e) => {
+            if (seg && !segLast)
+              setTransformKeyInterp(
+                animTarget.id,
+                seg.frame,
+                (e.currentTarget as HTMLSelectElement).value as KeyInterp,
+              );
+          }}
+        >
+          <option value="linear">Linear</option>
+          <option value="ease-in">Ease in</option>
+          <option value="ease-out">Ease out</option>
+          <option value="ease-in-out">Ease in-out</option>
+          <option value="hold">Hold</option>
+        </select>
+      </label>
+      <label
+        class="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-text-secondary"
+        title="Update the move every N frames, so it can sit on 2s like the drawings"
+      >
+        Step
+        <input
+          class="w-12 text-xs bg-surface border border-border rounded text-text px-1"
+          type="number"
+          min="1"
+          max={MAX_SAMPLE_EVERY}
+          value={track.sampleEvery ?? 1}
+          onchange={(e) => {
+            const el = e.currentTarget as HTMLInputElement;
+            setTransformTrackSampleEvery(animTarget.id, Number(el.value));
+            // Write the RESOLVED value back. The action early-returns when the clamp lands on the
+            // value already stored, so the bound expression never changes and Svelte leaves the DOM
+            // alone: typing `0` and blurring left the field showing 0 while the store held 1.
+            el.value = String(animTarget.transformTrack?.sampleEvery ?? 1);
+          }}
+        />
+      </label>
+    {/if}
   {/if}
 </div>

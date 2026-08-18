@@ -543,3 +543,34 @@ describe("anyEditablePasteTarget", () => {
     expect(anyEditablePasteTarget(proj([draw, ref], 1), 2)).toBe(false);
   });
 });
+
+// Same rule as the per-layer frame tools: a track belongs to exactly the layer whose cells were
+// respliced, so an insert that moves the drawings must move the motion with them. (A reference
+// RANGE is document-space and shared, which is why those are deliberately left alone.)
+describe("pasteBlockInsert and transform keys", () => {
+  const T0 = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+
+  it("shifts the target layer's keys by the number of inserted cells", () => {
+    const l = drawLayer(1, [key(), hold(), hold(), hold(), key()]);
+    l.transformTrack = {
+      keys: [
+        { frame: 0, t: T0 },
+        { frame: 4, t: T0, interp: "hold" },
+      ],
+      box: null,
+    };
+    const src = drawLayer(2, [key(), key()]);
+    const block = copyBlock(proj([src], 2), [2], 0, 1, fakeOps);
+    pasteBlockInsert(proj([l], 5), block, 1, 2, fakeOps);
+    expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 6]);
+    expect(l.transformTrack!.keys[1].interp).toBe("hold"); // the curve travels with its key
+  });
+
+  it("leaves a layer with no track alone", () => {
+    const l = drawLayer(1, [key(), hold()]);
+    const src = drawLayer(2, [key()]);
+    const block = copyBlock(proj([src], 1), [2], 0, 0, fakeOps);
+    expect(() => pasteBlockInsert(proj([l], 2), block, 1, 0, fakeOps)).not.toThrow();
+    expect(l.transformTrack).toBeUndefined();
+  });
+});

@@ -8,6 +8,7 @@ import {
   IDENTITY_TRANSFORM,
   groupOf,
   groupTransform,
+  transformAt,
   type Project,
   type BoilConfig,
   type ReferenceLayer,
@@ -74,8 +75,9 @@ export function drawReferenceMedia(
   const base = containRect(size.w, size.h, docW * dpr, docH * dpr);
   const g = project ? groupOf(layer, project.groups) : null;
   const groupT = groupTransform(g);
+  const lt = frame == null ? layer.transform : transformAt(layer, frame);
   if (!g || isIdentityTransform(groupT) || frame == null || project == null) {
-    drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
+    drawTransformed(ctx, layer.media.el, base, lt, dpr);
     return;
   }
   const lb = groupBoxLogical(g, project, frame, dpr, version ?? 0);
@@ -86,7 +88,7 @@ export function drawReferenceMedia(
   ctx.rotate(groupT.rotation);
   ctx.scale(groupT.scale, groupT.scale);
   ctx.translate(-gcx, -gcy);
-  drawTransformed(ctx, layer.media.el, base, layer.transform, dpr);
+  drawTransformed(ctx, layer.media.el, base, lt, dpr);
   ctx.restore();
 }
 
@@ -219,27 +221,16 @@ export function compositeFrameLayers(
         (boil.amount <= 0 && boil.weight <= 0);
       const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
       const cellT = cellTransform(cell);
+      const layerT = transformAt(layer, frame);
       const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
       const bothId =
-        isIdentityTransform(layer.transform) &&
-        isIdentityTransform(cellT) &&
-        isIdentityTransform(groupT);
+        isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT);
       const boxDev = isIdentityTransform(cellT)
         ? { x: 0, y: 0, w, h }
         : scaleRect(cell.transformBox!, dpr);
       const src = bothId
         ? cell.canvas
-        : transformedCell(
-            cell.canvas,
-            layer.transform,
-            cellT,
-            boxDev,
-            w,
-            h,
-            dpr,
-            groupT,
-            groupBoxDev,
-          );
+        : transformedCell(cell.canvas, layerT, cellT, boxDev, w, h, dpr, groupT, groupBoxDev);
       // Weight is passed as a SIGNED bias: the per-frame breathing jitter comes from the rate cycle,
       // which only this caller knows (boilLayer sees just the seed).
       const wjit = boilWeightJitter(frame, boil.rate, op.layerId);
@@ -264,8 +255,9 @@ export function compositeFrameLayers(
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
       const cellT = cellTransform(cell);
+      const layerT = transformAt(layer, frame);
       const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
-      const layerId = isIdentityTransform(layer.transform),
+      const layerId = isIdentityTransform(layerT),
         cellId = isIdentityTransform(cellT),
         groupId = isIdentityTransform(groupT);
       if (layerId && cellId && groupId) ctx.drawImage(cell.canvas, 0, 0);
@@ -278,7 +270,7 @@ export function compositeFrameLayers(
           cell.canvas,
           project.width * dpr,
           project.height * dpr,
-          layer.transform,
+          layerT,
           cellT,
           boxDev,
           dpr,

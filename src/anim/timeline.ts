@@ -1,9 +1,14 @@
 import {
   resolveKeyframeIndex,
   refreshLength,
+  copyTransformKey,
+  withTrackKeys,
   type Cell,
   type DrawingLayer,
+  type Layer,
   type Project,
+  type TransformKey,
+  type TransformTrack,
 } from "./document";
 import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
 
@@ -152,11 +157,59 @@ export function shiftStartFrame(startFrame: number, at: number, delta: 1 | -1): 
   return startFrame > at ? startFrame - 1 : startFrame;
 }
 
-/** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: image reference
- *  ranges, video clip offsets, and the audio track. Drawing-layer cells are handled by the
- *  callers, which splice them directly. */
+/** Every key of a layer transform track, moved through the same `shiftStartFrame` rule the audio and
+ *  video clips use — a key is pinned to a single document frame and has no `end` to grow.
+ *
+ *  The DEDUPE is not optional: on a DELETE a key at `at` and one at `at + 1` both land on `at`, and
+ *  `TransformKey.frame` is documented unique within a track. Keys arrive sorted, so writing them in
+ *  order into a map keeps the LATER key's value on a collision — it is the one that survives the
+ *  deleted frame.
+ *
+ *  Returns a NEW track (gotcha #8: undo snapshots share layer objects). */
+export function shiftTransformTrackFrames(
+  track: TransformTrack,
+  at: number,
+  delta: 1 | -1,
+): TransformTrack {
+  const byFrame = new Map<number, TransformKey>();
+  for (const k of track.keys) {
+    const frame = shiftStartFrame(k.frame, at, delta);
+    // Through `copyTransformKey`, never a hand-written literal: a field added to `TransformKey`
+    // later must not be silently dropped here (that is exactly how `interp` was lost once).
+    byFrame.set(frame, copyTransformKey({ ...k, frame }));
+  }
+  return withTrackKeys(
+    track,
+    [...byFrame.values()].sort((a, b) => a.frame - b.frame),
+  );
+}
+
+/**
+ * Shift one layer's OWN transform keys for a frame inserted at / deleted from `at` — the per-layer
+ * counterpart of the document-wide ripple.
+ *
+ * The per-layer frame tools resplice a single layer's cells, so its drawings and its travel would
+ * otherwise drift one frame apart per insert, compounding silently. Unlike a reference RANGE (which
+ * is document-space and shared with every layer, so a per-layer op has no single correct shift), a
+ * transform track belongs to exactly the layer whose cells just moved, so there IS one.
+ *
+ * Replaces the track, never mutates it (gotcha #8). Does nothing when the layer has no track, so
+ * every call site can call it unconditionally.
+ */
+export function shiftLayerTransformKeys(layer: Layer, at: number, delta: 1 | -1): void {
+  if (!layer.transformTrack) return;
+  layer.transformTrack = shiftTransformTrackFrames(layer.transformTrack, at, delta);
+}
+
+/** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track
+ *  keys, image reference ranges, video clip offsets, and the audio track. Drawing-layer cells are
+ *  handled by the callers, which splice them directly. */
 function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void {
   for (const layer of project.layers) {
+    // Transform keys are document-frame space for BOTH layer kinds — without this, everything else
+    // shifted while an animated layer's move stayed put, finishing a frame early and compounding
+    // with each ripple. Replace, never mutate in place.
+    shiftLayerTransformKeys(layer, at, delta);
     if (layer.kind !== "ref") continue;
     if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
     if (layer.media.type === "video") {
@@ -198,6 +251,15 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
   refreshLength(project);
 }
 
+/** The index just past the trailing holds of the key at `keyFrame` — i.e. where `setHoldSpan`
+ *  splices. Exported because the timeline needs the SAME boundary to shift a layer's transform keys
+ *  around that splice; a second copy of this scan would be free to drift from this one. */
+export function holdSpanEnd(layer: DrawingLayer, keyFrame: number): number {
+  let next = keyFrame + 1;
+  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  return next;
+}
+
 /**
  * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
  * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
@@ -210,8 +272,7 @@ export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number)
   if (layer.cells[keyFrame].kind !== "key") return;
 
   const desired = Math.max(1, Math.floor(span));
-  let next = keyFrame + 1;
-  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  const next = holdSpanEnd(layer, keyFrame);
   const current = next - keyFrame; // cells owned: the key plus its trailing holds
   if (desired === current) return;
 

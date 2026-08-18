@@ -758,6 +758,17 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       expect(whyNotMergeDown([below, upper], [g({ visible: false })], 2)).toBe("read-only");
     });
 
+    it("refuses when either side is ANIMATED — merge bakes a transform that varies", () => {
+      const track = {
+        keys: [{ frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+        box: null,
+      };
+      const below = layer(1, [makeKey()]);
+      const upper = layer(2, [makeKey()]);
+      expect(whyNotMergeDown([{ ...below, transformTrack: track }, upper], [], 2)).toBe("animated");
+      expect(whyNotMergeDown([below, { ...upper, transformTrack: track }], [], 2)).toBe("animated");
+    });
+
     it("reports the structural block before the read-only one", () => {
       // A locked BOTTOM layer has nothing below it either — the more fundamental reason wins.
       const layers = [layer(1, [makeKey()], { locked: true }), layer(2, [makeKey()])];

@@ -30,6 +30,11 @@ export interface HintContext {
   selectionFloating: boolean;
   /** The pose mesh is built. */
   poseActive: boolean;
+  /** The playhead frame when the active layer has a transform track, else null. ZERO-based, like
+   *  every frame number in the model; the hint renders it +1 because every number the artist sees
+   *  (the f n/n readout, the ruler, a key's tooltip) is 1-based. A drag will write
+   *  a key THERE, and saying so is the mitigation for auto-key's one hazard. */
+  animatedFrame: number | null;
 }
 
 export function contextHint(c: HintContext): string {
@@ -44,6 +49,8 @@ export function contextHint(c: HintContext): string {
       if (c.selectionActive) return "Drag inside to move · tap outside to deselect";
       return c.tool === "lasso" ? "Draw a loop to select" : "Drag to select an area";
     case "transform":
+      if (c.animatedFrame !== null)
+        return `Animated — a drag keys frame ${c.animatedFrame + 1} · corners scale · top handle rotates`;
       return "Drag to move · corners scale · top handle rotates";
     case "deform":
       return c.selectionFloating
