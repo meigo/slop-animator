@@ -86,6 +86,7 @@
     isLayerLocked,
     isLayerVisible,
     countKeyframesPastLengthIn,
+    groupHasLockedLayer,
     refVisibleSpan,
     withMovedKey,
     withMovedTransformKey,
@@ -1032,11 +1033,6 @@
     };
   }
 
-  /** The group the selected layer row belongs to, for highlighting that group's own track row. */
-  const activeGroupId = $derived(
-    appState.project.layers.find((l) => l.id === appState.activeLayerId)?.groupId ?? null,
-  );
-
   function groupTrackSpec(group: LayerGroup): TrackRowSpec | null {
     const track = group.tracks?.transform;
     if (!track) return null;
@@ -1044,14 +1040,26 @@
     // — the scope resolves through the active layer's `groupId`, so without this the row would aim
     // the gizmo at whatever group the previously-active layer happened to be in.
     const member = [...appState.project.layers].reverse().find((l) => l.groupId === group.id);
+    // A locked MEMBER pins the group, exactly as it does for the gizmo drag, Reset and
+    // Stop-animating (`groupHasLockedLayer` — which already returns true for a locked group itself,
+    // so it subsumes the group's own flag rather than needing to be ORed with it). Without this,
+    // retiming a key here moved a locked member's rendered content at those frames — the one group
+    // transform writer that did not refuse.
+    // The VISIBILITY term stays the group's own, deliberately: visibility is scope-aware, so a
+    // hidden MEMBER must not block a group transform while a locked one must. Not an inconsistency.
+    const locked = groupHasLockedLayer(group, appState.project.layers);
     return {
       track,
       label: "Transform",
       owner: group.name,
       indent: false,
-      selected: !!member && appState.activeRow.kind === "layer" && activeGroupId === group.id,
-      readOnly: !!group.locked || !group.visible,
-      block: group.locked ? "locked" : !group.visible ? "hidden" : null,
+      // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
+      // `activeRow` with `activeLayerId`-derived state has shipped a forgotten term twice here.
+      selected: appState.project.layers.some((l) => l.groupId === group.id && isRowSelected(l.id)),
+      readOnly: locked || !group.visible,
+      // Reports the LOCK whenever the lock is what refuses — a row that refuses without stating why
+      // is the actual defect, and this row's marker/title is the only place the reason appears.
+      block: locked ? "locked" : !group.visible ? "hidden" : null,
       select: () => {
         if (member) setActiveLayer(member.id);
         appState.transformScope = "group";
