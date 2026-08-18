@@ -268,6 +268,11 @@ export function whyNotMergeDown(
   // static `transform` is retained but IGNORED, so baking it would place the pixels where the layer
   // renders at no frame at all, and the track would then vanish with the merged layer.
   if (layerTransformTrack(upper) || layerTransformTrack(below)) return "animated";
+  // Same argument, one property over, and it was simply never widened when tracks became plural:
+  // `mergeDown` composites the upper layer at its STATIC `upper.opacity`, which on an animated layer
+  // is retained but ignored — so a fade-out would be burned in at its seed alpha and the track would
+  // then vanish with the merged layer.
+  if (upper.tracks?.opacity || below.tracks?.opacity) return "animated";
   return null;
 }
 

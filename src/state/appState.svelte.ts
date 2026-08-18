@@ -415,6 +415,13 @@ function restoreStructure(s: StructSnapshot) {
       }
       live.transform = { ...snap.transform }; // undoable for draw AND ref layers (drag undo); visibility/opacity/name stay live
       // Structural: they decide what renders at every frame, exactly like `range` does for a ref.
+      // `opacity` stays a view-prop above (an unrelated undo must not revert a slider nudge) —
+      // EXCEPT when the animation state itself is what is being restored. "Stop animating opacity"
+      // bakes the resolved value into the static field inside commitStructural, and the static
+      // slider path pushes no command, so nothing else could ever put that number back: undoing the
+      // bake left the track correctly gone and the layer sitting at whatever frame it stopped on.
+      // The transform twin needs no such term only because `transform` is restored unconditionally.
+      if (!!snap.tracks?.opacity !== !!live.tracks?.opacity) live.opacity = snap.opacity;
       live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       if (live.kind === "ref" && snap.kind === "ref") {
         // A ref's visible span is structural (it decides what renders), so trim/slide is undoable.
@@ -572,7 +579,11 @@ export function rasterizeReference(layerId: number): void {
   // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
   // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
   // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
-  if (layerTransformTrack(ref)) {
+  // The whole BAG, not just the transform: `animateLayerOpacity` has no `kind` guard and the panel
+  // offers Animate on reference rows, so a ref can carry an opacity track — and `buildFrameDrawList`
+  // resolves it. Keeping only `ref.opacity` below would bake in the seed value the layer may render
+  // at on no frame, and hand the new drawing layer no track at all.
+  if (ref.tracks?.transform || ref.tracks?.opacity) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
   }

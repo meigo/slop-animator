@@ -390,6 +390,20 @@ export async function saveProjectBlob(
 /** Rebuild a Project from a saved zip. `dpr` sizes the rebuilt cell canvases for the current display.
  *  `onSeeked` fires as each hydrated video reference's first frame becomes available (repaint hook).
  *  `onMediaPersistFailed` fires if seeding the local media store for a hydrated file fails (quota). */
+/** Is this a usable key VALUE? Per property, because the failure differs: a NaN in a transform
+ *  poisons the whole compose chain, while an out-of-range or NaN opacity is worse than it looks —
+ *  per spec, `globalAlpha` IGNORES a value outside [0,1] or NaN, so the layer paints at the PREVIOUS
+ *  draw op's alpha and it reads as a compositing bug rather than as bad data. `sanitiseTrack` guards
+ *  `frame` and `sampleEvery`; the value was simply never guarded with them. */
+function isTransformValue(v: unknown): boolean {
+  if (!v || typeof v !== "object") return false;
+  const t = v as RefTransform;
+  return [t.dx, t.dy, t.scale, t.rotation].every((n) => Number.isFinite(n));
+}
+function isOpacityValue(v: unknown): boolean {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+}
+
 /**
  * A track read back from a file is untrusted input. `transformAt` assumes `keys[0]` is the earliest
  * key and the last is the latest — that assumption is what makes it CLAMP outside the key range
@@ -401,11 +415,20 @@ export async function saveProjectBlob(
  * empty key array becomes no track at all: a track is documented never-empty, and `transformAt`
  * already falls back to the static transform.
  */
-function sanitiseTrack<T extends Track<unknown>>(track: T | undefined): T | undefined {
+function sanitiseTrack<T extends Track<unknown>>(
+  track: T | undefined,
+  isValidValue: (v: unknown) => boolean,
+): T | undefined {
   if (!track || !Array.isArray(track.keys)) return undefined;
   const byFrame = new Map<number, Keyframe<unknown>>();
   const sorted = track.keys
-    .filter((k) => k && Number.isFinite(k.frame))
+    // INTEGER and >= 0, not merely finite: every key action (tap-to-seek, retime, delete, the ease
+    // control) matches `k.frame === playhead`, so a fractional or negative frame produces a key that
+    // renders but can never be selected, moved or removed.
+    .filter(
+      (k) =>
+        k && Number.isInteger(k.frame) && k.frame >= 0 && isValidValue((k as Keyframe<unknown>).v),
+    )
     .sort((a, b) => a.frame - b.frame);
   for (const k of sorted) byFrame.set(k.frame, k);
   if (byFrame.size === 0) return undefined;
@@ -432,10 +455,10 @@ function sanitiseTrackBox(box: TransformTrack["box"] | undefined): TransformTrac
 function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
   if (!tracks) return undefined;
   const out = {} as T;
-  const transform = sanitiseTrack(tracks.transform);
+  const transform = sanitiseTrack(tracks.transform, isTransformValue);
   if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
   if ("opacity" in tracks) {
-    const opacity = sanitiseTrack(tracks.opacity);
+    const opacity = sanitiseTrack(tracks.opacity, isOpacityValue);
     if (opacity) (out as LayerTracks).opacity = opacity;
   }
   return Object.keys(out).length > 0 ? out : undefined;

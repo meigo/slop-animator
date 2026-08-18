@@ -296,6 +296,71 @@ describe("transform track persistence", () => {
   });
 });
 
+// A file is untrusted input: `frame` and `sampleEvery` were guarded, the key VALUE never was.
+describe("key sanitising on load", () => {
+  const load = async (tracks: unknown) => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    l.tracks = tracks as Layer["tracks"];
+    project.layers.push(l);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    return loaded.layers.find((x) => x.id === l.id)!;
+  };
+
+  it("drops a transform key whose value is not four finite numbers", async () => {
+    const back = await load({
+      transform: {
+        keys: [
+          { frame: 0, v: T(0) },
+          { frame: 4, v: { dx: 0, dy: NaN, scale: 1, rotation: 0 } },
+          { frame: 8, v: null },
+        ],
+        box: null,
+      },
+    });
+    expect(back.tracks?.transform?.keys.map((k) => k.frame)).toEqual([0]);
+  });
+
+  // Sharper than the transform case: `globalAlpha` IGNORES a value outside [0,1] or NaN, so a bad
+  // opacity key paints the layer at the PREVIOUS draw op's alpha — a compositing bug, not bad data.
+  it("drops an opacity key that is NaN or outside 0-100", async () => {
+    const back = await load({
+      opacity: {
+        keys: [
+          { frame: 0, v: 100 },
+          { frame: 2, v: NaN },
+          { frame: 4, v: 140 },
+          { frame: 6, v: -1 },
+          { frame: 8, v: 0 },
+        ],
+      },
+    });
+    expect(back.tracks?.opacity?.keys).toEqual([
+      { frame: 0, v: 100 },
+      { frame: 8, v: 0 },
+    ]);
+  });
+
+  it("drops a fractional or negative frame — no key action could ever match it", async () => {
+    const back = await load({
+      transform: {
+        keys: [
+          { frame: -3, v: T(1) },
+          { frame: 2.5, v: T(2) },
+          { frame: 5, v: T(3) },
+        ],
+        box: null,
+      },
+    });
+    expect(back.tracks?.transform?.keys.map((k) => k.frame)).toEqual([5]);
+  });
+
+  it("collapses a track to no track at all when every key is rejected", async () => {
+    const back = await load({ opacity: { keys: [{ frame: 0, v: "full" }] } });
+    expect(back.tracks).toBeUndefined();
+  });
+});
+
 describe("withMovedTransformKey", () => {
   it("moves a key to a free frame, keeping the array sorted", () => {
     const t = withMovedTransformKey(track(), 0, 5);

@@ -773,6 +773,17 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       );
     });
 
+    // Same argument, one property over: the merge composites at the STATIC `upper.opacity`, which on
+    // an animated layer is retained but ignored, so a fade would be burned in at its seed alpha and
+    // the track would vanish with the merged layer.
+    it("refuses when either side has an OPACITY track too", () => {
+      const opacity = { keys: [{ frame: 0, v: 100 }] };
+      const below = layer(1, [makeKey()]);
+      const upper = layer(2, [makeKey()]);
+      expect(whyNotMergeDown([{ ...below, tracks: { opacity } }, upper], [], 2)).toBe("animated");
+      expect(whyNotMergeDown([below, { ...upper, tracks: { opacity } }], [], 2)).toBe("animated");
+    });
+
     it("reports the structural block before the read-only one", () => {
       // A locked BOTTOM layer has nothing below it either — the more fundamental reason wins.
       const layers = [layer(1, [makeKey()], { locked: true }), layer(2, [makeKey()])];
