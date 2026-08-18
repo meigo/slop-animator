@@ -607,10 +607,21 @@ export function withTransformKey(
  *  action, which re-attaches through `withTrackKeys` itself, so a wrapper would have had no callers
  *  at all. Anything reaching for one wants `withTrackKeys(track, withoutKey(track, f).keys)` — the
  *  same one line, at the same depth. */
+/** The last key has no outgoing segment, so leftover `interp` is unused — and would revive if a
+ *  later key were added again. Absent = linear, the model's default. Copy the last key rather than
+ *  deleting the field in place: snapshots share key objects. */
+function withoutLastInterp<V>(keys: Keyframe<V>[]): Keyframe<V>[] {
+  const last = keys[keys.length - 1];
+  if (!last || last.interp === undefined) return keys;
+  const rest = { ...last };
+  delete rest.interp;
+  return keys.slice(0, -1).concat(rest);
+}
+
 export function withoutKey<V>(track: Track<V>, frame: number): Track<V> {
   if (track.keys.length <= 1) return track;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  return keys.length === track.keys.length ? track : { ...track, keys };
+  return keys.length === track.keys.length ? track : { ...track, keys: withoutLastInterp(keys) };
 }
 
 /**
@@ -633,7 +644,7 @@ export function withMovedKey<V>(
     .filter((k) => k.frame !== from && k.frame !== to)
     .concat(copyKeyframe({ ...moved, frame: to }, copyValue))
     .sort((a, b) => a.frame - b.frame);
-  return { ...track, keys };
+  return { ...track, keys: withoutLastInterp(keys) };
 }
 
 /** `withMovedKey` for a transform track. The generic mover knows nothing about `box`, so its keys

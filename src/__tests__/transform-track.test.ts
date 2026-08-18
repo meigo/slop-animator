@@ -984,6 +984,32 @@ describe("withMovedKey", () => {
     };
     expect(withMovedKey(t, 0, 5, id).keys[0].interp).toBe("hold");
   });
+
+  it("clears interp on a key that becomes last — there is no segment after it", () => {
+    // Move the last key before the first: the old first is now last, and its leftover hold
+    // would otherwise revive if a later key were added again.
+    const t = {
+      keys: [
+        { frame: 5, v: 20, interp: "hold" as const },
+        { frame: 10, v: 80, interp: "ease-in" as const },
+      ],
+    };
+    const out = withMovedKey(t, 10, 0, id);
+    expect(out.keys.map((k) => k.frame)).toEqual([0, 5]);
+    expect(out.keys[1].interp).toBeUndefined();
+    // The moved key is no longer last, so its own curve stays — it now starts a real segment.
+    expect(out.keys[0].interp).toBe("ease-in");
+  });
+
+  it("strips interp when the moved key itself becomes last", () => {
+    const t = {
+      keys: [
+        { frame: 0, v: 20, interp: "hold" as const },
+        { frame: 10, v: 80 },
+      ],
+    };
+    expect(withMovedKey(t, 0, 15, id).keys[1].interp).toBeUndefined();
+  });
 });
 
 /**
@@ -1047,6 +1073,26 @@ describe("generic key editors", () => {
     const t = track();
     expect(withoutKey(o, 7)).toBe(o);
     expect(withoutKey(t, 7)).toBe(t);
+  });
+
+  it("clears interp on the new last key after a later key is deleted", () => {
+    const o: Track<number> = {
+      keys: [
+        { frame: 0, v: 100, interp: "hold" },
+        { frame: 10, v: 0 },
+      ],
+    };
+    const t = track({
+      keys: [
+        { frame: 0, v: T(0), interp: "ease-in" },
+        { frame: 10, v: T(100) },
+      ],
+    });
+    expect(withoutKey(o, 10).keys[0].interp).toBeUndefined();
+    expect(withoutKey(t, 10).keys[0].interp).toBeUndefined();
+    // Input untouched — the leftover lived on a snapshot-shared key object.
+    expect(o.keys[0].interp).toBe("hold");
+    expect(t.keys[0].interp).toBe("ease-in");
   });
 
   it("hasKeyAt reads an exact frame match on a scalar track too", () => {
