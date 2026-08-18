@@ -733,6 +733,18 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(l.tracks?.opacity?.keys.map((k) => k.frame)).toEqual([5]);
     });
 
+    // `box` became load-bearing on this branch (a group track FREEZES its pivot there, and
+    // `groupBoxLogical` consumes it), and the shifter rebuilds the track through `withTrackKeys` —
+    // so a shift that dropped or shared it would move the pivot, or corrupt an undo snapshot.
+    it("carries a transform track's frozen `box` through a shift, as a COPY", () => {
+      const l = animLayer([0, 10]);
+      const box = { x: 1, y: 2, w: 3, h: 4 };
+      l.tracks = { transform: { ...track(l), box } };
+      insertFrameAllLayers(proj([l]), 5);
+      expect(track(l).box).toEqual(box);
+      expect(track(l).box).not.toBe(box); // a snapshot must share no mutable object (gotcha #8)
+    });
+
     it("shifts a GROUP's transform track on a document-wide ripple", () => {
       const g = { id: 1, name: "g", collapsed: false, visible: true };
       const gt = { keys: [{ frame: 3, v: T(3) }], box: null };
@@ -772,24 +784,6 @@ describe("ripple insert/delete shift document-space clips", () => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
       expect(() => shiftLayerTrackKeys(l, 0, 1)).not.toThrow();
       expect(l.tracks?.transform).toBeUndefined();
-    });
-
-    // The asymmetry with the document-wide ripple, pinned: a group's transform is shared by every
-    // member, so a per-layer op has no single correct shift for it — the same reason those tools
-    // leave a reference RANGE alone.
-    it("never touches a GROUP's track — only the ripple has one right answer for that", () => {
-      const l = withTrack([0, 6]);
-      const group = {
-        id: 1,
-        name: "g",
-        collapsed: false,
-        visible: true,
-        tracks: { transform: { keys: [{ frame: 6, v: T(6) }], box: null } },
-      };
-      l.groupId = 1;
-      shiftLayerTrackKeys(l, 6, 1);
-      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 7]);
-      expect(group.tracks.transform.keys.map((k) => k.frame)).toEqual([6]);
     });
 
     it("REPLACES the track rather than mutating it (undo snapshots share layer objects)", () => {

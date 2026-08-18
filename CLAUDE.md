@@ -2885,6 +2885,15 @@ dropped and the existing empty-array branch collapses the track.
   transform row had the same shape; this branch simply multiplies the rows it affects. The real fix
   is to reset the latch on any `pointerdown` in the grid, which touches every gesture in that file —
   out of scope for a fix wave.
+- **Two elements in `Timeline.svelte` still route pointer events without a type check.** The layer
+  READ-ONLY MARKER and the layer NAME BUTTON keep the ungated `onpointermove`/`onpointerup` shape
+  that the fix wave corrected on the two disclosure buttons — so four elements in that file gate
+  pointer type and two do not. Both predate this branch, and a mechanical pass over every gutter
+  element is a different change with its own iPad verification (finger-pan vs Pencil-edit is exactly
+  the behaviour a device pass exists to confirm), so they were left deliberately rather than swept in
+  behind a fix wave. **Recorded because an undocumented split inside ONE file is precisely how
+  "generalised everywhere except here" gets manufactured** — which is the defect class this whole
+  review found. Fix them together, with a device pass, not one at a time.
 - **With `sampleEvery > 1`, an authoring gesture off the grid does not put the value under the
   control.** Keys `[0, 20]`, `sampleEvery 4`, playhead 7: the writer plants a key at 7 while the
   render quantises to `q = 4`, which now brackets `[0, 7]` — so the gizmo, and far more visibly the
@@ -2892,6 +2901,49 @@ dropped and the existing empty-array branch collapses the track.
   GLOBAL-grid semantics (the grid is anchored at the track's first key so the stepping rhythm stays
   constant), so the fix belongs at the AUTHORING end — snap the written frame to the track's grid —
   never in the resolver. Pre-existing with the transform track.
+
+**Residual round on the wave (2026-08-18).** A scoped re-review confirmed all twelve findings
+closed and found five Minor residuals, all fixed. Three are worth keeping.
+
+**A short-circuiting ternary can silently drop a `$state` dependency, permanently.** M5's
+`opacityFrameFor` returned the frozen grab frame before ever reading `appState.playhead`, and the
+bracket fields it tests are plain `let`s — so for the whole time a gesture was open the `{@const}`
+derived had no `playhead` dependency at all, and it did not come back on release: scrubbing then left
+that row's thumb and its "keys frame N" title pinned to the grab frame until the row remounted, so
+the next nudge started from a thumb that was lying about the current value. The fix is to read the
+reactive value FIRST, unconditionally. **Any derived that conditionally reads reactive state must
+read it before the condition, not inside a branch.**
+
+**The C1 backstop moved from watching CAUSES to watching the ELEMENT.** Watching `activeRow` covered
+the row's `{#if active}` but missed the list's `{#key dragNonce}` REBUILD, which fires on any
+SortableJS reorder drop with `activeRow` unchanged — so holding a slider drag while a second finger
+completes a layer reorder (the same two-contact class C1 exists for) still leaked the bracket. It is
+now a `use:` action with a `destroy` hook on the `<input>` itself, and the `$effect` was DELETED
+rather than kept alongside it: the action strictly dominates it (selection change unmounts the input
+too), and two backstops for one invariant is how they drift. **A teardown hook on the element covers
+every cause of removal, including the ones nobody has thought of yet; an enumeration of causes covers
+the ones we listed.**
+
+**"Is this animated?" is now one predicate.** `whyNotMergeDown` and `rasterizeReference` each
+hand-enumerated the two properties — the very shape the wave had just fixed elsewhere, and a third
+`TrackProp` would have reopened both defects exactly as they were. `TRACK_PROPS`/`TrackProp` moved
+from `row-layout.ts` into `document.ts` (they are the model's property set, not a row order — the
+frame shifter and these gates loop the same list; `row-layout` re-exports them for row-building
+consumers), joined by `isLayerAnimated(layer)`. Also in this round: the group Transform row now
+prefers a draw member or NONE, never falling back to a ref — an all-ref group is reachable by
+grouping a draw layer with a ref, animating at group scope, then deleting the draw member, and the
+fallback would have re-created I6's silently-wrong target. **A wrong target is worse than no target.**
+
+**And one test was deleted for reading as coverage it did not provide.** The "per-layer tools never
+touch a group track" case built a group object that `shiftLayerTrackKeys` — whose signature takes
+only a layer — could not have reached: the assertion could not fail without a compile error first.
+The asymmetry is now pinned where the mistake can actually be made, at the OPERATION level, through
+`pasteBlockInsert` in `timeline-block.test.ts`; it was verified to fail against a deliberately broken
+implementation before being kept. **That verification caught a second version of the same trap:** the
+first draft asserted on the captured track object, which a correct shifter REPLACES rather than
+mutates, so it passed against the broken build too. Assert on the LIVE project. A transform track's
+frozen `box` surviving a shift (as a copy) is now pinned too — it became load-bearing on this branch
+and nothing covered it.
 
 **Owed a browser pass for the wave** (only the pure parts have tests — the generic shifter incl. the
 group-vs-per-layer asymmetry, the merge gate, and the sanitiser's new rejections): drag an opacity
@@ -2901,4 +2953,8 @@ resize on a layer with an opacity fade (the fade moves with the drawings); rippl
 animated GROUP; merge and rasterize refusing on an opacity-animated layer; Stop animating opacity
 then ⌘Z (the value comes back with the track); one Animate button on a ref inside a group; a group
 Transform row aiming the gizmo at the GROUP; Animate on a collapsed group showing the glyph and
-unfolding; retiming a hidden group's keys; a Pencil crossing a disclosure button mid-finger-pan.
+unfolding; retiming a hidden group's keys; a Pencil crossing a disclosure button mid-finger-pan. Plus, from the residual round: scrub after
+releasing a slider drag that spanned a playhead change (the thumb must follow again); hold a slider
+drag while a second finger reorders the layer list (one clean undo entry, and the next drag keys the
+right frame); a group Transform row whose group has only reference members (selecting it must not
+move the gizmo onto a ref).
