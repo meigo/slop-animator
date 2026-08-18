@@ -726,6 +726,59 @@ describe("legacy transformTrack promotion", () => {
     expect(back.tracks?.transform?.keys[0].frame).toBe(3);
     expect(back.tracks?.transform?.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
   });
+
+  /** The value field was renamed `t` -> `v` on this branch. The helper above takes a
+   *  `TransformTrack`, so it can only express keys that are ALREADY renamed — which is why every
+   *  test here passed while the real migration dropped every key a parent build had written. This
+   *  one hand-writes the shape `git show b898b14:src/anim/document.ts` actually shipped. Keep it
+   *  untyped-by-the-model on purpose: the moment it compiles as a `Keyframe`, it has stopped
+   *  testing the thing it exists for. */
+  async function withOnDiskLegacyKeys(
+    blob: Blob,
+    layerId: number,
+    legacyTrack: unknown,
+  ): Promise<Blob> {
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"])) as {
+      layers: { id: number; transformTrack?: unknown }[];
+      references: { id: number; transformTrack?: unknown }[];
+    };
+    for (const lj of [...json.layers, ...(json.references ?? [])])
+      if (lj.id === layerId) lj.transformTrack = legacyTrack;
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    return new Blob([zipSync(zip) as Uint8Array<ArrayBuffer>]);
+  }
+
+  it("migrates a parent-build key whose value is on `t`, not `v`", async () => {
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    project.layers.push(l);
+    const legacy = await withOnDiskLegacyKeys(await saveProjectBlob(project), l.id, {
+      keys: [
+        { frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } },
+        { frame: 6, t: { dx: 60, dy: 0, scale: 1, rotation: 0 }, interp: "hold" },
+      ],
+      box: null,
+    });
+    const back = (await loadProjectBlob(legacy, 1)).layers.find((x) => x.id === l.id)!;
+    // Not merely "a track survived": the VALUES have to arrive, or the animation is a straight line.
+    expect(back.tracks?.transform?.keys.map((k) => k.frame)).toEqual([0, 6]);
+    expect(back.tracks?.transform?.keys[1].v).toEqual({ dx: 60, dy: 0, scale: 1, rotation: 0 });
+    expect(back.tracks?.transform?.keys[1].interp).toBe("hold");
+  });
+
+  it("still drops a legacy key whose `t` is malformed", async () => {
+    // The migration must not become a hole in the validation it runs before.
+    const project = createProject();
+    const l = createDrawingLayer(1, "L");
+    project.layers.push(l);
+    const legacy = await withOnDiskLegacyKeys(await saveProjectBlob(project), l.id, {
+      keys: [{ frame: 0, t: { dx: null, dy: 0, scale: 1, rotation: 0 } }],
+      box: null,
+    });
+    const back = (await loadProjectBlob(legacy, 1)).layers.find((x) => x.id === l.id)!;
+    expect(back.tracks).toBeUndefined();
+  });
 });
 
 describe("withKey — one writer for every property", () => {

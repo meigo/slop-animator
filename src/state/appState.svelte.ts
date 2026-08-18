@@ -793,12 +793,7 @@ export function resetGroupTransform(groupId: number): void {
  *  animating` leaves `tracksCollapsed` behind: without it a later Animate creates a track whose row
  *  never appears — only the collapsed chevron comes back, and the artist is looking for a row that
  *  is there but folded. A view-prop, so `restoreStructure` keeps it live and undo does not re-fold.
- *
- *  `animateGroup` deliberately does NOT call it, and that is not an oversight: a group's `collapsed`
- *  means "show me only this group's header row" (see `timelineRows`), so unfolding would also reveal
- *  every MEMBER row the artist folded away — a far larger view change than the one row just created.
- *  A collapsed group still shows its chevron, so its new track row is one visible tap away, where a
- *  layer's folded track row has no standing affordance of its own. */
+ *  `animateGroup` unfolds too, but writes `collapsed` directly — see the reasoning at that line. */
 function unfoldTracks(layer: Layer): void {
   layer.tracksCollapsed = false;
 }

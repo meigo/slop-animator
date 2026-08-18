@@ -151,9 +151,26 @@ export function isLayerAnimated(layer: Layer): boolean {
  *  now reaches TWO levels — a copied bag must share neither the bag object nor any track in it. */
 export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
   const out = {} as T;
-  if (tracks.transform) out.transform = copyTransformTrack(tracks.transform);
-  if ("opacity" in tracks && tracks.opacity)
-    (out as LayerTracks).opacity = copyTrack(tracks.opacity, (n: number) => n);
+  // Driven off TRACK_PROPS with a `never` arm, like `shiftLayerTrackKeys`: hand-enumerating the
+  // properties here is the shape this codebase has already been bitten by three times (the frame
+  // shifter, merge-down, rasterize each compiled and quietly ignored the new property). A fourth
+  // bag field missed HERE would be shared with the undo snapshot rather than copied, so an edit
+  // would reach back and corrupt the before-state — gotcha #8, silently. A compile error is cheap.
+  for (const p of TRACK_PROPS) {
+    switch (p) {
+      case "transform":
+        if (tracks.transform) out.transform = copyTransformTrack(tracks.transform);
+        break;
+      case "opacity":
+        if ("opacity" in tracks && tracks.opacity)
+          (out as LayerTracks).opacity = copyTrack(tracks.opacity, (n: number) => n);
+        break;
+      default: {
+        const unreachable: never = p;
+        void unreachable;
+      }
+    }
+  }
   return out;
 }
 
@@ -707,9 +724,35 @@ export type TrackRef =
  *  (the key controls, which delete keys and set curves) never touch a VALUE, so handing them a typed
  *  track would only invite one branch per property back into the UI. */
 export function trackForRef(project: Project, ref: TrackRef): Track<unknown> | undefined {
-  if (ref.owner === "group") return project.groups.find((g) => g.id === ref.id)?.tracks?.transform;
+  // Both branches SWITCH on `prop` rather than defaulting to `transform`. The group arm looked
+  // harmless while `GroupTracks` had one field, but it ignored `ref.prop` entirely — so the day a
+  // group gains a second property, every control pointed at it would silently edit the transform.
+  if (ref.owner === "group") {
+    const g = project.groups.find((x) => x.id === ref.id);
+    // The prop is read into a local before the switch: narrowing `ref.prop` in the default arm
+    // narrows `ref` ITSELF to never, so the exhaustiveness check cannot then read a field off it.
+    const prop: keyof GroupTracks = ref.prop;
+    switch (prop) {
+      case "transform":
+        return g?.tracks?.transform;
+      default: {
+        const unreachable: never = prop;
+        return unreachable;
+      }
+    }
+  }
   const l = project.layers.find((x) => x.id === ref.id);
-  return ref.prop === "opacity" ? l?.tracks?.opacity : l?.tracks?.transform;
+  const prop: keyof LayerTracks = ref.prop;
+  switch (prop) {
+    case "transform":
+      return l?.tracks?.transform;
+    case "opacity":
+      return l?.tracks?.opacity;
+    default: {
+      const unreachable: never = prop;
+      return unreachable;
+    }
+  }
 }
 
 /** A group's own STATIC transform (identity when absent / undefined group). Frame-blind: on an
