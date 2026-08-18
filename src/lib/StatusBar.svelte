@@ -1,8 +1,8 @@
 <script lang="ts">
   import { state as appState, activeLayer } from "../state/appState.svelte";
-  import { isLayerLocked, isLayerVisible } from "../anim/document";
+  import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
-  import { animateTargetLayer } from "./transform-target";
+  import { animateTargetGroup, animateTargetLayer } from "./transform-target";
 
   // Ambient readout: frame, tool (brush/eraser show their stroke type), and the active layer.
   // Split rather than one string: the readout is right-anchored, so a frame number gaining a digit
@@ -21,19 +21,30 @@
   // (sourced from any title=) always wins; this only fills the gap, which on touch is always.
   const idleHint = $derived.by(() => {
     const l = activeLayer();
-    // The SAME predicate the Animate controls use (shared, so the two cannot drift): a track alone
-    // is not enough, because at FRAME scope a drag writes the cell's transform and at GROUP scope
-    // the group's — neither writes a key. Those are exactly the scopes where the ToolOptions
-    // controls vanish, so the status bar is the only thing talking and must not promise a key.
+    // The SAME predicates the Animate controls use (shared, so the two cannot drift): a track alone
+    // is not enough, because at FRAME scope a drag writes the CELL's transform, which no track
+    // holds. Group scope keys a different target rather than none — hence the second call below.
+    const target = animateTargetLayer(
+      l,
+      appState.project.groups,
+      appState.tool,
+      appState.transformScope,
+      appState.playhead,
+      appState.project.fps,
+    );
+    // Group scope keys the GROUP, so the layer predicate correctly declines there and this one
+    // answers instead. Without it auto-key at group scope would happen silently — the very hazard
+    // this hint exists to mitigate, in the one scope where ToolOptions' own caption is the only
+    // other thing on screen.
+    const group = animateTargetGroup(
+      l,
+      appState.project.groups,
+      appState.project.layers,
+      appState.tool,
+      appState.transformScope,
+    );
     const keys =
-      animateTargetLayer(
-        l,
-        appState.project.groups,
-        appState.tool,
-        appState.transformScope,
-        appState.playhead,
-        appState.project.fps,
-      )?.transformTrack != null;
+      (!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null;
     return contextHint({
       tool: appState.tool,
       locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's

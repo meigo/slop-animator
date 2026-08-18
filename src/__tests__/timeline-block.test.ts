@@ -552,18 +552,41 @@ describe("pasteBlockInsert and transform keys", () => {
 
   it("shifts the target layer's keys by the number of inserted cells", () => {
     const l = drawLayer(1, [key(), hold(), hold(), hold(), key()]);
-    l.transformTrack = {
-      keys: [
-        { frame: 0, t: T0 },
-        { frame: 4, t: T0, interp: "hold" },
-      ],
-      box: null,
+    l.tracks = {
+      transform: {
+        keys: [
+          { frame: 0, v: T0 },
+          { frame: 4, v: T0, interp: "hold" },
+        ],
+        box: null,
+      },
     };
     const src = drawLayer(2, [key(), key()]);
     const block = copyBlock(proj([src], 2), [2], 0, 1, fakeOps);
     pasteBlockInsert(proj([l], 5), block, 1, 2, fakeOps);
-    expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 6]);
-    expect(l.transformTrack!.keys[1].interp).toBe("hold"); // the curve travels with its key
+    expect(l.tracks!.transform!.keys.map((k) => k.frame)).toEqual([0, 6]);
+    expect(l.tracks!.transform!.keys[1].interp).toBe("hold"); // the curve travels with its key
+  });
+
+  // The asymmetry with `rippleDocumentFrames`, pinned through a REAL per-layer operation: a group's
+  // transform is shared by every member, so a per-layer op has no single correct shift for it — the
+  // same reason those ops leave a reference RANGE alone. Only a document-wide ripple has one.
+  it("never shifts the GROUP's track, only the member layer's", () => {
+    const l = drawLayer(1, [key(), hold(), hold()]);
+    l.groupId = 7;
+    l.tracks = { transform: { keys: [{ frame: 2, v: T0 }], box: null } };
+    const groupTrack = { keys: [{ frame: 2, v: T0 }], box: null };
+    const src = drawLayer(2, [key(), key()]);
+    const block = copyBlock(proj([src], 2), [2], 0, 1, fakeOps);
+    const p = proj([l], 3);
+    p.groups = [
+      { id: 7, name: "G", collapsed: false, visible: true, tracks: { transform: groupTrack } },
+    ];
+    pasteBlockInsert(p, block, 1, 0, fakeOps);
+    expect(l.tracks!.transform!.keys.map((k) => k.frame)).toEqual([4]); // moved with its cells
+    // Read the LIVE group, never the captured `groupTrack`: a shifter replaces the track object, so
+    // asserting on the original reference would pass no matter what the operation did to the group.
+    expect(p.groups[0].tracks!.transform!.keys.map((k) => k.frame)).toEqual([2]); // stayed put
   });
 
   it("leaves a layer with no track alone", () => {
@@ -571,6 +594,6 @@ describe("pasteBlockInsert and transform keys", () => {
     const src = drawLayer(2, [key()]);
     const block = copyBlock(proj([src], 1), [2], 0, 0, fakeOps);
     expect(() => pasteBlockInsert(proj([l], 2), block, 1, 0, fakeOps)).not.toThrow();
-    expect(l.transformTrack).toBeUndefined();
+    expect(l.tracks?.transform).toBeUndefined();
   });
 });

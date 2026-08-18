@@ -15,7 +15,10 @@ import {
   type Layer,
   type LayerGroup,
   type TransformTrack,
-  type TransformKey,
+  type Track,
+  type Keyframe,
+  type LayerTracks,
+  type GroupTracks,
 } from "../anim/document";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
@@ -32,6 +35,13 @@ export interface DrawingLayerJson {
   groupId: number | null;
   cells: ("key" | "hold")[];
   transform: RefTransform;
+  tracks?: LayerTracks;
+  /** Are the layer's property rows folded away in the timeline? Optional and additive: absent =
+   *  EXPANDED, so every pre-existing save opens showing its tracks and the format version does not
+   *  move. */
+  tracksCollapsed?: boolean;
+  /** LEGACY, read-only. The single-property shape that SHIPPED before `tracks` existed, so it is in
+   *  real projects and autosaves; the loader promotes it. Never written. */
   transformTrack?: TransformTrack;
   cellTransforms?: {
     [index: number]: {
@@ -58,6 +68,10 @@ export interface ReferenceJson {
   groupId: number | null;
   was: "image" | "video";
   transform: RefTransform;
+  tracks?: LayerTracks;
+  /** See `DrawingLayerJson.tracksCollapsed`. */
+  tracksCollapsed?: boolean;
+  /** LEGACY, read-only — see `DrawingLayerJson.transformTrack`. */
   transformTrack?: TransformTrack;
 }
 
@@ -134,6 +148,7 @@ export interface ProjectJson {
     locked?: boolean;
     transform?: RefTransform;
     transformBox?: { x: number; y: number; w: number; h: number } | null;
+    tracks?: GroupTracks;
   }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
@@ -183,6 +198,7 @@ export function projectToJson(project: Project): ProjectJson {
         collapsed: g.collapsed,
         visible: g.visible,
         locked: g.locked,
+        tracks: g.tracks,
         ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
       };
     }),
@@ -196,7 +212,8 @@ export function projectToJson(project: Project): ProjectJson {
       groupId: l.groupId,
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
-      transformTrack: l.transformTrack,
+      tracks: l.tracks,
+      tracksCollapsed: l.tracksCollapsed,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
           c.kind === "key" &&
@@ -232,7 +249,8 @@ export function projectToJson(project: Project): ProjectJson {
         groupId: l.groupId,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
-        transformTrack: l.transformTrack,
+        tracks: l.tracks,
+        tracksCollapsed: l.tracksCollapsed,
       })),
     // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
@@ -372,6 +390,20 @@ export async function saveProjectBlob(
 /** Rebuild a Project from a saved zip. `dpr` sizes the rebuilt cell canvases for the current display.
  *  `onSeeked` fires as each hydrated video reference's first frame becomes available (repaint hook).
  *  `onMediaPersistFailed` fires if seeding the local media store for a hydrated file fails (quota). */
+/** Is this a usable key VALUE? Per property, because the failure differs: a NaN in a transform
+ *  poisons the whole compose chain, while an out-of-range or NaN opacity is worse than it looks —
+ *  per spec, `globalAlpha` IGNORES a value outside [0,1] or NaN, so the layer paints at the PREVIOUS
+ *  draw op's alpha and it reads as a compositing bug rather than as bad data. `sanitiseTrack` guards
+ *  `frame` and `sampleEvery`; the value was simply never guarded with them. */
+function isTransformValue(v: unknown): boolean {
+  if (!v || typeof v !== "object") return false;
+  const t = v as RefTransform;
+  return [t.dx, t.dy, t.scale, t.rotation].every((n) => Number.isFinite(n));
+}
+function isOpacityValue(v: unknown): boolean {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+}
+
 /**
  * A track read back from a file is untrusted input. `transformAt` assumes `keys[0]` is the earliest
  * key and the last is the latest — that assumption is what makes it CLAMP outside the key range
@@ -383,11 +415,20 @@ export async function saveProjectBlob(
  * empty key array becomes no track at all: a track is documented never-empty, and `transformAt`
  * already falls back to the static transform.
  */
-function sanitiseTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
+function sanitiseTrack<T extends Track<unknown>>(
+  track: T | undefined,
+  isValidValue: (v: unknown) => boolean,
+): T | undefined {
   if (!track || !Array.isArray(track.keys)) return undefined;
-  const byFrame = new Map<number, TransformKey>();
+  const byFrame = new Map<number, Keyframe<unknown>>();
   const sorted = track.keys
-    .filter((k) => k && Number.isFinite(k.frame))
+    // INTEGER and >= 0, not merely finite: every key action (tap-to-seek, retime, delete, the ease
+    // control) matches `k.frame === playhead`, so a fractional or negative frame produces a key that
+    // renders but can never be selected, moved or removed.
+    .filter(
+      (k) =>
+        k && Number.isInteger(k.frame) && k.frame >= 0 && isValidValue((k as Keyframe<unknown>).v),
+    )
     .sort((a, b) => a.frame - b.frame);
   for (const k of sorted) byFrame.set(k.frame, k);
   if (byFrame.size === 0) return undefined;
@@ -396,6 +437,37 @@ function sanitiseTransformTrack(track: TransformTrack | undefined): TransformTra
   if (every === undefined) return { ...track, keys };
   const n = Math.floor(Number.isFinite(every) ? every : 1);
   return { ...track, keys, sampleEvery: Math.min(MAX_SAMPLE_EVERY, Math.max(1, n)) };
+}
+
+/** A pivot box whose every field is a finite number, else null (= "no frozen box", which the
+ *  consumers already fall back from). `groupBoxLogical` now READS this field, so a hand-edited or
+ *  corrupt zip can feed it straight into pivot arithmetic — one NaN there produces NaN geometry
+ *  with nothing on screen to say why. Same `Number.isFinite` shape as the frame/sampleEvery guards
+ *  above; the fields are re-listed rather than spread so an unexpected extra key cannot ride in. */
+function sanitiseTrackBox(box: TransformTrack["box"] | undefined): TransformTrack["box"] {
+  return box && [box.x, box.y, box.w, box.h].every((n) => Number.isFinite(n))
+    ? { x: box.x, y: box.y, w: box.w, h: box.h }
+    : null;
+}
+
+/** Sort, de-duplicate and clamp every track in a persisted bag. A bag whose tracks all sanitise
+ *  away is `undefined`, not an empty object — "no animation" has one representation in the model. */
+function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
+  if (!tracks) return undefined;
+  const out = {} as T;
+  const transform = sanitiseTrack(tracks.transform, isTransformValue);
+  if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
+  if ("opacity" in tracks) {
+    const opacity = sanitiseTrack(tracks.opacity, isOpacityValue);
+    if (opacity) (out as LayerTracks).opacity = opacity;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Promote the LEGACY single-track field into a bag. `transformTrack` shipped, so it is in real
+ *  files and autosaves — dropping this read would make a saved animation silently disappear. */
+function legacyTracks(track: TransformTrack | undefined): LayerTracks | undefined {
+  return track ? { transform: track } : undefined;
 }
 
 export async function loadProjectBlob(
@@ -446,7 +518,12 @@ export async function loadProjectBlob(
       groupId: lj.groupId ?? null,
       cells,
       transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
-      transformTrack: sanitiseTransformTrack(lj.transformTrack),
+      // Read both shapes: `transformTrack` shipped and is in real projects, including autosaves.
+      // `tracks` wins when a file carries both.
+      tracks: sanitiseTracks(lj.tracks ?? legacyTracks(lj.transformTrack)),
+      // Passed through, not defaulted to `false`: absent already MEANS expanded, and defaulting
+      // would write a redundant `tracksCollapsed: false` onto every layer of every later save.
+      tracksCollapsed: lj.tracksCollapsed,
     });
   }
   const refsJson = json.references ?? [];
@@ -469,7 +546,8 @@ export async function loadProjectBlob(
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
       transform: rj.transform,
-      transformTrack: sanitiseTransformTrack(rj.transformTrack),
+      tracks: sanitiseTracks(rj.tracks ?? legacyTracks(rj.transformTrack)),
+      tracksCollapsed: rj.tracksCollapsed,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer;
     const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;
@@ -497,6 +575,7 @@ export async function loadProjectBlob(
     locked: g.locked ?? false,
     transform: g.transform ? { ...g.transform } : undefined,
     transformBox: g.transformBox ? { ...g.transformBox } : null,
+    tracks: sanitiseTracks(g.tracks),
   }));
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);

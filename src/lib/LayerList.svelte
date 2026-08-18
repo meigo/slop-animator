@@ -54,7 +54,14 @@
     setActiveLayer,
     isRowSelected,
     toggleEmbedMedia,
+    animateLayerOpacity,
+    removeLayerOpacityAnimation,
+    applyLayerOpacityAt,
+    beginStructuralEdit,
+    commitStructuralEdit,
+    transformDragGuard,
   } from "../state/appState.svelte";
+  import type { StructSnapshot } from "../state/appState.svelte";
   import {
     createDrawingLayer,
     nextLayerName,
@@ -67,10 +74,14 @@
     canRemoveLayer,
     canDuplicateLayer,
     whyNotMergeDown,
+    layerTransformTrack,
+    opacityAt,
+    isLayerVisible,
   } from "../anim/document";
   import type { Layer, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
+  import TrackKeyControls from "./TrackKeyControls.svelte";
 
   let listEl: HTMLDivElement;
   let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
@@ -159,6 +170,164 @@
     appState.layerPanelWidth = clampPanelWidth(appState.layerPanelWidth, window.innerWidth);
   }
 
+  // --- Opacity: the slider IS the keying control -------------------------------------------------
+  // The property's existing control is its gizmo (spec): a transform key comes from dragging the
+  // gizmo, an opacity key from dragging this slider. With no track it keeps writing `layer.opacity`
+  // exactly as before (not undoable, like visibility and boil strength); with a track it writes a
+  // key at the playhead instead.
+  //
+  // The gesture brackets its OWN undo. A range input fires `input` per pixel of travel, so a
+  // self-committing write would push ~100 entries for one drag and evict the whole 50-command
+  // history — the same flood the animation-length drag was fixed for (2026-08-16). Snapshot at the
+  // first write, live-write through `applyLayerOpacityAt` (no history), commit once at settle.
+  let opacityUndo: StructSnapshot | null = null;
+  let opacityUndoLayerId: number | null = null;
+  /** The frame the bracket was OPENED on. Every write of the gesture goes there and the settle test
+   *  reads there, rather than re-reading `appState.playhead`: both transform drag sites capture a
+   *  grab-time `keyFrame` for the same reason (a held drag keys its GRAB frame, which is what
+   *  `transformDragFrame` publishes). Re-reading would scatter keys across frames while playback
+   *  runs, and — worse — make the settle compare the grab frame's before-value against a DIFFERENT
+   *  frame's key, so a coincidental match would drop a bracket whose writes had already landed,
+   *  leaving them permanently un-undoable. */
+  let opacityUndoFrame = 0;
+  /** The key sitting on that frame when the bracket opened, or null when there was none — the no-op
+   *  test at settle. A drag out and back onto a pre-existing key's own value changes nothing, and an
+   *  undo entry that visibly does nothing is worse than none. */
+  let opacityUndoStartV: number | null = null;
+  /** A range key is held down. Auto-repeat runs at ~30 Hz and fires `change` PER repeat, so a
+   *  two-second hold would push ~60 entries and evict the stack by the other door — the very flood
+   *  the non-committing writer exists to prevent. One held run is one gesture, so `change` defers to
+   *  `keyup` while this is set. A single tap still settles immediately, on its own keyup. */
+  let opacityKeyHeld = false;
+  /** The keys a range input responds to. Anything else (Tab, modifiers) must NOT latch the flag, or
+   *  tabbing away would leave it set with the keyup delivered to another element. */
+  const RANGE_KEYS = new Set([
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+  ]);
+
+  /** The frame this layer's opacity controls are TALKING ABOUT: the bracket's grab frame while a
+   *  gesture is open, else the playhead. Every write of a gesture goes to `opacityUndoFrame`, so
+   *  reading the live playhead for the title and the thumb made both lie the moment playback moved
+   *  it — the title named a frame nothing would be written to, and the thumb jumped to the resolved
+   *  value at the new frame, fighting the pointer. `transformDragFrame` freezes the transform drags
+   *  for the same reason. */
+  function opacityFrameFor(layer: Layer): number {
+    // Read the playhead FIRST, unconditionally. `opacityUndo`/`opacityUndoFrame` are plain `let`s,
+    // not `$state`, so a short-circuiting ternary would drop `playhead` from the derived's
+    // dependency set for the whole time a bracket is open — and it would never come back: after
+    // that gesture released, scrubbing left this row's thumb and its "keys frame N" title pinned to
+    // the grab frame until the row remounted, so the next nudge started from a thumb that was lying.
+    const ph = appState.playhead;
+    return opacityUndo && opacityUndoLayerId === layer.id ? opacityUndoFrame : ph;
+  }
+
+  function opacityKeyValue(layerId: number, frame: number): number | null {
+    const l = appState.project.layers.find((x) => x.id === layerId);
+    return l?.tracks?.opacity?.keys.find((k) => k.frame === frame)?.v ?? null;
+  }
+
+  function onOpacityInput(layer: Layer, value: number) {
+    // A bracket may never span two layers. Every settle route below is bound to the SLIDER element,
+    // and the slider lives inside `{#if active}` — so a row that unmounts mid-drag (a second contact
+    // selecting another row, or the audio lane, which deselects every layer) fires none of them and
+    // loses its implicit pointer capture. Without this the next layer's drag would inherit the open
+    // bracket and write ITS keys to the abandoned gesture's layer id and frame.
+    if (opacityUndo && opacityUndoLayerId !== layer.id) settleOpacityDrag();
+    if (!layer.tracks?.opacity) {
+      layer.opacity = value; // static: unchanged behaviour, straight assignment + repaint
+      bump();
+      return;
+    }
+    if (!opacityUndo) {
+      opacityUndo = beginStructuralEdit();
+      opacityUndoLayerId = layer.id;
+      opacityUndoFrame = appState.playhead;
+      opacityUndoStartV = opacityKeyValue(layer.id, opacityUndoFrame);
+      // Undo/redo and Open settle an open bracket before they run — without this a ⌘Z mid-drag
+      // would leave it open and the release would commit a snapshot of the pre-undo document.
+      transformDragGuard.settle = settleOpacityDrag;
+    }
+    applyLayerOpacityAt(layer.id, opacityUndoFrame, value);
+  }
+
+  /** Idempotent (it guards on an open bracket), which is why the slider can bind it to `change`,
+   *  `pointerup`, `pointercancel`, `keyup` AND `blur`: `change` does not fire when a drag ends back
+   *  on the value it started from, a cancelled pointer fires neither, and a held-key run must settle
+   *  once at `keyup` rather than per repeat. */
+  function settleOpacityDrag() {
+    const before = opacityUndo;
+    const layerId = opacityUndoLayerId;
+    const frame = opacityUndoFrame;
+    const startV = opacityUndoStartV;
+    opacityUndo = null;
+    opacityUndoLayerId = null;
+    opacityUndoStartV = null;
+    if (transformDragGuard.settle === settleOpacityDrag) transformDragGuard.settle = null;
+    if (!before || layerId === null) return;
+    // Nothing net changed — dragged back onto the value the key already held, OR every write was
+    // refused (locked/hidden layer, or a locked group) so no key exists where none did. Both are
+    // one comparison: no `startV !== null` term, because that would skip the test in exactly the
+    // refused case and push a `before === after` entry — a ⌘Z that visibly does nothing. A key
+    // CREATED where there was none still commits, since a number never equals null.
+    if (opacityKeyValue(layerId, frame) === startV) return;
+    commitStructuralEdit(before);
+  }
+
+  /**
+   * The unmount backstop, on the ELEMENT rather than on any cause of its removal.
+   *
+   * Every other settle route — `change`, `pointerup`, `pointercancel`, `keyup`, `blur` — is bound to
+   * this input, and a removed element fires none of them and loses its implicit pointer capture. So
+   * a slider that goes away mid-drag leaked its bracket, and the next drag inherited it and wrote to
+   * the abandoned gesture's layer id and frame. The causes are plural and keep growing: the row's
+   * `{#if active}` (a second contact selecting another layer, or the audio lane, which deselects
+   * every layer), the list's `{#key dragNonce}` REBUILD after any SortableJS reorder drop — which
+   * leaves `activeRow` untouched, so watching selection could not see it — and component teardown.
+   * A `destroy` hook covers all of them and any future one, which an enumeration of causes cannot.
+   */
+  function settleOnUnmount(_node: HTMLElement, layerId: number) {
+    return {
+      destroy() {
+        // Only OUR bracket: the guard costs nothing and keeps this honest if a second slider ever
+        // renders (today only the active row has one).
+        if (opacityUndoLayerId === layerId) settleOpacityDrag();
+      },
+    };
+  }
+
+  function opacityKeyDown(e: KeyboardEvent) {
+    if (RANGE_KEYS.has(e.key)) opacityKeyHeld = true;
+  }
+  function opacityKeyUp() {
+    opacityKeyHeld = false;
+    settleOpacityDrag();
+  }
+  /** `change` settles the POINTER path immediately; during a held-key run it defers to `keyup`. */
+  function opacityChange() {
+    if (!opacityKeyHeld) settleOpacityDrag();
+  }
+  /** Backstop: focus can leave mid-hold (a click elsewhere), and then no `keyup` ever arrives here. */
+  function opacityBlur() {
+    opacityKeyHeld = false;
+    settleOpacityDrag();
+  }
+
+  /** Whether the opacity controls can act: the same lock/hidden guard the store actions apply, so a
+   *  refusal is shown (dimmed, with a reason) rather than discovered by pressing. */
+  function opacityEditable(layer: Layer): boolean {
+    return (
+      !isLayerLocked(layer, appState.project.groups) &&
+      isLayerVisible(layer, appState.project.groups)
+    );
+  }
+
   // A button that silently no-ops explains nothing, so the three actions that can refuse dim and say
   // why. aria-disabled (not disabled) per the app-wide rule: a disabled button dispatches no pointer
   // events, so App.svelte's delegated status-hint listener could never read the title — and on iPad
@@ -185,11 +354,14 @@
     // On an ANIMATED layer the static `transform` is retained but IGNORED, so it says nothing about
     // what is on screen — and Apply/Reset refuse on it anyway. The cell and group terms below are
     // unaffected: neither is driven by the track.
-    if (!layer.transformTrack && !isIdentityTransform(layer.transform)) return true;
+    if (!layerTransformTrack(layer) && !isIdentityTransform(layer.transform)) return true;
     const rk = resolvedKeyCell(layer, appState.playhead);
     if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
     const g = groupOf(layer, appState.project.groups);
-    return !!g && !isIdentityTransform(groupTransform(g));
+    // Same rule as the layer term above, one level out: an ANIMATED group's static transform is
+    // retained but IGNORED, and Reset refuses on it — so it must not light this indicator or win
+    // the scope dispatch below and offer an action that no-ops.
+    return !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g));
   }
 
   // Act on whichever transform is actually non-identity; when multiple are, the scope toggle decides.
@@ -198,11 +370,11 @@
     if (layer.kind !== "draw") return null;
     // Same reason as hasTransform: an animated layer's static transform is ignored, and Apply/Reset
     // refuse on it — so it must not win the scope dispatch and offer an action that no-ops.
-    const layerNI = !layer.transformTrack && !isIdentityTransform(layer.transform);
+    const layerNI = !layerTransformTrack(layer) && !isIdentityTransform(layer.transform);
     const rk = resolvedKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
     const g = groupOf(layer, appState.project.groups);
-    const groupNI = !!g && !isIdentityTransform(groupTransform(g));
+    const groupNI = !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g)); // see hasTransform
     if (!layerNI && !cellNI && !groupNI) return null;
     // Honour the active toolbar scope when it points at a non-identity transform.
     if (appState.transformScope === "frame" && cellNI) return "frame";
@@ -356,20 +528,94 @@
     </div>
     <!-- Row 2: detail controls (active layer only) -->
     {#if active}
+      <!-- Reads through `opacityAt`, never the raw field: on an animated layer the static number is
+           retained but IGNORED, so a slider bound to it would sit still while the drawing faded. -->
+      {@const opacityTrack = layer.tracks?.opacity}
+      {@const opacityFrame = opacityFrameFor(layer)}
+      {@const opacityNow = opacityAt(layer, opacityFrame)}
+      {@const opacityOk = opacityEditable(layer)}
+      <!-- A LOCKED or hidden layer keeps its STATIC opacity editable (a lock protects content, not
+           organization), but the store's key writers refuse it — so an ANIMATED one is dimmed rather
+           than silently swallowing drags. -->
+      {@const opacityInert = !!opacityTrack && !opacityOk}
       <!-- Wraps rather than clipping: the panel is a fixed w-56 and this row keeps gaining controls.
            Sizes are tuned so a DRAW layer stays on one line; a video ref flows onto a second. -->
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary">
-        <input
-          class="w-12"
-          type="range"
-          min="0"
-          max="100"
-          bind:value={layer.opacity}
-          oninput={bump}
-          onclick={(e) => e.stopPropagation()}
-          title="Opacity"
-        />
-        <span class="text-xs tabular-nums w-6 text-text-muted">{layer.opacity}</span>
+        <!-- Slider + readout share one wrapper so they can never wrap apart — and so the title can
+             live on an element that still receives pointer events when the slider itself is made
+             inert, the same split ToolOptions' Ease control uses. -->
+        <span
+          class="flex items-center gap-2"
+          title={opacityInert
+            ? "Opacity — animated, and the layer is locked or hidden, so its keys can't be edited"
+            : opacityTrack
+              ? `Opacity — animated; a change keys frame ${opacityFrame + 1}`
+              : "Opacity"}
+        >
+          <input
+            use:settleOnUnmount={layer.id}
+            class="w-12 aria-disabled:opacity-40"
+            class:pointer-events-none={opacityInert}
+            aria-disabled={opacityInert}
+            type="range"
+            min="0"
+            max="100"
+            value={opacityNow}
+            oninput={(e) => onOpacityInput(layer, Number(e.currentTarget.value))}
+            onchange={opacityChange}
+            onpointerup={settleOpacityDrag}
+            onpointercancel={settleOpacityDrag}
+            onkeydown={opacityKeyDown}
+            onkeyup={opacityKeyUp}
+            onblur={opacityBlur}
+            onclick={(e) => e.stopPropagation()}
+          />
+          <!-- ROUNDED: between two keys the resolved value is fractional, and the w-6 readout is
+               sized for "100". The slider itself takes the raw number and the browser snaps it to
+               the step. -->
+          <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(opacityNow)}</span>
+        </span>
+        <!-- The Animate entry point sits HERE rather than in ToolOptions because opacity is not a
+             tool — its control lives in this panel, so its keying switch does too. aria-disabled,
+             never `disabled`: a disabled control dispatches no pointer events, so the status bar's
+             delegated listener could never read the title explaining the refusal, and on iPad a tap
+             is the only route to that explanation. -->
+        {#if !opacityTrack}
+          <button
+            class="rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+            aria-disabled={!opacityOk}
+            title={opacityOk
+              ? "Animate opacity — the current value becomes a key at frame 0"
+              : "Animate opacity — the layer is locked or hidden"}
+            onclick={(e) => {
+              e.stopPropagation();
+              if (opacityOk) animateLayerOpacity(layer.id);
+            }}>Animate</button
+          >
+        {:else}
+          <!-- The SAME key controls the tool bar shows for a transform track — one component, so an
+               opacity key can be deleted and its segment set to `hold` (the spec's way to get a hard
+               cut rather than a fade) without a second copy of this markup drifting from the first.
+               `compact` matches this row's button sizing; Copy/Paste are transform-only and are not
+               asked for. The row deliberately `flex-wrap`s, so these wrap onto another line in the
+               fixed-width panel rather than clipping. -->
+          <TrackKeyControls
+            trackRef={{ owner: "layer", id: layer.id, prop: "opacity" }}
+            compact
+            blocked={opacityOk ? null : "the layer is locked or hidden"}
+          />
+          <button
+            class="rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+            aria-disabled={!opacityOk}
+            title={opacityOk
+              ? "Stop animating opacity — keeps the value you can see now"
+              : "Stop animating opacity — the layer is locked or hidden"}
+            onclick={(e) => {
+              e.stopPropagation();
+              if (opacityOk) removeLayerOpacityAnimation(layer.id);
+            }}>Stop animating</button
+          >
+        {/if}
         <!-- Video-only toggles live here, not in Row 1: they are per-clip settings you adjust on the
              layer you're working on, and four icons before the name left no room for it (2026-08-11).
              Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->

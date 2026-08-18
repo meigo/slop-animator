@@ -6,7 +6,7 @@
     isIdentityTransform,
     isLayerEditable,
     groupOf,
-    groupTransform,
+    groupTransformAt,
     cellTransform,
     resolvedKeyCell,
     transformAt,
@@ -58,7 +58,9 @@
     if (g)
       steps.push({
         base: groupBoxLogical(g, appState.project, appState.playhead, DPR, appState.version),
-        t: groupTransform(g),
+        // At the playhead, like the cell and layer steps above: the hint traces the paintable edge
+        // of the frame you are on, so an animated group has to resolve there too.
+        t: groupTransformAt(g, appState.playhead),
       });
 
     // Untransformed: the paintable bound IS the document edge, which the canvas already shows.

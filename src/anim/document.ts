@@ -32,6 +32,7 @@ export interface LayerGroup {
   locked?: boolean;
   transform?: RefTransform;
   transformBox?: { x: number; y: number; w: number; h: number } | null;
+  tracks?: GroupTracks;
 }
 
 export interface DrawingLayer {
@@ -45,7 +46,12 @@ export interface DrawingLayer {
   groupId: number | null;
   cells: Cell[]; // independent per-layer length; document length = the longest layer
   transform: RefTransform;
-  transformTrack?: TransformTrack;
+  tracks?: LayerTracks;
+  /** Are this layer's property rows folded away in the timeline? A VIEW-prop, like a group's
+   *  `collapsed` (which it deliberately mirrors — the timeline has one collapse idiom, not two):
+   *  persisted, not undoable, and absent means EXPANDED so every existing project opens showing its
+   *  tracks. */
+  tracksCollapsed?: boolean;
 }
 
 export type ReferenceMedia =
@@ -63,10 +69,12 @@ export interface RefTransform {
 /** How the value travels from one key to the NEXT one. */
 export type KeyInterp = "linear" | "hold" | "ease-in" | "ease-out" | "ease-in-out";
 
-export interface TransformKey {
+export interface Keyframe<V> {
   /** Project frame, >= 0. Unique within a track. */
   frame: number;
-  t: RefTransform;
+  /** The value at this key. Named `v`, not `t`: this track is generic over its value type now, and
+   *  `t` would read as "transform" on an opacity track and as "time" to anyone used to easing. */
+  v: V;
   /**
    * The interpolation of the segment that STARTS at this key — so it describes the curve between
    * this key and the next, which is how an artist thinks about easing ("this move eases out"), and
@@ -85,13 +93,17 @@ export interface TransformKey {
   interp?: KeyInterp;
 }
 
-export interface TransformTrack {
+export interface Track<V> {
   /** Sorted by `frame`, never empty. */
-  keys: TransformKey[];
+  keys: Keyframe<V>[];
   /** Quantise the sampled frame to a multiple of this, so a move updates on 2s/3s like the drawings
    *  do. 1 (or absent) = every frame. Track-wide, unlike `interp`: it is a property of the RHYTHM
    *  the whole move is cut to, not of one segment. */
   sampleEvery?: number;
+}
+
+export type TransformKey = Keyframe<RefTransform>;
+export interface TransformTrack extends Track<RefTransform> {
   /** The pivot box, captured ONCE at track creation and shared by every key. A per-key box would
    *  make the pivot interpolate and warp the motion path between keys, invisibly. */
   box: { x: number; y: number; w: number; h: number } | null;
@@ -102,6 +114,70 @@ export interface TransformTrack {
  *  `MAX_GAP`/`clampGap` in `fill-holes.ts` for the Fill tool's gap: a browser accepts a typed value
  *  beyond a number input's `max`, so the clamp must live in the logic, not just the widget). */
 export const MAX_SAMPLE_EVERY = 12;
+
+/**
+ * The animated properties of a layer. A typed bag, not a `Record<string, Track<unknown>>`: the set
+ * is small and closed, and a record would lose the value type at every call site and push casts
+ * into the render path.
+ */
+export interface LayerTracks {
+  transform?: TransformTrack;
+  opacity?: Track<number>;
+}
+export interface GroupTracks {
+  transform?: TransformTrack;
+}
+
+/** An animatable layer property. `keyof LayerTracks` rather than a hand-written union, so it cannot
+ *  name a property the bag does not have and a fourth one extends it by existing. */
+export type TrackProp = keyof LayerTracks;
+
+/** THE property set, in the order the timeline stacks its rows. That order is FIXED, and
+ *  deliberately not "whichever track was added first": rows must never reorder under the artist as
+ *  tracks come and go. It lives here rather than with the row layout because it is not only a row
+ *  order — the frame shifter and the "is this layer animated at all?" gates loop the same list, and
+ *  a second copy of it is exactly how a property comes to be handled everywhere except one place. */
+export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
+
+/** Does this layer carry ANY track? Every "is it animated?" gate asks through here rather than
+ *  enumerating properties by hand: a hand-written `tracks?.transform || tracks?.opacity` still
+ *  COMPILES when a third property arrives, it just quietly answers the old question — which is how
+ *  merge-down and rasterize each came to destroy an opacity track that the transform check missed. */
+export function isLayerAnimated(layer: Layer): boolean {
+  return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
+}
+
+/** Deep-copy a whole bag. The no-mutation rule (gotcha #8: undo snapshots share layer objects)
+ *  now reaches TWO levels — a copied bag must share neither the bag object nor any track in it. */
+export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
+  const out = {} as T;
+  if (tracks.transform) out.transform = copyTransformTrack(tracks.transform);
+  if ("opacity" in tracks && tracks.opacity)
+    (out as LayerTracks).opacity = copyTrack(tracks.opacity, (n: number) => n);
+  return out;
+}
+
+/** A tracks bag with no track actually present, collapsed to `undefined`. Every REMOVER must route
+ *  its result through this: `{ ...tracks, transform: undefined }` leaves a truthy `{ transform:
+ *  undefined }` object in memory, while persistence (JSON drops `undefined`-valued keys) would
+ *  round-trip that same removal to a bare `undefined` — two representations of "no tracks" that
+ *  `if (layer.tracks)` would answer differently depending on whether a save/reload happened to sit
+ *  in between. Nothing observed the gap before a second property existed, because every READ already
+ *  went through an accessor (`layerTransformTrack`, `opacityAt`) rather than the raw field — but a
+ *  raw `if (layer.tracks)` is exactly the kind of check this codebase keeps reaching for, so the two
+ *  representations must not be allowed to diverge in the first place. */
+export function normalizedTracks<T extends LayerTracks | GroupTracks>(tracks: T): T | undefined {
+  return Object.values(tracks as Record<string, unknown>).some((v) => v !== undefined)
+    ? tracks
+    : undefined;
+}
+
+/** The layer's transform track, or undefined. There were 58 `transformTrack` mentions across
+ *  src/anim, src/lib, src/state and src/persist — one accessor so they do not each reach into the
+ *  bag, and so a future move of the bag is one edit rather than fifty-eight. */
+export function layerTransformTrack(layer: Layer): TransformTrack | undefined {
+  return layer.tracks?.transform;
+}
 
 export interface ReferenceLayer {
   kind: "ref";
@@ -124,7 +200,12 @@ export interface ReferenceLayer {
   groupId: number | null;
   media: ReferenceMedia;
   transform: RefTransform;
-  transformTrack?: TransformTrack;
+  tracks?: LayerTracks;
+  /** Are this layer's property rows folded away in the timeline? A VIEW-prop, like a group's
+   *  `collapsed` (which it deliberately mirrors — the timeline has one collapse idiom, not two):
+   *  persisted, not undoable, and absent means EXPANDED so every existing project opens showing its
+   *  tracks. */
+  tracksCollapsed?: boolean;
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
@@ -205,7 +286,11 @@ export function whyNotMergeDown(
   // transform that does not vary — the same reason Apply/Reset refuse. On an animated layer the
   // static `transform` is retained but IGNORED, so baking it would place the pixels where the layer
   // renders at no frame at all, and the track would then vanish with the merged layer.
-  if (upper.transformTrack || below.transformTrack) return "animated";
+  // ANY property, through the shared predicate — the same argument holds one property over, and
+  // enumerating the two by hand is exactly what let opacity through: `mergeDown` composites the
+  // upper layer at its STATIC `upper.opacity`, which on an animated layer is retained but ignored,
+  // so a fade-out would be burned in at its seed alpha and the track would vanish with the layer.
+  if (isLayerAnimated(upper) || isLayerAnimated(below)) return "animated";
   return null;
 }
 
@@ -347,16 +432,22 @@ function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransfor
   };
 }
 
-/** The layer's transform at `frame`: its static value when there is no track, otherwise the track
- *  resolved (and held outside its key range — a track never extrapolates). */
-export function transformAt(layer: Layer, frame: number): RefTransform {
-  const track = layer.transformTrack;
-  if (!track || track.keys.length === 0) return layer.transform;
+/**
+ * The value a track holds at `frame`. THE resolution skeleton — bracket search, `sampleEvery`
+ * quantisation, per-key easing, hold at both ends — parameterised by the one thing that differs
+ * between properties: how two values blend. Duplicating this per property is how two
+ * implementations drift apart, which is the whole reason it is generic.
+ */
+export function resolveTrack<V>(
+  track: Track<V>,
+  frame: number,
+  lerp: (a: V, b: V, u: number) => V,
+): V {
   const keys = track.keys;
   const first = keys[0];
   const last = keys[keys.length - 1];
-  if (keys.length === 1 || frame <= first.frame) return first.t;
-  if (frame >= last.frame) return last.t;
+  if (keys.length === 1 || frame <= first.frame) return first.v;
+  if (frame >= last.frame) return last.v;
 
   // `q` is inside [first.frame, last.frame) — quantising only ever moves it earlier, and the
   // out-of-range cases already returned. Quantise BEFORE picking the segment, so the sampled time
@@ -367,23 +458,61 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
   const a = keys[i];
   const b = keys[i + 1];
   // The segment's own interpolation — `a` starts it, so `a.interp` describes it.
-  if (a.interp === "hold" || q <= a.frame) return a.t;
-  if (q >= b.frame) return b.t;
+  if (a.interp === "hold" || q <= a.frame) return a.v;
+  if (q >= b.frame) return b.v;
   // Ease the TIME, not the value: `sampleEvery` has already quantised `q`, so a stepped move still
   // steps — it just steps along a curved timing instead of an even one.
-  return lerpTransform(a.t, b.t, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
+  return lerp(a.v, b.v, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
+}
+
+/** The layer's opacity (0..100) at `frame`: its static field when there is no track, otherwise the
+ *  track resolved. The frame-aware twin of `layer.opacity`, mirroring `transformAt` below. */
+export function opacityAt(layer: Layer, frame: number): number {
+  const track = layer.tracks?.opacity;
+  if (!track || track.keys.length === 0) return layer.opacity;
+  return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
+}
+
+/** The layer's transform at `frame`: its static value when there is no track, otherwise the track
+ *  resolved (and held outside its key range — a track never extrapolates). */
+export function transformAt(layer: Layer, frame: number): RefTransform {
+  const track = layerTransformTrack(layer);
+  if (!track || track.keys.length === 0) return layer.transform;
+  return resolveTrack(track, frame, lerpTransform);
 }
 
 /**
- * Copy one key to the depth a track copy needs — the key itself and its nested transform.
- *
- * THE single key-construction site, and that is the point: `interp` was added to `TransformKey`
- * after the first writers were written, and the two that enumerated fields by hand silently dropped
- * it, so one undo flattened every authored curve. A spread cannot drop a field added later, and
- * routing every writer through here means the next field costs nothing.
+ * Copy one keyframe. A SPREAD, never a field list — `interp` was added after the first writers
+ * existed and the two that enumerated fields dropped it silently, so one undo flattened every
+ * authored curve. A spread cannot drop a field added later; an explicit literal always can.
  */
+export function copyKeyframe<V>(k: Keyframe<V>, copyValue: (v: V) => V): Keyframe<V> {
+  return { ...k, v: copyValue(k.v) };
+}
+
+/** Deep-copy a whole track (keys array + each key's value) via `copyKeyframe`. Generic tracks carry
+ *  no other nested object — a property-specific track (like `TransformTrack`'s `box`) copies that
+ *  extra field itself, on top of this. */
+export function copyTrack<V>(track: Track<V>, copyValue: (v: V) => V): Track<V> {
+  return { ...track, keys: track.keys.map((k) => copyKeyframe(k, copyValue)) };
+}
+
+const copyRefTransform = (t: RefTransform): RefTransform => ({ ...t });
+
+/** Copy one transform key — the key itself and its nested transform. THE single key-construction
+ *  site for `TransformKey`; see `copyKeyframe` above for why it is a spread. */
 export function copyTransformKey(k: TransformKey): TransformKey {
-  return { ...k, t: { ...k.t } };
+  return copyKeyframe(k, copyRefTransform);
+}
+
+/** Deep-copy a transform track: keys (via `copyTrack`) plus its `box`, which lives on
+ *  `TransformTrack` and not on the generic `Track<V>` — so it is copied here, not pushed down into
+ *  `copyTrack`. */
+export function copyTransformTrack(track: TransformTrack): TransformTrack {
+  return {
+    ...copyTrack(track, copyRefTransform),
+    box: track.box ? { ...track.box } : null,
+  };
 }
 
 /** A track carrying `keys`, with every OTHER nested object copied — the returned track must share
@@ -400,16 +529,27 @@ export function createTransformTrack(
   t: RefTransform,
   box: { x: number; y: number; w: number; h: number } | null,
 ): TransformTrack {
-  return { keys: [{ frame: 0, t: { ...t } }], box: box ? { ...box } : null };
+  return { keys: [{ frame: 0, v: { ...t } }], box: box ? { ...box } : null };
 }
 
-/** Write a key at `frame`, replacing any key already there. Returns a NEW track: snapshots share
- *  layer objects, so no writer may mutate the one it was given (gotcha #8). */
-export function withTransformKey(
-  track: TransformTrack,
+/**
+ * Write `v` at `frame`, replacing any key already there. THE key-WRITING skeleton, generic over the
+ * value for the same reason `resolveTrack` (reading) and `copyKeyframe` (copying) are: a
+ * per-property copy of this logic is how two properties come to answer the same question
+ * differently, and this one had already drifted — the transform writer inherited the enclosing
+ * segment's curve while the opacity writer, written inline, only preserved a curve when a key
+ * already sat on that exact frame, so auto-keying frame 5 of a `[0 hold, 10]` track left a hard cut
+ * for one property and silently made it a fade for the other.
+ *
+ * Returns a NEW track: snapshots share layer objects, so no writer may mutate the one it was given
+ * (gotcha #8).
+ */
+export function withKey<V>(
+  track: Track<V>,
   frame: number,
-  t: RefTransform,
-): TransformTrack {
+  v: V,
+  copyValue: (val: V) => V,
+): Track<V> {
   // A drag rewrites a key's VALUE; its segment easing is a separate choice and must survive, or
   // every nudge would silently reset the curve back to linear. A key CREATED inside an existing
   // segment inherits that segment's curve for exactly the same reason: defaulting to linear would
@@ -420,20 +560,40 @@ export function withTransformKey(
   const interp = existing
     ? existing.interp
     : last && frame < last.frame
-      ? segmentKeyAt(track, frame)?.interp
+      ? (segmentKeyAt(track, frame)?.interp ?? undefined)
       : undefined;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  keys.push(copyTransformKey({ frame, t, ...(interp ? { interp } : {}) }));
+  keys.push(copyKeyframe({ frame, v, ...(interp ? { interp } : {}) }, copyValue));
   keys.sort((a, b) => a.frame - b.frame);
-  return withTrackKeys(track, keys);
+  return { ...track, keys };
+}
+
+/** `withKey` for a transform track. The generic writer knows nothing about `box`, so the keys it
+ *  produces are re-attached through `withTrackKeys`, which copies at the depth a `TransformTrack`
+ *  needs. */
+export function withTransformKey(
+  track: TransformTrack,
+  frame: number,
+  t: RefTransform,
+): TransformTrack {
+  return withTrackKeys(track, withKey(track, frame, t, copyRefTransform).keys);
 }
 
 /** Drop the key at `frame`. Returns the SAME object when nothing changes — including the attempt to
- *  remove the last key, since a track is never empty — so callers can skip an empty undo entry. */
-export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
+ *  remove the last key, since a track is never empty — so callers can skip an empty undo entry.
+ *
+ *  Generic over the value for the same reason `withKey` (writing) and `resolveTrack` (reading) are:
+ *  a per-property copy of "a track is never empty" is how two properties come to answer the same
+ *  question differently. No `copyValue`: this only FILTERS existing keys, it never builds one.
+ *
+ *  No `withoutTransformKey` twin, unlike `withKey`/`withMovedKey`: the one caller is the generic key
+ *  action, which re-attaches through `withTrackKeys` itself, so a wrapper would have had no callers
+ *  at all. Anything reaching for one wants `withTrackKeys(track, withoutKey(track, f).keys)` — the
+ *  same one line, at the same depth. */
+export function withoutKey<V>(track: Track<V>, frame: number): Track<V> {
   if (track.keys.length <= 1) return track;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  return keys.length === track.keys.length ? track : withTrackKeys(track, keys);
+  return keys.length === track.keys.length ? track : { ...track, keys };
 }
 
 /**
@@ -443,19 +603,32 @@ export function withoutTransformKey(track: TransformTrack, frame: number): Trans
  * and it is one undo step away. Returns the SAME object when nothing changes (no key at `from`, or
  * `from === to`), so a caller can skip pushing an empty undo entry.
  */
-export function withMovedTransformKey(
-  track: TransformTrack,
+export function withMovedKey<V>(
+  track: Track<V>,
   from: number,
   to: number,
-): TransformTrack {
+  copyValue: (v: V) => V,
+): Track<V> {
   if (from === to) return track;
   const moved = track.keys.find((k) => k.frame === from);
   if (!moved) return track;
   const keys = track.keys
     .filter((k) => k.frame !== from && k.frame !== to)
-    .concat(copyTransformKey({ ...moved, frame: to }))
+    .concat(copyKeyframe({ ...moved, frame: to }, copyValue))
     .sort((a, b) => a.frame - b.frame);
-  return withTrackKeys(track, keys);
+  return { ...track, keys };
+}
+
+/** `withMovedKey` for a transform track. The generic mover knows nothing about `box`, so its keys
+ *  are re-attached through `withTrackKeys` — same split, and same reason, as
+ *  `withKey`/`withTransformKey`. */
+export function withMovedTransformKey(
+  track: TransformTrack,
+  from: number,
+  to: number,
+): TransformTrack {
+  const next = withMovedKey(track, from, to, copyRefTransform);
+  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /**
@@ -468,7 +641,7 @@ export function withMovedTransformKey(
 export function withPastedTransformKey(
   track: TransformTrack,
   frame: number,
-  key: { t: RefTransform; interp?: KeyInterp },
+  key: { v: RefTransform; interp?: KeyInterp },
 ): TransformTrack {
   const keys = track.keys
     .filter((k) => k.frame !== frame)
@@ -478,24 +651,33 @@ export function withPastedTransformKey(
 }
 
 /** Set the interpolation of the segment starting at `frame`. Returns the SAME object when there is
- *  no key there or the value is unchanged, so a caller can skip an empty undo entry. */
-export function withKeyInterp(
-  track: TransformTrack,
+ *  no key there or the value is unchanged, so a caller can skip an empty undo entry.
+ *
+ *  Generic over the value: `hold` on an opacity track is how the spec says you get a hard cut rather
+ *  than a fade, so easing is not a transform-only idea and must not have a transform-only writer.
+ *  No transform twin, for the reason given on `withoutKey` above. */
+export function withKeyInterp<V>(
+  track: Track<V>,
   frame: number,
   interp: KeyInterp,
-): TransformTrack {
+  copyValue: (v: V) => V,
+): Track<V> {
   const k = track.keys.find((x) => x.frame === frame);
   if (!k || (k.interp ?? "linear") === interp) return track;
-  return withTrackKeys(
-    track,
-    track.keys.map((x) => (x.frame === frame ? copyTransformKey({ ...x, interp }) : x)),
-  );
+  return {
+    ...track,
+    keys: track.keys.map((x) =>
+      x.frame === frame ? copyKeyframe({ ...x, interp }, copyValue) : x,
+    ),
+  };
 }
 
 /** The key whose segment contains `frame` — the latest key at or before it, or null when the
- *  playhead sits before the track starts. This is what an easing control edits. */
-export function segmentKeyAt(track: TransformTrack, frame: number): TransformKey | null {
-  let found: TransformKey | null = null;
+ *  playhead sits before the track starts. This is what an easing control edits. Generic over the
+ *  value, because `withKey` (the shared key writer) needs it for every property, not just the
+ *  transform; a `TransformTrack` argument still returns a `TransformKey`. */
+export function segmentKeyAt<V>(track: Track<V>, frame: number): Keyframe<V> | null {
+  let found: Keyframe<V> | null = null;
   for (const k of track.keys) {
     if (k.frame <= frame) found = k;
     else break;
@@ -503,21 +685,51 @@ export function segmentKeyAt(track: TransformTrack, frame: number): TransformKey
   return found;
 }
 
-export function hasKeyAt(track: TransformTrack, frame: number): boolean {
+/** Generic over the value: every property's key controls ask this, not just the transform's. */
+export function hasKeyAt<V>(track: Track<V>, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
 }
 
-/** Deep-copy a track (or pass `undefined` through) — keys array, each key's transform, and the box.
- *  THE single copy site: undo snapshots share layer objects, so `cloneLayers`, `restoreStructure`
- *  and `duplicateLayer` all need exactly this depth, and three hand-written copies would drift the
- *  moment a field is added to `TransformTrack`. */
-export function cloneTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
-  return track ? withTrackKeys(track, track.keys.map(copyTransformKey)) : undefined;
+/**
+ * WHICH track — the owner and the property, rather than "the active layer's transform".
+ *
+ * One address for a track means one set of key actions (delete / interpolation / step) rather than
+ * one set per property, which is how a scalar track ended up able to be retimed but never deleted
+ * and never set to `hold`. The property is `keyof` the bag rather than a hand-written literal union,
+ * so it cannot name a track the bag does not have — and a third property extends this type by
+ * existing, rather than by a hand edit somebody has to remember.
+ */
+export type TrackRef =
+  | { owner: "layer"; id: number; prop: keyof LayerTracks }
+  | { owner: "group"; id: number; prop: keyof GroupTracks };
+
+/** The track a `TrackRef` names, or undefined. Read-only, and deliberately value-erased: its callers
+ *  (the key controls, which delete keys and set curves) never touch a VALUE, so handing them a typed
+ *  track would only invite one branch per property back into the UI. */
+export function trackForRef(project: Project, ref: TrackRef): Track<unknown> | undefined {
+  if (ref.owner === "group") return project.groups.find((g) => g.id === ref.id)?.tracks?.transform;
+  const l = project.layers.find((x) => x.id === ref.id);
+  return ref.prop === "opacity" ? l?.tracks?.opacity : l?.tracks?.transform;
 }
 
-/** A group's own transform (identity when absent / undefined group). */
+/** A group's own STATIC transform (identity when absent / undefined group). Frame-blind: on an
+ *  animated group this is the retained-but-ignored value, so every render/compose site wants
+ *  `groupTransformAt` below instead. */
 export function groupTransform(group: LayerGroup | null | undefined): RefTransform {
   return group && group.transform ? group.transform : IDENTITY_TRANSFORM;
+}
+
+/** A group's transform at `frame`: its track when animated, else its static transform, else
+ *  identity. The frame-aware twin of `groupTransform`, and the group-level mirror of `transformAt`
+ *  (which does the same for a layer). */
+export function groupTransformAt(
+  group: LayerGroup | null | undefined,
+  frame: number,
+): RefTransform {
+  if (!group) return IDENTITY_TRANSFORM;
+  const track = group.tracks?.transform;
+  if (track && track.keys.length > 0) return resolveTrack(track, frame, lerpTransform);
+  return group.transform ?? IDENTITY_TRANSFORM;
 }
 
 /** The resolved key cell shown at `frame` (follows holds), or null. */
@@ -555,11 +767,16 @@ export function buildFrameDrawList(
     if (layer.kind === "draw") {
       const ki = resolveKeyframeIndex(layer.cells, frame);
       if (ki === null) continue;
-      ops.push({ kind: "draw", layerId: layer.id, keyframeIndex: ki, opacity: layer.opacity });
+      ops.push({
+        kind: "draw",
+        layerId: layer.id,
+        keyframeIndex: ki,
+        opacity: opacityAt(layer, frame),
+      });
     } else {
       if (!includeReference) continue;
       if (!isRefVisibleAtFrame(layer, frame, project.fps)) continue;
-      ops.push({ kind: "ref", layerId: layer.id, opacity: layer.opacity });
+      ops.push({ kind: "ref", layerId: layer.id, opacity: opacityAt(layer, frame) });
     }
   }
   return ops;

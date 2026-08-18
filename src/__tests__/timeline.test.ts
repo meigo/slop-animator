@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import type { Cell, DrawingLayer, Project, ReferenceLayer } from "../anim/document";
-import { defaultBoilConfig } from "../anim/document";
+import type {
+  Cell,
+  DrawingLayer,
+  Layer,
+  Project,
+  ReferenceLayer,
+  TransformTrack,
+} from "../anim/document";
+import { defaultBoilConfig, layerTransformTrack } from "../anim/document";
 import {
   addFrame,
   insertKeyframe,
@@ -17,7 +24,7 @@ import {
   moveKeyframe,
   setHoldSpan,
   planMergeDown,
-  shiftLayerTransformKeys,
+  shiftLayerTrackKeys,
   shiftTransformTrackFrames,
   type CanvasOps,
 } from "../anim/timeline";
@@ -46,6 +53,11 @@ function layer(cells: Cell[]): DrawingLayer {
     cells,
     transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
   };
+}
+
+/** The layer's transform track, asserted present — the tests below all build one first. */
+function track(l: Layer): TransformTrack {
+  return layerTransformTrack(l)!;
 }
 
 describe("timeline operations", () => {
@@ -553,7 +565,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       range,
     }) as unknown as never;
 
-  const proj = (layers: unknown[], audio: unknown = null) =>
+  const proj = (layers: unknown[], audio: unknown = null, groups: unknown[] = []) =>
     ({
       name: "t",
       width: 10,
@@ -562,7 +574,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       bgColor: "#fff",
       frameCount: 10,
       boil: defaultBoilConfig(),
-      groups: [],
+      groups,
       layers,
       audio,
     }) as unknown as Project;
@@ -619,9 +631,8 @@ describe("ripple insert/delete shift document-space clips", () => {
     const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
     const animLayer = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-      l.transformTrack = {
-        keys: frames.map((f) => ({ frame: f, t: T(f) })),
-        box: null,
+      l.tracks = {
+        transform: { keys: frames.map((f) => ({ frame: f, v: T(f) })), box: null },
       };
       return l;
     };
@@ -629,46 +640,45 @@ describe("ripple insert/delete shift document-space clips", () => {
     it("shifts keys at or after the insert point and leaves earlier ones alone", () => {
       const l = animLayer([0, 10, 24]);
       insertFrameAllLayers(proj([l]), 10);
-      expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 11, 25]);
-      expect(l.transformTrack!.keys.map((k) => k.t.dx)).toEqual([0, 10, 24]); // values ride along
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 11, 25]);
+      expect(track(l).keys.map((k) => k.v.dx)).toEqual([0, 10, 24]); // values ride along
     });
 
     it("shifts keys after the delete point", () => {
       const l = animLayer([0, 10, 24]);
       deleteFrameAllLayers(proj([l]), 5);
-      expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 9, 23]);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 9, 23]);
     });
 
     it("collapses a delete collision, keeping the LATER key's value", () => {
       const l = animLayer([4, 5]); // 5 → 4, colliding with the key already at 4
       deleteFrameAllLayers(proj([l]), 4);
-      expect(l.transformTrack!.keys).toEqual([{ frame: 4, t: T(5) }]);
+      expect(track(l).keys).toEqual([{ frame: 4, v: T(5) }]);
     });
 
     it("leaves a layer with no track untouched", () => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
       insertFrameAllLayers(proj([l]), 0);
-      expect(l.transformTrack).toBeUndefined();
+      expect(l.tracks?.transform).toBeUndefined();
     });
 
     it("REPLACES the track and its keys rather than mutating them (undo snapshots share refs)", () => {
       const l = animLayer([0, 10]);
-      const track = l.transformTrack!;
-      const keys = track.keys;
+      const before = track(l);
+      const bag = l.tracks;
+      const keys = before.keys;
       insertFrameAllLayers(proj([l]), 5);
       expect(keys.map((k) => k.frame)).toEqual([0, 10]); // the originals are untouched
-      expect(l.transformTrack).not.toBe(track);
-      expect(l.transformTrack!.keys[1]).not.toBe(keys[1]);
+      expect(track(l)).not.toBe(before);
+      expect(track(l).keys[1]).not.toBe(keys[1]);
+      expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
     });
 
     it("shifts a REFERENCE layer's track too", () => {
       const ref = imageRef() as unknown as DrawingLayer;
-      (ref as unknown as { transformTrack: unknown }).transformTrack = {
-        keys: [{ frame: 6, t: T(6) }],
-        box: null,
-      };
+      ref.tracks = { transform: { keys: [{ frame: 6, v: T(6) }], box: null } };
       insertFrameAllLayers(proj([ref]), 2);
-      expect(ref.transformTrack!.keys.map((k) => k.frame)).toEqual([7]);
+      expect(track(ref).keys.map((k) => k.frame)).toEqual([7]);
     });
 
     // `interp` was added to `TransformKey` after this copy was written and the hand-written literal
@@ -676,61 +686,114 @@ describe("ripple insert/delete shift document-space clips", () => {
     // it (the field is optional), so it is pinned here.
     it("carries each key's segment interpolation through the shift", () => {
       const l = animLayer([0, 10]);
-      l.transformTrack!.keys[0].interp = "ease-in-out";
-      l.transformTrack!.keys[1].interp = "hold";
+      track(l).keys[0].interp = "ease-in-out";
+      track(l).keys[1].interp = "hold";
       insertFrameAllLayers(proj([l]), 5);
-      expect(l.transformTrack!.keys.map((k) => k.interp)).toEqual(["ease-in-out", "hold"]);
+      expect(track(l).keys.map((k) => k.interp)).toEqual(["ease-in-out", "hold"]);
     });
 
     it("shiftTransformTrackFrames keeps interpolation on a delete collision too", () => {
       const track = {
         keys: [
-          { frame: 4, t: T(4), interp: "hold" as const },
-          { frame: 5, t: T(5), interp: "ease-in" as const },
+          { frame: 4, v: T(4), interp: "hold" as const },
+          { frame: 5, v: T(5), interp: "ease-in" as const },
         ],
         box: null,
       };
       // The LATER key survives the collision, so its curve must survive with it.
       expect(shiftTransformTrackFrames(track, 4, -1).keys).toEqual([
-        { frame: 4, t: T(5), interp: "ease-in" },
+        { frame: 4, v: T(5), interp: "ease-in" },
       ]);
+    });
+
+    // The branch made tracks plural; the shifter was not widened with them, so a fade stood still
+    // while the drawings under it moved — one frame per operation, silently, compounding.
+    it("shifts an OPACITY track the same way", () => {
+      const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+      l.tracks = {
+        opacity: {
+          keys: [
+            { frame: 0, v: 100 },
+            { frame: 20, v: 0 },
+          ],
+        },
+      };
+      insertFrameAllLayers(proj([l]), 10);
+      expect(l.tracks?.opacity?.keys).toEqual([
+        { frame: 0, v: 100 },
+        { frame: 21, v: 0 },
+      ]);
+    });
+
+    it("shifts BOTH properties of one layer in a single pass", () => {
+      const l = animLayer([0, 10]);
+      l.tracks = { ...l.tracks, opacity: { keys: [{ frame: 4, v: 50 }] } };
+      insertFrameAllLayers(proj([l]), 2);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 11]);
+      expect(l.tracks?.opacity?.keys.map((k) => k.frame)).toEqual([5]);
+    });
+
+    // `box` became load-bearing on this branch (a group track FREEZES its pivot there, and
+    // `groupBoxLogical` consumes it), and the shifter rebuilds the track through `withTrackKeys` —
+    // so a shift that dropped or shared it would move the pivot, or corrupt an undo snapshot.
+    it("carries a transform track's frozen `box` through a shift, as a COPY", () => {
+      const l = animLayer([0, 10]);
+      const box = { x: 1, y: 2, w: 3, h: 4 };
+      l.tracks = { transform: { ...track(l), box } };
+      insertFrameAllLayers(proj([l]), 5);
+      expect(track(l).box).toEqual(box);
+      expect(track(l).box).not.toBe(box); // a snapshot must share no mutable object (gotcha #8)
+    });
+
+    it("shifts a GROUP's transform track on a document-wide ripple", () => {
+      const g = { id: 1, name: "g", collapsed: false, visible: true };
+      const gt = { keys: [{ frame: 3, v: T(3) }], box: null };
+      const group = { ...g, tracks: { transform: gt } };
+      const bag = group.tracks;
+      insertFrameAllLayers(proj([], null, [group]), 2);
+      expect(group.tracks.transform.keys.map((k) => k.frame)).toEqual([4]);
+      // Replace, never mutate — both levels (gotcha #8).
+      expect(group.tracks).not.toBe(bag);
+      expect(gt.keys.map((k) => k.frame)).toEqual([3]);
     });
   });
 
   // The per-layer counterpart: the frame tools resplice ONE layer's cells, so only that layer's
   // track may move. A reference RANGE is document-space and stays out of it.
-  describe("shiftLayerTransformKeys", () => {
+  describe("shiftLayerTrackKeys", () => {
     const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
     const withTrack = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
-      l.transformTrack = { keys: frames.map((f) => ({ frame: f, t: T(f) })), box: null };
+      l.tracks = { transform: { keys: frames.map((f) => ({ frame: f, v: T(f) })), box: null } };
       return l;
     };
 
     it("shifts keys at or after an insert", () => {
       const l = withTrack([0, 6, 12]);
-      shiftLayerTransformKeys(l, 6, 1);
-      expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 7, 13]);
+      shiftLayerTrackKeys(l, 6, 1);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 7, 13]);
     });
 
     it("shifts keys after a delete, collapsing a collision", () => {
       const l = withTrack([0, 4, 5]);
-      shiftLayerTransformKeys(l, 4, -1);
-      expect(l.transformTrack!.keys.map((k) => k.frame)).toEqual([0, 4]);
+      shiftLayerTrackKeys(l, 4, -1);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 4]);
     });
 
     it("does nothing for a layer with no track, so callers can call it unconditionally", () => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
-      expect(() => shiftLayerTransformKeys(l, 0, 1)).not.toThrow();
-      expect(l.transformTrack).toBeUndefined();
+      expect(() => shiftLayerTrackKeys(l, 0, 1)).not.toThrow();
+      expect(l.tracks?.transform).toBeUndefined();
     });
 
     it("REPLACES the track rather than mutating it (undo snapshots share layer objects)", () => {
       const l = withTrack([0, 10]);
-      const track = l.transformTrack!;
-      shiftLayerTransformKeys(l, 5, 1);
-      expect(l.transformTrack).not.toBe(track);
-      expect(track.keys.map((k) => k.frame)).toEqual([0, 10]);
+      const before = track(l);
+      const bag = l.tracks;
+      shiftLayerTrackKeys(l, 5, 1);
+      expect(track(l)).not.toBe(before);
+      expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
+      expect(before.keys.map((k) => k.frame)).toEqual([0, 10]);
     });
   });
 });
