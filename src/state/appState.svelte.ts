@@ -28,6 +28,8 @@ import {
   cloneTransformTrack,
   withoutTransformKey,
   withKeyInterp,
+  withTrackKeys,
+  copyTransformKey,
   withPastedTransformKey,
   type KeyInterp,
   MAX_SAMPLE_EVERY,
@@ -798,7 +800,12 @@ export function setTransformTrackSampleEvery(layerId: number, sampleEvery: numbe
   const next = Math.min(MAX_SAMPLE_EVERY, Math.max(1, Math.floor(sampleEvery)));
   if (next === (track.sampleEvery ?? 1)) return; // guard above the commit: no empty undo entry
   commitStructural(() => {
-    l.transformTrack = { ...track, sampleEvery: next };
+    // via withTrackKeys so the `box` copy stays single-sited — this was the one construction site
+    // still spreading the track by hand, i.e. the one free to diverge from that depth later.
+    l.transformTrack = {
+      ...withTrackKeys(track, track.keys.map(copyTransformKey)),
+      sampleEvery: next,
+    };
   });
 }
 

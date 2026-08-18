@@ -5,7 +5,7 @@ import {
   type DrawingLayer,
   type Project,
 } from "./document";
-import type { CanvasOps } from "./timeline";
+import { shiftLayerTransformKeys, type CanvasOps } from "./timeline";
 
 /** A rectangular block of cells copied from the timeline. cols = layers (top-first),
  *  rows = frames (earliest-first). Every KEY canvas/transform is deep-cloned, and each column
@@ -140,6 +140,12 @@ export function pasteBlockInsert(
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
     layer.cells.splice(at, 0, ...clones);
+    // Shift this layer's own transform keys with its cells, for the same reason the per-layer frame
+    // tools do: the track belongs to exactly the layer whose cells were just respliced, so there IS
+    // one correct shift — and without it the drawings move while the motion stays put, a frame per
+    // inserted column. (A reference RANGE is document-space and shared, which is why those are
+    // deliberately left alone here.)
+    for (let i = 0; i < clones.length; i++) shiftLayerTransformKeys(layer, at, 1);
   }
 }
 

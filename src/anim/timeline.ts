@@ -251,13 +251,6 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
   refreshLength(project);
 }
 
-/**
- * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
- * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
- * Growing inserts holds at the span boundary (pushing following keys right); shrinking removes
- * trailing holds of this span only (pulling following keys left) — it never deletes another key.
- * No-op if `keyFrame` is not a key.
- */
 /** The index just past the trailing holds of the key at `keyFrame` — i.e. where `setHoldSpan`
  *  splices. Exported because the timeline needs the SAME boundary to shift a layer's transform keys
  *  around that splice; a second copy of this scan would be free to drift from this one. */
@@ -267,6 +260,13 @@ export function holdSpanEnd(layer: DrawingLayer, keyFrame: number): number {
   return next;
 }
 
+/**
+ * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
+ * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
+ * Growing inserts holds at the span boundary (pushing following keys right); shrinking removes
+ * trailing holds of this span only (pulling following keys left) — it never deletes another key.
+ * No-op if `keyFrame` is not a key.
+ */
 export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number): void {
   if (keyFrame < 0 || keyFrame >= layer.cells.length) return;
   if (layer.cells[keyFrame].kind !== "key") return;

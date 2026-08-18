@@ -1079,7 +1079,16 @@
     // its GRAB-TIME compose and land at the old placement. Discarded here, at the first write that
     // actually moves the key, rather than at grab: a press that only taps to seek must not throw
     // away a float, and setActiveLayer/seekPlayhead on that path already bank it (gotcha #9).
-    if (keyDrag.cur === keyDrag.from) liftGuard.discard?.();
+    if (keyDrag.cur === keyDrag.from) {
+      liftGuard.discard?.();
+      // and RE-TAKE the snapshot, because the discard can itself mutate the document:
+      // `discardActiveEdits` reverts a keyframe an open stroke materialised, so a bracket opened at
+      // grab would contain a cell the discard has since removed — undoing this retime would then
+      // resurrect a blank ◆ on a frame that was a hold. Re-snapshotting here (rather than simply
+      // discarding at grab) is what lets both rules hold at once: a tap keeps its float, and the
+      // snapshot still post-dates every mutation it is supposed to describe.
+      keyDrag.undo = beginStructuralEdit();
+    }
     // Always move from the ORIGINAL frame against the grab-time track, so a drag that passes over
     // another key does not eat it on the way through — only where it is released.
     keyDrag.layer.transformTrack = withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to);
@@ -1303,8 +1312,11 @@
   /** undo()/tool-switch mid-gesture: commit a dirty hold-span so the following undo pops it;
    *  drop an in-flight move-block (it has not written yet). rowUp applies then calls resetRowDrag. */
   function settleRowDrag() {
-    if (dragMode === "resize" && dragUndo && dragLastBoundary !== dragStartBoundary) {
-      commitStructuralEdit(dragUndo);
+    if (dragMode === "resize" && dragUndo) {
+      // Same reasoning as rowUp's resize branch: a net-zero resize can still have destroyed a
+      // transform key by collision, so restore rather than drop.
+      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
+      else revertStructural(dragUndo);
     }
     resetRowDrag();
   }
@@ -1352,7 +1364,14 @@
       }
       // else: dragged out and back to net-zero → no-op, keep the selection intact.
     } else if (dragMode === "resize" && dragLayerId === layer.id && dragUndo) {
+      // Out-and-back is NOT lossless any more. While this drag only spliced holds, dropping the
+      // snapshot on an equal boundary was safe — a hold removed and re-added is the same hold. Now
+      // it also shifts the layer's TRANSFORM KEYS, and a shrink that collides two keys keeps only
+      // the later one: dragging left then back destroys the earlier key permanently, with nothing
+      // pushed for ⌘Z to pop. So abandon by RESTORING the grab-time snapshot, never by re-applying
+      // or by walking away — the same rule the ruler's length drag had to learn.
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
+      else revertStructural(dragUndo);
     } else if (dragMode === "none" && armedOutside) {
       if (armedOnKey) {
         // tap on a key outside the selection → select it (1×1) + seek to its frame
