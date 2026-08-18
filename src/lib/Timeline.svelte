@@ -34,6 +34,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     setActiveLayer,
+    selectTrack,
     toggleGroupCollapsed,
     toggleTracksCollapsed,
     liftGuard,
@@ -43,6 +44,7 @@
     clearTimelineSelection,
     relinkReference,
     isRowSelected,
+    isTrackSelected,
     applyAnimationLength,
     revertStructural,
     trimToPlayhead,
@@ -1010,15 +1012,10 @@
       label: TRACK_LABEL[prop],
       owner: layer.name,
       indent: layer.groupId != null,
-      selected: isRowSelected(layer.id),
+      selected: isTrackSelected("layer", layer.id, prop),
       readOnly: locked || hidden,
       block: locked ? "locked" : hidden ? "hidden" : null,
-      select: () => {
-        setActiveLayer(layer.id);
-        // Only the transform row aims the tool: opacity is not a transform scope, and silently
-        // repointing the gizmo from an opacity row would be a side effect nobody asked for.
-        if (prop === "transform") appState.transformScope = "layer";
-      },
+      select: () => selectTrack({ owner: "layer", id: layer.id, prop }),
       setTrack: (t) => {
         // The only track ever handed back here is one this spec's own `moved` produced, so the
         // property's value type is preserved — TS just cannot see that through the generic
@@ -1037,19 +1034,8 @@
   function groupTrackSpec(group: LayerGroup): TrackRowSpec | null {
     const track = group.tracks?.transform;
     if (!track) return null;
-    // The topmost member, so selecting the row puts the Transform tool's GROUP scope on this group
-    // — the scope resolves through the active layer's `groupId`, so without this the row would aim
-    // the gizmo at whatever group the previously-active layer happened to be in.
-    // A DRAW member, or NONE — never a ref. `activeTransformLayer` returns the active layer itself
-    // at group scope only for a draw layer, so aiming this row at a ref member would leave the gizmo
-    // editing that REF's own transform while the row promised the group's, silently keying the wrong
-    // target. An all-ref group is reachable (group a draw layer with a ref, animate at group scope,
-    // then delete or ungroup the draw member — the row survives with its track intact), so the
-    // no-member case is real: `select` then sets the SCOPE and leaves the active layer alone, which
-    // is the honest outcome. A wrong member is worse than no member.
-    const member = [...appState.project.layers]
-      .reverse()
-      .find((l) => l.groupId === group.id && l.kind === "draw");
+    // `selectTrack` aims the draw target at a DRAW member of this group (or leaves it alone when
+    // there is none) — never a ref. See that function for why a wrong member is worse than none.
     // A locked MEMBER pins the group, exactly as it does for the gizmo drag, Reset and
     // Stop-animating (`groupHasLockedLayer` — which already returns true for a locked group itself,
     // so it subsumes the group's own flag rather than needing to be ORed with it). Without this,
@@ -1067,15 +1053,12 @@
       indent: false,
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
       // `activeRow` with `activeLayerId`-derived state has shipped a forgotten term twice here.
-      selected: appState.project.layers.some((l) => l.groupId === group.id && isRowSelected(l.id)),
+      selected: isTrackSelected("group", group.id, "transform"),
       readOnly: locked,
       // Reports the LOCK whenever the lock is what refuses — a row that refuses without stating why
       // is the actual defect, and this row's marker/title is the only place the reason appears.
       block: locked ? "locked" : null,
-      select: () => {
-        if (member) setActiveLayer(member.id);
-        appState.transformScope = "group";
-      },
+      select: () => selectTrack({ owner: "group", id: group.id, prop: "transform" }),
       setTrack: (t) => {
         group.tracks = { ...group.tracks, transform: t as TransformTrack | undefined };
       },

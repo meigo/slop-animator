@@ -72,6 +72,13 @@ import {
   type SelectionEndpoint,
   type TimelineSelection,
 } from "../anim/timeline-selection";
+import {
+  layerRowSelected,
+  trackRowSelected,
+  audioRowSelected,
+  resolveStaleTrackFocus,
+  type ActiveRow,
+} from "../anim/active-row";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
 import { bumpPersistGeneration } from "../persist/generation";
@@ -182,13 +189,13 @@ interface AnimState {
   /** WHICH TIMELINE ROW IS SELECTED — the single value every selection highlight reads.
    *
    *  This is deliberately separate from `activeLayerId`, which answers a DIFFERENT question ("what
-   *  am I drawing on") and must survive selecting the audio lane. The rule that keeps them from
-   *  contradicting each other: no view ever COMBINES them. Ask `isRowSelected(id)` /
-   *  `isAudioRowSelected()` for selection, or read `activeLayerId` for the draw target — never
-   *  `id === activeLayerId && !somethingElse`. An earlier version had each view spell that
-   *  conjunction out by hand, and forgetting the second term produced a double highlight and a
-   *  panel that disagreed with the gutter. */
-  activeRow: { kind: "layer"; id: number } | { kind: "audio" };
+   *  am I drawing on") and must survive selecting the audio lane, a group track, or a sibling's
+   *  track. The rule that keeps them from contradicting each other: no view ever COMBINES them.
+   *  Ask `isRowSelected(id)` / `isTrackSelected(...)` / `isAudioRowSelected()` for selection, or
+   *  read `activeLayerId` for the draw target — never `id === activeLayerId && !somethingElse`. An
+   *  earlier version had each view spell that conjunction out by hand, and forgetting the second
+   *  term produced a double highlight and a panel that disagreed with the gutter. */
+  activeRow: ActiveRow;
   timelineSelection: TimelineSelection | null;
   cellClipboard: CellBlock | null;
   selectionActive: boolean; // a committed canvas marquee exists (drives ToolOptions Copy/Cut/Delete)
@@ -464,8 +471,17 @@ function restoreStructure(s: StructSnapshot) {
   // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
   // selection is session state, and undo must not move it BETWEEN rows: resetting it
   // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
-  // "trim to playhead" retargeted from the audio clip to a layer.
-  if (state.activeRow.kind === "layer") state.activeRow = { kind: "layer", id: s.activeLayerId };
+  // "trim to playhead" retargeted from the audio clip to a layer. A track focus whose owner
+  // survived this undo stays; a track the undo just removed falls back to the draw target.
+  if (state.activeRow.kind === "layer") {
+    state.activeRow = { kind: "layer", id: s.activeLayerId };
+  } else {
+    state.activeRow = resolveStaleTrackFocus(
+      state.activeRow,
+      state.project,
+      state.activeLayerId,
+    );
+  }
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
   // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
@@ -1365,20 +1381,66 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   return null;
 }
 
-/** Is this layer's row the selected one? The ONLY question a selection highlight should ask — see
- *  `activeRow` for why no view may combine this with `activeLayerId`. */
+/** Is this layer's row the selected one? Also true when a track OWNED by that layer (or a group
+ *  track whose draw target is a member) is focused — see `activeRow` for why no view may combine
+ *  this with `activeLayerId`. */
 export function isRowSelected(layerId: number): boolean {
-  return state.activeRow.kind === "layer" && state.activeRow.id === layerId;
+  return layerRowSelected(
+    state.activeRow,
+    layerId,
+    state.activeLayerId,
+    state.project.layers,
+  );
+}
+
+/** Is this exact property track the focused row? */
+export function isTrackSelected(
+  owner: "layer" | "group",
+  id: number,
+  prop: "transform" | "opacity",
+): boolean {
+  return trackRowSelected(state.activeRow, owner, id, prop);
 }
 
 /** Is the audio lane the selected row? */
 export function isAudioRowSelected(): boolean {
-  return state.activeRow.kind === "audio";
+  return audioRowSelected(state.activeRow);
 }
 
 /** Make the audio lane the active timeline row (it holds no layer id, so it needs its own flag). */
 export function selectAudioLane(): void {
   if (state.project.audio) state.activeRow = { kind: "audio" };
+}
+
+/** Focus a property track. Does NOT call `setActiveLayer` — that would clear the track case.
+ *  Still updates `activeLayerId` when the draw target should follow (layer-owned track → that
+ *  layer; group-owned → a draw member), and aims Transform scope for transform tracks. */
+export function selectTrack(ref: TrackRef): void {
+  if (ref.owner === "layer") {
+    const layerChanged = state.activeLayerId !== ref.id;
+    state.activeLayerId = ref.id;
+    state.activeRow = { kind: "track", owner: "layer", id: ref.id, prop: ref.prop };
+    if (ref.prop === "transform") state.transformScope = "layer";
+    const l = state.project.layers.find((x) => x.id === ref.id);
+    if (state.transformScope === "group" && (!l || l.groupId == null)) {
+      state.transformScope = "frame";
+    }
+    if (layerChanged && state.onion.enabled && !state.onion.allLayers) repaint();
+    return;
+  }
+  state.activeRow = { kind: "track", owner: "group", id: ref.id, prop: "transform" };
+  state.transformScope = "group";
+  // DRAW member, or NONE — never a ref. Group scope resolves through the active layer's
+  // `groupId`, and `activeTransformLayer` only returns a draw layer at group scope; aiming a
+  // ref member would silently key that REF's own transform. An all-ref group is reachable, so
+  // leaving the draw target alone when there is no draw member is the honest outcome.
+  const member = [...state.project.layers]
+    .reverse()
+    .find((l) => l.groupId === ref.id && l.kind === "draw");
+  if (member && state.activeLayerId !== member.id) {
+    state.activeLayerId = member.id;
+    if (state.onion.enabled && !state.onion.allLayers) repaint();
+  }
 }
 
 /** Move the resolved clip's start or end onto the playhead. One undo entry; the underlying
