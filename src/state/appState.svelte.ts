@@ -34,6 +34,7 @@ import {
   groupTransformAt,
   withKey,
   withoutKey,
+  hasKeyAt,
   withKeyInterp,
   withTrackKeys,
   copyKeyframe,
@@ -476,11 +477,7 @@ function restoreStructure(s: StructSnapshot) {
   if (state.activeRow.kind === "layer") {
     state.activeRow = { kind: "layer", id: s.activeLayerId };
   } else {
-    state.activeRow = resolveStaleTrackFocus(
-      state.activeRow,
-      state.project,
-      state.activeLayerId,
-    );
+    state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
   }
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
@@ -656,11 +653,7 @@ export function removeLayer(id: number) {
     }
   });
   // A focused track on the removed layer (or left pointing at a now-missing owner) must fall back.
-  state.activeRow = resolveStaleTrackFocus(
-    state.activeRow,
-    state.project,
-    state.activeLayerId,
-  );
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
@@ -854,11 +847,7 @@ export function removeLayerAnimation(layerId: number): void {
     l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
   });
   // Do not call setActiveLayer — that would also reset transformScope when the layer is ungrouped.
-  state.activeRow = resolveStaleTrackFocus(
-    state.activeRow,
-    state.project,
-    state.activeLayerId,
-  );
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
@@ -887,11 +876,7 @@ export function removeLayerOpacityAnimation(layerId: number): void {
     l.opacity = resolved;
     l.tracks = normalizedTracks({ ...l.tracks, opacity: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(
-    state.activeRow,
-    state.project,
-    state.activeLayerId,
-  );
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a GROUP's transform: its current static transform becomes the key at frame 0.
@@ -939,11 +924,7 @@ export function removeGroupAnimation(groupId: number): void {
     if (box && !g.transformBox) g.transformBox = { ...box };
     g.tracks = normalizedTracks({ ...g.tracks, transform: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(
-    state.activeRow,
-    state.project,
-    state.activeLayerId,
-  );
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** The mutation an opacity-key write would perform, or null when it would change nothing (no track,
@@ -1061,6 +1042,29 @@ function trackTarget(ref: TrackRef): TrackTarget | null {
       };
     },
   };
+}
+
+/** Plant a key at `frame` with the value showing now. No-op when one is already there, or the
+ *  owner refuses writes — the button that would be a no-op must not push an empty undo entry. */
+export function addTrackKey(ref: TrackRef, frame: number): void {
+  const t = trackTarget(ref);
+  if (!t || hasKeyAt(t.track, frame)) return;
+  const v = resolvedTrackValue(ref, frame);
+  if (v === undefined) return;
+  const next = withKey(t.track, frame, v, t.copyValue);
+  commitStructural(() => t.write(next.keys));
+}
+
+/** The on-screen value of `ref` at `frame` — what Add key freezes. Undefined only when the owner
+ *  is gone (trackTarget already refused a missing track). */
+function resolvedTrackValue(ref: TrackRef, frame: number): unknown {
+  if (ref.owner === "group") {
+    const g = state.project.groups.find((x) => x.id === ref.id);
+    return g ? groupTransformAt(g, frame) : undefined;
+  }
+  const l = state.project.layers.find((x) => x.id === ref.id);
+  if (!l) return undefined;
+  return ref.prop === "opacity" ? opacityAt(l, frame) : transformAt(l, frame);
 }
 
 /** Remove the key at `frame`. No-op (and no undo entry) when there is none, or when it is the
@@ -1212,11 +1216,7 @@ export function ungroup(groupId: number) {
     }
   });
   // Destroying the group also destroys its transform track — fall focus back if it was selected.
-  state.activeRow = resolveStaleTrackFocus(
-    state.activeRow,
-    state.project,
-    state.activeLayerId,
-  );
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 /** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
  *  group's `collapsed` directly below: mutated in place with a `bump()` and NOT undoable — the
@@ -1417,12 +1417,7 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
  *  track whose draw target is a member) is focused — see `activeRow` for why no view may combine
  *  this with `activeLayerId`. */
 export function isRowSelected(layerId: number): boolean {
-  return layerRowSelected(
-    state.activeRow,
-    layerId,
-    state.activeLayerId,
-    state.project.layers,
-  );
+  return layerRowSelected(state.activeRow, layerId, state.activeLayerId, state.project.layers);
 }
 
 /** Is this exact property track the focused row? */

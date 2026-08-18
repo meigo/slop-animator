@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The per-key controls for ONE animated property: Delete key, Ease, Step — plus the
+   * The per-key controls for ONE animated property: Add key, Delete key, Ease, Step — plus the
    * transform-only Copy/Paste pair when asked for.
    *
    * ONE component rendered from every host, rather than a copy per property. These controls were
@@ -15,13 +15,10 @@
    * never disagree — and so the Step field can read the RESOLVED value straight back out of the
    * store after the action (see its handler).
    */
-  import {
-    DiamondMinus,
-    ClipboardCopy,
-    ClipboardPaste,
-  } from "@lucide/svelte";
+  import { DiamondPlus, DiamondMinus, ClipboardCopy, ClipboardPaste } from "@lucide/svelte";
   import {
     state as appState,
+    addTrackKey,
     deleteTrackKey,
     setTrackKeyInterp,
     setTrackSampleEvery,
@@ -60,6 +57,14 @@
 
   const hasKey = $derived(!!track && hasKeyAt(track, frame));
   const onlyKey = $derived(!!track && track.keys.length <= 1);
+  const canAdd = $derived(!blocked && !hasKey);
+  const addTitle = $derived(
+    blocked
+      ? `Add key — ${blocked}`
+      : hasKey
+        ? "Add key — already a key on this frame"
+        : "Add a key on this frame, freezing the value you can see",
+  );
   const canDelete = $derived(!blocked && hasKey && !onlyKey);
   const deleteTitle = $derived(
     blocked
@@ -127,12 +132,19 @@
        i.e. AFTER a button's own pointerdown handler. -->
   <button
     class={BTN}
+    aria-disabled={!canAdd}
+    title={addTitle}
+    onclick={() => {
+      if (canAdd) addTrackKey(trackRef, frame);
+    }}><DiamondPlus size={16} /></button
+  >
+  <button
+    class={BTN}
     aria-disabled={!canDelete}
     title={deleteTitle}
     onclick={() => {
       if (canDelete) deleteTrackKey(trackRef, frame);
-    }}
-    ><DiamondMinus size={16} /></button
+    }}><DiamondMinus size={16} /></button
   >
   {#if clipLayerId !== null}
     <button
@@ -143,8 +155,7 @@
         : "Copy key — no key on this frame"}
       onclick={() => {
         if (hasKey) copyTransformKeyAtPlayhead(clipLayerId);
-      }}
-      ><ClipboardCopy size={16} /></button
+      }}><ClipboardCopy size={16} /></button
     >
     <button
       class={BTN}
@@ -156,8 +167,7 @@
           : "Paste key — nothing copied yet"}
       onclick={() => {
         if (!blocked && appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
-      }}
-      ><ClipboardPaste size={16} /></button
+      }}><ClipboardPaste size={16} /></button
     >
   {/if}
   <!-- The title sits on this LABEL, not on the <select>, so `pointer-events-none` on the select

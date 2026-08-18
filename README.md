@@ -27,9 +27,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   away when you are drawing, open them when you are timing
 - A layer's **opacity can be animated** too: key it at any frame for a fade, or set a segment to
   hold for a hard cut
-- Animate, easing, step, delete-key and stop live on the timeline bar next to the
-  drawing key tools, and follow the selected row (the layer to start a track, the
-  property row to edit one)
+- Animate, add-key (current frame), easing, step, delete-key and stop live on the
+  timeline bar next to the drawing key tools, and follow the selected row (the
+  layer to start a track, the property row to edit one)
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
