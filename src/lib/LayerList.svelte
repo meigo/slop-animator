@@ -182,6 +182,10 @@
   // first write, live-write through `applyLayerOpacityAt` (no history), commit once at settle.
   let opacityUndo: StructSnapshot | null = null;
   let opacityUndoLayerId: number | null = null;
+  /** Prior `transformDragGuard.settle` owner — restored on settle so we do not wipe a chained hook. */
+  let opacitySettlePrev: (() => void) | null = null;
+  /** Wrapper assigned to the shared settle slot; identity check never clears someone else's hook. */
+  let opacitySettleHook: (() => void) | null = null;
   /** The frame the bracket was OPENED on. Every write of the gesture goes there and the settle test
    *  reads there, rather than re-reading `appState.playhead`: both transform drag sites capture a
    *  grab-time `keyFrame` for the same reason (a held drag keys its GRAB frame, which is what
@@ -252,7 +256,16 @@
       opacityUndoStartV = opacityKeyValue(layer.id, opacityUndoFrame);
       // Undo/redo and Open settle an open bracket before they run — without this a ⌘Z mid-drag
       // would leave it open and the release would commit a snapshot of the pre-undo document.
-      transformDragGuard.settle = settleOpacityDrag;
+      // Chain the previous owner: the settle slot is shared by every undoable drag (gizmo, range,
+      // hold-span, both opacity sliders). Replacing it would orphan an earlier open bracket.
+      const prev = transformDragGuard.settle;
+      opacitySettlePrev = prev;
+      const hook = () => {
+        settleOpacityDrag();
+        if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+      };
+      opacitySettleHook = hook;
+      transformDragGuard.settle = hook;
     }
     applyLayerOpacityAt(layer.id, opacityUndoFrame, value);
   }
@@ -269,7 +282,10 @@
     opacityUndo = null;
     opacityUndoLayerId = null;
     opacityUndoStartV = null;
-    if (transformDragGuard.settle === settleOpacityDrag) transformDragGuard.settle = null;
+    if (transformDragGuard.settle === opacitySettleHook)
+      transformDragGuard.settle = opacitySettlePrev;
+    opacitySettleHook = null;
+    opacitySettlePrev = null;
     if (!before || layerId === null) return;
     // Nothing net changed — dragged back onto the value the key already held, OR every write was
     // refused (locked/hidden layer, or a locked group) so no key exists where none did. Both are
@@ -337,6 +353,8 @@
   let groupOpacityUndoFrame = 0;
   let groupOpacityUndoStartV: number | null = null;
   let groupOpacityKeyHeld = false;
+  let groupOpacitySettlePrev: (() => void) | null = null;
+  let groupOpacitySettleHook: (() => void) | null = null;
 
   function groupOpacityFrameFor(group: LayerGroup): number {
     const ph = appState.playhead;
@@ -361,7 +379,15 @@
       groupOpacityUndoGroupId = groupId;
       groupOpacityUndoFrame = appState.playhead;
       groupOpacityUndoStartV = groupOpacityKeyValue(groupId, groupOpacityUndoFrame);
-      transformDragGuard.settle = settleGroupOpacityDrag;
+      // Same shared-slot chain as the layer slider — restore the previous owner on settle.
+      const prev = transformDragGuard.settle;
+      groupOpacitySettlePrev = prev;
+      const hook = () => {
+        settleGroupOpacityDrag();
+        if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+      };
+      groupOpacitySettleHook = hook;
+      transformDragGuard.settle = hook;
     }
     applyGroupOpacityAt(groupId, groupOpacityUndoFrame, value);
   }
@@ -374,7 +400,11 @@
     groupOpacityUndo = null;
     groupOpacityUndoGroupId = null;
     groupOpacityUndoStartV = null;
-    if (transformDragGuard.settle === settleGroupOpacityDrag) transformDragGuard.settle = null;
+    if (transformDragGuard.settle === groupOpacitySettleHook) {
+      transformDragGuard.settle = groupOpacitySettlePrev;
+    }
+    groupOpacitySettleHook = null;
+    groupOpacitySettlePrev = null;
     if (!before || groupId === null) return;
     if (groupOpacityKeyValue(groupId, frame) === startV) return;
     commitStructuralEdit(before);
