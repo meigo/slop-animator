@@ -1974,18 +1974,23 @@
             {#each Array(appState.project.frameCount) as _, f (f)}
               <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
             {/each}
-            <!-- One line PER SEGMENT, and none across a hold: continuous means "this genuinely
-                 interpolates", so drawing it over a segment that holds would say the opposite. (The
-                 layer rows' dashes mean the other thing again — frames repeating one drawing.) -->
+            <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
+                 the same distinction the layer rows already draw, because it is the same fact. A
+                 drawing hold repeats one drawing across those frames; a transform hold repeats one
+                 transform. So the timeline has two marks meaning two things, not three. -->
             {#each keys.slice(0, -1) as k, i (k.frame)}
-              {#if (k.interp ?? "linear") !== "hold"}
-                <div
-                  class="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-selection"
-                  style="left: {k.frame * CELL_W + CELL_W / 2}px; width: {(keys[i + 1].frame -
-                    k.frame) *
-                    CELL_W}px"
-                ></div>
-              {/if}
+              {@const held = (k.interp ?? "linear") === "hold"}
+              <div
+                class="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                class:h-px={!held}
+                class:bg-selection={!held}
+                class:border-t={held}
+                class:border-dashed={held}
+                class:border-selection={held}
+                style="left: {k.frame * CELL_W + CELL_W / 2}px; width: {(keys[i + 1].frame -
+                  k.frame) *
+                  CELL_W}px"
+              ></div>
             {/each}
             {#each keys as k (k.frame)}
               <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and

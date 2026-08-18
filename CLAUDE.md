@@ -2476,11 +2476,14 @@ already degrades to linear.
 
 **The key's SHAPE says how its segment behaves** — square = hold, circle = eased, diamond = linear —
 so timing is readable without selecting anything. Ease-in and ease-out share the circle on purpose:
-at 8px a half-filled disc is a smudge, and the Ease control names which. The connecting line is
-drawn PER SEGMENT and omitted across a hold, because a continuous line asserts "this interpolates"
-and a hold does the opposite. (Three marks now mean three different things on one timeline: a
-layer row's dashes = frames repeating one drawing, a solid transform line = interpolation, no line
-between transform keys = a hold.)
+at 8px a half-filled disc is a smudge, and the Ease control names which.
+
+**The connecting line is drawn PER SEGMENT: solid where the value interpolates, DASHED where it
+holds** — deliberately the same distinction the layer rows already draw, because it is the same
+fact. A drawing hold repeats one drawing across those frames; a transform hold repeats one
+transform. An earlier version omitted the line on a hold and justified it as "three marks for three
+meanings"; that was wrong, and reusing the existing dash concept is both simpler and one less thing
+to learn. There are two marks meaning two things.
 
 **Selecting the transform row selects its LAYER and sets the Transform scope to layer (2026-08-18).**
 The two things you always want next, and the only reason to click that row. It deliberately does NOT
