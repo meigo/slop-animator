@@ -2732,10 +2732,13 @@ fast-path is the first place to check whenever a static value becomes time-varyi
 **One collapse idiom, with one deliberate asymmetry.** Property rows fold under their owner using the
 same chevron the group header already uses, and a collapsed GROUP hides its own track row too —
 `timelineRows` already defines `collapsed` as "show me only this group's header row", so nothing new
-was defined. The asymmetry: a fresh `animateLayer` UNFOLDS its layer, because a folded track row has
-no standing affordance and the new row would otherwise be invisible; `animateGroup` deliberately does
-NOT, because the group header keeps its chevron either way and unfolding would also expose every
-member row the artist had folded away. Adding a row is not a licence to undo the artist's layout.
+was defined. A fresh `animateLayer` UNFOLDS its layer, because a folded track row has
+no standing affordance and the new row would otherwise be invisible. `animateGroup` deliberately did
+NOT, on the reasoning that a group's `collapsed` also hides its MEMBER rows and adding a row is not a
+licence to undo the artist's layout — **reversed in the fix wave below, and the reversal is the right
+call**: the group header carried no glyph either, so pressing Animate on a collapsed group produced
+no visible change WHATSOEVER, and a button that appears to do nothing is worse than one that reveals
+rows the artist can fold away again. Both actions unfold now.
 
 **Property rows carry no `data-layer-id`, and that single omission is the entire mechanism.** The
 timeline's selection axis resolves rows through that attribute, so a row without one is invisible to
@@ -2794,10 +2797,108 @@ sixty. A group transform animated with a member layer also animated, composing c
 ghosts showing distinct group poses** (the trap site); a selection copy on an animated group taking
 the composed path. **A click-without-move on an unanimated layer leaving no `tracks` bag behind** (the
 freeze guard). Collapse/expand, the animation icon, and the collapse state surviving a reload; a
-fresh Animate unfolding a layer but not a group. Retiming a key on each row kind; a locked MEMBER
+fresh Animate unfolding a layer AND a group, and the group header's
+animation glyph appearing while collapsed. Retiming a key on each row kind; a locked MEMBER
 refusing a group key retime with the reason shown; deleting a key and setting `hold` on an opacity
 track. **An old project with a `transformTrack` opening with its animation intact**, then re-saving in
 the new shape — including a REFERENCE layer's track, which is the second loader path. Undo/redo
 across every new writer; iPad for the collapse affordance, the slider as a keying control, and the new
 ToolOptions controls at Group scope. One thing to judge rather than verify, flagged as a conscious
 choice: the layer disclosure sits AFTER the name while the group header's chevron sits BEFORE it.
+
+**Fix wave from the three-lens whole-branch review (2026-08-18, same day).** Data integrity, render
+correctness and interaction lifecycle, one reviewer each; several findings landed twice or three
+times independently. One Critical, six Important, five Minor — all fixed. **Almost every one is the
+same shape, and it is the shape to look for the next time a property set goes plural: _generalised
+everywhere except here_.** The branch made tracks plural, but several sites that already handled the
+transform track were never widened — and because the old code still compiles and still does
+something, nothing failed. The lens generalises past tracks: after widening one site, ask what its
+siblings are.
+
+**The Critical was an undo bracket outliving the control that opened it.** The opacity slider lives
+inside the active row's `{#if}`, and every settle route — `change`, `pointerup`, `pointercancel`,
+`keyup`, `blur` — is bound to the input ELEMENT. A removed element fires none of them and loses its
+implicit pointer capture, so a second contact selecting another row mid-drag (or the audio lane,
+which deselects every layer) left `opacityUndo` open: the next slider drag saw a truthy bracket,
+skipped re-opening it, and wrote its keys to the ABANDONED gesture's layer id and frame, after which
+the settle compared the wrong key and either dropped a bracket whose writes had landed
+(permanently un-undoable) or committed a before-state from the other gesture. It now settles on the
+ROW's selection changing, plus a defensive settle when a write arrives for a different layer.
+**The general rule: a gesture bracket may only be settled by events its own element receives if that
+element cannot be unmounted mid-gesture.** Nothing else narrowed the window — `seekPlayhead`,
+`setActiveLayer` and `commitStructural` all leave `transformDragGuard` alone.
+
+**The frame shifter was the textbook case**, found by all three reviewers. `shiftLayerTransformKeys`
+read `tracks.transform` and nothing else, so a layer's opacity fade stood still while its drawings
+moved — one frame per hold-span resize / Add frame / Insert key / Duplicate frame / Delete frame /
+paste-insert, silent and compounding — and `rippleDocumentFrames` never walked `project.groups` at
+all. Generalised into ONE function (`shiftLayerTrackKeys`, looping `TRACK_PROPS` over a generic
+`shiftTrackFrames`) so every existing call site was covered without adding one; the switch carries a
+`never` exhaustiveness arm so a third property cannot arrive silently. **Group tracks shift inside
+`rippleDocumentFrames` ONLY, and that asymmetry is load-bearing:** a group transform is shared by
+every member, so a PER-LAYER frame tool has no single correct shift for it — the same reason those
+tools leave a reference `range` alone. Only a document-wide ripple, which moves every layer at once,
+has one.
+
+**Three more "except here" sites, all data loss.** `whyNotMergeDown` gated on a transform track only,
+so merging an opacity-animated layer burned its fade in at the seed alpha and took the track with it.
+`rasterizeReference` refused only a transform track — but `animateLayerOpacity` has no `kind` guard
+and the panel offers Animate on ref rows, so a ref could carry an opacity track that rasterizing
+destroyed. And "Stop animating opacity" baked the resolved value into the static field inside
+`commitStructural`, which `restoreStructure` deliberately keeps from the LIVE layer (opacity is a
+view-prop) while the static slider path pushes no command — so **nothing could put that number back**:
+the track came back on undo and the layer sat at whatever value it was stopped on. Fixed by restoring
+the static value exactly when the animation state itself is being restored
+(`!!snap.tracks?.opacity !== !!live.tracks?.opacity`), which keeps opacity a view-prop for every
+unrelated undo. The transform twin was immune only because `transform` is restored unconditionally.
+**A field that a bake writes cannot be a pure view-prop.**
+
+**Two Animate buttons, one of them dead.** `animateTargetGroup` had no `kind === "draw"` gate, so a
+REFERENCE group-member under Transform + Group scope rendered BOTH blocks — two identical `Animate`
+buttons and two full key-control sets, with no way to tell them apart before pressing (on iPad the
+tap IS the activation). The group half was inert there anyway, since the gizmo and the canvas drag
+both gate their group branch on `kind === "draw"`. Related: a group's Transform row picked its
+topmost member of ANY kind, so a ref there aimed the gizmo at that REF's own transform while the row
+promised the group's — it prefers a draw member now, with the old lookup as the fallback.
+
+**Smaller, same wave.** The group Transform row refused retiming on a HIDDEN group while ToolOptions
+still deleted and re-eased those keys and the gizmo still dragged them — now lock-only, matching
+`trackTarget`, `animateTargetGroup` and `activeTransformLayer` (the settled asymmetry: a hidden
+MEMBER must not veto a group transform). The two new disclosure buttons routed
+`pointermove`/`up`/`cancel` without a pointer-type check, so a Pencil crossing one during a finger
+pan panned against the FINGER's origin and a Pencil tap killed the pan outright. The on-canvas group
+drag paired a frozen `dragFrame()` transform with a live-playhead `groupBoxLogical` (benign only
+because group boxes are frame-independent today — the gizmo already pairs them, so the two must not
+disagree). The load sanitiser guarded `frame` and `sampleEvery` but never the key VALUE, and let a
+fractional or negative `frame` through — a key that renders and that no key action can ever match,
+since they all test `k.frame === playhead`. **The opacity case is the sharp one:** per spec
+`globalAlpha` IGNORES a value outside [0,1] or NaN, so a bad key makes the layer paint at the
+PREVIOUS draw op's alpha — a compositing bug rather than visibly bad data. Offending keys are
+dropped and the existing empty-array branch collapses the track.
+
+**Two findings recorded rather than fixed, both pre-existing and both wider than this branch:**
+
+- **`panEndedWithMovement` stays latched for pen and mouse.** The row label button calls `touchPanUp`
+  only for coarse pointers, and nothing else resets the latch — so after any finger scroll, a Pencil
+  tap on a property row's NAME does nothing until some finger tap clears it. Pressing the row's empty
+  strip still works, which is exactly why it reads as flaky rather than broken. The base branch's
+  transform row had the same shape; this branch simply multiplies the rows it affects. The real fix
+  is to reset the latch on any `pointerdown` in the grid, which touches every gesture in that file —
+  out of scope for a fix wave.
+- **With `sampleEvery > 1`, an authoring gesture off the grid does not put the value under the
+  control.** Keys `[0, 20]`, `sampleEvery 4`, playhead 7: the writer plants a key at 7 while the
+  render quantises to `q = 4`, which now brackets `[0, 7]` — so the gizmo, and far more visibly the
+  slider thumb, does not track 1:1 and snaps back on release. This follows from the deliberate
+  GLOBAL-grid semantics (the grid is anchored at the track's first key so the stepping rhythm stays
+  constant), so the fix belongs at the AUTHORING end — snap the written frame to the track's grid —
+  never in the resolver. Pre-existing with the transform track.
+
+**Owed a browser pass for the wave** (only the pure parts have tests — the generic shifter incl. the
+group-vs-per-layer asymmetry, the merge gate, and the sanitiser's new rejections): drag an opacity
+slider and select another row (or the audio lane) with a second finger mid-drag, then drag a second
+layer's slider — keys must land on the right layer and frame; Add frame / Insert key / hold-span
+resize on a layer with an opacity fade (the fade moves with the drawings); ripple insert with an
+animated GROUP; merge and rasterize refusing on an opacity-animated layer; Stop animating opacity
+then ⌘Z (the value comes back with the track); one Animate button on a ref inside a group; a group
+Transform row aiming the gizmo at the GROUP; Animate on a collapsed group showing the glyph and
+unfolding; retiming a hidden group's keys; a Pencil crossing a disclosure button mid-finger-pan.
