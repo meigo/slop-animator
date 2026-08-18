@@ -219,7 +219,13 @@
    *  value at the new frame, fighting the pointer. `transformDragFrame` freezes the transform drags
    *  for the same reason. */
   function opacityFrameFor(layer: Layer): number {
-    return opacityUndo && opacityUndoLayerId === layer.id ? opacityUndoFrame : appState.playhead;
+    // Read the playhead FIRST, unconditionally. `opacityUndo`/`opacityUndoFrame` are plain `let`s,
+    // not `$state`, so a short-circuiting ternary would drop `playhead` from the derived's
+    // dependency set for the whole time a bracket is open — and it would never come back: after
+    // that gesture released, scrubbing left this row's thumb and its "keys frame N" title pinned to
+    // the grab frame until the row remounted, so the next nudge started from a thumb that was lying.
+    const ph = appState.playhead;
+    return opacityUndo && opacityUndoLayerId === layer.id ? opacityUndoFrame : ph;
   }
 
   function opacityKeyValue(layerId: number, frame: number): number | null {
@@ -274,17 +280,27 @@
     commitStructuralEdit(before);
   }
 
-  /** The unmount backstop. `settleOpacityDrag` is reachable only through the slider's own events,
-   *  which a removed element never fires — so the ROW's selection is watched instead: the slider
-   *  exists exactly while its layer is the selected row, and `activeRow` becoming any other layer
-   *  (or the audio lane, which selects no layer at all) is precisely the moment it goes away. The
-   *  bracket then commits or drops on its own terms rather than leaking into the next gesture.
-   *  Nothing else narrows that window: `seekPlayhead`, `setActiveLayer` and `commitStructural` all
-   *  leave `transformDragGuard` alone, and only undo/redo/Open and the Canvas tool effect settle it. */
-  $effect(() => {
-    const id = appState.activeRow.kind === "layer" ? appState.activeRow.id : null;
-    if (opacityUndoLayerId !== null && opacityUndoLayerId !== id) settleOpacityDrag();
-  });
+  /**
+   * The unmount backstop, on the ELEMENT rather than on any cause of its removal.
+   *
+   * Every other settle route — `change`, `pointerup`, `pointercancel`, `keyup`, `blur` — is bound to
+   * this input, and a removed element fires none of them and loses its implicit pointer capture. So
+   * a slider that goes away mid-drag leaked its bracket, and the next drag inherited it and wrote to
+   * the abandoned gesture's layer id and frame. The causes are plural and keep growing: the row's
+   * `{#if active}` (a second contact selecting another layer, or the audio lane, which deselects
+   * every layer), the list's `{#key dragNonce}` REBUILD after any SortableJS reorder drop — which
+   * leaves `activeRow` untouched, so watching selection could not see it — and component teardown.
+   * A `destroy` hook covers all of them and any future one, which an enumeration of causes cannot.
+   */
+  function settleOnUnmount(_node: HTMLElement, layerId: number) {
+    return {
+      destroy() {
+        // Only OUR bracket: the guard costs nothing and keeps this honest if a second slider ever
+        // renders (today only the active row has one).
+        if (opacityUndoLayerId === layerId) settleOpacityDrag();
+      },
+    };
+  }
 
   function opacityKeyDown(e: KeyboardEvent) {
     if (RANGE_KEYS.has(e.key)) opacityKeyHeld = true;
@@ -537,6 +553,7 @@
               : "Opacity"}
         >
           <input
+            use:settleOnUnmount={layer.id}
             class="w-12 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
