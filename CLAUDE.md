@@ -2751,7 +2751,7 @@ layer should follow it rather than adding exclusions.
 group transform in ToolOptions at their scopes, opacity in the layer panel beside its slider.~~
 **Superseded 2026-08-18:** Animate / Ease / Step / Delete / Stop moved to the timeline bar (see
 the timeline-animation-tools entry below). Value authors stay put — the gizmo and the opacity slider
-still write keys; only the key *tools* moved.
+still write keys; only the key _tools_ moved.
 
 **A range input needs the apply/commit split.** The opacity slider fires `input` per pixel, so
 writing through a self-committing action would push ~100 undo entries per drag into a 50-command
@@ -2990,3 +2990,15 @@ is the one visible-set (start / keys / empty) driven by that selection. `TrackKe
 single host — the timeline bar. StatusBar still uses `animateTargetLayer` / `animateTargetGroup` for
 the idle “a drag keys frame N” hint. Spec/plan:
 `docs/superpowers/{specs,plans}/2026-08-18-timeline-animation-tools*.md`.
+
+**Group opacity track (2026-08-19):** a group fades as one thing — Photoshop-style multiply at the
+draw list (`opacityAt(layer) * groupOpacityAt(group) / 100`), so editor, onion, and both exporters
+share one gate. Optional `group.opacity` (absent = 100) plus `GroupTracks.opacity`; format version
+stays 1. `GROUP_TRACK_PROPS` is the group twin of `TRACK_PROPS` — copy, sanitise, document ripple, and
+`timelineRows` loop it; per-layer frame tools still leave group keys alone. Slider on the layer-panel
+**group header**, labeled **Group**, even when collapsed (not on the timeline bar). Lock table:
+static writes always allowed (view-prop); animated keys refuse when `groupHasLockedLayer` pins the
+group. Animate from a selected member (timeline bar); Stop bakes the playhead value. `restoreStructure`
+restores static `group.opacity` only when opacity-track presence flips — same rule as layer opacity,
+so undoing Stop puts the baked number back and an unrelated undo does not revert a static nudge.
+Spec/plan: `docs/superpowers/{specs,plans}/2026-08-19-group-opacity-track*.md`.

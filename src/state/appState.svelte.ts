@@ -979,6 +979,8 @@ export function applyGroupOpacityAt(groupId: number, frame: number, value: numbe
     if (existing && existing.v === value) return;
     g.tracks = { ...g.tracks, opacity: withKey(track, frame, value, (n) => n) };
   } else {
+    // Click-without-move must not dirty autosave (slider fires input even on a no-op press).
+    if (value === (g.opacity ?? 100)) return;
     g.opacity = value;
   }
   bump();

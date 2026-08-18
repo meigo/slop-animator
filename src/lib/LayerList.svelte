@@ -55,6 +55,7 @@
     isRowSelected,
     toggleEmbedMedia,
     applyLayerOpacityAt,
+    applyGroupOpacityAt,
     beginStructuralEdit,
     commitStructuralEdit,
     transformDragGuard,
@@ -74,9 +75,11 @@
     whyNotMergeDown,
     layerTransformTrack,
     opacityAt,
+    groupOpacityAt,
+    groupHasLockedLayer,
     isLayerVisible,
   } from "../anim/document";
-  import type { Layer, MergeDownBlock } from "../anim/document";
+  import type { Layer, LayerGroup, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
 
@@ -323,6 +326,81 @@
       !isLayerLocked(layer, appState.project.groups) &&
       isLayerVisible(layer, appState.project.groups)
     );
+  }
+
+  // --- Group opacity: labeled slider on the header (even when collapsed) -------------------------
+  // Same apply/commit split as the layer slider. Static writes stay non-undoable (view-prop);
+  // with a track, one undo entry per gesture. Lock-only when animated: a locked member pins the
+  // group; the static slider stays writable when locked (matches the layer lock table).
+  let groupOpacityUndo: StructSnapshot | null = null;
+  let groupOpacityUndoGroupId: number | null = null;
+  let groupOpacityUndoFrame = 0;
+  let groupOpacityUndoStartV: number | null = null;
+  let groupOpacityKeyHeld = false;
+
+  function groupOpacityFrameFor(group: LayerGroup): number {
+    const ph = appState.playhead;
+    return groupOpacityUndo && groupOpacityUndoGroupId === group.id ? groupOpacityUndoFrame : ph;
+  }
+
+  function groupOpacityKeyValue(groupId: number, frame: number): number | null {
+    const g = appState.project.groups.find((x) => x.id === groupId);
+    return g?.tracks?.opacity?.keys.find((k) => k.frame === frame)?.v ?? null;
+  }
+
+  function onGroupOpacityInput(groupId: number, value: number) {
+    if (groupOpacityUndo && groupOpacityUndoGroupId !== groupId) settleGroupOpacityDrag();
+    const g = appState.project.groups.find((x) => x.id === groupId);
+    if (!g) return;
+    if (!g.tracks?.opacity) {
+      applyGroupOpacityAt(groupId, appState.playhead, value);
+      return;
+    }
+    if (!groupOpacityUndo) {
+      groupOpacityUndo = beginStructuralEdit();
+      groupOpacityUndoGroupId = groupId;
+      groupOpacityUndoFrame = appState.playhead;
+      groupOpacityUndoStartV = groupOpacityKeyValue(groupId, groupOpacityUndoFrame);
+      transformDragGuard.settle = settleGroupOpacityDrag;
+    }
+    applyGroupOpacityAt(groupId, groupOpacityUndoFrame, value);
+  }
+
+  function settleGroupOpacityDrag() {
+    const before = groupOpacityUndo;
+    const groupId = groupOpacityUndoGroupId;
+    const frame = groupOpacityUndoFrame;
+    const startV = groupOpacityUndoStartV;
+    groupOpacityUndo = null;
+    groupOpacityUndoGroupId = null;
+    groupOpacityUndoStartV = null;
+    if (transformDragGuard.settle === settleGroupOpacityDrag) transformDragGuard.settle = null;
+    if (!before || groupId === null) return;
+    if (groupOpacityKeyValue(groupId, frame) === startV) return;
+    commitStructuralEdit(before);
+  }
+
+  function settleGroupOpacityOnUnmount(_node: HTMLElement, groupId: number) {
+    return {
+      destroy() {
+        if (groupOpacityUndoGroupId === groupId) settleGroupOpacityDrag();
+      },
+    };
+  }
+
+  function groupOpacityKeyDown(e: KeyboardEvent) {
+    if (RANGE_KEYS.has(e.key)) groupOpacityKeyHeld = true;
+  }
+  function groupOpacityKeyUp() {
+    groupOpacityKeyHeld = false;
+    settleGroupOpacityDrag();
+  }
+  function groupOpacityChange() {
+    if (!groupOpacityKeyHeld) settleGroupOpacityDrag();
+  }
+  function groupOpacityBlur() {
+    groupOpacityKeyHeld = false;
+    settleGroupOpacityDrag();
   }
 
   // A button that silently no-ops explains nothing, so the three actions that can refuse dim and say
@@ -784,6 +862,10 @@
         {#if "layer" in seg}
           {@render layerRow(seg.layer)}
         {:else}
+          {@const gOpTrack = seg.group.tracks?.opacity}
+          {@const gOpFrame = groupOpacityFrameFor(seg.group)}
+          {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
+          {@const gOpPinned = !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div class="flex items-center gap-1 p-1 bg-surface-hover" role="presentation">
               <button
@@ -841,6 +923,41 @@
               >
                 <Ungroup size={14} />
               </button>
+            </div>
+            <!-- Group opacity: on the header even when collapsed. Labeled so it cannot be mistaken
+                 for the selected member's layer slider when both show at once. -->
+            <div
+              class="flex flex-wrap items-center gap-x-2 gap-y-1 bg-surface-hover px-1 pb-1 text-text-secondary"
+            >
+              <span
+                class="flex items-center gap-2"
+                title={gOpPinned
+                  ? "Group opacity — animated, and a locked member pins the group"
+                  : gOpTrack
+                    ? `Group opacity — animated; a change keys frame ${gOpFrame + 1}`
+                    : "Group opacity"}
+              >
+                <span class="text-xs text-text-muted">Group</span>
+                <input
+                  use:settleGroupOpacityOnUnmount={seg.group.id}
+                  class="w-12 aria-disabled:opacity-40"
+                  class:pointer-events-none={gOpPinned}
+                  aria-disabled={gOpPinned}
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={gOpNow}
+                  oninput={(e) => onGroupOpacityInput(seg.group.id, Number(e.currentTarget.value))}
+                  onchange={groupOpacityChange}
+                  onpointerup={settleGroupOpacityDrag}
+                  onpointercancel={settleGroupOpacityDrag}
+                  onkeydown={groupOpacityKeyDown}
+                  onkeyup={groupOpacityKeyUp}
+                  onblur={groupOpacityBlur}
+                  onclick={(e) => e.stopPropagation()}
+                />
+                <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(gOpNow)}</span>
+              </span>
             </div>
             <div class="group-members pl-3" class:hidden={seg.group.collapsed} use:membersSortable>
               {#each seg.layers as layer (layer.id)}

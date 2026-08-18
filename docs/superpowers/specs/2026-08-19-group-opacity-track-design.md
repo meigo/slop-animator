@@ -1,7 +1,7 @@
 # Group opacity track — design
 
 **Date:** 2026-08-19
-**Status:** Draft — awaiting review
+**Status:** Approved
 **Builds on:** multi-property animation rows
 (`2026-08-18-multi-property-animation-rows-design.md`); timeline animation tools
 (`2026-08-18-timeline-animation-tools-design.md`); group transform
