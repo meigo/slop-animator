@@ -851,6 +851,8 @@ export function buildFrameDrawList(
   const ops: FrameOp[] = [];
   for (const layer of project.layers) {
     if (!isLayerVisible(layer, project.groups)) continue;
+    const g = groupOf(layer, project.groups);
+    const opacity = (opacityAt(layer, frame) * groupOpacityAt(g, frame)) / 100;
     if (layer.kind === "draw") {
       const ki = resolveKeyframeIndex(layer.cells, frame);
       if (ki === null) continue;
@@ -858,12 +860,12 @@ export function buildFrameDrawList(
         kind: "draw",
         layerId: layer.id,
         keyframeIndex: ki,
-        opacity: opacityAt(layer, frame),
+        opacity,
       });
     } else {
       if (!includeReference) continue;
       if (!isRefVisibleAtFrame(layer, frame, project.fps)) continue;
-      ops.push({ kind: "ref", layerId: layer.id, opacity: opacityAt(layer, frame) });
+      ops.push({ kind: "ref", layerId: layer.id, opacity });
     }
   }
   return ops;

@@ -148,6 +148,8 @@ export interface ProjectJson {
     collapsed: boolean;
     visible: boolean;
     locked?: boolean;
+    /** Static group opacity 0..100. Absent means 100. */
+    opacity?: number;
     transform?: RefTransform;
     transformBox?: { x: number; y: number; w: number; h: number } | null;
     tracks?: GroupTracks;
@@ -194,12 +196,16 @@ export function projectToJson(project: Project): ProjectJson {
     groups: project.groups.map((g) => {
       const t = g.transform;
       const isId = !t || isIdentityTransform(t);
+      const o = g.opacity;
       return {
         id: g.id,
         name: g.name,
         collapsed: g.collapsed,
         visible: g.visible,
         locked: g.locked,
+        ...(typeof o === "number" && Number.isFinite(o) && o >= 0 && o <= 100
+          ? { opacity: o }
+          : {}),
         tracks: g.tracks,
         ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
       };
@@ -627,16 +633,20 @@ export async function loadProjectBlob(
     refLayers.push({ index: rj.index, value });
   }
   const orderedLayers = insertReferencesByIndex<Layer>(layers, refLayers);
-  const groups: LayerGroup[] = (json.groups ?? []).map((g) => ({
-    id: g.id,
-    name: g.name,
-    collapsed: g.collapsed,
-    visible: g.visible,
-    locked: g.locked ?? false,
-    transform: g.transform ? { ...g.transform } : undefined,
-    transformBox: g.transformBox ? { ...g.transformBox } : null,
-    tracks: sanitiseTracks(g.tracks),
-  }));
+  const groups: LayerGroup[] = (json.groups ?? []).map((g) => {
+    const o = g.opacity;
+    return {
+      id: g.id,
+      name: g.name,
+      collapsed: g.collapsed,
+      visible: g.visible,
+      locked: g.locked ?? false,
+      opacity: typeof o === "number" && Number.isFinite(o) && o >= 0 && o <= 100 ? o : undefined,
+      transform: g.transform ? { ...g.transform } : undefined,
+      transformBox: g.transformBox ? { ...g.transformBox } : null,
+      tracks: sanitiseTracks(g.tracks),
+    };
+  });
   for (const g of groups) maxId = Math.max(maxId, g.id);
   setMinLayerId(maxId + 1);
   const project: Project = {

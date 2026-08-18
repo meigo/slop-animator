@@ -756,6 +756,53 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(group.tracks).not.toBe(bag);
       expect(gt.keys.map((k) => k.frame)).toEqual([3]);
     });
+
+    it("shifts a GROUP's opacity track on a document-wide ripple", () => {
+      const opacity = {
+        keys: [
+          { frame: 0, v: 100 },
+          { frame: 4, v: 0 },
+        ],
+      };
+      const group = {
+        id: 1,
+        name: "g",
+        collapsed: false,
+        visible: true,
+        tracks: { opacity },
+      };
+      insertFrameAllLayers(proj([], null, [group]), 2);
+      expect(group.tracks.opacity.keys.map((k) => k.frame)).toEqual([0, 5]);
+      expect(opacity.keys.map((k) => k.frame)).toEqual([0, 4]); // original untouched
+    });
+
+    it("a per-layer insertKeyframe leaves the GROUP opacity keys alone", () => {
+      const member = layer([
+        { kind: "key", canvas: fakeOps.create() },
+        { kind: "hold" },
+        { kind: "hold" },
+        { kind: "hold" },
+        { kind: "hold" },
+      ]);
+      member.groupId = 1;
+      const group = {
+        id: 1,
+        name: "g",
+        collapsed: false,
+        visible: true,
+        tracks: {
+          opacity: {
+            keys: [
+              { frame: 0, v: 100 },
+              { frame: 4, v: 0 },
+            ],
+          },
+        },
+      };
+      insertKeyframe(member, 1, fakeOps);
+      shiftLayerTrackKeys(member, 2, 1); // what Timeline.svelte does after insertKeyframe
+      expect(group.tracks.opacity.keys.map((k) => k.frame)).toEqual([0, 4]);
+    });
   });
 
   // The per-layer counterpart: the frame tools resplice ONE layer's cells, so only that layer's

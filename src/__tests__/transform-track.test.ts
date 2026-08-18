@@ -981,6 +981,46 @@ describe("group transform track persistence", () => {
   });
 });
 
+describe("group opacity persistence", () => {
+  it("round-trips static opacity and an opacity track", async () => {
+    const project = createProject();
+    project.layers.push(createDrawingLayer(1, "L"));
+    project.groups.push({
+      id: 1,
+      name: "G",
+      collapsed: false,
+      visible: true,
+      opacity: 40,
+      tracks: {
+        opacity: {
+          keys: [
+            { frame: 0, v: 100 },
+            { frame: 8, v: 0 },
+          ],
+        },
+      },
+    });
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.groups[0].opacity).toBe(40);
+    expect(loaded.groups[0].tracks?.opacity?.keys.map((k) => k.frame)).toEqual([0, 8]);
+    expect(loaded.groups[0].tracks?.opacity?.keys.map((k) => k.v)).toEqual([100, 0]);
+  });
+
+  it("loads a bad stored opacity as omitted (fully opaque)", async () => {
+    const project = createProject();
+    project.layers.push(createDrawingLayer(1, "L"));
+    project.groups.push({ id: 1, name: "G", collapsed: false, visible: true, opacity: 40 });
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    json.groups[0].opacity = 999;
+    const rezipped = new Blob([zipSync({ ...zip, "project.json": strToU8(JSON.stringify(json)) })]);
+    const loaded = await loadProjectBlob(rezipped, 1);
+    expect(loaded.groups[0].opacity).toBeUndefined();
+    expect(groupOpacityAt(loaded.groups[0], 0)).toBe(100);
+  });
+});
+
 // The generic mover, used by the timeline's key drag on an OPACITY row. Split from
 // `withMovedTransformKey` for the same reason `withKey`/`withTransformKey` are: the generic one
 // knows nothing about `box`, so a transform track re-attaches its keys through `withTrackKeys`.

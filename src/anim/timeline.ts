@@ -4,6 +4,7 @@ import {
   copyKeyframe,
   withTrackKeys,
   TRACK_PROPS,
+  GROUP_TRACK_PROPS,
   type Cell,
   type DrawingLayer,
   type Keyframe,
@@ -273,14 +274,35 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
     }
   }
   // GROUP tracks shift HERE and nowhere else, and that asymmetry with `shiftLayerTrackKeys` is
-  // deliberate: a group's transform is shared by every member, so a PER-LAYER frame tool (which
-  // resplices one layer's cells) has no single correct shift for it — the same reason those tools
-  // leave a reference RANGE alone. Only a document-wide ripple, which moves every layer at once,
-  // has one. Replace the bag and the track, never mutate either (gotcha #8).
+  // deliberate: a group's transform/opacity is shared by every member, so a PER-LAYER frame tool
+  // (which resplices one layer's cells) has no single correct shift for it — the same reason those
+  // tools leave a reference RANGE alone. Only a document-wide ripple, which moves every layer at
+  // once, has one. Replace the bag and each track, never mutate either (gotcha #8).
   for (const group of project.groups) {
-    const track = group.tracks?.transform;
-    if (!track) continue;
-    group.tracks = { ...group.tracks, transform: shiftTransformTrackFrames(track, at, delta) };
+    if (!group.tracks) continue;
+    let next = { ...group.tracks };
+    let wrote = false;
+    for (const prop of GROUP_TRACK_PROPS) {
+      switch (prop) {
+        case "transform":
+          if (next.transform) {
+            next = { ...next, transform: shiftTransformTrackFrames(next.transform, at, delta) };
+            wrote = true;
+          }
+          break;
+        case "opacity":
+          if (next.opacity) {
+            next = { ...next, opacity: shiftTrackFrames(next.opacity, at, delta, copyNumber) };
+            wrote = true;
+          }
+          break;
+        default: {
+          const exhaustive: never = prop;
+          void exhaustive;
+        }
+      }
+    }
+    if (wrote) group.tracks = next;
   }
   if (project.audio) {
     const next = shiftStartFrame(project.audio.offsetFrames, at, delta);

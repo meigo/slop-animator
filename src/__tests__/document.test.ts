@@ -218,6 +218,41 @@ describe("buildFrameDrawList", () => {
     expect(buildFrameDrawList(p, 0).length).toBe(1);
     expect(buildFrameDrawList(p, 500).length).toBe(1);
   });
+
+  it("multiplies member opacity by group opacity", () => {
+    const member = layer(1, [makeKey()], { opacity: 50, groupId: 1 });
+    const p = proj([member], 1);
+    p.groups = [{ id: 1, name: "G", collapsed: false, visible: true, opacity: 50 }];
+    expect(buildFrameDrawList(p, 0)[0].opacity).toBe(25);
+  });
+
+  it("uses 100 for an ungrouped layer and for a group with no opacity", () => {
+    const p = proj([layer(1, [makeKey()], { opacity: 50 })], 1);
+    expect(buildFrameDrawList(p, 0)[0].opacity).toBe(50);
+  });
+
+  it("resolves an animated group opacity at the frame", () => {
+    const member = layer(1, [makeKey(), makeKey()], { opacity: 100, groupId: 1 });
+    const p = proj([member], 2);
+    p.groups = [
+      {
+        id: 1,
+        name: "G",
+        collapsed: false,
+        visible: true,
+        tracks: {
+          opacity: {
+            keys: [
+              { frame: 0, v: 100 },
+              { frame: 1, v: 0 },
+            ],
+          },
+        },
+      },
+    ];
+    expect(buildFrameDrawList(p, 0)[0].opacity).toBe(100);
+    expect(buildFrameDrawList(p, 1)[0].opacity).toBe(0);
+  });
 });
 
 describe("containRect", () => {
