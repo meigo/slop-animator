@@ -1044,6 +1044,17 @@ export function ungroup(groupId: number) {
     }
   });
 }
+/** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
+ *  group's `collapsed` directly below: mutated in place with a `bump()` and NOT undoable — the
+ *  contents did not change, only how much of them is on screen. `bump()` rather than `repaint()`
+ *  because it IS persisted, so the autosave debounce has to see it. */
+export function toggleTracksCollapsed(layerId: number) {
+  const l = state.project.layers.find((x) => x.id === layerId);
+  if (l) {
+    l.tracksCollapsed = !l.tracksCollapsed;
+    bump();
+  }
+}
 export function toggleGroupCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (g) {

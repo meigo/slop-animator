@@ -47,6 +47,11 @@ export interface DrawingLayer {
   cells: Cell[]; // independent per-layer length; document length = the longest layer
   transform: RefTransform;
   tracks?: LayerTracks;
+  /** Are this layer's property rows folded away in the timeline? A VIEW-prop, like a group's
+   *  `collapsed` (which it deliberately mirrors — the timeline has one collapse idiom, not two):
+   *  persisted, not undoable, and absent means EXPANDED so every existing project opens showing its
+   *  tracks. */
+  tracksCollapsed?: boolean;
 }
 
 export type ReferenceMedia =
@@ -177,6 +182,11 @@ export interface ReferenceLayer {
   media: ReferenceMedia;
   transform: RefTransform;
   tracks?: LayerTracks;
+  /** Are this layer's property rows folded away in the timeline? A VIEW-prop, like a group's
+   *  `collapsed` (which it deliberately mirrors — the timeline has one collapse idiom, not two):
+   *  persisted, not undoable, and absent means EXPANDED so every existing project opens showing its
+   *  tracks. */
+  tracksCollapsed?: boolean;
 }
 
 export type Layer = DrawingLayer | ReferenceLayer;
@@ -561,19 +571,32 @@ export function withoutTransformKey(track: TransformTrack, frame: number): Trans
  * and it is one undo step away. Returns the SAME object when nothing changes (no key at `from`, or
  * `from === to`), so a caller can skip pushing an empty undo entry.
  */
-export function withMovedTransformKey(
-  track: TransformTrack,
+export function withMovedKey<V>(
+  track: Track<V>,
   from: number,
   to: number,
-): TransformTrack {
+  copyValue: (v: V) => V,
+): Track<V> {
   if (from === to) return track;
   const moved = track.keys.find((k) => k.frame === from);
   if (!moved) return track;
   const keys = track.keys
     .filter((k) => k.frame !== from && k.frame !== to)
-    .concat(copyTransformKey({ ...moved, frame: to }))
+    .concat(copyKeyframe({ ...moved, frame: to }, copyValue))
     .sort((a, b) => a.frame - b.frame);
-  return withTrackKeys(track, keys);
+  return { ...track, keys };
+}
+
+/** `withMovedKey` for a transform track. The generic mover knows nothing about `box`, so its keys
+ *  are re-attached through `withTrackKeys` — same split, and same reason, as
+ *  `withKey`/`withTransformKey`. */
+export function withMovedTransformKey(
+  track: TransformTrack,
+  from: number,
+  to: number,
+): TransformTrack {
+  const next = withMovedKey(track, from, to, copyRefTransform);
+  return next === track ? track : withTrackKeys(track, next.keys);
 }
 
 /**

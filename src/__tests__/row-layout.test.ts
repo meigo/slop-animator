@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildSegments, timelineRows, type Segment } from "../anim/row-layout";
-import type { Layer, LayerGroup } from "../anim/document";
+import type { Layer, LayerGroup, LayerTracks } from "../anim/document";
 
 const layer = (id: number, groupId: number | null = null) =>
   ({ kind: "draw", id, name: `L${id}`, groupId }) as Layer;
@@ -14,7 +14,9 @@ const ids = (rows: ReturnType<typeof timelineRows>) =>
       ? `L${r.layer.id}`
       : r.kind === "group"
         ? `G${r.group.id}`
-        : `T${r.layer.id}`,
+        : r.kind === "grouptrack"
+          ? `GT${r.group.id}`
+          : `${r.prop === "transform" ? "T" : "O"}${r.layer.id}`,
   );
 
 describe("buildSegments", () => {
@@ -97,7 +99,7 @@ const animated = (id: number, groupId: number | null = null) =>
 describe("timelineRows — transform tracks", () => {
   it("emits a transform row directly under its layer", () => {
     const rows = timelineRows(buildSegments([animated(1)], []));
-    expect(rows.map((r) => r.kind)).toEqual(["layer", "transform"]);
+    expect(rows.map((r) => r.kind)).toEqual(["layer", "track"]);
   });
 
   it("emits nothing extra for a layer with no track", () => {
@@ -106,7 +108,7 @@ describe("timelineRows — transform tracks", () => {
 
   it("emits the row for a grouped layer too", () => {
     const rows = timelineRows(buildSegments([animated(1, 10)], [group(10)]));
-    expect(rows.map((r) => r.kind)).toEqual(["group", "layer", "transform"]);
+    expect(rows.map((r) => r.kind)).toEqual(["group", "layer", "track"]);
   });
 
   // One animated layer cannot tell "under its own layer" from "appended at the end", so pin the
@@ -125,5 +127,70 @@ describe("timelineRows — transform tracks", () => {
   it("hides a member's transform row when its group is collapsed", () => {
     const rows = timelineRows(buildSegments([animated(1, 10)], [group(10, true)]));
     expect(rows.map((r) => r.kind)).toEqual(["group"]);
+  });
+});
+
+const T0 = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+const bothTracks = {
+  transform: { keys: [{ frame: 0, v: T0 }], box: null },
+  opacity: { keys: [{ frame: 0, v: 100 }] },
+};
+const withTracks = (id: number, tracks: LayerTracks, groupId: number | null = null) =>
+  ({ kind: "draw", id, name: `L${id}`, groupId, tracks }) as Layer;
+
+// Fixed order so rows never reorder under the artist as tracks are added.
+describe("timelineRows — property rows", () => {
+  it("emits one row per present track, transform before opacity", () => {
+    const rows = timelineRows(buildSegments([withTracks(1, bothTracks)], []));
+    expect(rows.map((r) => (r.kind === "track" ? r.prop : r.kind))).toEqual([
+      "layer",
+      "transform",
+      "opacity",
+    ]);
+  });
+
+  it("emits only the tracks that exist", () => {
+    const rows = timelineRows(buildSegments([withTracks(1, { opacity: bothTracks.opacity })], []));
+    expect(rows.map((r) => (r.kind === "track" ? r.prop : r.kind))).toEqual(["layer", "opacity"]);
+  });
+
+  it("omits every property row when the layer is collapsed", () => {
+    const l = withTracks(1, bothTracks);
+    (l as { tracksCollapsed?: boolean }).tracksCollapsed = true;
+    expect(timelineRows(buildSegments([l], [])).map((r) => r.kind)).toEqual(["layer"]);
+  });
+
+  it("interleaves two animated layers rather than grouping all track rows at the end", () => {
+    const rows = timelineRows(
+      buildSegments([withTracks(1, bothTracks), withTracks(2, bothTracks)], []),
+    );
+    expect(ids(rows)).toEqual(["L2", "T2", "O2", "L1", "T1", "O1"]);
+  });
+});
+
+const animatedGroup = (id: number, collapsed = false) =>
+  ({
+    id,
+    name: `G${id}`,
+    collapsed,
+    visible: true,
+    tracks: { transform: { keys: [{ frame: 0, v: T0 }], box: null } },
+  }) as LayerGroup;
+
+describe("timelineRows — group tracks", () => {
+  it("emits the group's track row directly after its header row", () => {
+    const rows = timelineRows(buildSegments([layer(1, 10)], [animatedGroup(10)]));
+    expect(ids(rows)).toEqual(["G10", "GT10", "L1"]);
+  });
+
+  it("emits nothing extra for a static group", () => {
+    const rows = timelineRows(buildSegments([layer(1, 10)], [group(10)]));
+    expect(ids(rows)).toEqual(["G10", "L1"]);
+  });
+
+  // Collapse means "show me only this group's header row" — one collapse concept, not two.
+  it("hides the group's own track row while the group is collapsed", () => {
+    const rows = timelineRows(buildSegments([layer(1, 10)], [animatedGroup(10, true)]));
+    expect(ids(rows)).toEqual(["G10"]);
   });
 });

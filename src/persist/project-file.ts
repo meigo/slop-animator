@@ -36,6 +36,10 @@ export interface DrawingLayerJson {
   cells: ("key" | "hold")[];
   transform: RefTransform;
   tracks?: LayerTracks;
+  /** Are the layer's property rows folded away in the timeline? Optional and additive: absent =
+   *  EXPANDED, so every pre-existing save opens showing its tracks and the format version does not
+   *  move. */
+  tracksCollapsed?: boolean;
   /** LEGACY, read-only. The single-property shape that SHIPPED before `tracks` existed, so it is in
    *  real projects and autosaves; the loader promotes it. Never written. */
   transformTrack?: TransformTrack;
@@ -65,6 +69,8 @@ export interface ReferenceJson {
   was: "image" | "video";
   transform: RefTransform;
   tracks?: LayerTracks;
+  /** See `DrawingLayerJson.tracksCollapsed`. */
+  tracksCollapsed?: boolean;
   /** LEGACY, read-only — see `DrawingLayerJson.transformTrack`. */
   transformTrack?: TransformTrack;
 }
@@ -207,6 +213,7 @@ export function projectToJson(project: Project): ProjectJson {
       cells: l.cells.map((c) => c.kind),
       transform: l.transform,
       tracks: l.tracks,
+      tracksCollapsed: l.tracksCollapsed,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
           c.kind === "key" &&
@@ -243,6 +250,7 @@ export function projectToJson(project: Project): ProjectJson {
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
         tracks: l.tracks,
+        tracksCollapsed: l.tracksCollapsed,
       })),
     // `audioUndecoded` is written back verbatim when the bytes couldn't be decoded on this device:
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
@@ -408,13 +416,24 @@ function sanitiseTrack<T extends Track<unknown>>(track: T | undefined): T | unde
   return { ...track, keys, sampleEvery: Math.min(MAX_SAMPLE_EVERY, Math.max(1, n)) };
 }
 
+/** A pivot box whose every field is a finite number, else null (= "no frozen box", which the
+ *  consumers already fall back from). `groupBoxLogical` now READS this field, so a hand-edited or
+ *  corrupt zip can feed it straight into pivot arithmetic — one NaN there produces NaN geometry
+ *  with nothing on screen to say why. Same `Number.isFinite` shape as the frame/sampleEvery guards
+ *  above; the fields are re-listed rather than spread so an unexpected extra key cannot ride in. */
+function sanitiseTrackBox(box: TransformTrack["box"] | undefined): TransformTrack["box"] {
+  return box && [box.x, box.y, box.w, box.h].every((n) => Number.isFinite(n))
+    ? { x: box.x, y: box.y, w: box.w, h: box.h }
+    : null;
+}
+
 /** Sort, de-duplicate and clamp every track in a persisted bag. A bag whose tracks all sanitise
  *  away is `undefined`, not an empty object — "no animation" has one representation in the model. */
 function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
   if (!tracks) return undefined;
   const out = {} as T;
   const transform = sanitiseTrack(tracks.transform);
-  if (transform) out.transform = transform;
+  if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
   if ("opacity" in tracks) {
     const opacity = sanitiseTrack(tracks.opacity);
     if (opacity) (out as LayerTracks).opacity = opacity;
@@ -479,6 +498,9 @@ export async function loadProjectBlob(
       // Read both shapes: `transformTrack` shipped and is in real projects, including autosaves.
       // `tracks` wins when a file carries both.
       tracks: sanitiseTracks(lj.tracks ?? legacyTracks(lj.transformTrack)),
+      // Passed through, not defaulted to `false`: absent already MEANS expanded, and defaulting
+      // would write a redundant `tracksCollapsed: false` onto every layer of every later save.
+      tracksCollapsed: lj.tracksCollapsed,
     });
   }
   const refsJson = json.references ?? [];
@@ -502,6 +524,7 @@ export async function loadProjectBlob(
       groupId: rj.groupId ?? null,
       transform: rj.transform,
       tracks: sanitiseTracks(rj.tracks ?? legacyTracks(rj.transformTrack)),
+      tracksCollapsed: rj.tracksCollapsed,
       media: { type: "missing", was: rj.was, name: rj.name },
     } as ReferenceLayer;
     const bytes = rj.mediaId ? zip[mediaAssetPath(rj.mediaId)] : undefined;

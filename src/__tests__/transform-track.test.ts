@@ -5,6 +5,7 @@ import {
   createTransformTrack,
   withTransformKey,
   withoutTransformKey,
+  withMovedKey,
   withMovedTransformKey,
   withPastedTransformKey,
   withKeyInterp,
@@ -843,5 +844,53 @@ describe("group transform track persistence", () => {
     });
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     expect(loaded.groups[0].tracks?.transform?.keys.map((k) => k.frame)).toEqual([2, 9]);
+  });
+});
+
+// The generic mover, used by the timeline's key drag on an OPACITY row. Split from
+// `withMovedTransformKey` for the same reason `withKey`/`withTransformKey` are: the generic one
+// knows nothing about `box`, so a transform track re-attaches its keys through `withTrackKeys`.
+describe("withMovedKey", () => {
+  const numTrack = () => ({
+    keys: [
+      { frame: 0, v: 20 },
+      { frame: 10, v: 80 },
+    ],
+  });
+  const id = (n: number) => n;
+
+  it("moves a key to a free frame, keeping the array sorted", () => {
+    const t = withMovedKey(numTrack(), 0, 5, id);
+    expect(t.keys.map((k) => k.frame)).toEqual([5, 10]);
+    expect(t.keys[0].v).toBe(20);
+  });
+
+  it("overwrites a key already at the destination", () => {
+    const t = withMovedKey(numTrack(), 0, 10, id);
+    expect(t.keys).toEqual([{ frame: 10, v: 20 }]);
+  });
+
+  it("returns the same object when nothing moves", () => {
+    const t = numTrack();
+    expect(withMovedKey(t, 10, 10, id)).toBe(t);
+    expect(withMovedKey(t, 7, 3, id)).toBe(t);
+  });
+
+  it("leaves the input untouched", () => {
+    const t = numTrack();
+    const key = t.keys[0];
+    const moved = withMovedKey(t, 0, 5, id);
+    expect(t.keys.map((k) => k.frame)).toEqual([0, 10]);
+    expect(moved.keys[0]).not.toBe(key);
+  });
+
+  it("carries the moved key's segment interpolation with it", () => {
+    const t = {
+      keys: [
+        { frame: 0, v: 20, interp: "hold" as const },
+        { frame: 10, v: 80 },
+      ],
+    };
+    expect(withMovedKey(t, 0, 5, id).keys[0].interp).toBe("hold");
   });
 });

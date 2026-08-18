@@ -437,8 +437,11 @@
       // Assigning the same boolean is a no-op for $state dependents, so this is safe per frame.
       // An ANIMATED layer's resolved transform is usually non-identity, so this alone left the
       // button rendered on a target where resetLayerTransform only prints its refusal hint — a
-      // button that appears "only when it does something" must account for that guard too. Frame
-      // and group scope keep working on an animated layer (`animated` is layer-scope only).
+      // button that appears "only when it does something" must account for that guard too. FRAME
+      // scope keeps working on an animated layer — a cell transform is a separate value the track
+      // does not touch. GROUP scope sets `animated` from the GROUP's own track, so an animated
+      // group refuses Reset for exactly the same reason a layer does; an animated MEMBER does not
+      // block it.
       appState.canResetTransform = !isIdentityTransform(t) && !tgt.animated;
     } else {
       visible = false;

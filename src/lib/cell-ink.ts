@@ -150,7 +150,11 @@ export function groupBoxLogical(
   version: number,
 ): { x: number; y: number; w: number; h: number } {
   const trackBox = group.tracks?.transform?.box;
-  if (trackBox) return trackBox;
+  // A COPY, never the track's own object: the grab-time freeze assigns this return value to
+  // `g.transformBox`, so returning it by reference left the two fields aliased — and one future
+  // in-place write (`g.transformBox.x = …`) would silently relocate the pivot of every key in the
+  // track. Both are only ever assigned wholesale today; this is what keeps that from mattering.
+  if (trackBox) return { ...trackBox };
   if (group.transformBox) return group.transformBox;
   return groupContentBoxLogical(group, project, frame, dpr, version);
 }

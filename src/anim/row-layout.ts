@@ -1,4 +1,4 @@
-import { groupOf, layerTransformTrack, type Layer, type LayerGroup } from "./document";
+import { groupOf, type Layer, type LayerGroup } from "./document";
 
 /**
  * Display ordering for the layer stack, shared by the layer panel and the timeline.
@@ -40,19 +40,33 @@ export function buildSegments(layers: Layer[], groups: LayerGroup[]): Segment[] 
  * Group rows deliberately carry no layer identity. The timeline's selection axis resolves rows
  * through `data-layer-id` in the DOM, so a row without one is invisible to the marquee, to block
  * copy/paste/move, and to `resolveSelectionRect` — which is exactly right: a group holds no cells,
- * so there is nothing on it to select. A transform row is the same story: a track holds no cells
+ * so there is nothing on it to select. A PROPERTY row is the same story: a track holds no cells
  * either, so it carries no layer identity in the DOM.
  */
 export type TimelineRow =
   | { kind: "layer"; layer: Layer }
   | { kind: "group"; group: LayerGroup; hiddenCount: number }
-  | { kind: "transform"; layer: Layer };
+  | { kind: "track"; layer: Layer; prop: TrackProp }
+  | { kind: "grouptrack"; group: LayerGroup; prop: "transform" };
 
-/** Push a layer row, and — directly under it, only when animated — its transform row. Shared by
- *  both branches of `timelineRows` so the two can't drift. */
+/** An animatable layer property, one timeline row each. */
+export type TrackProp = "transform" | "opacity";
+
+/** Row order for a layer's property rows. FIXED, and deliberately not "whichever track was added
+ *  first": rows must never reorder under the artist as tracks come and go, so a layer that gains
+ *  opacity after transform reads the same as one that gained them the other way round. */
+export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
+
+/** Push a layer row, and — directly under it — one row per track it actually carries. Shared by
+ *  both branches of `timelineRows` so the two can't drift.
+ *
+ *  `tracksCollapsed` folds them all away. It is the LAYER-level twin of `LayerGroup.collapsed`,
+ *  down to the chevron the timeline draws for it: one collapse idiom, not two. */
 function pushLayer(rows: TimelineRow[], layer: Layer): void {
   rows.push({ kind: "layer", layer });
-  if (layerTransformTrack(layer)) rows.push({ kind: "transform", layer });
+  if (layer.tracksCollapsed) return;
+  for (const prop of TRACK_PROPS)
+    if (layer.tracks?.[prop]) rows.push({ kind: "track", layer, prop });
 }
 
 /** Flatten segments into timeline rows, top-first. A collapsed group contributes only its own row,
@@ -69,7 +83,15 @@ export function timelineRows(segments: Segment[]): TimelineRow[] {
       group: seg.group,
       hiddenCount: seg.group.collapsed ? seg.layers.length : 0,
     });
-    if (!seg.group.collapsed) for (const layer of seg.layers) pushLayer(rows, layer);
+    if (seg.group.collapsed) continue;
+    // The group's OWN property row sits directly under its header, above the members — a group
+    // transform composes above its layers, so the rows read in the order the transforms apply.
+    // Collapsing hides it along with the members: `collapsed` means "show me only this group's
+    // header row", which is the reading that keeps ONE collapse concept in the timeline rather
+    // than a second flag for a group's own tracks.
+    if (seg.group.tracks?.transform)
+      rows.push({ kind: "grouptrack", group: seg.group, prop: "transform" });
+    for (const layer of seg.layers) pushLayer(rows, layer);
   }
   return rows;
 }

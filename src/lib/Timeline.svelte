@@ -19,8 +19,9 @@
     ChevronRight,
     ChevronDown,
     EyeOff,
+    Spline,
   } from "@lucide/svelte";
-  import { buildSegments, timelineRows } from "../anim/row-layout";
+  import { buildSegments, timelineRows, TRACK_PROPS, type TrackProp } from "../anim/row-layout";
   import {
     state as appState,
     canvasOps,
@@ -34,6 +35,7 @@
     commitStructuralEdit,
     setActiveLayer,
     toggleGroupCollapsed,
+    toggleTracksCollapsed,
     liftGuard,
     transformDragGuard,
     setTimelineSelection,
@@ -85,11 +87,14 @@
     isLayerVisible,
     countKeyframesPastLengthIn,
     refVisibleSpan,
+    withMovedKey,
     withMovedTransformKey,
-    layerTransformTrack,
     type KeyInterp,
     type DrawingLayer,
     type Layer,
+    type LayerGroup,
+    type LayerTracks,
+    type Track,
     type TransformTrack,
     type ReferenceLayer,
     type Cell,
@@ -114,6 +119,10 @@
   // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be
   // $derived rather than the consts they used to be, or the gutter and the cells drift apart.
   const LABEL_W = $derived(appState.timelineLabelWidth);
+  // px, the animated-layer disclosure (Spline glyph + chevron) that folds its property rows away.
+  // Taken OUT of the name column rather than added to the gutter, so nothing else on any row moves;
+  // only an animated layer's name gets shorter, and only while it has a track.
+  const DISCLOSE_W = 28;
   const MARKER_W = 28; // px, read-only/hidden marker column — ALWAYS reserved so rows align and the
   //                      frame cells don't butt against the name. Fixed: it holds one 11px glyph.
   const GUTTER_W = $derived(LABEL_W + MARKER_W); // total sticky width before the first frame cell
@@ -952,12 +961,119 @@
     "ease-in-out": "Ease in-out",
     hold: "Hold",
   };
-  // Dragging a transform key to another frame. Same bracket shape as every other undoable drag
+  /**
+   * Everything a property row needs to draw itself and to be edited, resolved from its owner ONCE
+   * per render. One spec for a layer's transform, a layer's opacity and a group's transform means
+   * the row markup and the key drag below are written once rather than once per property — which is
+   * exactly how two rows come to answer the same question differently.
+   */
+  type TrackRowSpec = {
+    /** The track being drawn. Generic in its value: the row only ever reads key FRAMES and
+     *  `interp`, never the value itself. */
+    track: Track<unknown>;
+    label: string;
+    /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
+     *  iPad a tap on the row is the only route to that text. */
+    owner: string;
+    /** Indented to sit under its owner, the way a group member's own row is. */
+    indent: boolean;
+    /** Highlighted with its OWNER — a layer and its tracks are one thing, so there is no separate
+     *  selection state to keep. */
+    selected: boolean;
+    /** Locked or hidden (group-DERIVED, never the raw flags). A key can still be TAPPED — that
+     *  seeks and selects, and reading a locked owner is allowed everywhere else — but not retimed. */
+    readOnly: boolean;
+    /** Which of the two, for the marker column's glyph and title. Lock wins, as everywhere. */
+    block: "locked" | "hidden" | null;
+    /** Select the owner and aim the Transform tool at it — the two things you always want next. */
+    select: () => void;
+    /** Replace the owner's track for this property. Replaces the BAG too (gotcha #8 reaches both
+     *  levels), and the spread keeps any sibling track. */
+    setTrack: (t: Track<unknown> | undefined) => void;
+    /** Move a key, copying at the depth THIS track kind needs — a transform track carries `box`. */
+    moved: (t: Track<unknown>, from: number, to: number) => Track<unknown>;
+  };
+
+  const TRACK_LABEL: Record<TrackProp, string> = { transform: "Transform", opacity: "Opacity" };
+
+  function layerTrackSpec(layer: Layer, prop: TrackProp): TrackRowSpec | null {
+    const track = layer.tracks?.[prop];
+    if (!track) return null;
+    // Group-aware, never the raw `.locked`/`.visible` flags. NOT `isLayerEditable`: that is a
+    // `layer is DrawingLayer` predicate and a REFERENCE layer can be animated too.
+    const locked = isLayerLocked(layer, appState.project.groups);
+    const hidden = !isLayerVisible(layer, appState.project.groups);
+    return {
+      track,
+      label: TRACK_LABEL[prop],
+      owner: layer.name,
+      indent: layer.groupId != null,
+      selected: isRowSelected(layer.id),
+      readOnly: locked || hidden,
+      block: locked ? "locked" : hidden ? "hidden" : null,
+      select: () => {
+        setActiveLayer(layer.id);
+        // Only the transform row aims the tool: opacity is not a transform scope, and silently
+        // repointing the gizmo from an opacity row would be a side effect nobody asked for.
+        if (prop === "transform") appState.transformScope = "layer";
+      },
+      setTrack: (t) => {
+        // The only track ever handed back here is one this spec's own `moved` produced, so the
+        // property's value type is preserved — TS just cannot see that through the generic
+        // `Track<unknown>` hop the shared drag needs.
+        layer.tracks = { ...layer.tracks, [prop]: t } as LayerTracks;
+      },
+      moved: (t, from, to) =>
+        prop === "transform"
+          ? withMovedTransformKey(t as TransformTrack, from, to)
+          : // Identity copy, because the only non-transform property is a NUMBER. A future
+            // OBJECT-valued property must pass its own copier here or a snapshot would share it.
+            withMovedKey(t as Track<number>, from, to, (n) => n),
+    };
+  }
+
+  /** The group the selected layer row belongs to, for highlighting that group's own track row. */
+  const activeGroupId = $derived(
+    appState.project.layers.find((l) => l.id === appState.activeLayerId)?.groupId ?? null,
+  );
+
+  function groupTrackSpec(group: LayerGroup): TrackRowSpec | null {
+    const track = group.tracks?.transform;
+    if (!track) return null;
+    // The topmost member, so selecting the row puts the Transform tool's GROUP scope on this group
+    // — the scope resolves through the active layer's `groupId`, so without this the row would aim
+    // the gizmo at whatever group the previously-active layer happened to be in.
+    const member = [...appState.project.layers].reverse().find((l) => l.groupId === group.id);
+    return {
+      track,
+      label: "Transform",
+      owner: group.name,
+      indent: false,
+      selected: !!member && appState.activeRow.kind === "layer" && activeGroupId === group.id,
+      readOnly: !!group.locked || !group.visible,
+      block: group.locked ? "locked" : !group.visible ? "hidden" : null,
+      select: () => {
+        if (member) setActiveLayer(member.id);
+        appState.transformScope = "group";
+      },
+      setTrack: (t) => {
+        group.tracks = { ...group.tracks, transform: t as TransformTrack | undefined };
+      },
+      moved: (t, from, to) => withMovedTransformKey(t as TransformTrack, from, to),
+    };
+  }
+
+  /** Does this layer own any track at all? Decides whether its row shows the disclosure. */
+  function hasAnyTrack(layer: Layer): boolean {
+    return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
+  }
+
+  // Dragging a property key to another frame. Same bracket shape as every other undoable drag
   // here: snapshot at grab, write live, commit at release only if something actually moved, and
   // register the settle hook so an undo or a tool switch mid-drag cannot leave the bracket open.
   // `prevTrack` is a valid snapshot by itself because tracks are always REPLACED, never mutated.
   let keyDrag: {
-    layer: Layer;
+    spec: TrackRowSpec;
     /** The pointer that owns this gesture. The move/up/cancel listeners are on WINDOW (see
      *  addKeyDragListeners), where pointer capture cannot isolate them, so every one of them has to
      *  check this: on iPad a Pencil holding a key plus a finger touching to scroll would otherwise
@@ -972,7 +1088,7 @@
     startY: number;
     /** Has the pointer travelled far enough to count as a drag rather than a tap? */
     moved: boolean;
-    prevTrack: TransformTrack | undefined;
+    prevTrack: Track<unknown>;
     from: number;
     cur: number;
     undo: ReturnType<typeof beginStructuralEdit> | null;
@@ -994,7 +1110,7 @@
     window.removeEventListener("pointercancel", settleKeyDrag);
   }
 
-  function keyDown(e: PointerEvent, layer: Layer, frame: number) {
+  function keyDown(e: PointerEvent, spec: TrackRowSpec, frame: number) {
     // Finger navigates, Pencil edits — the app-wide rule. A touch falls through to the row's own
     // pan handling instead of retiming a key by accident.
     if (!isFinePointer(e)) {
@@ -1009,14 +1125,9 @@
     // permanently un-undoable. A right-click during a left drag is enough, hence the button filter
     // too (mouse `button` is 0 for the primary button and for every pen/touch contact).
     if (keyDrag || !e.isPrimary || e.button !== 0) return;
-    if (!layerTransformTrack(layer)) return;
-    // Group-aware, never the raw `.locked`/`.visible` flags. NOT `isLayerEditable`: that is a
-    // `layer is DrawingLayer` predicate and a REFERENCE layer can be animated too. A read-only
-    // owner keeps the tap-to-seek path (see settleKeyDrag) and loses only the retime — which is
-    // what every other track writer already refuses.
-    const readOnly =
-      isLayerLocked(layer, appState.project.groups) ||
-      !isLayerVisible(layer, appState.project.groups);
+    // A read-only owner keeps the tap-to-seek path (see settleKeyDrag) and loses only the retime —
+    // which is what every other track writer already refuses. Resolved by the spec, group-aware.
+    const readOnly = spec.readOnly;
     // No stopPropagation: it would suppress App.svelte's window-level status-hint listener, so this
     // marker's title would never reach the status bar. Nothing above needs blocking — the strip's
     // own pointerdown bails while `keyDrag` is set (the parent-bails-on-child-state shape), and
@@ -1028,13 +1139,13 @@
     edgePointerY = e.clientY;
     if (!readOnly) startEdgeScroll(keyMoveAt, "key");
     keyDrag = {
-      layer,
+      spec,
       pointerId: e.pointerId,
       readOnly,
       startX: e.clientX,
       startY: e.clientY,
       moved: false,
-      prevTrack: layerTransformTrack(layer),
+      prevTrack: spec.track,
       from: frame,
       cur: frame,
       undo: readOnly ? null : beginStructuralEdit(),
@@ -1074,8 +1185,6 @@
       appState.project.frameCount,
     );
     if (to === keyDrag.cur) return;
-    const track = layerTransformTrack(keyDrag.layer);
-    if (!track) return;
     // Retiming a key re-resolves the segment, so a lifted selection/pose would bake back through
     // its GRAB-TIME compose and land at the old placement. Discarded here, at the first write that
     // actually moves the key, rather than at grab: a press that only taps to seek must not throw
@@ -1092,12 +1201,7 @@
     }
     // Always move from the ORIGINAL frame against the grab-time track, so a drag that passes over
     // another key does not eat it on the way through — only where it is released.
-    // Replaces the BAG as well as the track (gotcha #8 reaches both levels now); the spread
-    // keeps any sibling track this layer carries.
-    keyDrag.layer.tracks = {
-      ...keyDrag.layer.tracks,
-      transform: withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to),
-    };
+    keyDrag.spec.setTrack(keyDrag.spec.moved(keyDrag.prevTrack, keyDrag.from, to));
     keyDrag.cur = to;
     bump();
   }
@@ -1121,11 +1225,11 @@
       // deleted, since ToolOptions' "Delete key" acts on the key under the playhead. Two taps, no
       // new gesture, and it works with a Pencil where a hover-only ✕ would not.
       // Into a FRESH bag, so putting the frozen track back cannot clobber a sibling track.
-      d.layer.tracks = { ...d.layer.tracks, transform: d.prevTrack };
-      // Select the key's OWNER as well as seeking. "Delete key" acts on the ACTIVE layer's key at
-      // the playhead, so tapping a key on some other layer's row would otherwise arm the button
-      // against a different layer's key at the same frame — deleting the one you did not tap.
-      setActiveLayer(d.layer.id);
+      d.spec.setTrack(d.prevTrack);
+      // Select the key's OWNER as well as seeking. "Delete key" acts on the ACTIVE target's key at
+      // the playhead, so tapping a key on some other row would otherwise arm the button against a
+      // different owner's key at the same frame — deleting the one you did not tap.
+      d.spec.select();
       seekPlayhead(d.from);
       return; // no bump(): nothing changed, and bumping re-arms a full autosave re-encode
     }
@@ -1981,7 +2085,7 @@
     />
 
     <!-- layer rows (top layer first) -->
-    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "transform" ? `t${row.layer.id}` : `g${row.group.id}`)}
+    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}` : `g${row.group.id}`)}
       {#if row.kind === "group"}
         {@const g = row.group}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
@@ -2026,197 +2130,202 @@
             {#if g.locked}<Lock size={11} />{:else if !g.visible}<EyeOff size={11} />{/if}
           </span>
         </div>
-      {:else if row.kind === "transform"}
-        {@const tl = row.layer}
-        <!-- A transform row. Like the group row, it carries NO `data-layer-id` — a track holds no
-             cells, so there is nothing on it to select. -->
-        <!-- Clamped to the strip: shortening the animation does not move transform keys, and an
-             absolutely-positioned dot past the last frame would draw over the ruler's end and add
-             scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
-        {@const trackKeys = layerTransformTrack(tl)?.keys ?? []}
-        {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
-        {@const stripW = appState.project.frameCount * CELL_W}
-        <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past
-             the animation's end is hidden but still DRIVES the motion — it remains the track's last
-             key, so every earlier frame interpolates toward it — and drawing only between visible
-             keys left a lone marker with no line while the canvas was visibly moving. -->
-        {@const segments = trackKeys.slice(0, -1).flatMap((k, i) => {
-          const x = k.frame * CELL_W + CELL_W / 2;
-          if (x >= stripW) return [];
-          const end = Math.min(trackKeys[i + 1].frame * CELL_W + CELL_W / 2, stripW);
-          return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
-        })}
-        {@const readOnly =
-          isLayerLocked(tl, appState.project.groups) ||
-          !isLayerVisible(tl, appState.project.groups)}
-        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
-          <!-- Selecting the track selects its LAYER and points the Transform tool at layer scope —
-               the two things you always want next, and the reason to click this row at all. It
-               deliberately does not switch the TOOL: yanking you out of the brush mid-drawing to
-               look at a track would cost more than it saves. Highlight follows the owner, because a
-               layer and its track are one thing; there is no separate selection state to track. -->
-          <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-            class:pl-4={tl.groupId != null}
-            class:bg-surface={!isRowSelected(tl.id)}
-            class:bg-surface-active={isRowSelected(tl.id)}
-            class:text-text-secondary={isRowSelected(tl.id)}
-            class:text-text-muted={!isRowSelected(tl.id)}
-            style="width: {LABEL_W}px; touch-action: none"
-            title="Transform keys for {tl.name} — select the layer and aim the Transform tool at it"
-            onpointerdown={(e) => {
-              if (isFinePointer(e)) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              touchPanDown(e);
-            }}
-            onpointermove={(e) => {
-              if (!isFinePointer(e) && touchPan) touchPanMove(e);
-            }}
-            onpointerup={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            onpointercancel={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            onclick={() => {
-              if (panEndedWithMovement) return; // a finger scroll that happened to end here
-              setActiveLayer(tl.id);
-              appState.transformScope = "layer";
-            }}
-          >
-            <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
-                 starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
-                 sibling rather than as something belonging to the layer above. The indent itself
-                 also mirrors the owner, so a grouped layer's track sits with it. -->
-            <span class="flex w-3.5 shrink-0" role="presentation"></span>
-            <span class="min-w-0 flex-1 truncate">Transform</span></button
-          >
-          <!-- The same read-only marker its owner's row carries. Without it a locked layer's track
-               row was the one place that refused an edit while showing no reason, directly under a
-               row displaying the amber padlock. -->
-          <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-amber-500 border-r border-text-muted"
-            role="presentation"
-            style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
-            onpointerdown={(e) => {
-              if (isFinePointer(e)) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              touchPanDown(e);
-            }}
-            onpointermove={(e) => {
-              if (!isFinePointer(e) && touchPan) touchPanMove(e);
-            }}
-            onpointerup={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            onpointercancel={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            title={isLayerLocked(tl, appState.project.groups)
-              ? "Layer locked — keys cannot be retimed"
-              : !isLayerVisible(tl, appState.project.groups)
-                ? "Layer hidden — keys cannot be retimed"
-                : ""}
-          >
-            {#if isLayerLocked(tl, appState.project.groups)}<Lock
-                size={11}
-              />{:else if !isLayerVisible(tl, appState.project.groups)}<EyeOff size={11} />{/if}
-          </span>
-          <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
-               per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
-               carries its own 1px border, so adjacent segments never meet. Absolute positioning
-               also makes a key a real hit target for dragging it to another frame. -->
-          <div
-            class="relative flex select-none"
-            style="touch-action: none"
-            role="presentation"
-            onpointerdown={(e) => {
-              if (!isFinePointer(e)) {
+      {:else if row.kind === "track" || row.kind === "grouptrack"}
+        <!-- One row per ANIMATED PROPERTY — a layer's transform or opacity, or a group's transform.
+             All three share this markup through a `TrackRowSpec`, because a per-property copy is
+             how two rows come to answer the same question differently. Like the group row it
+             carries NO `data-layer-id`: `layerIdAtPoint`, the marquee and every block op resolve
+             rows through that attribute, and a track holds no cells, so there is nothing on it to
+             select. A marquee dragged ACROSS one still spans the layers either side, through the
+             existing nearest-row fallback. -->
+        {@const spec =
+          row.kind === "track" ? layerTrackSpec(row.layer, row.prop) : groupTrackSpec(row.group)}
+        {#if spec}
+          <!-- Clamped to the strip: shortening the animation does not move keys, and an
+               absolutely-positioned dot past the last frame would draw over the ruler's end and add
+               scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
+          {@const trackKeys = spec.track.keys}
+          {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
+          {@const stripW = appState.project.frameCount * CELL_W}
+          <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past
+               the animation's end is hidden but still DRIVES the motion — it remains the track's last
+               key, so every earlier frame interpolates toward it — and drawing only between visible
+               keys left a lone marker with no line while the canvas was visibly moving. -->
+          {@const segments = trackKeys.slice(0, -1).flatMap((k, i) => {
+            const x = k.frame * CELL_W + CELL_W / 2;
+            if (x >= stripW) return [];
+            const end = Math.min(trackKeys[i + 1].frame * CELL_W + CELL_W / 2, stripW);
+            return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
+          })}
+          {@const readOnly = spec.readOnly}
+          <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+            <!-- Selecting the track selects its OWNER and points the Transform tool at it — the two
+                 things you always want next, and the reason to click this row at all. It
+                 deliberately does not switch the TOOL: yanking you out of the brush mid-drawing to
+                 look at a track would cost more than it saves. Highlight follows the owner, because
+                 an owner and its tracks are one thing; there is no separate selection state. -->
+            <button
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
+              class:pl-4={spec.indent}
+              class:bg-surface={!spec.selected}
+              class:bg-surface-active={spec.selected}
+              class:text-text-secondary={spec.selected}
+              class:text-text-muted={!spec.selected}
+              style="width: {LABEL_W}px; touch-action: none"
+              title="{spec.label} keys for {spec.owner} — select it and aim the Transform tool at it"
+              onpointerdown={(e) => {
+                if (isFinePointer(e)) return;
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                 touchPanDown(e);
-                return;
-              }
-              // A key marker is a DOM CHILD of this strip and deliberately does not
-              // stopPropagation, so its own keyDown runs first and this bubbled call must bail —
-              // the parent-bails-on-child-state shape (see rangeDown), never stopPropagation,
-              // which would suppress the window-level status-hint listener.
-              if (keyDrag) return;
-              // Otherwise a pen/mouse press on the empty part of the row does what the row's own
-              // label does. It used to return here and be a dead zone.
-              setActiveLayer(tl.id);
-              appState.transformScope = "layer";
-            }}
-            onpointermove={(e) => {
-              // Route on the POINTER TYPE, not on "is a pan in flight": a Pencil dragging a key
-              // bubbles here, and panning against a resting finger's origin flung the timeline.
-              if (!isFinePointer(e) && touchPan) touchPanMove(e);
-            }}
-            onpointerup={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            onpointercancel={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-          >
-            {#each Array(appState.project.frameCount) as _, f (f)}
-              <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
-            {/each}
-            <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
-                 the same distinction the layer rows already draw, because it is the same fact. A
-                 drawing hold repeats one drawing across those frames; a transform hold repeats one
-                 transform. So the timeline has two marks meaning two things, not three. -->
-            {#each segments as s (s.frame)}
-              <div
-                class="pointer-events-none absolute top-1/2 -translate-y-1/2"
-                class:h-px={!s.held}
-                class:bg-selection={!s.held}
-                class:border-t={s.held}
-                class:border-dashed={s.held}
-                class:border-selection={s.held}
-                style="left: {s.x}px; width: {s.w}px"
-              ></div>
-            {/each}
-            {#each keys as k (k.frame)}
-              <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and
-                   colour, because a transform key and a drawing key are only ever confusable at a
-                   glance. The SHAPE then says how the segment leaving this key behaves, so the
-                   timing is readable without selecting anything: square = hold (blocky, stepped),
-                   circle = eased (round, curved), diamond = linear. Ease-in and ease-out share the
-                   circle — at 8px a half-filled disc is a smudge, and the Ease control names which.
-                   The hit area is deliberately larger than the mark: 8px is a fine target with a
-                   Pencil and an impossible one with anything else. -->
-              {@const ki = k.interp ?? "linear"}
-              <div
-                class="absolute top-0 flex h-6 w-4 items-center justify-center"
-                style="left: {k.frame * CELL_W +
-                  CELL_W / 2 -
-                  8}px; touch-action: none; cursor: {readOnly ? 'default' : 'ew-resize'}"
-                role="presentation"
-                title="Transform key at frame {k.frame + 1} ({INTERP_LABEL[ki]}){readOnly
-                  ? ''
-                  : ' — drag to retime'}"
-                onpointerdown={(e) => keyDown(e, tl, k.frame)}
-                onpointermove={(e) => {
-                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
-                }}
-                onpointerup={(e) => {
-                  if (!isFinePointer(e)) touchPanUp(e);
-                }}
-                onpointercancel={(e) => {
-                  if (!isFinePointer(e)) touchPanUp(e);
-                }}
-              >
+              }}
+              onpointermove={(e) => {
+                if (!isFinePointer(e) && touchPan) touchPanMove(e);
+              }}
+              onpointerup={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onpointercancel={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onclick={() => {
+                if (panEndedWithMovement) return; // a finger scroll that happened to end here
+                spec.select();
+              }}
+            >
+              <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
+                   starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
+                   sibling rather than as something belonging to the row above. The indent itself
+                   also mirrors the owner, so a grouped layer's track sits with it. -->
+              <span class="flex w-3.5 shrink-0" role="presentation"></span>
+              <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
+            >
+            <!-- The same read-only marker its owner's row carries. Without it a locked owner's track
+                 row was the one place that refused an edit while showing no reason, directly under a
+                 row displaying the amber padlock. -->
+            <span
+              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-amber-500 border-r border-text-muted"
+              role="presentation"
+              style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
+              onpointerdown={(e) => {
+                if (isFinePointer(e)) return;
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                touchPanDown(e);
+              }}
+              onpointermove={(e) => {
+                if (!isFinePointer(e) && touchPan) touchPanMove(e);
+              }}
+              onpointerup={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onpointercancel={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              title={spec.block === "locked"
+                ? `${spec.owner} is locked — keys cannot be retimed`
+                : spec.block === "hidden"
+                  ? `${spec.owner} is hidden — keys cannot be retimed`
+                  : ""}
+            >
+              {#if spec.block === "locked"}<Lock
+                  size={11}
+                />{:else if spec.block === "hidden"}<EyeOff size={11} />{/if}
+            </span>
+            <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
+                 per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
+                 carries its own 1px border, so adjacent segments never meet. Absolute positioning
+                 also makes a key a real hit target for dragging it to another frame. -->
+            <div
+              class="relative flex select-none"
+              style="touch-action: none"
+              role="presentation"
+              onpointerdown={(e) => {
+                if (!isFinePointer(e)) {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  touchPanDown(e);
+                  return;
+                }
+                // A key marker is a DOM CHILD of this strip and deliberately does not
+                // stopPropagation, so its own keyDown runs first and this bubbled call must bail —
+                // the parent-bails-on-child-state shape (see rangeDown), never stopPropagation,
+                // which would suppress the window-level status-hint listener.
+                if (keyDrag) return;
+                // Otherwise a pen/mouse press on the empty part of the row does what the row's own
+                // label does. It used to return here and be a dead zone.
+                spec.select();
+              }}
+              onpointermove={(e) => {
+                // Route on the POINTER TYPE, not on "is a pan in flight": a Pencil dragging a key
+                // bubbles here, and panning against a resting finger's origin flung the timeline.
+                if (!isFinePointer(e) && touchPan) touchPanMove(e);
+              }}
+              onpointerup={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onpointercancel={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+            >
+              {#each Array(appState.project.frameCount) as _, f (f)}
+                <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
+              {/each}
+              <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
+                   the same distinction the layer rows already draw, because it is the same fact. A
+                   drawing hold repeats one drawing across those frames; a property hold repeats one
+                   value. So the timeline has two marks meaning two things, not three. -->
+              {#each segments as s (s.frame)}
                 <div
-                  class="size-2 bg-selection"
-                  class:rounded-full={ki !== "hold" && ki !== "linear"}
-                  class:rotate-45={ki === "linear"}
+                  class="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                  class:h-px={!s.held}
+                  class:bg-selection={!s.held}
+                  class:border-t={s.held}
+                  class:border-dashed={s.held}
+                  class:border-selection={s.held}
+                  style="left: {s.x}px; width: {s.w}px"
                 ></div>
-              </div>
-            {/each}
+              {/each}
+              {#each keys as k (k.frame)}
+                <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and
+                     colour, because a property key and a drawing key are only ever confusable at a
+                     glance. The SHAPE then says how the segment leaving this key behaves, so the
+                     timing is readable without selecting anything: square = hold (blocky, stepped),
+                     circle = eased (round, curved), diamond = linear. Ease-in and ease-out share the
+                     circle — at 8px a half-filled disc is a smudge, and the Ease control names which.
+                     The hit area is deliberately larger than the mark: 8px is a fine target with a
+                     Pencil and an impossible one with anything else. -->
+                {@const ki = k.interp ?? "linear"}
+                <div
+                  class="absolute top-0 flex h-6 w-4 items-center justify-center"
+                  style="left: {k.frame * CELL_W +
+                    CELL_W / 2 -
+                    8}px; touch-action: none; cursor: {readOnly ? 'default' : 'ew-resize'}"
+                  role="presentation"
+                  title="{spec.label} key for {spec.owner} at frame {k.frame + 1} ({INTERP_LABEL[
+                    ki
+                  ]}){readOnly ? '' : ' — drag to retime'}"
+                  onpointerdown={(e) => keyDown(e, spec, k.frame)}
+                  onpointermove={(e) => {
+                    if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                  }}
+                  onpointerup={(e) => {
+                    if (!isFinePointer(e)) touchPanUp(e);
+                  }}
+                  onpointercancel={(e) => {
+                    if (!isFinePointer(e)) touchPanUp(e);
+                  }}
+                >
+                  <div
+                    class="size-2 bg-selection"
+                    class:rounded-full={ki !== "hold" && ki !== "linear"}
+                    class:rotate-45={ki === "linear"}
+                  ></div>
+                </div>
+              {/each}
+            </div>
           </div>
-        </div>
+        {/if}
       {:else}
         {@const layer = row.layer}
+        {@const animated = hasAnyTrack(layer)}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
@@ -2225,7 +2334,7 @@
             class:bg-surface-active={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
             class:text-text-secondary={!isRowSelected(layer.id)}
-            style="width: {LABEL_W}px; touch-action: none"
+            style="width: {animated ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
             title="Select layer"
             onpointerdown={(e) => nameDown(e, layer.id)}
             onpointermove={(e) => {
@@ -2261,6 +2370,42 @@
                  would silently do nothing and push the name past the sticky label's edge. -->
             <span class="min-w-0 flex-1 truncate">{layer.name}</span></button
           >
+          {#if animated}
+            <!-- Disclosure for this layer's property rows. The SAME chevron the group header draws,
+                 for the same job, so the timeline has one collapse idiom rather than two — but a
+                 separate button, because the name button already selects the layer and a button
+                 cannot nest inside a button. It eats into the NAME column rather than adding to the
+                 gutter, so the marker column, the frame cells and every other row stay aligned; only
+                 an animated layer pays for it. The Spline glyph is what still says "animated" when
+                 the rows are folded away. -->
+            <button
+              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 text-text-secondary hover:text-text hover:bg-surface-hover"
+              class:bg-surface={!isRowSelected(layer.id)}
+              class:bg-surface-active={isRowSelected(layer.id)}
+              style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
+              title={layer.tracksCollapsed
+                ? "Show this layer's animation rows"
+                : "Hide this layer's animation rows"}
+              onpointerdown={(e) => {
+                if (isFinePointer(e)) return;
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                touchPanDown(e);
+              }}
+              onpointermove={(e) => {
+                if (touchPan) touchPanMove(e);
+              }}
+              onpointerup={touchPanUp}
+              onpointercancel={touchPanUp}
+              onclick={() => {
+                if (!panEndedWithMovement) toggleTracksCollapsed(layer.id);
+              }}
+            >
+              <Spline size={11} />
+              {#if layer.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown
+                  size={13}
+                />{/if}
+            </button>
+          {/if}
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span

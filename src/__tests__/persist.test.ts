@@ -649,3 +649,60 @@ describe("undecodable audio survives a re-save", () => {
     expect(Array.from(zip["audio/track"])).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe("tracksCollapsed persistence", () => {
+  it("round-trips a collapsed layer's folded property rows", async () => {
+    const project = createProject();
+    project.layers[0].tracksCollapsed = true;
+    const blob = await saveProjectBlob(project);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.layers[0].tracksCollapsed).toBe(true);
+  });
+
+  // Absent means EXPANDED, so every project saved before this field existed opens showing its
+  // tracks — and the format version does not move for an optional, additive field.
+  it("an old save with no field loads expanded", async () => {
+    const project = createProject();
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.version).toBe(1);
+    expect(json.layers[0].tracksCollapsed).toBeUndefined();
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.layers[0].tracksCollapsed ?? false).toBe(false);
+  });
+});
+
+describe("track box sanitisation", () => {
+  const trackWith = (box: unknown) => ({
+    transform: {
+      keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+      box,
+    },
+  });
+
+  it("keeps a finite pivot box", async () => {
+    const project = createProject();
+    project.groups = [{ id: 3, name: "G", collapsed: false, visible: true }];
+    project.layers[0].groupId = 3;
+    project.groups[0].tracks = trackWith({ x: 1, y: 2, w: 3, h: 4 }) as never;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.groups[0].tracks?.transform?.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  });
+
+  // `groupBoxLogical` now READS this box, so a corrupt or hand-edited zip could otherwise feed a
+  // NaN straight into pivot arithmetic and produce geometry with nothing on screen to explain it.
+  it("drops a box carrying a non-finite field", async () => {
+    const project = createProject();
+    project.layers[0].tracks = trackWith({ x: 0, y: 0, w: Number.NaN, h: 4 }) as never;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.layers[0].tracks?.transform?.box).toBeNull();
+  });
+
+  it("drops a box that is missing fields entirely", async () => {
+    const project = createProject();
+    project.layers[0].tracks = trackWith({ x: 0, y: 0 }) as never;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect(loaded.layers[0].tracks?.transform?.box).toBeNull();
+  });
+});
