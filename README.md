@@ -27,6 +27,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   away when you are drawing, open them when you are timing
 - A layer's **opacity can be animated** too: key it at any frame for a fade, or set a segment to
   hold for a hard cut
+- Animate, easing, step, delete-key and stop live on the timeline bar next to the
+  drawing key tools, and follow the selected row (the layer to start a track, the
+  property row to edit one)
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
@@ -36,7 +39,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Free transform at four scopes: selection, current-frame cell, whole layer, and layer group (transforms compose `group ∘ layer ∘ cell` at render)
 - A layer's transform can be animated: keys at any frame, per-key easing (linear, hold, ease in/out),
   and a step setting so a move can land on 2s/3s like the drawings. Drag a key along its row to
-  retime it
+  retime it. Starting the track is on the timeline bar, not the Transform tool
 - A **group's** transform can be animated the same way, so a whole character rig moves as one thing
   over time while its layers keep their own animation
 - Painting on a transformed layer shows its paintable edge as a hairline, so a scaled-down layer no longer cuts strokes off without warning

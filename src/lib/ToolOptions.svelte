@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { animateTargetGroup, animateTargetLayer } from "./transform-target";
   import {
     state as appState,
     pressureCurve,
@@ -9,17 +8,12 @@
     selectionActions,
     transformActions,
     fillActions,
-    animateLayer,
-    removeLayerAnimation,
-    animateGroup,
-    removeGroupAnimation,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
-  import { whyNotEditable, layerTransformTrack } from "../anim/document";
-  import TrackKeyControls from "./TrackKeyControls.svelte";
+  import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
   import { MAX_GAP } from "../core/fill-holes";
 
@@ -31,31 +25,6 @@
       WRITING_TOOLS.includes(appState.tool) &&
       !appState.selectionActive &&
       !appState.selectionFloating,
-  );
-
-  // Whose transform the Animate controls act on — see `animateTargetLayer` in the module script
-  // above, which StatusBar shares so the controls and the status hint cannot drift apart.
-  const animTarget = $derived(
-    animateTargetLayer(
-      appState.project.layers.find((x) => x.id === appState.activeLayerId),
-      appState.project.groups,
-      appState.tool,
-      appState.transformScope,
-      appState.playhead,
-      appState.project.fps,
-    ),
-  );
-  // At GROUP scope the drag writes the group's transform, so the layer predicate above is right to
-  // return null and this is who the key belongs to. Without it `animateGroup`/`removeGroupAnimation`
-  // would have no caller at all and a group track could never be created.
-  const animGroup = $derived(
-    animateTargetGroup(
-      appState.project.layers.find((x) => x.id === appState.activeLayerId),
-      appState.project.groups,
-      appState.project.layers,
-      appState.tool,
-      appState.transformScope,
-    ),
   );
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
@@ -307,55 +276,5 @@
       title="Reset the current transform back to fit"
       onclick={() => transformActions.reset?.()}>Reset to fit</button
     >
-  {/if}
-  <!-- Animate / Delete key / Stop animating / interpolation. Vanishes (rather than disabling) for a
-       locked or hidden layer: a locked/hidden active layer already gets a top-precedence status-bar
-       hint and its transform gizmo doesn't render at all, so a visible-but-disabled Animate button
-       would point at chrome that isn't there — see task-8 report for the full reasoning. -->
-  {#if animTarget}
-    {@const track = layerTransformTrack(animTarget)}
-    {#if !track}
-      <button
-        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-        title="Animate this layer's transform — its current position becomes a key at frame 0"
-        onclick={() => animateLayer(animTarget.id)}>Animate</button
-      >
-    {:else}
-      <!-- The key controls are shared with every other animated property (see `TrackKeyControls`).
-           Copy/Paste stay transform-only, so this is the one host that asks for them.
-           `animateTargetLayer` has already refused a locked or hidden layer, so there is no
-           `blocked` reason to pass. -->
-      <TrackKeyControls
-        trackRef={{ owner: "layer", id: animTarget.id, prop: "transform" }}
-        showCopyPaste
-      />
-      <button
-        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-        title="Stop animating — keeps the position you can see now"
-        onclick={() => removeLayerAnimation(animTarget.id)}>Stop animating</button
-      >
-    {/if}
-  {/if}
-  <!-- Group scope: the same controls, one level out. No Copy/Paste — the clipboard holds a
-       LAYER-relative transform key, so pasting one onto a group is a separate design (see
-       `TrackKeyControls`). Guarded on LOCK alone, not lock-plus-hidden: `activeTransformLayer` returns
-       its layer unconditionally at group scope so a hidden or locked anchor cannot veto a group
-       drag, so a hidden group is draggable — refusing to animate what you may still drag would be
-       the inconsistency. See `animateTargetGroup`. -->
-  {#if animGroup}
-    {#if !animGroup.tracks?.transform}
-      <button
-        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-        title="Animate this group's transform — its current position becomes a key at frame 0"
-        onclick={() => animateGroup(animGroup.id)}>Animate</button
-      >
-    {:else}
-      <TrackKeyControls trackRef={{ owner: "group", id: animGroup.id, prop: "transform" }} />
-      <button
-        class="h-7 shrink-0 whitespace-nowrap px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-        title="Stop animating — keeps the position you can see now"
-        onclick={() => removeGroupAnimation(animGroup.id)}>Stop animating</button
-      >
-    {/if}
   {/if}
 </div>

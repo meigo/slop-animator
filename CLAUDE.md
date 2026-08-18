@@ -2453,7 +2453,7 @@ does not eat it in passing — only where you release. Same bracket as every oth
 snapshot at grab, write live, commit only if the frame actually changed, `transformDragGuard.settle`
 registered so an undo mid-drag cannot leave it open. `prevTrack` is a valid snapshot on its own,
 because tracks are always replaced and never mutated. Finger pans, Pencil edits, per the app rule.
-**Deleting** is a tap then the existing ToolOptions button: a tap on a key SEEKS to it, which is
+**Deleting** is a tap then the timeline-bar Delete key control: a tap on a key SEEKS to it, which is
 exactly what "Delete key" is gated on. No new gesture, and it works with a Pencil where a hover-only
 ✕ would not.
 **Interpolation is PER KEY, describing the segment that starts at it (2026-08-18).** It began on the
@@ -2747,11 +2747,11 @@ Correct as well as cheap — a track holds no cells to select. This is now the T
 on it (group header, transform row, property rows); anything added to the timeline that is not a
 layer should follow it rather than adding exclusions.
 
-**Each property's key controls live with that property's own authoring control** — transform and
-group transform in ToolOptions at their scopes, opacity in the layer panel beside its slider. The
-rejected alternative was one shared key surface driven by whichever timeline track row is selected:
-it adds a FOURTH place that authors keys, and it separates a property's key controls from the control
-that actually creates its keys.
+~~**Each property's key controls live with that property's own authoring control** — transform and
+group transform in ToolOptions at their scopes, opacity in the layer panel beside its slider.~~
+**Superseded 2026-08-18:** Animate / Ease / Step / Delete / Stop moved to the timeline bar (see
+the timeline-animation-tools entry below). Value authors stay put — the gizmo and the opacity slider
+still write keys; only the key *tools* moved.
 
 **A range input needs the apply/commit split.** The opacity slider fires `input` per pixel, so
 writing through a self-committing action would push ~100 undo entries per drag into a 50-command
@@ -2802,8 +2802,8 @@ animation glyph appearing while collapsed. Retiming a key on each row kind; a lo
 refusing a group key retime with the reason shown; deleting a key and setting `hold` on an opacity
 track. **An old project with a `transformTrack` opening with its animation intact**, then re-saving in
 the new shape — including a REFERENCE layer's track, which is the second loader path. Undo/redo
-across every new writer; iPad for the collapse affordance, the slider as a keying control, and the new
-ToolOptions controls at Group scope. One thing to judge rather than verify, flagged as a conscious
+across every new writer; iPad for the collapse affordance, the slider as a keying control, and the
+timeline-bar animation tools at Group scope. One thing to judge rather than verify, flagged as a conscious
 choice: the layer disclosure sits AFTER the name while the group header's chevron sits BEFORE it.
 
 **Fix wave from the three-lens whole-branch review (2026-08-18, same day).** Data integrity, render
@@ -2980,3 +2980,13 @@ written in the OLD shape, by hand, typed independently of the model — and the 
 VALUE that came through it, not merely that something survived.** A test that builds its input with
 today's types is testing today's code against itself. Applies to any future `tracks` change; the
 format version deliberately does not move for additive fields, so the loader is the only guard.
+
+**Timeline animation tools (2026-08-18):** Animate / Ease / Step / Delete key / Stop left ToolOptions
+and the layer-list detail row and now live on the timeline tool bar next to Insert keyframe. The
+Transform tool is a manipulator again (Frame/Layer/Group + Reset stay in ToolOptions); the opacity
+slider still keys without a wrapping control strip. `activeRow` gained a track case
+(`{ kind: "track"; owner; id; prop }`) so selecting a property row focuses that track; `animationBar`
+is the one visible-set (start / keys / empty) driven by that selection. `TrackKeyControls` has a
+single host — the timeline bar. StatusBar still uses `animateTargetLayer` / `animateTargetGroup` for
+the idle “a drag keys frame N” hint. Spec/plan:
+`docs/superpowers/{specs,plans}/2026-08-18-timeline-animation-tools*.md`.

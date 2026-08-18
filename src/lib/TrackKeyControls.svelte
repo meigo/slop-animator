@@ -8,8 +8,8 @@
    * deleted and its segment could never be set to `hold` — and a hard cut is the spec's stated way
    * to use an opacity track. A second copy of this markup is how that gap comes back.
    *
-   * Hosted on the timeline bar (and, until the old hosts are removed, ToolOptions / LayerList).
-   * Value authors (gizmo, opacity slider) stay with their properties; only these key tools move.
+   * Hosted on the timeline bar only. Value authors (gizmo, opacity slider) stay with their
+   * properties; only these key tools live here.
    *
    * The track is resolved from the `TrackRef` rather than passed in, so the ref and the track can
    * never disagree — and so the Step field can read the RESOLVED value straight back out of the
@@ -40,7 +40,6 @@
   let {
     trackRef,
     showCopyPaste = false,
-    compact = false,
     blocked = null,
   }: {
     /** Which track: the owner and the property. */
@@ -50,14 +49,9 @@
      *  value into a transform key. Deferred, deliberately — so the pair is rendered only when a host
      *  asks for it, never guessed at from the ref. */
     showCopyPaste?: boolean;
-    /** Panel sizing: the layer panel's rows are `py-0.5`, the tool bar's controls `h-7`. Same
-     *  markup, so the two can't drift; only the padding follows its host. Kept until Task 4 removes
-     *  the layer-list host. */
-    compact?: boolean;
     /** Why the owner refuses edits right now, phrased to follow "Delete key — ", or null when it
-     *  doesn't. A control that silently no-ops explains nothing, so a host whose target can be
-     *  locked or hidden (the layer panel) passes the reason; the hosts whose target is already
-     *  filtered to an editable one (`animateTargetLayer`/`animateTargetGroup`) pass nothing. */
+     *  doesn't. A control that silently no-ops explains nothing, so the timeline bar passes
+     *  `animBar.blocked` when the focused track's owner is locked (or otherwise inert). */
     blocked?: string | null;
   } = $props();
 
@@ -112,24 +106,15 @@
       : null,
   );
 
-  // Two literal class strings rather than one interpolated one, so the Tailwind lint can still read
-  // them. aria-disabled utilities keep the dimmed, inert look identical to a `disabled` control.
-  // Non-compact = timeline `toolBtn` (icon buttons); compact = layer-panel text chips.
+  // Literal class strings rather than interpolated ones, so the Tailwind lint can still read them.
+  // aria-disabled utilities keep the dimmed, inert look identical to a `disabled` control.
+  // Sized to the timeline bar's `toolBtn` (icon buttons).
   const BTN =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
-  const BTN_COMPACT =
-    "shrink-0 whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
   const SELECT =
     "h-7 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:cursor-default aria-disabled:opacity-40";
-  const SELECT_COMPACT =
-    "rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:cursor-default aria-disabled:opacity-40";
   const STEP =
     "h-7 w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40";
-  const STEP_COMPACT =
-    "w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40";
-  const btn = $derived(compact ? BTN_COMPACT : BTN);
-  const select = $derived(compact ? SELECT_COMPACT : SELECT);
-  const step = $derived(compact ? STEP_COMPACT : STEP);
 </script>
 
 {#if track}
@@ -139,45 +124,38 @@
        is the only route to that explanation. Handlers are guarded to match, since the control stays
        clickable and keyboard-activatable. `onclick`, never `onpointerdown`: a window-level
        pointerdown listener overwrites the status hint from the target's title in the bubble phase,
-       i.e. AFTER a button's own pointerdown handler.
-
-       Every control stops CLICK propagation: in the layer panel this markup sits inside a row whose
-       own onclick re-selects the layer, and the panel's opacity slider already does the same. Click
-       is safe to stop — the status hint listens on pointerover/pointerdown, which still bubble. -->
+       i.e. AFTER a button's own pointerdown handler. -->
   <button
-    class={btn}
+    class={BTN}
     aria-disabled={!canDelete}
     title={deleteTitle}
-    onclick={(e) => {
-      e.stopPropagation();
+    onclick={() => {
       if (canDelete) deleteTrackKey(trackRef, frame);
     }}
-    >{#if compact}Delete key{:else}<DiamondMinus size={16} />{/if}</button
+    ><DiamondMinus size={16} /></button
   >
   {#if clipLayerId !== null}
     <button
-      class={btn}
+      class={BTN}
       aria-disabled={!hasKey}
       title={hasKey
         ? "Copy this key — its position and its curve — to paste on another frame or layer"
         : "Copy key — no key on this frame"}
-      onclick={(e) => {
-        e.stopPropagation();
+      onclick={() => {
         if (hasKey) copyTransformKeyAtPlayhead(clipLayerId);
       }}
-      >{#if compact}Copy key{:else}<ClipboardCopy size={16} />{/if}</button
+      ><ClipboardCopy size={16} /></button
     >
     <button
-      class={btn}
+      class={BTN}
       aria-disabled={!appState.transformKeyClipboard}
       title={appState.transformKeyClipboard
         ? "Paste the copied key here, replacing any key on this frame"
         : "Paste key — nothing copied yet"}
-      onclick={(e) => {
-        e.stopPropagation();
+      onclick={() => {
         if (appState.transformKeyClipboard) pasteTransformKeyAtPlayhead(clipLayerId);
       }}
-      >{#if compact}Paste key{:else}<ClipboardPaste size={16} />{/if}</button
+      ><ClipboardPaste size={16} /></button
     >
   {/if}
   <!-- The title sits on this LABEL, not on the <select>, so `pointer-events-none` on the select
@@ -188,11 +166,10 @@
   >
     Ease
     <select
-      class={select}
+      class={SELECT}
       class:pointer-events-none={easeInert}
       aria-disabled={easeInert}
       value={seg?.interp ?? "linear"}
-      onclick={(e) => e.stopPropagation()}
       onchange={(e) => {
         if (!easeInert && seg)
           setTrackKeyInterp(
@@ -215,14 +192,13 @@
   >
     Step
     <input
-      class={step}
+      class={STEP}
       class:pointer-events-none={!!blocked}
       aria-disabled={!!blocked}
       type="number"
       min="1"
       max={MAX_SAMPLE_EVERY}
       value={track.sampleEvery ?? 1}
-      onclick={(e) => e.stopPropagation()}
       onchange={(e) => {
         const el = e.currentTarget as HTMLInputElement;
         if (!blocked) setTrackSampleEvery(trackRef, Number(el.value));

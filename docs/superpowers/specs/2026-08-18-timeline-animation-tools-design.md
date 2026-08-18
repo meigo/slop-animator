@@ -1,7 +1,7 @@
 # Timeline animation tools — design
 
 **Date:** 2026-08-18
-**Status:** Draft — awaiting review
+**Status:** Approved
 **Builds on:** multi-property animation rows
 (`2026-08-18-multi-property-animation-rows-design.md` plus the dated 2026-08-18 entries in
 `CLAUDE.md`, which supersede it where they disagree); the timeline tool bar

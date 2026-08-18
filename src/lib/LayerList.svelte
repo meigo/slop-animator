@@ -54,8 +54,6 @@
     setActiveLayer,
     isRowSelected,
     toggleEmbedMedia,
-    animateLayerOpacity,
-    removeLayerOpacityAnimation,
     applyLayerOpacityAt,
     beginStructuralEdit,
     commitStructuralEdit,
@@ -81,7 +79,6 @@
   import type { Layer, MergeDownBlock } from "../anim/document";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
-  import TrackKeyControls from "./TrackKeyControls.svelte";
 
   let listEl: HTMLDivElement;
   let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
@@ -575,47 +572,6 @@
                the step. -->
           <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(opacityNow)}</span>
         </span>
-        <!-- The Animate entry point sits HERE rather than in ToolOptions because opacity is not a
-             tool — its control lives in this panel, so its keying switch does too. aria-disabled,
-             never `disabled`: a disabled control dispatches no pointer events, so the status bar's
-             delegated listener could never read the title explaining the refusal, and on iPad a tap
-             is the only route to that explanation. -->
-        {#if !opacityTrack}
-          <button
-            class="rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-            aria-disabled={!opacityOk}
-            title={opacityOk
-              ? "Animate opacity — the current value becomes a key at frame 0"
-              : "Animate opacity — the layer is locked or hidden"}
-            onclick={(e) => {
-              e.stopPropagation();
-              if (opacityOk) animateLayerOpacity(layer.id);
-            }}>Animate</button
-          >
-        {:else}
-          <!-- The SAME key controls the tool bar shows for a transform track — one component, so an
-               opacity key can be deleted and its segment set to `hold` (the spec's way to get a hard
-               cut rather than a fade) without a second copy of this markup drifting from the first.
-               `compact` matches this row's button sizing; Copy/Paste are transform-only and are not
-               asked for. The row deliberately `flex-wrap`s, so these wrap onto another line in the
-               fixed-width panel rather than clipping. -->
-          <TrackKeyControls
-            trackRef={{ owner: "layer", id: layer.id, prop: "opacity" }}
-            compact
-            blocked={opacityOk ? null : "the layer is locked or hidden"}
-          />
-          <button
-            class="rounded border border-border px-1.5 py-0.5 text-xs text-text-secondary hover:text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-            aria-disabled={!opacityOk}
-            title={opacityOk
-              ? "Stop animating opacity — keeps the value you can see now"
-              : "Stop animating opacity — the layer is locked or hidden"}
-            onclick={(e) => {
-              e.stopPropagation();
-              if (opacityOk) removeLayerOpacityAnimation(layer.id);
-            }}>Stop animating</button
-          >
-        {/if}
         <!-- Video-only toggles live here, not in Row 1: they are per-clip settings you adjust on the
              layer you're working on, and four icons before the name left no room for it (2026-08-11).
              Row 1 keeps only what you scan ACROSS layers: visibility, lock, type. -->
