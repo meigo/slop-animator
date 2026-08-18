@@ -395,15 +395,37 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
 }
 
 /**
- * Copy one key to the depth a track copy needs — the key itself and its nested transform.
- *
- * THE single key-construction site, and that is the point: `interp` was added to `TransformKey`
- * after the first writers were written, and the two that enumerated fields by hand silently dropped
- * it, so one undo flattened every authored curve. A spread cannot drop a field added later, and
- * routing every writer through here means the next field costs nothing.
+ * Copy one keyframe. A SPREAD, never a field list — `interp` was added after the first writers
+ * existed and the two that enumerated fields dropped it silently, so one undo flattened every
+ * authored curve. A spread cannot drop a field added later; an explicit literal always can.
  */
+export function copyKeyframe<V>(k: Keyframe<V>, copyValue: (v: V) => V): Keyframe<V> {
+  return { ...k, v: copyValue(k.v) };
+}
+
+/** Deep-copy a whole track (keys array + each key's value) via `copyKeyframe`. Generic tracks carry
+ *  no other nested object — a property-specific track (like `TransformTrack`'s `box`) copies that
+ *  extra field itself, on top of this. */
+export function copyTrack<V>(track: Track<V>, copyValue: (v: V) => V): Track<V> {
+  return { ...track, keys: track.keys.map((k) => copyKeyframe(k, copyValue)) };
+}
+
+const copyRefTransform = (t: RefTransform): RefTransform => ({ ...t });
+
+/** Copy one transform key — the key itself and its nested transform. THE single key-construction
+ *  site for `TransformKey`; see `copyKeyframe` above for why it is a spread. */
 export function copyTransformKey(k: TransformKey): TransformKey {
-  return { ...k, v: { ...k.v } };
+  return copyKeyframe(k, copyRefTransform);
+}
+
+/** Deep-copy a transform track: keys (via `copyTrack`) plus its `box`, which lives on
+ *  `TransformTrack` and not on the generic `Track<V>` — so it is copied here, not pushed down into
+ *  `copyTrack`. */
+export function copyTransformTrack(track: TransformTrack): TransformTrack {
+  return {
+    ...copyTrack(track, copyRefTransform),
+    box: track.box ? { ...track.box } : null,
+  };
 }
 
 /** A track carrying `keys`, with every OTHER nested object copied — the returned track must share
@@ -527,12 +549,12 @@ export function hasKeyAt(track: TransformTrack, frame: number): boolean {
   return track.keys.some((k) => k.frame === frame);
 }
 
-/** Deep-copy a track (or pass `undefined` through) — keys array, each key's transform, and the box.
- *  THE single copy site: undo snapshots share layer objects, so `cloneLayers`, `restoreStructure`
- *  and `duplicateLayer` all need exactly this depth, and three hand-written copies would drift the
- *  moment a field is added to `TransformTrack`. */
+/** Deep-copy a track (or pass `undefined` through) via `copyTransformTrack` — keys array, each key's
+ *  transform, and the box. THE single copy site: undo snapshots share layer objects, so
+ *  `cloneLayers`, `restoreStructure` and `duplicateLayer` all need exactly this depth, and a
+ *  hand-written copy anywhere else would drift the moment a field is added to `TransformTrack`. */
 export function cloneTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
-  return track ? withTrackKeys(track, track.keys.map(copyTransformKey)) : undefined;
+  return track ? copyTransformTrack(track) : undefined;
 }
 
 /** A group's own transform (identity when absent / undefined group). */

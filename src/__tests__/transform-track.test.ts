@@ -12,8 +12,12 @@ import {
   createProject,
   createDrawingLayer,
   createReferenceLayer,
+  resolveTrack,
+  copyKeyframe,
+  copyTrack,
   type Layer,
   type TransformTrack,
+  type Track,
 } from "../anim/document";
 import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
 
@@ -503,8 +507,6 @@ describe("withPastedTransformKey", () => {
   });
 });
 
-import { resolveTrack, type Track } from "../anim/document";
-
 // The skeleton is the part that took the most care — bracket search, quantisation, easing, holding
 // at both ends. Proving it works for a SECOND value type is what says it was genuinely generic
 // rather than transform-shaped with the names filed off.
@@ -541,14 +543,42 @@ describe("resolveTrack over a scalar", () => {
         { frame: 10, v: 100 },
       ],
     };
-    resolveTrack(held, 5, (a, b, u) => {
+    const v = resolveTrack(held, 5, (a, b, u) => {
       called++;
       return lerpNum(a, b, u);
     });
     expect(called).toBe(0);
+    expect(v).toBe(0); // the segment-START key's value, not the end key's (100)
   });
 
   it("quantises with sampleEvery", () => {
     expect(resolveTrack({ ...t, sampleEvery: 2 }, 5, lerpNum)).toBeCloseTo(40, 10);
+  });
+});
+
+// The single worst bug in the transform track was a copy site that rebuilt a key as an explicit
+// literal and so dropped `interp` when it was added later. These pin that a copy carries EVERY
+// field, including ones a future reader has not thought of.
+describe("generic copy helpers", () => {
+  const id = (n: number) => n;
+
+  it("carries interp and every other field through a keyframe copy", () => {
+    const k = { frame: 3, v: 42, interp: "ease-out" as const };
+    expect(copyKeyframe(k, id)).toEqual(k);
+  });
+
+  it("deep-copies the value with the supplied copier", () => {
+    const v = { dx: 1, dy: 2, scale: 1, rotation: 0 };
+    const copied = copyKeyframe({ frame: 0, v }, (x: typeof v) => ({ ...x }));
+    expect(copied.v).toEqual(v);
+    expect(copied.v).not.toBe(v);
+  });
+
+  it("copies a whole track without sharing its keys array", () => {
+    const t = { keys: [{ frame: 0, v: 1 }], sampleEvery: 3 };
+    const c = copyTrack(t, id);
+    expect(c).toEqual(t);
+    expect(c.keys).not.toBe(t.keys);
+    expect(c.keys[0]).not.toBe(t.keys[0]);
   });
 });
