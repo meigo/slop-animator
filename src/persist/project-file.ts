@@ -16,7 +16,9 @@ import {
   type LayerGroup,
   type TransformTrack,
   type Track,
+  TRACK_PROPS,
   type Keyframe,
+  type KeyInterp,
   type LayerTracks,
   type GroupTracks,
 } from "../anim/document";
@@ -42,7 +44,7 @@ export interface DrawingLayerJson {
   tracksCollapsed?: boolean;
   /** LEGACY, read-only. The single-property shape that SHIPPED before `tracks` existed, so it is in
    *  real projects and autosaves; the loader promotes it. Never written. */
-  transformTrack?: TransformTrack;
+  transformTrack?: LegacyTransformTrackJson;
   cellTransforms?: {
     [index: number]: {
       transform?: RefTransform;
@@ -72,7 +74,7 @@ export interface ReferenceJson {
   /** See `DrawingLayerJson.tracksCollapsed`. */
   tracksCollapsed?: boolean;
   /** LEGACY, read-only — see `DrawingLayerJson.transformTrack`. */
-  transformTrack?: TransformTrack;
+  transformTrack?: LegacyTransformTrackJson;
 }
 
 /** Splice `refs` (by stack index, ascending) into `base`. Pure; rebuilds the original interleaving. */
@@ -395,6 +397,27 @@ export async function saveProjectBlob(
  *  per spec, `globalAlpha` IGNORES a value outside [0,1] or NaN, so the layer paints at the PREVIOUS
  *  draw op's alpha and it reads as a compositing bug rather than as bad data. `sanitiseTrack` guards
  *  `frame` and `sampleEvery`; the value was simply never guarded with them. */
+/**
+ * The transform key as the PARENT BUILD wrote it: the value lived on `t` before it was renamed `v`.
+ *
+ * Declared separately from `Keyframe<RefTransform>` deliberately. Typing the on-disk field as the
+ * CURRENT model type is what hid the migration bug: it made the already-renamed shape the only one
+ * the promotion tests could express, so they fabricated `v` keys and passed while every real file
+ * lost its animation. Both fields are optional here because this describes untrusted bytes — a file
+ * may carry either, and `legacyTracks` normalises to `v`.
+ */
+interface LegacyTransformKeyJson {
+  frame: number;
+  t?: RefTransform;
+  v?: RefTransform;
+  interp?: KeyInterp;
+}
+interface LegacyTransformTrackJson {
+  keys?: LegacyTransformKeyJson[];
+  sampleEvery?: number;
+  box?: TransformTrack["box"];
+}
+
 function isTransformValue(v: unknown): boolean {
   if (!v || typeof v !== "object") return false;
   const t = v as RefTransform;
@@ -455,19 +478,56 @@ function sanitiseTrackBox(box: TransformTrack["box"] | undefined): TransformTrac
 function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
   if (!tracks) return undefined;
   const out = {} as T;
-  const transform = sanitiseTrack(tracks.transform, isTransformValue);
-  if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
-  if ("opacity" in tracks) {
-    const opacity = sanitiseTrack(tracks.opacity, isOpacityValue);
-    if (opacity) (out as LayerTracks).opacity = opacity;
+  // TRACK_PROPS with a `never` arm, matching `copyTracks`/`shiftLayerTrackKeys`. A bag field missed
+  // here is not merely unvalidated — it is never copied into `out`, so it VANISHES on reload.
+  for (const p of TRACK_PROPS) {
+    switch (p) {
+      case "transform": {
+        const transform = sanitiseTrack(tracks.transform, isTransformValue);
+        if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
+        break;
+      }
+      case "opacity": {
+        if (!("opacity" in tracks)) break;
+        const opacity = sanitiseTrack(tracks.opacity, isOpacityValue);
+        if (opacity) (out as LayerTracks).opacity = opacity;
+        break;
+      }
+      default: {
+        const unreachable: never = p;
+        void unreachable;
+      }
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** Promote the LEGACY single-track field into a bag. `transformTrack` shipped, so it is in real
- *  files and autosaves — dropping this read would make a saved animation silently disappear. */
-function legacyTracks(track: TransformTrack | undefined): LayerTracks | undefined {
-  return track ? { transform: track } : undefined;
+/**
+ * Promote the LEGACY single-track field into a bag, rewriting each key's value field.
+ *
+ * `transformTrack` shipped, so it is in real files and autosaves — and those files carry the value
+ * on **`t`**, the name it had before this build renamed it `v`. Wrapping the track without
+ * rewriting the keys leaves every `v` undefined, so `sanitiseTrack`'s value guard drops all of
+ * them, the emptied track collapses to `undefined`, and the file opens parked at the static
+ * `layer.transform` — a pose the layer may never have rendered. The next edit then autosaves that
+ * over the only restorable copy.
+ *
+ * The rename was safe everywhere the compiler could see it. This is the one boundary where a type
+ * is an assertion about bytes on disk rather than a fact, which is exactly where it got through.
+ */
+function legacyTracks(track: LegacyTransformTrackJson | undefined): LayerTracks | undefined {
+  if (!track) return undefined;
+  const keys = Array.isArray(track.keys)
+    ? track.keys.map((k) => {
+        if (!k || typeof k !== "object") return k;
+        // Strip `t` rather than spreading it through: it is not a model field, and leaving it would
+        // ride into the bag and be written back out on the next save.
+        const { t, ...rest } = k;
+        return t !== undefined && rest.v === undefined ? { ...rest, v: t } : rest;
+      })
+    : track.keys;
+  // Cast at the boundary only — `sanitiseTrack` runs next and is what actually validates these.
+  return { transform: { ...track, keys } as unknown as TransformTrack };
 }
 
 export async function loadProjectBlob(
