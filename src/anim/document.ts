@@ -321,7 +321,9 @@ export function cellTransform(cell: Cell): RefTransform {
 /** Quantise `frame` onto a grid anchored at `origin`. Never rounds up: the value shown is always
  *  one the animation actually passed through. */
 function quantiseFrame(frame: number, origin: number, every: number): number {
-  const n = Math.max(1, Math.floor(every));
+  // A non-finite `every` (a hand-edited or corrupt file) would make EVERY sampled frame NaN, and an
+  // all-NaN transform makes the layer vanish rather than degrade. Fall back to "every frame".
+  const n = Math.max(1, Math.floor(Number.isFinite(every) ? every : 1));
   return origin + Math.floor((frame - origin) / n) * n;
 }
 
@@ -372,6 +374,26 @@ export function transformAt(layer: Layer, frame: number): RefTransform {
   return lerpTransform(a.t, b.t, easeU((q - a.frame) / (b.frame - a.frame), a.interp));
 }
 
+/**
+ * Copy one key to the depth a track copy needs — the key itself and its nested transform.
+ *
+ * THE single key-construction site, and that is the point: `interp` was added to `TransformKey`
+ * after the first writers were written, and the two that enumerated fields by hand silently dropped
+ * it, so one undo flattened every authored curve. A spread cannot drop a field added later, and
+ * routing every writer through here means the next field costs nothing.
+ */
+export function copyTransformKey(k: TransformKey): TransformKey {
+  return { ...k, t: { ...k.t } };
+}
+
+/** A track carrying `keys`, with every OTHER nested object copied — the returned track must share
+ *  no mutable object with the one it was derived from (gotcha #8: undo snapshots share layers, so a
+ *  later in-place write anywhere would corrupt the snapshot). Every writer returns through here so
+ *  they cannot disagree about that depth. */
+export function withTrackKeys(track: TransformTrack, keys: TransformKey[]): TransformTrack {
+  return { ...track, box: track.box ? { ...track.box } : null, keys };
+}
+
 /** A fresh track holding `t` at frame 0 — that value has been true for every frame, so frame 0 is
  *  its honest home and the first drag at frame N then produces a clean 0→N tween. */
 export function createTransformTrack(
@@ -389,12 +411,21 @@ export function withTransformKey(
   t: RefTransform,
 ): TransformTrack {
   // A drag rewrites a key's VALUE; its segment easing is a separate choice and must survive, or
-  // every nudge would silently reset the curve back to linear.
-  const interp = track.keys.find((k) => k.frame === frame)?.interp;
+  // every nudge would silently reset the curve back to linear. A key CREATED inside an existing
+  // segment inherits that segment's curve for exactly the same reason: defaulting to linear would
+  // turn a `hold` segment into a tween as a side effect of a value drag. Only a genuinely ENCLOSING
+  // segment is inherited — past the last key nothing is being split, so the new segment is linear.
+  const existing = track.keys.find((k) => k.frame === frame);
+  const last = track.keys[track.keys.length - 1];
+  const interp = existing
+    ? existing.interp
+    : last && frame < last.frame
+      ? segmentKeyAt(track, frame)?.interp
+      : undefined;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  keys.push({ frame, t: { ...t }, ...(interp ? { interp } : {}) });
+  keys.push(copyTransformKey({ frame, t, ...(interp ? { interp } : {}) }));
   keys.sort((a, b) => a.frame - b.frame);
-  return { ...track, keys };
+  return withTrackKeys(track, keys);
 }
 
 /** Drop the key at `frame`. Returns the SAME object when nothing changes — including the attempt to
@@ -402,7 +433,7 @@ export function withTransformKey(
 export function withoutTransformKey(track: TransformTrack, frame: number): TransformTrack {
   if (track.keys.length <= 1) return track;
   const keys = track.keys.filter((k) => k.frame !== frame);
-  return keys.length === track.keys.length ? track : { ...track, keys };
+  return keys.length === track.keys.length ? track : withTrackKeys(track, keys);
 }
 
 /**
@@ -422,11 +453,9 @@ export function withMovedTransformKey(
   if (!moved) return track;
   const keys = track.keys
     .filter((k) => k.frame !== from && k.frame !== to)
-    .concat({ frame: to, t: { ...moved.t }, ...(moved.interp ? { interp: moved.interp } : {}) })
+    .concat(copyTransformKey({ ...moved, frame: to }))
     .sort((a, b) => a.frame - b.frame);
-  // `box` copied, not shared: the returned track must not alias the input's nested objects — the
-  // same reason `shiftTransformTrackFrames` copies it. True of today's code, not of the type.
-  return { ...track, box: track.box ? { ...track.box } : null, keys };
+  return withTrackKeys(track, keys);
 }
 
 /**
@@ -443,9 +472,9 @@ export function withPastedTransformKey(
 ): TransformTrack {
   const keys = track.keys
     .filter((k) => k.frame !== frame)
-    .concat({ frame, t: { ...key.t }, ...(key.interp ? { interp: key.interp } : {}) })
+    .concat(copyTransformKey({ ...key, frame }))
     .sort((a, b) => a.frame - b.frame);
-  return { ...track, box: track.box ? { ...track.box } : null, keys };
+  return withTrackKeys(track, keys);
 }
 
 /** Set the interpolation of the segment starting at `frame`. Returns the SAME object when there is
@@ -457,13 +486,10 @@ export function withKeyInterp(
 ): TransformTrack {
   const k = track.keys.find((x) => x.frame === frame);
   if (!k || (k.interp ?? "linear") === interp) return track;
-  return {
-    ...track,
-    box: track.box ? { ...track.box } : null,
-    keys: track.keys.map((x) =>
-      x.frame === frame ? { frame: x.frame, t: { ...x.t }, interp } : x,
-    ),
-  };
+  return withTrackKeys(
+    track,
+    track.keys.map((x) => (x.frame === frame ? copyTransformKey({ ...x, interp }) : x)),
+  );
 }
 
 /** The key whose segment contains `frame` — the latest key at or before it, or null when the
@@ -486,13 +512,7 @@ export function hasKeyAt(track: TransformTrack, frame: number): boolean {
  *  and `duplicateLayer` all need exactly this depth, and three hand-written copies would drift the
  *  moment a field is added to `TransformTrack`. */
 export function cloneTransformTrack(track: TransformTrack | undefined): TransformTrack | undefined {
-  return track
-    ? {
-        ...track,
-        keys: track.keys.map((k) => ({ frame: k.frame, t: { ...k.t } })),
-        box: track.box ? { ...track.box } : null,
-      }
-    : undefined;
+  return track ? withTrackKeys(track, track.keys.map(copyTransformKey)) : undefined;
 }
 
 /** A group's own transform (identity when absent / undefined group). */

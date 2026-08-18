@@ -1,8 +1,11 @@
 import {
   resolveKeyframeIndex,
   refreshLength,
+  copyTransformKey,
+  withTrackKeys,
   type Cell,
   type DrawingLayer,
+  type Layer,
   type Project,
   type TransformKey,
   type TransformTrack,
@@ -171,16 +174,31 @@ export function shiftTransformTrackFrames(
   const byFrame = new Map<number, TransformKey>();
   for (const k of track.keys) {
     const frame = shiftStartFrame(k.frame, at, delta);
-    byFrame.set(frame, { frame, t: { ...k.t } });
+    // Through `copyTransformKey`, never a hand-written literal: a field added to `TransformKey`
+    // later must not be silently dropped here (that is exactly how `interp` was lost once).
+    byFrame.set(frame, copyTransformKey({ ...k, frame }));
   }
-  // `box` is copied, not carried by reference: sharing it would alias the pre- and post-ripple
-  // tracks, which is exactly the drift `cloneTransformTrack` exists to prevent. Harmless while
-  // nothing writes `box` in place — but that is a property of today's code, not of the type.
-  return {
-    ...track,
-    box: track.box ? { ...track.box } : null,
-    keys: [...byFrame.values()].sort((a, b) => a.frame - b.frame),
-  };
+  return withTrackKeys(
+    track,
+    [...byFrame.values()].sort((a, b) => a.frame - b.frame),
+  );
+}
+
+/**
+ * Shift one layer's OWN transform keys for a frame inserted at / deleted from `at` — the per-layer
+ * counterpart of the document-wide ripple.
+ *
+ * The per-layer frame tools resplice a single layer's cells, so its drawings and its travel would
+ * otherwise drift one frame apart per insert, compounding silently. Unlike a reference RANGE (which
+ * is document-space and shared with every layer, so a per-layer op has no single correct shift), a
+ * transform track belongs to exactly the layer whose cells just moved, so there IS one.
+ *
+ * Replaces the track, never mutates it (gotcha #8). Does nothing when the layer has no track, so
+ * every call site can call it unconditionally.
+ */
+export function shiftLayerTransformKeys(layer: Layer, at: number, delta: 1 | -1): void {
+  if (!layer.transformTrack) return;
+  layer.transformTrack = shiftTransformTrackFrames(layer.transformTrack, at, delta);
 }
 
 /** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track
@@ -191,8 +209,7 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
     // Transform keys are document-frame space for BOTH layer kinds — without this, everything else
     // shifted while an animated layer's move stayed put, finishing a frame early and compounding
     // with each ripple. Replace, never mutate in place.
-    if (layer.transformTrack)
-      layer.transformTrack = shiftTransformTrackFrames(layer.transformTrack, at, delta);
+    shiftLayerTransformKeys(layer, at, delta);
     if (layer.kind !== "ref") continue;
     if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
     if (layer.media.type === "video") {
@@ -241,13 +258,21 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
  * trailing holds of this span only (pulling following keys left) — it never deletes another key.
  * No-op if `keyFrame` is not a key.
  */
+/** The index just past the trailing holds of the key at `keyFrame` — i.e. where `setHoldSpan`
+ *  splices. Exported because the timeline needs the SAME boundary to shift a layer's transform keys
+ *  around that splice; a second copy of this scan would be free to drift from this one. */
+export function holdSpanEnd(layer: DrawingLayer, keyFrame: number): number {
+  let next = keyFrame + 1;
+  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  return next;
+}
+
 export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number): void {
   if (keyFrame < 0 || keyFrame >= layer.cells.length) return;
   if (layer.cells[keyFrame].kind !== "key") return;
 
   const desired = Math.max(1, Math.floor(span));
-  let next = keyFrame + 1;
-  while (next < layer.cells.length && layer.cells[next].kind === "hold") next++;
+  const next = holdSpanEnd(layer, keyFrame);
   const current = next - keyFrame; // cells owned: the key plus its trailing holds
   if (desired === current) return;
 

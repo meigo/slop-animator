@@ -78,6 +78,9 @@
      *  against this rather than re-reading, because a `sampleEvery > 1` track resolves a frame off
      *  its sample grid to a lerp — equal in value, not guaranteed equal under exact field equality. */
     lastT: RefTransform | null;
+    /** The pointer that owns this gesture. move/up/cancel are on WINDOW, where pointer capture
+     *  cannot isolate them, so a second contact would otherwise drive and settle this drag. */
+    pointerId: number;
   } | null = null;
   let dragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
   let dragFreeze: {
@@ -215,6 +218,13 @@
   }
 
   function startHandleDrag(handle: DragHandle, e: PointerEvent) {
+    // A second grab must never overwrite a drag in flight: `dragUndo`/`trackFreeze` would be
+    // replaced, so the first gesture's snapshot is dropped without commit OR revert and a stray key
+    // is left behind with nothing on the undo stack. Two pointers on two handles is enough.
+    if (drag) return;
+    // Finger navigates, Pencil edits — the app-wide rule. Without this a touch dragged the handles
+    // while touch-gestures.ts also claimed the same contact as a canvas pan.
+    if (e.pointerType === "touch" || !e.isPrimary || e.button !== 0) return;
     const vp = getViewport();
     // Freeze the frame for the whole gesture (see transformTarget): every closure below reads and
     // writes here, so a playhead that moves mid-drag cannot retarget the key.
@@ -229,7 +239,9 @@
       /* capture is best-effort */
     }
     dragUndo = beginStructuralEdit(); // FIRST (gotcha #8: snapshot the old shared cell)
-    transformDragGuard.settle = () => endDragFromGuard();
+    // Named reference, not a fresh closure: the settle slot is shared, so releasing it has to be
+    // conditional on this drag still owning it (see settleDragUndo).
+    transformDragGuard.settle = endDragFromGuard;
     if (tgt.scope === "frame" && tgt.cell) {
       const l = activeTransformLayer();
       if (l?.kind === "draw") {
@@ -239,7 +251,7 @@
           tgt = transformTarget(keyFrame); // re-resolve: closures must write the clone, not the snapshot's cell
           if (!tgt || !tgt.base) {
             dragUndo = null;
-            transformDragGuard.settle = null;
+            if (transformDragGuard.settle === endDragFromGuard) transformDragGuard.settle = null;
             return;
           }
         }
@@ -275,6 +287,7 @@
       getT: tgt.getT,
       keyFrame,
       lastT: null,
+      pointerId: e.pointerId,
     };
     appState.transformDragFrame = keyFrame; // see the note in Canvas.finishTransformDragUndo
     window.addEventListener("pointermove", onDragMove);
@@ -285,7 +298,7 @@
   function onDragMove(e: PointerEvent) {
     const d = drag;
     const vp = getViewport();
-    if (!d || !vp) return;
+    if (!d || !vp || e.pointerId !== d.pointerId) return;
     // The handles unmount when the target stops being transformable (lock/hide landing mid-drag,
     // including via its group), but these listeners are on WINDOW and survive that teardown — so
     // without this the pinned layer kept rotating under the pointer and the change was committed.
@@ -311,6 +324,7 @@
   }
 
   function endHandleDrag(e: PointerEvent) {
+    if (drag && e.pointerId !== drag.pointerId) return; // a second contact must not settle this drag
     if (drag) {
       try {
         (e.target as Element).releasePointerCapture?.(e.pointerId);
@@ -354,7 +368,9 @@
     dragUndo = null;
     dragFreeze = null;
     trackFreeze = null;
-    transformDragGuard.settle = null;
+    // Only release the shared hook if this drag still owns it — clearing another gesture's settle
+    // would leave that one's bracket unsettleable by undo.
+    if (transformDragGuard.settle === endDragFromGuard) transformDragGuard.settle = null;
   }
 
   function tick() {

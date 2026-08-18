@@ -58,6 +58,8 @@
     ensureDrawableKeyframe,
     restoreCellTrack,
     setHoldSpan,
+    holdSpanEnd,
+    shiftLayerTransformKeys,
   } from "../anim/timeline";
   import {
     flingVelocity,
@@ -84,6 +86,7 @@
     countKeyframesPastLengthIn,
     refVisibleSpan,
     withMovedTransformKey,
+    type KeyInterp,
     type DrawingLayer,
     type Layer,
     type TransformTrack,
@@ -471,7 +474,10 @@
     };
     edgePointerX = e.clientX;
     startEdgeScroll(rangeMoveAt, "range");
-    transformDragGuard.settle = () => settleRangeDrag();
+    // Named reference, not an arrow: the settle hook is SHARED, so releasing it has to be
+    // conditional on this drag still owning it (see settleRangeDrag) and a fresh closure per grab
+    // could never be compared.
+    transformDragGuard.settle = settleRangeDrag;
   }
 
   function rangeMove(e: PointerEvent) {
@@ -518,7 +524,9 @@
       bump();
     }
     rangeDrag = null;
-    transformDragGuard.settle = null;
+    // Only release the shared hook if this drag still owns it: clearing another gesture's settle
+    // would leave that one unable to close its bracket (the idiom every registrant now uses).
+    if (transformDragGuard.settle === settleRangeDrag) transformDragGuard.settle = null;
   }
 
   function rangeUp(e: PointerEvent) {
@@ -708,7 +716,8 @@
     const { startLen, dirty, undo } = lenDrag;
     lenDrag = null;
     lenDragFloor = 0; // release the pinned strip width
-    transformDragGuard.settle = null;
+    // Only release the shared hook if this drag still owns it — see settleRangeDrag.
+    if (transformDragGuard.settle === settleLenDrag) transformDragGuard.settle = null;
     appState.statusHint = "";
     const end = appState.project.frameCount;
     if (!dirty) return; // grab-and-release: nothing was written, so nothing to revert or commit
@@ -933,16 +942,39 @@
    *  auto-scroll has no event, so there is no `currentTarget` to measure — and every row shares the
    *  same horizontal geometry, so any one of them gives the right left edge. */
   let dragRowEl: HTMLElement | null = null;
+  // The same wording the Ease control uses, so a key's tooltip and the control that sets it agree —
+  // a tooltip reading the raw enum ("ease-in-out") names something the UI never calls that.
+  const INTERP_LABEL: Record<KeyInterp, string> = {
+    linear: "Linear",
+    "ease-in": "Ease in",
+    "ease-out": "Ease out",
+    "ease-in-out": "Ease in-out",
+    hold: "Hold",
+  };
   // Dragging a transform key to another frame. Same bracket shape as every other undoable drag
   // here: snapshot at grab, write live, commit at release only if something actually moved, and
   // register the settle hook so an undo or a tool switch mid-drag cannot leave the bracket open.
   // `prevTrack` is a valid snapshot by itself because tracks are always REPLACED, never mutated.
   let keyDrag: {
     layer: Layer;
+    /** The pointer that owns this gesture. The move/up/cancel listeners are on WINDOW (see
+     *  addKeyDragListeners), where pointer capture cannot isolate them, so every one of them has to
+     *  check this: on iPad a Pencil holding a key plus a finger touching to scroll would otherwise
+     *  let the FINGER drive the key and its release commit the drag, leaving the Pencil inert. */
+    pointerId: number;
+    /** The owner is locked or hidden (its own flag or its group's): the key can still be TAPPED —
+     *  that seeks and selects, and reading a locked layer is allowed everywhere else — but it
+     *  cannot be retimed, so no snapshot is taken and no write is ever made. */
+    readOnly: boolean;
+    /** Grab point, for the movement threshold in keyMoveAt. */
+    startX: number;
+    startY: number;
+    /** Has the pointer travelled far enough to count as a drag rather than a tap? */
+    moved: boolean;
     prevTrack: TransformTrack | undefined;
     from: number;
     cur: number;
-    undo: ReturnType<typeof beginStructuralEdit>;
+    undo: ReturnType<typeof beginStructuralEdit> | null;
   } | null = null;
 
   // Bound to WINDOW for the duration of a key drag, not to the marker. The markers live in an
@@ -971,29 +1003,46 @@
       touchPanDown(e);
       return;
     }
+    // A second grab must never overwrite a drag in flight: the first snapshot would be dropped
+    // uncommitted and the second taken against an already-mutated document, making the first move
+    // permanently un-undoable. A right-click during a left drag is enough, hence the button filter
+    // too (mouse `button` is 0 for the primary button and for every pen/touch contact).
+    if (keyDrag || !e.isPrimary || e.button !== 0) return;
     if (!layer.transformTrack) return;
+    // Group-aware, never the raw `.locked`/`.visible` flags. NOT `isLayerEditable`: that is a
+    // `layer is DrawingLayer` predicate and a REFERENCE layer can be animated too. A read-only
+    // owner keeps the tap-to-seek path (see settleKeyDrag) and loses only the retime — which is
+    // what every other track writer already refuses.
+    const readOnly =
+      isLayerLocked(layer, appState.project.groups) ||
+      !isLayerVisible(layer, appState.project.groups);
     // No stopPropagation: it would suppress App.svelte's window-level status-hint listener, so this
     // marker's title would never reach the status bar. Nothing above needs blocking — the strip's
-    // own pointerdown returns immediately for a fine pointer, and gridWrapper's fling-catcher runs
-    // in the capture phase, which stopPropagation cannot reach anyway.
+    // own pointerdown bails while `keyDrag` is set (the parent-bails-on-child-state shape), and
+    // gridWrapper's fling-catcher runs in the capture phase, which stopPropagation cannot reach.
     // No setPointerCapture either: this element is about to be destroyed and rebuilt (see
     // addKeyDragListeners), so capturing on it would be pointless.
     addKeyDragListeners();
     edgePointerX = e.clientX;
     edgePointerY = e.clientY;
-    startEdgeScroll(keyMoveAt, "key");
+    if (!readOnly) startEdgeScroll(keyMoveAt, "key");
     keyDrag = {
       layer,
+      pointerId: e.pointerId,
+      readOnly,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
       prevTrack: layer.transformTrack,
       from: frame,
       cur: frame,
-      undo: beginStructuralEdit(),
+      undo: readOnly ? null : beginStructuralEdit(),
     };
-    transformDragGuard.settle = settleKeyDrag;
+    if (!readOnly) transformDragGuard.settle = settleKeyDrag;
   }
 
   function keyMove(e: PointerEvent) {
-    if (!keyDrag) return;
+    if (!keyDrag || e.pointerId !== keyDrag.pointerId) return;
     edgePointerX = e.clientX;
     edgePointerY = e.clientY;
     keyMoveAt(e.clientX);
@@ -1003,7 +1052,18 @@
    *  the scroller's rect plus its scrollLeft, so it needs no grab-time scroll correction: the
    *  measurement already moves with the content. */
   function keyMoveAt(clientX: number) {
-    if (!keyDrag) return;
+    if (!keyDrag || keyDrag.readOnly) return;
+    // A tap must stay a tap. The marker's hit box straddles the cell boundary, so a few px of
+    // Pencil wobble used to cross into the next column and push a real undo entry — defeating the
+    // documented tap-to-seek (and therefore tap-then-delete) workflow. Same threshold, and the
+    // same latch-once shape, the row drag already uses.
+    if (
+      !keyDrag.moved &&
+      Math.abs(clientX - keyDrag.startX) <= MOVE_CANCEL_PX &&
+      Math.abs(edgePointerY - keyDrag.startY) <= MOVE_CANCEL_PX
+    )
+      return;
+    keyDrag.moved = true;
     const to = columnAtX(
       clientX -
         (gridWrapper?.getBoundingClientRect().left ?? 0) +
@@ -1015,6 +1075,11 @@
     if (to === keyDrag.cur) return;
     const track = keyDrag.layer.transformTrack;
     if (!track) return;
+    // Retiming a key re-resolves the segment, so a lifted selection/pose would bake back through
+    // its GRAB-TIME compose and land at the old placement. Discarded here, at the first write that
+    // actually moves the key, rather than at grab: a press that only taps to seek must not throw
+    // away a float, and setActiveLayer/seekPlayhead on that path already bank it (gotcha #9).
+    if (keyDrag.cur === keyDrag.from) liftGuard.discard?.();
     // Always move from the ORIGINAL frame against the grab-time track, so a drag that passes over
     // another key does not eat it on the way through — only where it is released.
     keyDrag.layer.transformTrack = withMovedTransformKey(keyDrag.prevTrack!, keyDrag.from, to);
@@ -1022,7 +1087,11 @@
     bump();
   }
 
-  function settleKeyDrag() {
+  /** Also the `transformDragGuard.settle` hook, which calls it with NO event — hence the optional
+   *  parameter. When there IS one it must belong to the pointer that started the drag, or a second
+   *  contact (a finger landing while the Pencil holds a key) would settle someone else's gesture. */
+  function settleKeyDrag(e?: PointerEvent) {
+    if (e && keyDrag && e.pointerId !== keyDrag.pointerId) return;
     const d = keyDrag;
     keyDrag = null;
     removeKeyDragListeners();
@@ -1044,7 +1113,7 @@
       seekPlayhead(d.from);
       return; // no bump(): nothing changed, and bumping re-arms a full autosave re-encode
     }
-    commitStructuralEdit(d.undo);
+    if (d.undo) commitStructuralEdit(d.undo); // null only on the read-only path, which never writes
   }
 
   function rowColumnAt(clientX: number): number {
@@ -1186,7 +1255,11 @@
     if (dragMode === "resize") {
       if (!isLayerEditable(layer, appState.project.groups)) return; // locked/hidden row: hold-span is content, not selection
       dragLastBoundary = rowBoundaryAt(clientX);
+      // Measured around the write rather than from the pointer: setHoldSpan clamps the span and
+      // no-ops when nothing changes, so the actual splice is the difference between these two.
+      const spanBefore = holdSpanEnd(layer, dragKey);
       setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
+      shiftKeysForSplice(layer, spanBefore, holdSpanEnd(layer, dragKey));
       bump();
       return;
     }
@@ -1310,6 +1383,20 @@
     const l = appState.project.layers.find((x) => x.id === layerId);
     if (l?.kind === "draw") restoreCellTrack(l, cells);
   }
+  /** Where `addFrame`/`insertKeyframe`/`duplicateKeyframe` splice their new cell in: they clamp the
+   *  playhead to the last existing cell and insert AFTER it, so on a layer shorter than the project
+   *  that is not simply `playhead + 1`. The transform keys have to shift at exactly that index or a
+   *  layer's drawings and its travel drift apart. Read BEFORE the splice — it moves. */
+  function insertIndexFor(l: DrawingLayer): number {
+    return Math.max(0, Math.min(appState.playhead, l.cells.length - 1)) + 1;
+  }
+  /** Shift the layer's own transform keys for a splice that turned boundary `before` into `after`.
+   *  `shiftLayerTransformKeys` moves by ONE frame, so a multi-frame hold-span resize repeats it:
+   *  growing inserts `after - before` frames at `before`, shrinking removes them from `after`. */
+  function shiftKeysForSplice(l: DrawingLayer, before: number, after: number) {
+    for (let i = 0; i < after - before; i++) shiftLayerTransformKeys(l, before, 1);
+    for (let i = 0; i < before - after; i++) shiftLayerTransformKeys(l, after, -1);
+  }
   function frameTool() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
@@ -1318,8 +1405,12 @@
     // splice) would then revert the inserted frame when that stroke is undone. The only frame tool
     // that lacked this; its siblings discard for the canvas-clone reason instead.
     liftGuard.discard?.();
+    const at = insertIndexFor(l);
     commitStructural(() => {
       addFrame(l, appState.playhead);
+      // This layer's own keys move with its cells: the track belongs to the layer whose cells just
+      // shifted, so unlike a document-space reference range there IS one right answer here.
+      shiftLayerTransformKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1329,8 +1420,10 @@
     // The new key CLONES the resolved key canvas, which a live lift has a hole punched in; the
     // playhead move then banks the lift back into the ORIGINAL, so the clone keeps the hole forever.
     liftGuard.discard?.();
+    const at = insertIndexFor(l);
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
+      shiftLayerTransformKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1338,8 +1431,10 @@
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
     liftGuard.discard?.(); // clones the resolved key — same lift-hole hazard as keyTool above
+    const at = insertIndexFor(l);
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
+      shiftLayerTransformKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1369,7 +1464,13 @@
     if (!isLayerEditable(l, appState.project.groups)) return;
     if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
     liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
-    commitStructural(() => deleteFrame(l, appState.playhead));
+    // Only shift when the delete really happens: deleteFrame is a no-op past this layer's last cell
+    // (the playhead can sit beyond a short layer), and shifting then would move keys for nothing.
+    const removed = appState.playhead >= 0 && appState.playhead < l.cells.length;
+    commitStructural(() => {
+      deleteFrame(l, appState.playhead);
+      if (removed) shiftLayerTransformKeys(l, appState.playhead, -1);
+    });
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
@@ -1906,9 +2007,22 @@
         <!-- Clamped to the strip: shortening the animation does not move transform keys, and an
              absolutely-positioned dot past the last frame would draw over the ruler's end and add
              scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
-        {@const keys = (tl.transformTrack?.keys ?? []).filter(
-          (k) => k.frame < appState.project.frameCount,
-        )}
+        {@const trackKeys = tl.transformTrack?.keys ?? []}
+        {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
+        {@const stripW = appState.project.frameCount * CELL_W}
+        <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past
+             the animation's end is hidden but still DRIVES the motion — it remains the track's last
+             key, so every earlier frame interpolates toward it — and drawing only between visible
+             keys left a lone marker with no line while the canvas was visibly moving. -->
+        {@const segments = trackKeys.slice(0, -1).flatMap((k, i) => {
+          const x = k.frame * CELL_W + CELL_W / 2;
+          if (x >= stripW) return [];
+          const end = Math.min(trackKeys[i + 1].frame * CELL_W + CELL_W / 2, stripW);
+          return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
+        })}
+        {@const readOnly =
+          isLayerLocked(tl, appState.project.groups) ||
+          !isLayerVisible(tl, appState.project.groups)}
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <!-- Selecting the track selects its LAYER and points the Transform tool at layer scope —
                the two things you always want next, and the reason to click this row at all. It
@@ -1951,8 +2065,11 @@
             <span class="flex w-3.5 shrink-0" role="presentation"></span>
             <span class="min-w-0 flex-1 truncate">Transform</span></button
           >
+          <!-- The same read-only marker its owner's row carries. Without it a locked layer's track
+               row was the one place that refused an edit while showing no reason, directly under a
+               row displaying the amber padlock. -->
           <span
-            class="sticky z-20 shrink-0 h-6 bg-surface border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-amber-500 border-r border-text-muted"
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {
@@ -1961,11 +2078,24 @@
               touchPanDown(e);
             }}
             onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
+              if (!isFinePointer(e) && touchPan) touchPanMove(e);
             }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
-          ></span>
+            onpointerup={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            onpointercancel={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            title={isLayerLocked(tl, appState.project.groups)
+              ? "Layer locked — keys cannot be retimed"
+              : !isLayerVisible(tl, appState.project.groups)
+                ? "Layer hidden — keys cannot be retimed"
+                : ""}
+          >
+            {#if isLayerLocked(tl, appState.project.groups)}<Lock
+                size={11}
+              />{:else if !isLayerVisible(tl, appState.project.groups)}<EyeOff size={11} />{/if}
+          </span>
           <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
                per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
                carries its own 1px border, so adjacent segments never meet. Absolute positioning
@@ -1975,15 +2105,32 @@
             style="touch-action: none"
             role="presentation"
             onpointerdown={(e) => {
-              if (isFinePointer(e)) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              touchPanDown(e);
+              if (!isFinePointer(e)) {
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                touchPanDown(e);
+                return;
+              }
+              // A key marker is a DOM CHILD of this strip and deliberately does not
+              // stopPropagation, so its own keyDown runs first and this bubbled call must bail —
+              // the parent-bails-on-child-state shape (see rangeDown), never stopPropagation,
+              // which would suppress the window-level status-hint listener.
+              if (keyDrag) return;
+              // Otherwise a pen/mouse press on the empty part of the row does what the row's own
+              // label does. It used to return here and be a dead zone.
+              setActiveLayer(tl.id);
+              appState.transformScope = "layer";
             }}
             onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
+              // Route on the POINTER TYPE, not on "is a pan in flight": a Pencil dragging a key
+              // bubbles here, and panning against a resting finger's origin flung the timeline.
+              if (!isFinePointer(e) && touchPan) touchPanMove(e);
             }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
+            onpointerup={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
+            onpointercancel={(e) => {
+              if (!isFinePointer(e)) touchPanUp(e);
+            }}
           >
             {#each Array(appState.project.frameCount) as _, f (f)}
               <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
@@ -1992,18 +2139,15 @@
                  the same distinction the layer rows already draw, because it is the same fact. A
                  drawing hold repeats one drawing across those frames; a transform hold repeats one
                  transform. So the timeline has two marks meaning two things, not three. -->
-            {#each keys.slice(0, -1) as k, i (k.frame)}
-              {@const held = (k.interp ?? "linear") === "hold"}
+            {#each segments as s (s.frame)}
               <div
                 class="pointer-events-none absolute top-1/2 -translate-y-1/2"
-                class:h-px={!held}
-                class:bg-selection={!held}
-                class:border-t={held}
-                class:border-dashed={held}
-                class:border-selection={held}
-                style="left: {k.frame * CELL_W + CELL_W / 2}px; width: {(keys[i + 1].frame -
-                  k.frame) *
-                  CELL_W}px"
+                class:h-px={!s.held}
+                class:bg-selection={!s.held}
+                class:border-t={s.held}
+                class:border-dashed={s.held}
+                class:border-selection={s.held}
+                style="left: {s.x}px; width: {s.w}px"
               ></div>
             {/each}
             {#each keys as k (k.frame)}
@@ -2020,9 +2164,11 @@
                 class="absolute top-0 flex h-6 w-4 items-center justify-center"
                 style="left: {k.frame * CELL_W +
                   CELL_W / 2 -
-                  8}px; touch-action: none; cursor: ew-resize"
+                  8}px; touch-action: none; cursor: {readOnly ? 'default' : 'ew-resize'}"
                 role="presentation"
-                title="Transform key at frame {k.frame + 1} ({ki}) — drag to retime"
+                title="Transform key at frame {k.frame + 1} ({INTERP_LABEL[ki]}){readOnly
+                  ? ''
+                  : ' — drag to retime'}"
                 onpointerdown={(e) => keyDown(e, tl, k.frame)}
                 onpointermove={(e) => {
                   if (!isFinePointer(e) && touchPan) touchPanMove(e);

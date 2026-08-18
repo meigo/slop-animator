@@ -6,6 +6,8 @@ import {
   withoutTransformKey,
   withMovedTransformKey,
   withPastedTransformKey,
+  withKeyInterp,
+  cloneTransformTrack,
   hasKeyAt,
   createProject,
   createDrawingLayer,
@@ -158,6 +160,68 @@ describe("track mutations", () => {
     expect(original.keys.map((k) => k.frame)).toEqual([0, 10]);
   });
 
+  // A drag rewrites a VALUE, never a curve — the documented contract, and `interp` is optional so
+  // nothing but a test notices a copy that forgets it.
+  it("withTransformKey preserves the destination key's interpolation when replacing", () => {
+    const t = withTransformKey(
+      track({
+        keys: [
+          { frame: 0, t: T(0), interp: "hold" },
+          { frame: 10, t: T(100), interp: "ease-in" },
+        ],
+      }),
+      10,
+      T(999),
+    );
+    expect(t.keys[1]).toEqual({ frame: 10, t: T(999), interp: "ease-in" });
+    expect(t.keys[0].interp).toBe("hold"); // the other key is carried across untouched
+  });
+
+  // Same rule seen from the other side: a key CREATED inside a segment must not change that
+  // segment's curve, so it inherits it. Defaulting to linear would tween a `hold` as a side effect
+  // of a value drag.
+  it("withTransformKey inherits the enclosing segment's interpolation when creating a key", () => {
+    const t = withTransformKey(
+      track({
+        keys: [
+          { frame: 0, t: T(0), interp: "hold" },
+          { frame: 10, t: T(100) },
+        ],
+      }),
+      5,
+      T(55),
+    );
+    expect(t.keys[1]).toEqual({ frame: 5, t: T(55), interp: "hold" });
+  });
+
+  it("withTransformKey does not inherit past the last key — nothing is being split there", () => {
+    const t = withTransformKey(
+      track({
+        keys: [
+          { frame: 0, t: T(0) },
+          { frame: 10, t: T(100), interp: "hold" },
+        ],
+      }),
+      20,
+      T(200),
+    );
+    expect(t.keys[2]).toEqual({ frame: 20, t: T(200) });
+  });
+
+  it("withTransformKey creates a linear key before the track starts", () => {
+    const t = withTransformKey(
+      track({
+        keys: [
+          { frame: 5, t: T(0), interp: "hold" },
+          { frame: 10, t: T(100) },
+        ],
+      }),
+      0,
+      T(-1),
+    );
+    expect(t.keys[0]).toEqual({ frame: 0, t: T(-1) });
+  });
+
   it("withoutTransformKey removes the key at that frame", () => {
     expect(withoutTransformKey(track(), 10).keys.map((k) => k.frame)).toEqual([0]);
   });
@@ -247,10 +311,109 @@ describe("withMovedTransformKey", () => {
     expect(withMovedTransformKey(t, 7, 3)).toBe(t);
   });
 
-  it("leaves the input untouched", () => {
-    const t = track();
-    withMovedTransformKey(t, 0, 5);
+  // Frame order alone would pass an implementation that reused the key object and rewrote `t` in
+  // place — which is exactly the corruption gotcha #8 warns about, since snapshots share layers.
+  it("leaves the input untouched, nested transform included", () => {
+    const t = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
+    const key = t.keys[0];
+    const before = { ...key.t };
+    const moved = withMovedTransformKey(t, 0, 5);
     expect(t.keys.map((k) => k.frame)).toEqual([0, 10]);
+    expect(key.frame).toBe(0);
+    expect(key.t).toEqual(before);
+    expect(moved.keys[0]).not.toBe(key);
+    expect(moved.keys[0].t).not.toBe(key.t);
+    expect(moved.box).not.toBe(t.box);
+  });
+
+  // `interp` is optional, so nothing in the type system notices a copy that enumerates fields and
+  // forgets it — and a dropped curve is silent and permanent.
+  it("carries the moved key's segment interpolation with it", () => {
+    const t = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "ease-in" },
+        { frame: 10, t: T(100) },
+      ],
+    });
+    expect(withMovedTransformKey(t, 0, 5).keys[0]).toEqual({
+      frame: 5,
+      t: T(0),
+      interp: "ease-in",
+    });
+  });
+});
+
+// THE copy site for `cloneLayers`, `restoreStructure` (undo AND redo) and `duplicateLayer`: a field
+// dropped here is erased from the snapshot too, so redo cannot bring it back.
+describe("cloneTransformTrack", () => {
+  it("passes undefined through", () => {
+    expect(cloneTransformTrack(undefined)).toBeUndefined();
+  });
+
+  it("preserves each key's segment interpolation", () => {
+    const src = track({
+      keys: [
+        { frame: 0, t: T(0), interp: "hold" },
+        { frame: 10, t: T(100), interp: "ease-out" },
+      ],
+      sampleEvery: 3,
+    });
+    const copy = cloneTransformTrack(src)!;
+    expect(copy.keys).toEqual(src.keys);
+    expect(copy.sampleEvery).toBe(3);
+  });
+
+  it("shares no mutable object with its input", () => {
+    const src = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
+    const copy = cloneTransformTrack(src)!;
+    expect(copy).not.toBe(src);
+    expect(copy.keys).not.toBe(src.keys);
+    expect(copy.keys[0]).not.toBe(src.keys[0]);
+    expect(copy.keys[0].t).not.toBe(src.keys[0].t);
+    expect(copy.box).not.toBe(src.box);
+    expect(copy.box).toEqual(src.box);
+  });
+});
+
+describe("withKeyInterp", () => {
+  const holdFirst = () =>
+    track({
+      keys: [
+        { frame: 0, t: T(0), interp: "hold" },
+        { frame: 10, t: T(100) },
+      ],
+    });
+
+  it("sets the curve of the segment starting at that key", () => {
+    const t = withKeyInterp(track(), 0, "ease-in");
+    expect(t.keys[0]).toEqual({ frame: 0, t: T(0), interp: "ease-in" });
+    expect(t.keys[1]).toEqual({ frame: 10, t: T(100) }); // the other segment is untouched
+  });
+
+  // Same-object returns are how a caller skips pushing an undo entry that changes nothing.
+  it("returns the SAME object when there is no key at that frame", () => {
+    const t = track();
+    expect(withKeyInterp(t, 7, "ease-in")).toBe(t);
+  });
+
+  it("returns the SAME object when the value is unchanged", () => {
+    const t = holdFirst();
+    expect(withKeyInterp(t, 0, "hold")).toBe(t);
+  });
+
+  // Absent means linear, so setting linear on an absent interp is genuinely a no-op.
+  it("treats an absent interp as linear", () => {
+    const t = track();
+    expect(withKeyInterp(t, 0, "linear")).toBe(t);
+  });
+
+  it("leaves the input untouched and shares no mutable object with it", () => {
+    const src = track({ box: { x: 1, y: 2, w: 3, h: 4 } });
+    const out = withKeyInterp(src, 0, "ease-out");
+    expect(src.keys[0].interp).toBeUndefined();
+    expect(out.keys[0]).not.toBe(src.keys[0]);
+    expect(out.keys[0].t).not.toBe(src.keys[0].t);
+    expect(out.box).not.toBe(src.box);
   });
 });
 

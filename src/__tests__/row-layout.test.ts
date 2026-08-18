@@ -107,6 +107,18 @@ describe("timelineRows — transform tracks", () => {
     expect(rows.map((r) => r.kind)).toEqual(["group", "layer", "transform"]);
   });
 
+  // One animated layer cannot tell "under its own layer" from "appended at the end", so pin the
+  // interleaving with two. Data order is bottom-first, display order top-first.
+  it("keeps each transform row under its OWN layer when several are animated", () => {
+    const rows = timelineRows(buildSegments([animated(1), animated(2)], []));
+    expect(ids(rows)).toEqual(["L2", "T2", "L1", "T1"]);
+  });
+
+  it("interleaves animated and static layers", () => {
+    const rows = timelineRows(buildSegments([animated(1), layer(2), animated(3)], []));
+    expect(ids(rows)).toEqual(["L3", "T3", "L2", "L1", "T1"]);
+  });
+
   // A collapsed group hides its members, so their tracks go with them.
   it("hides a member's transform row when its group is collapsed", () => {
     const rows = timelineRows(buildSegments([animated(1, 10)], [group(10, true)]));

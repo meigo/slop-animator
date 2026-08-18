@@ -16,6 +16,7 @@ import {
   nonEmptyGroups,
   mediaIntrinsicSize,
   isIdentityTransform,
+  isSameTransform,
   groupHasLockedLayer,
   isLayerEditable,
   isLayerLocked,
@@ -818,8 +819,19 @@ export function pasteTransformKeyAtPlayhead(layerId: number): void {
   const clip = state.transformKeyClipboard;
   if (!l || !track || !clip || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
+  // Guard ABOVE the commit, like every sibling action: pasting a key identical to the one already
+  // there (value AND curve) changes nothing, and an empty undo entry reads as a dead ⌘Z.
+  // `withPastedTransformKey` stays always-new — the sameness is a property of THIS caller's data.
+  const at = state.playhead;
+  const existing = track.keys.find((k) => k.frame === at);
+  if (
+    existing &&
+    isSameTransform(existing.t, clip.t) &&
+    (existing.interp ?? "linear") === (clip.interp ?? "linear")
+  )
+    return;
   commitStructural(() => {
-    l.transformTrack = withPastedTransformKey(track, state.playhead, clip);
+    l.transformTrack = withPastedTransformKey(track, at, clip);
   });
 }
 

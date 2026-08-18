@@ -715,7 +715,16 @@
     refDragUndo = null;
     refDragFreeze = null;
     refTrackFreeze = null;
-    transformDragGuard.settle = null;
+    // Only release the shared hook if this drag still owns it. It is one slot shared by six
+    // registrants, so clearing it unconditionally could null a hook belonging to another gesture
+    // and leave that one's bracket unsettleable by undo.
+    if (transformDragGuard.settle === settleRefDrag) transformDragGuard.settle = null;
+  }
+
+  /** Named (rather than a fresh closure per grab) so the ownership check above can compare it. */
+  function settleRefDrag() {
+    finishTransformDragUndo();
+    refDrag = null;
   }
 
   function onTransformDrag(layer: Layer, points: { x: number; y: number }[], done: boolean) {
@@ -844,10 +853,7 @@
       const handle = hitTestHandle(base, getT(), pc, tol, gap);
       if (handle) {
         refDragUndo = beginStructuralEdit(); // FIRST: snapshot must capture the old shared cell (gotcha #8)
-        transformDragGuard.settle = () => {
-          finishTransformDragUndo();
-          refDrag = null;
-        };
+        transformDragGuard.settle = settleRefDrag;
         if (isDraw && scope === "frame" && frameRk) {
           const dl = layer as Extract<Layer, { kind: "draw" }>;
           dl.cells[frameRk.index] = { ...frameRk.cell }; // fresh object; in-drag writes can't corrupt the snapshot
@@ -886,7 +892,9 @@
       };
       // The status hint promises "a drag keys frame N"; publish the frozen frame so it names the
       // one that will actually be written rather than a playhead that may move under a held drag.
-      appState.transformDragFrame = refDrag.keyFrame;
+      // Only once a HANDLE is engaged: a press that missed every handle writes nothing, so
+      // publishing there froze the hint's frame for a gesture that will never key.
+      if (refDrag.handle) appState.transformDragFrame = refDrag.keyFrame;
     }
     const d = refDrag;
     if (d.handle) {

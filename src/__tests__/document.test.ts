@@ -761,7 +761,6 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
     it("refuses when either side is ANIMATED — merge bakes a transform that varies", () => {
       const track = {
         keys: [{ frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
-        interp: "linear" as const,
         box: null,
       };
       const below = layer(1, [makeKey()]);
