@@ -1,17 +1,26 @@
 import {
   resolveKeyframeIndex,
   refreshLength,
-  copyTransformKey,
+  copyKeyframe,
   withTrackKeys,
-  layerTransformTrack,
   type Cell,
   type DrawingLayer,
+  type Keyframe,
   type Layer,
+  type LayerTracks,
   type Project,
+  type RefTransform,
+  type Track,
   type TransformKey,
   type TransformTrack,
 } from "./document";
+import { TRACK_PROPS } from "./row-layout";
 import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
+
+/** The per-property value copiers the shifter needs. `document.ts` keeps its own copies private, and
+ *  a transform is a flat object / an opacity a number, so both are one line here. */
+const copyRefTransform = (t: RefTransform): RefTransform => ({ ...t });
+const copyNumber = (n: number): number => n;
 
 /** Canvas creation/cloning, injected so timeline logic is testable without the DOM. */
 export interface CanvasOps {
@@ -158,50 +167,89 @@ export function shiftStartFrame(startFrame: number, at: number, delta: 1 | -1): 
   return startFrame > at ? startFrame - 1 : startFrame;
 }
 
-/** Every key of a layer transform track, moved through the same `shiftStartFrame` rule the audio and
- *  video clips use — a key is pinned to a single document frame and has no `end` to grow.
+/** Every key of a track, moved through the same `shiftStartFrame` rule the audio and video clips
+ *  use — a key is pinned to a single document frame and has no `end` to grow.
+ *
+ *  Generic over the value for the same reason `withKey` (writing) and `resolveTrack` (reading) are:
+ *  a per-property copy of this is exactly how the transform came to ripple while opacity stood
+ *  still. `copyKeyframe` (never a hand-written literal) so a field added to `Keyframe` later cannot
+ *  be silently dropped here — that is how `interp` was lost once.
  *
  *  The DEDUPE is not optional: on a DELETE a key at `at` and one at `at + 1` both land on `at`, and
- *  `TransformKey.frame` is documented unique within a track. Keys arrive sorted, so writing them in
+ *  `Keyframe.frame` is documented unique within a track. Keys arrive sorted, so writing them in
  *  order into a map keeps the LATER key's value on a collision — it is the one that survives the
  *  deleted frame.
  *
- *  Returns a NEW track (gotcha #8: undo snapshots share layer objects). */
+ *  Returns a NEW track (gotcha #8: undo snapshots share layer objects). A property-specific track
+ *  (like `TransformTrack`'s `box`) re-attaches these keys at its own depth; see
+ *  `shiftTransformTrackFrames`. */
+export function shiftTrackFrames<V>(
+  track: Track<V>,
+  at: number,
+  delta: 1 | -1,
+  copyValue: (v: V) => V,
+): Track<V> {
+  const byFrame = new Map<number, Keyframe<V>>();
+  for (const k of track.keys) {
+    const frame = shiftStartFrame(k.frame, at, delta);
+    byFrame.set(frame, copyKeyframe({ ...k, frame }, copyValue));
+  }
+  return { ...track, keys: [...byFrame.values()].sort((a, b) => a.frame - b.frame) };
+}
+
+/** `shiftTrackFrames` for a transform track. The generic shifter knows nothing about `box`, so its
+ *  keys are re-attached through `withTrackKeys` — same split, and same reason, as
+ *  `withKey`/`withTransformKey` in `document.ts`. */
 export function shiftTransformTrackFrames(
   track: TransformTrack,
   at: number,
   delta: 1 | -1,
 ): TransformTrack {
-  const byFrame = new Map<number, TransformKey>();
-  for (const k of track.keys) {
-    const frame = shiftStartFrame(k.frame, at, delta);
-    // Through `copyTransformKey`, never a hand-written literal: a field added to `TransformKey`
-    // later must not be silently dropped here (that is exactly how `interp` was lost once).
-    byFrame.set(frame, copyTransformKey({ ...k, frame }));
-  }
-  return withTrackKeys(
-    track,
-    [...byFrame.values()].sort((a, b) => a.frame - b.frame),
-  );
+  const next = shiftTrackFrames(track, at, delta, copyRefTransform);
+  return withTrackKeys(track, next.keys as TransformKey[]);
 }
 
 /**
- * Shift one layer's OWN transform keys for a frame inserted at / deleted from `at` — the per-layer
- * counterpart of the document-wide ripple.
+ * Shift one layer's OWN track keys — EVERY property, not just the transform — for a frame inserted
+ * at / deleted from `at`. The per-layer counterpart of the document-wide ripple.
  *
- * The per-layer frame tools resplice a single layer's cells, so its drawings and its travel would
+ * The per-layer frame tools resplice a single layer's cells, so its drawings and its animation would
  * otherwise drift one frame apart per insert, compounding silently. Unlike a reference RANGE (which
  * is document-space and shared with every layer, so a per-layer op has no single correct shift), a
- * transform track belongs to exactly the layer whose cells just moved, so there IS one.
+ * track belongs to exactly the layer whose cells just moved, so there IS one — and that argument
+ * never had anything to do with WHICH property, which is why this loops `TRACK_PROPS`.
  *
- * Replaces the track, never mutates it (gotcha #8). Does nothing when the layer has no track, so
- * every call site can call it unconditionally.
+ * Replaces the BAG as well as each track, never mutates either (gotcha #8: the no-mutation rule
+ * reaches both levels). Does nothing when the layer has no track, so every call site can call it
+ * unconditionally.
  */
-export function shiftLayerTransformKeys(layer: Layer, at: number, delta: 1 | -1): void {
-  const track = layerTransformTrack(layer);
-  if (!track) return;
-  // Replaces the BAG as well as the track: the no-mutation rule reaches both levels now.
-  layer.tracks = { ...layer.tracks, transform: shiftTransformTrackFrames(track, at, delta) };
+export function shiftLayerTrackKeys(layer: Layer, at: number, delta: 1 | -1): void {
+  if (!layer.tracks) return;
+  const next: LayerTracks = { ...layer.tracks };
+  let changed = false;
+  for (const prop of TRACK_PROPS) {
+    switch (prop) {
+      case "transform":
+        if (next.transform) {
+          next.transform = shiftTransformTrackFrames(next.transform, at, delta);
+          changed = true;
+        }
+        break;
+      case "opacity":
+        if (next.opacity) {
+          next.opacity = shiftTrackFrames(next.opacity, at, delta, copyNumber);
+          changed = true;
+        }
+        break;
+      default: {
+        // A third property must not be able to arrive here silently: the same gap this function was
+        // widened to close (opacity standing still while the transform rippled) would simply reopen.
+        const exhaustive: never = prop;
+        void exhaustive;
+      }
+    }
+  }
+  if (changed) layer.tracks = next;
 }
 
 /** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track
@@ -209,10 +257,10 @@ export function shiftLayerTransformKeys(layer: Layer, at: number, delta: 1 | -1)
  *  handled by the callers, which splice them directly. */
 function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void {
   for (const layer of project.layers) {
-    // Transform keys are document-frame space for BOTH layer kinds — without this, everything else
+    // Track keys are document-frame space for BOTH layer kinds — without this, everything else
     // shifted while an animated layer's move stayed put, finishing a frame early and compounding
     // with each ripple. Replace, never mutate in place.
-    shiftLayerTransformKeys(layer, at, delta);
+    shiftLayerTrackKeys(layer, at, delta);
     if (layer.kind !== "ref") continue;
     if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
     if (layer.media.type === "video") {
@@ -223,6 +271,16 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
       if (next !== startFrame)
         layer.offsetFrames = offsetAfterClipDrag(startFrame, next - startFrame, layer.speed);
     }
+  }
+  // GROUP tracks shift HERE and nowhere else, and that asymmetry with `shiftLayerTrackKeys` is
+  // deliberate: a group's transform is shared by every member, so a PER-LAYER frame tool (which
+  // resplices one layer's cells) has no single correct shift for it — the same reason those tools
+  // leave a reference RANGE alone. Only a document-wide ripple, which moves every layer at once,
+  // has one. Replace the bag and the track, never mutate either (gotcha #8).
+  for (const group of project.groups) {
+    const track = group.tracks?.transform;
+    if (!track) continue;
+    group.tracks = { ...group.tracks, transform: shiftTransformTrackFrames(track, at, delta) };
   }
   if (project.audio) {
     const next = shiftStartFrame(project.audio.offsetFrames, at, delta);

@@ -61,7 +61,7 @@
     restoreCellTrack,
     setHoldSpan,
     holdSpanEnd,
-    shiftLayerTransformKeys,
+    shiftLayerTrackKeys,
   } from "../anim/timeline";
   import {
     flingVelocity,
@@ -1529,11 +1529,11 @@
     return Math.max(0, Math.min(appState.playhead, l.cells.length - 1)) + 1;
   }
   /** Shift the layer's own transform keys for a splice that turned boundary `before` into `after`.
-   *  `shiftLayerTransformKeys` moves by ONE frame, so a multi-frame hold-span resize repeats it:
+   *  `shiftLayerTrackKeys` moves by ONE frame, so a multi-frame hold-span resize repeats it:
    *  growing inserts `after - before` frames at `before`, shrinking removes them from `after`. */
   function shiftKeysForSplice(l: DrawingLayer, before: number, after: number) {
-    for (let i = 0; i < after - before; i++) shiftLayerTransformKeys(l, before, 1);
-    for (let i = 0; i < before - after; i++) shiftLayerTransformKeys(l, after, -1);
+    for (let i = 0; i < after - before; i++) shiftLayerTrackKeys(l, before, 1);
+    for (let i = 0; i < before - after; i++) shiftLayerTrackKeys(l, after, -1);
   }
   function frameTool() {
     const l = activeLayer();
@@ -1548,7 +1548,7 @@
       addFrame(l, appState.playhead);
       // This layer's own keys move with its cells: the track belongs to the layer whose cells just
       // shifted, so unlike a document-space reference range there IS one right answer here.
-      shiftLayerTransformKeys(l, at, 1);
+      shiftLayerTrackKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1561,7 +1561,7 @@
     const at = insertIndexFor(l);
     commitStructural(() => {
       insertKeyframe(l, appState.playhead, canvasOps);
-      shiftLayerTransformKeys(l, at, 1);
+      shiftLayerTrackKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1572,7 +1572,7 @@
     const at = insertIndexFor(l);
     commitStructural(() => {
       duplicateKeyframe(l, appState.playhead, canvasOps);
-      shiftLayerTransformKeys(l, at, 1);
+      shiftLayerTrackKeys(l, at, 1);
       appState.playhead += 1;
     });
   }
@@ -1607,7 +1607,7 @@
     const removed = appState.playhead >= 0 && appState.playhead < l.cells.length;
     commitStructural(() => {
       deleteFrame(l, appState.playhead);
-      if (removed) shiftLayerTransformKeys(l, appState.playhead, -1);
+      if (removed) shiftLayerTrackKeys(l, appState.playhead, -1);
     });
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),

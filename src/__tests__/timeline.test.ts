@@ -24,7 +24,7 @@ import {
   moveKeyframe,
   setHoldSpan,
   planMergeDown,
-  shiftLayerTransformKeys,
+  shiftLayerTrackKeys,
   shiftTransformTrackFrames,
   type CanvasOps,
 } from "../anim/timeline";
@@ -565,7 +565,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       range,
     }) as unknown as never;
 
-  const proj = (layers: unknown[], audio: unknown = null) =>
+  const proj = (layers: unknown[], audio: unknown = null, groups: unknown[] = []) =>
     ({
       name: "t",
       width: 10,
@@ -574,7 +574,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       bgColor: "#fff",
       frameCount: 10,
       boil: defaultBoilConfig(),
-      groups: [],
+      groups,
       layers,
       audio,
     }) as unknown as Project;
@@ -705,11 +705,50 @@ describe("ripple insert/delete shift document-space clips", () => {
         { frame: 4, v: T(5), interp: "ease-in" },
       ]);
     });
+
+    // The branch made tracks plural; the shifter was not widened with them, so a fade stood still
+    // while the drawings under it moved — one frame per operation, silently, compounding.
+    it("shifts an OPACITY track the same way", () => {
+      const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+      l.tracks = {
+        opacity: {
+          keys: [
+            { frame: 0, v: 100 },
+            { frame: 20, v: 0 },
+          ],
+        },
+      };
+      insertFrameAllLayers(proj([l]), 10);
+      expect(l.tracks?.opacity?.keys).toEqual([
+        { frame: 0, v: 100 },
+        { frame: 21, v: 0 },
+      ]);
+    });
+
+    it("shifts BOTH properties of one layer in a single pass", () => {
+      const l = animLayer([0, 10]);
+      l.tracks = { ...l.tracks, opacity: { keys: [{ frame: 4, v: 50 }] } };
+      insertFrameAllLayers(proj([l]), 2);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 11]);
+      expect(l.tracks?.opacity?.keys.map((k) => k.frame)).toEqual([5]);
+    });
+
+    it("shifts a GROUP's transform track on a document-wide ripple", () => {
+      const g = { id: 1, name: "g", collapsed: false, visible: true };
+      const gt = { keys: [{ frame: 3, v: T(3) }], box: null };
+      const group = { ...g, tracks: { transform: gt } };
+      const bag = group.tracks;
+      insertFrameAllLayers(proj([], null, [group]), 2);
+      expect(group.tracks.transform.keys.map((k) => k.frame)).toEqual([4]);
+      // Replace, never mutate — both levels (gotcha #8).
+      expect(group.tracks).not.toBe(bag);
+      expect(gt.keys.map((k) => k.frame)).toEqual([3]);
+    });
   });
 
   // The per-layer counterpart: the frame tools resplice ONE layer's cells, so only that layer's
   // track may move. A reference RANGE is document-space and stays out of it.
-  describe("shiftLayerTransformKeys", () => {
+  describe("shiftLayerTrackKeys", () => {
     const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
     const withTrack = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
@@ -719,27 +758,45 @@ describe("ripple insert/delete shift document-space clips", () => {
 
     it("shifts keys at or after an insert", () => {
       const l = withTrack([0, 6, 12]);
-      shiftLayerTransformKeys(l, 6, 1);
+      shiftLayerTrackKeys(l, 6, 1);
       expect(track(l).keys.map((k) => k.frame)).toEqual([0, 7, 13]);
     });
 
     it("shifts keys after a delete, collapsing a collision", () => {
       const l = withTrack([0, 4, 5]);
-      shiftLayerTransformKeys(l, 4, -1);
+      shiftLayerTrackKeys(l, 4, -1);
       expect(track(l).keys.map((k) => k.frame)).toEqual([0, 4]);
     });
 
     it("does nothing for a layer with no track, so callers can call it unconditionally", () => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }]);
-      expect(() => shiftLayerTransformKeys(l, 0, 1)).not.toThrow();
+      expect(() => shiftLayerTrackKeys(l, 0, 1)).not.toThrow();
       expect(l.tracks?.transform).toBeUndefined();
+    });
+
+    // The asymmetry with the document-wide ripple, pinned: a group's transform is shared by every
+    // member, so a per-layer op has no single correct shift for it — the same reason those tools
+    // leave a reference RANGE alone.
+    it("never touches a GROUP's track — only the ripple has one right answer for that", () => {
+      const l = withTrack([0, 6]);
+      const group = {
+        id: 1,
+        name: "g",
+        collapsed: false,
+        visible: true,
+        tracks: { transform: { keys: [{ frame: 6, v: T(6) }], box: null } },
+      };
+      l.groupId = 1;
+      shiftLayerTrackKeys(l, 6, 1);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 7]);
+      expect(group.tracks.transform.keys.map((k) => k.frame)).toEqual([6]);
     });
 
     it("REPLACES the track rather than mutating it (undo snapshots share layer objects)", () => {
       const l = withTrack([0, 10]);
       const before = track(l);
       const bag = l.tracks;
-      shiftLayerTransformKeys(l, 5, 1);
+      shiftLayerTrackKeys(l, 5, 1);
       expect(track(l)).not.toBe(before);
       expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
       expect(before.keys.map((k) => k.frame)).toEqual([0, 10]);
