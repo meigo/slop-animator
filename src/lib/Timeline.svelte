@@ -1740,9 +1740,9 @@
       }}><ArrowLeftToLine size={16} /></button
     >
 
-    <span class="mx-3 h-5 w-px bg-border"></span>
+    <span class="ml-auto"></span>
 
-    <!-- onion skin (a frame-drawing aid, lives with the frame tools) -->
+    <!-- onion skin (how you SEE the sheet — sits with boil and fps, not with Add/Delete) -->
     <button
       class={toolBtn}
       class:bg-surface-active={appState.onion.enabled}
@@ -1763,7 +1763,7 @@
       >
       {#if onionSettingsOpen}
         <div
-          class="absolute left-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
+          class="absolute right-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
         >
           <label class="flex items-center gap-2" title="Onion: previous ghosts"
             ><span class="w-10 text-text-secondary">prev</span>
@@ -1813,7 +1813,7 @@
 
     <span class="mx-3 h-5 w-px bg-border"></span>
 
-    <!-- line boil: quick toggle + a settings popover for the params -->
+    <!-- line boil -->
     <button
       class={toolBtn}
       class:bg-surface-active={appState.project.boil.enabled}
@@ -1832,7 +1832,7 @@
       >
       {#if boilSettingsOpen}
         <div
-          class="absolute left-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
+          class="absolute right-0 bottom-full mb-2 z-30 w-56 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
         >
           <label class="flex items-center gap-2" title="Boil amount (px)"
             ><span class="w-10 text-text-secondary">amt</span>
@@ -1898,7 +1898,7 @@
       {/if}
     </div>
 
-    <span class="ml-auto"></span>
+    <span class="mx-3 h-5 w-px bg-border"></span>
     <Playbar variant="settings" />
   </div>
 
