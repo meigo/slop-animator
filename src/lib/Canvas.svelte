@@ -30,6 +30,7 @@
     applyEyedropper,
     beginStructuralEdit,
     commitStructuralEdit,
+    isAudioRowSelected,
   } from "../state/appState.svelte";
   import { pixelCommand } from "../anim/history";
   import {
@@ -521,7 +522,7 @@
    *  this needs no pointer, so no compose inverse — it works on the cell's own pixels. */
   function fillAllEnclosedOnCell() {
     const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return;
+    if (isAudioRowSelected() || !isLayerEditable(layer, appState.project.groups)) return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
     // `ensureDrawableKeyframe` is not just the ·→◆ marker on a hold — past the layer's end it
     // APPENDS holds and a blank keyframe — so running it before the region is known would leave the
@@ -1039,6 +1040,15 @@
       if (done) dropStrokeUntilUp = false;
       return;
     }
+    if (
+      isAudioRowSelected() &&
+      (appState.tool === "brush" ||
+        appState.tool === "eraser" ||
+        appState.tool === "fill" ||
+        appState.tool === "deform" ||
+        appState.tool === "pose")
+    )
+      return;
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
       // pick has to be adjustable — drag to slide the sample point, lift to take it. (The pointer-down
@@ -1497,7 +1507,7 @@
 
   function enterDeform() {
     const al = activeLayer();
-    if (!isLayerEditable(al, appState.project.groups)) return;
+    if (isAudioRowSelected() || !isLayerEditable(al, appState.project.groups)) return;
     // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
     // in-progress lift, and that revert now includes the cell track (a lift on a hold materialised
     // a ◆). Materialising before cancelling meant cancel could remove the very cell whose canvas we
@@ -1629,7 +1639,7 @@
 
   function enterPose() {
     const al = activeLayer();
-    if (!isLayerEditable(al, appState.project.groups)) return;
+    if (isAudioRowSelected() || !isLayerEditable(al, appState.project.groups)) return;
     // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
     // cancel() now reverts the cell track too, and could otherwise delete the cell whose canvas this
     // pose is about to lift from and bake into.
@@ -2046,7 +2056,8 @@
   const toolBlocked = $derived.by(() => {
     const l = activeLayer();
     const groups = appState.project.groups;
-    if (PIXEL_TOOLS.includes(appState.tool)) return !isLayerEditable(l, groups);
+    if (PIXEL_TOOLS.includes(appState.tool))
+      return isAudioRowSelected() || !isLayerEditable(l, groups);
     if (appState.tool === "transform") return l.kind === "draw" && !isLayerEditable(l, groups);
     return false;
   });

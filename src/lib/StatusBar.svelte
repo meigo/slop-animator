@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { state as appState, activeLayer } from "../state/appState.svelte";
+  import { state as appState, activeLayer, isAudioRowSelected } from "../state/appState.svelte";
   import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
@@ -49,7 +49,7 @@
       tool: appState.tool,
       locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's
       hiddenLayer: !isLayerVisible(l, appState.project.groups), // hidden by itself or by its group
-      notDraw: l.kind !== "draw",
+      notDraw: l.kind !== "draw" || isAudioRowSelected(),
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,

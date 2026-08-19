@@ -8,6 +8,7 @@
     selectionActions,
     transformActions,
     fillActions,
+    isAudioRowSelected,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
@@ -23,7 +24,9 @@
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
-  const canPaint = $derived(editBlock === null);
+  // Audio row is not a drawing target even though activeLayerId still names one.
+  const paintBlock = $derived(isAudioRowSelected() ? ("not-draw" as const) : editBlock);
+  const canPaint = $derived(paintBlock === null);
 
   let curveOpen = $state(false);
   let curvePopupEl: HTMLDivElement = $state()!;
@@ -169,8 +172,8 @@
     </label>
     <button
       class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
-      title={editBlock
-        ? `Fill enclosed — ${editBlockLabel(editBlock)}`
+      title={paintBlock
+        ? `Fill enclosed — ${editBlockLabel(paintBlock)}`
         : "Fill every area enclosed by the outline, behind the strokes"}
       aria-disabled={!canPaint}
       onclick={() => {
@@ -185,21 +188,22 @@
     {@const btn =
       "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
     {@const canDeselect = appState.selectionActive || appState.selectionFloating}
-    {@const canCopy = appState.selectionActive && activeLayer().kind === "draw"}
+    {@const canCopy =
+      appState.selectionActive && activeLayer().kind === "draw" && !isAudioRowSelected()}
     {@const canCut = appState.selectionActive && canPaint}
     {@const canPaste = appState.hasPixelClipboard && canPaint}
     {@const whyCopy = !appState.selectionActive
       ? " — select an area first"
-      : activeLayer().kind !== "draw"
+      : activeLayer().kind !== "draw" || isAudioRowSelected()
         ? ` — ${editBlockLabel("not-draw")}`
         : ""}
-    {@const whyWrite = editBlock
-      ? ` — ${editBlockLabel(editBlock)}`
+    {@const whyWrite = paintBlock
+      ? ` — ${editBlockLabel(paintBlock)}`
       : !appState.selectionActive
         ? " — select an area first"
         : ""}
-    {@const whyPaste = editBlock
-      ? ` — ${editBlockLabel(editBlock)}`
+    {@const whyPaste = paintBlock
+      ? ` — ${editBlockLabel(paintBlock)}`
       : !appState.hasPixelClipboard
         ? " — nothing copied yet"
         : ""}
@@ -280,8 +284,8 @@
       >
     </div>
   {:else if appState.tool === "deform" || appState.tool === "pose"}
-    {#if editBlock}
-      <span class="text-xs text-amber-500">{editBlockLabel(editBlock)}</span>
+    {#if paintBlock}
+      <span class="text-xs text-amber-500">{editBlockLabel(paintBlock)}</span>
     {:else if appState.tool === "deform"}
       <span class="text-xs text-text-muted"
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
