@@ -415,6 +415,61 @@ describe("all-layers timeline operations", () => {
     expect((r as unknown as { cells?: unknown }).cells).toBeUndefined();
   });
 
+  it("pads a shorter layer with holds up to the insert column, so every row reaches the new frame", () => {
+    // Same shape as growing the global length: empty-after-end is not a hold. A 4-cell layer
+    // next to a 7-cell layer must gain holds at 4,5,6 AND the new column, not a single append.
+    const long = layer([
+      { kind: "key", canvas: fakeOps.create() },
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "hold" },
+    ]);
+    const short = layer([
+      { kind: "key", canvas: fakeOps.create() },
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "hold" },
+    ]);
+    short.id = 2;
+    const p: Project = {
+      name: "t",
+      width: 10,
+      height: 10,
+      fps: 12,
+      bgColor: "#fff",
+      frameCount: 7,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [long, short],
+      audio: null,
+    };
+    insertFrameAllLayers(p, 7);
+    expect(long.cells.map((c) => c.kind)).toEqual([
+      "key",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+    ]);
+    expect(short.cells.map((c) => c.kind)).toEqual([
+      "key",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+      "hold",
+    ]);
+    expect(p.frameCount).toBe(8);
+  });
+
   it("deleteFrameAllLayers removes `at` from every drawing layer and refreshes length", () => {
     const a = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
     const b = layer([{ kind: "hold" }, { kind: "hold" }]);

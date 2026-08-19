@@ -33,8 +33,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Animate, add-key (current frame), easing, step, delete-key and stop live on the
   timeline bar and follow the selected row. Drawing frame tools hide while a
   property row is selected, so the two keying strips are never on screen together
-- A drawing key is created by drawing on a hold. The timeline bar adds a frame,
-  blanks the current key, or deletes a frame — not insert / duplicate / hold
+- A drawing key is created by drawing on a hold. The timeline bar adds a frame
+  (a hold on every layer, same as growing the length), blanks the current key,
+  or deletes a frame — not insert / duplicate / hold
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
@@ -85,7 +86,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (848); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (849); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

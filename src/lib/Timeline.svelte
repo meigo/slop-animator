@@ -5,8 +5,6 @@
     Trash2,
     Image,
     Film,
-    BetweenHorizonalStart,
-    BetweenHorizonalEnd,
     ArrowRightToLine,
     ArrowLeftToLine,
     Layers,
@@ -67,8 +65,6 @@
     type StructSnapshot,
   } from "../state/appState.svelte";
   import {
-    addFrame,
-    deleteFrame,
     insertFrameAllLayers,
     deleteFrameAllLayers,
     ensureDrawableKeyframe,
@@ -1528,13 +1524,6 @@
     const l = appState.project.layers.find((x) => x.id === layerId);
     if (l?.kind === "draw") restoreCellTrack(l, cells);
   }
-  /** Where `addFrame` splices its new hold: clamp the playhead to the last existing cell and insert
-   *  AFTER it, so on a layer shorter than the project that is not simply `playhead + 1`. The
-   *  transform keys have to shift at exactly that index or a layer's drawings and its travel drift
-   *  apart. Read BEFORE the splice — it moves. */
-  function insertIndexFor(l: DrawingLayer): number {
-    return Math.max(0, Math.min(appState.playhead, l.cells.length - 1)) + 1;
-  }
   /** Shift the layer's own transform keys for a splice that turned boundary `before` into `after`.
    *  `shiftLayerTrackKeys` moves by ONE frame, so a multi-frame hold-span resize repeats it:
    *  growing inserts `after - before` frames at `before`, shrinking removes them from `after`. */
@@ -1543,48 +1532,21 @@
     for (let i = 0; i < before - after; i++) shiftLayerTrackKeys(l, after, -1);
   }
   function frameTool() {
-    const l = activeLayer();
-    if (!isLayerEditable(l, appState.project.groups)) return;
-    // Splices the cell track, which a live stroke/lift holds a whole-track undo rider against — on
-    // iPad a finger can tap this while the Pencil is mid-stroke, and the rider (captured before the
-    // splice) would then revert the inserted frame when that stroke is undone. The only frame tool
-    // that lacked this; its siblings discard for the canvas-clone reason instead.
+    // Document-wide, same as growing the global length: a hold on every drawing layer so every
+    // row keeps a dash, plus refs/audio so clips stay lined up. Not gated on the active layer —
+    // skipping a locked row would break the alignment. Insert AFTER the playhead (the current
+    // drawing stays put). Short layers are padded up to that column first.
     liftGuard.discard?.();
-    const at = insertIndexFor(l);
+    const at = appState.playhead + 1;
     commitStructural(() => {
-      addFrame(l, appState.playhead);
-      // This layer's own keys move with its cells: the track belongs to the layer whose cells just
-      // shifted, so unlike a document-space reference range there IS one right answer here.
-      shiftLayerTrackKeys(l, at, 1);
+      insertFrameAllLayers(appState.project, at);
       appState.playhead += 1;
     });
   }
-  // Document-wide ripple: shifts EVERY drawing layer plus everything in document-frame space, so a
-  // reference aligned to a shot stays aligned. Deliberately not gated on the active layer being
-  // editable (the per-layer tools are) — it is a document op, and skipping locked rows would break
-  // the alignment it exists to preserve. Individual locked layers are still shifted, matching how
-  // a document resize treats them.
-  function rippleInsert() {
-    liftGuard.discard?.(); // every layer's cell array is respliced under any live lift
-    commitStructural(() => insertFrameAllLayers(appState.project, appState.playhead));
-  }
-  function rippleDelete() {
+  function deleteTool() {
     if (appState.project.frameCount <= 1) return; // never leave a project with no frames
     liftGuard.discard?.();
     commitStructural(() => deleteFrameAllLayers(appState.project, appState.playhead));
-  }
-  function deleteTool() {
-    const l = activeLayer();
-    if (!isLayerEditable(l, appState.project.groups)) return;
-    if (l.cells.length <= 1) return; // can't delete the last frame → no empty undo entry
-    liftGuard.discard?.(); // this removes the active cell's canvas — discard any live lift first
-    // Only shift when the delete really happens: deleteFrame is a no-op past this layer's last cell
-    // (the playhead can sit beyond a short layer), and shifting then would move keys for nothing.
-    const removed = appState.playhead >= 0 && appState.playhead < l.cells.length;
-    commitStructural(() => {
-      deleteFrame(l, appState.playhead);
-      if (removed) shiftLayerTrackKeys(l, appState.playhead, -1);
-    });
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
@@ -1674,28 +1636,25 @@
     <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
   </div>
   <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
-    <!-- Per-layer CELL tools. Hidden on a property row: that row has no cells, and showing them
-         next to Add/Delete key is two keying strips for two different tracks. Click the layer
-         name to get them back. Ripple / trim / onion / boil stay — they are not this row's keys. -->
+    <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
+         property row. Clear blanks THIS layer's key — hide it there. -->
+    <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
+      ><Plus size={16} /></button
+    >
     {#if appState.activeRow.kind !== "track"}
-      <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
-        ><Plus size={16} /></button
-      >
       <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
         ><Diamond size={16} /></button
       >
-      {#if !selRect}
-        <button class={toolBtn} title="Delete frame" onclick={deleteTool}
-          ><Trash2 size={16} /></button
-        >
-      {/if}
+    {/if}
+    {#if !selRect}
+      <button class={toolBtn} title="Delete frame (all layers)" onclick={deleteTool}
+        ><Trash2 size={16} /></button
+      >
     {/if}
 
     <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).
-         Sit with the other per-row tools, not with document-wide ripple. Does not switch the tool.
-         Divider only between the cell tools and this group — not at the start of the bar when the
-         cell tools are hidden. -->
-    {#if animBar.kind !== "empty" && appState.activeRow.kind !== "track"}
+         Sit with the other per-row tools. Does not switch the tool. -->
+    {#if animBar.kind !== "empty"}
       <span class="w-px h-5 bg-border mx-1"></span>
     {/if}
     {#if animBar.kind === "start"}
@@ -1754,22 +1713,6 @@
         }}><CircleStop size={16} /></button
       >
     {/if}
-
-    <span class="w-px h-5 bg-border mx-1"></span>
-
-    <!-- Ripple ops: separated from the per-row tools above because they act on the WHOLE
-         document — every layer, plus anything living in document-frame space (reference ranges,
-         video clip offsets, the audio track). The titles carry that distinction to the status bar. -->
-    <button
-      class={toolBtn}
-      title="Insert frame in all layers (ripples clips and audio)"
-      onclick={rippleInsert}><BetweenHorizonalStart size={16} /></button
-    >
-    <button
-      class={toolBtn}
-      title="Remove frame from all layers (ripples clips and audio)"
-      onclick={rippleDelete}><BetweenHorizonalEnd size={16} /></button
-    >
 
     <span class="w-px h-5 bg-border mx-1"></span>
 

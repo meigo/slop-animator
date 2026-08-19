@@ -310,10 +310,14 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
   }
 }
 
-/** Insert a hold at index `at` in EVERY drawing layer, ripple document-space clips, refresh length. */
+/** Insert a hold at index `at` in EVERY drawing layer, ripple document-space clips, refresh length.
+ *  A shorter layer is padded with holds up to `at` first — empty-after-end is not a hold, so
+ *  without the pad the new document column would stay blank on that row (the same gap as growing
+ *  the global length, which already pads every layer). */
 export function insertFrameAllLayers(project: Project, at: number): void {
   for (const layer of project.layers) {
     if (layer.kind !== "draw") continue;
+    while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const idx = Math.max(0, Math.min(at, layer.cells.length));
     layer.cells.splice(idx, 0, { kind: "hold" });
   }
