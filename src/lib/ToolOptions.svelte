@@ -14,10 +14,16 @@
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
+  import { whyNotEditable } from "../anim/document";
+  import { editBlockLabel } from "./status-hint";
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
   const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
+  // Brush *settings* stay live (session prefs). Actions and instructional copy must not
+  // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
+  const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
+  const canPaint = $derived(editBlock === null);
 
   let curveOpen = $state(false);
   let curvePopupEl: HTMLDivElement = $state()!;
@@ -162,9 +168,14 @@
       <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
     </label>
     <button
-      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text"
-      title="Fill every area enclosed by the outline, behind the strokes"
-      onclick={() => fillActions.allEnclosed?.()}>Fill enclosed</button
+      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      title={editBlock
+        ? `Fill enclosed — ${editBlockLabel(editBlock)}`
+        : "Fill every area enclosed by the outline, behind the strokes"}
+      aria-disabled={!canPaint}
+      onclick={() => {
+        if (canPaint) fillActions.allEnclosed?.();
+      }}>Fill enclosed</button
     >
     <input type="color" bind:value={appState.brush.color} title="Fill color" />
   {:else if appState.tool === "select" || appState.tool === "lasso"}
@@ -244,10 +255,14 @@
         }}>Group</button
       >
     </div>
-  {:else if appState.tool === "deform"}
-    <span class="text-xs text-text-muted"
-      >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
-    >
+  {:else if appState.tool === "deform" || appState.tool === "pose"}
+    {#if editBlock}
+      <span class="text-xs text-amber-500">{editBlockLabel(editBlock)}</span>
+    {:else if appState.tool === "deform"}
+      <span class="text-xs text-text-muted"
+        >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
+      >
+    {/if}
   {:else}
     <span class="text-xs text-text-muted"></span>
   {/if}
