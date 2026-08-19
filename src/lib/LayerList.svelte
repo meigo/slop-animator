@@ -74,16 +74,14 @@
     isIdentityTransform,
     cellTransform,
     resolvedKeyCell,
-    canRemoveLayer,
-    canDuplicateLayer,
-    whyNotMergeDown,
     layerTransformTrack,
     opacityAt,
     groupOpacityAt,
     groupHasLockedLayer,
     isLayerVisible,
   } from "../anim/document";
-  import type { Layer, LayerGroup, MergeDownBlock } from "../anim/document";
+  import type { Layer, LayerGroup } from "../anim/document";
+  import { layerPanelActions } from "../anim/layer-panel-actions";
   import { loadReferenceMedia } from "../anim/reference";
   import { clampPanelWidth } from "../anim/panel-layout";
 
@@ -437,23 +435,16 @@
     settleGroupOpacityDrag();
   }
 
-  // A button that silently no-ops explains nothing, so the three actions that can refuse dim and say
-  // why. aria-disabled (not disabled) per the app-wide rule: a disabled button dispatches no pointer
-  // events, so App.svelte's delegated status-hint listener could never read the title — and on iPad
-  // there is no hover at all. The predicates are the same ones the actions themselves guard on.
-  const canDelete = $derived(canRemoveLayer(appState.project.layers, appState.activeLayerId));
-  const canDuplicate = $derived(canDuplicateLayer(appState.project.layers, appState.activeLayerId));
-  const mergeBlock = $derived(
-    whyNotMergeDown(appState.project.layers, appState.project.groups, appState.activeLayerId),
-  );
-  const MERGE_BLOCK_REASON: Record<MergeDownBlock, string> = {
-    "no-layer-below": "no layer below to merge into",
-    "not-drawing": "only drawing layers can be merged",
-    "read-only": "a layer is locked or hidden",
-    animated: "a layer is animated — Stop animating first",
-  };
-  const mergeTitle = $derived(
-    mergeBlock ? `Merge down — ${MERGE_BLOCK_REASON[mergeBlock]}` : "Merge down",
+  // Header actions follow the selected ROW, never leftover `activeLayerId`. A button that
+  // silently no-ops explains nothing, so refusals dim and say why. aria-disabled (not disabled)
+  // per the app-wide rule: a disabled button dispatches no pointer events, so App.svelte's
+  // delegated status-hint listener could never read the title — and on iPad there is no hover.
+  const panel = $derived(
+    layerPanelActions({
+      activeRow: appState.activeRow,
+      layers: appState.project.layers,
+      groups: appState.project.groups,
+    }),
   );
 
   // Show Apply/Reset when the layer transform, the active frame's resolved key cell transform,
@@ -859,33 +850,34 @@
     >
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-      title={canDuplicate ? "Duplicate layer" : "Duplicate layer — only drawing layers duplicate"}
-      aria-disabled={!canDuplicate}
+      title={panel.duplicate.title}
+      aria-disabled={!panel.duplicate.enabled}
       onclick={() => {
-        if (canDuplicate) duplicateLayer(appState.activeLayerId);
+        if (panel.duplicate.enabled && panel.layerId != null) duplicateLayer(panel.layerId);
       }}><Copy size={16} /></button
     >
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-      title={mergeTitle}
-      aria-disabled={!!mergeBlock}
+      title={panel.merge.title}
+      aria-disabled={!panel.merge.enabled}
       onclick={() => {
-        if (!mergeBlock) mergeDown(appState.activeLayerId);
+        if (panel.merge.enabled && panel.layerId != null) mergeDown(panel.layerId);
       }}><ArrowDownToLine size={16} /></button
     >
     <button
-      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
-      title="New group"
-      onclick={groupActiveLayer}><FolderPlus size={16} /></button
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+      title={panel.group.title}
+      aria-disabled={!panel.group.enabled}
+      onclick={() => {
+        if (panel.group.enabled) groupActiveLayer();
+      }}><FolderPlus size={16} /></button
     >
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-      title={canDelete
-        ? "Delete layer"
-        : "Delete layer — a project needs at least one drawing layer"}
-      aria-disabled={!canDelete}
+      title={panel.remove.title}
+      aria-disabled={!panel.remove.enabled}
       onclick={() => {
-        if (canDelete) removeLayer(appState.activeLayerId);
+        if (panel.remove.enabled && panel.layerId != null) removeLayer(panel.layerId);
       }}><Trash2 size={16} /></button
     >
   </div>

@@ -3046,3 +3046,12 @@ Dimmed pads show the trimmed-away source so a handle can be dragged back. Refs s
 do not render in export. Spec: `docs/superpowers/specs/2026-08-19-video-clip-trim-design.md`.
 **Verified 2026-08-19:** the user confirmed trim, sync-preserving head, and Animate-gone on
 refs all work.
+
+**Layer panel header follows the selected row (2026-08-19):** Duplicate / Merge / New group /
+Delete used leftover `activeLayerId`, so selecting the audio lane or a group still mutated
+the last drawing layer. `targetLayerId(activeRow)` is the layer those actions may hit
+(layer or its own track; null for audio / group / a group-owned track).
+`layerPanelActions` is the one enablement+title (same shape as `animationBar`);
+`groupActiveLayer` reads it too so a future caller cannot regroup the leftover member.
+Dimmed buttons say "select a layer first". Add layer stays live — it creates a new
+drawing layer and selects it.
