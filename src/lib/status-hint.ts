@@ -24,6 +24,9 @@ export interface HintContext {
   locked: boolean;
   /** Active layer is hidden → content ops refuse too (you can't see what you'd be editing). */
   hiddenLayer: boolean;
+  /** Active layer is a reference (or otherwise not a drawing). Pixel tools refuse; transform,
+   *  select, and eyedropper still do something. */
+  notDraw: boolean;
   /** A committed marquee exists (not lifted). */
   selectionActive: boolean;
   /** Pixels are lifted/floating — for the deform tool this also means "in the warp grid". */
@@ -41,6 +44,15 @@ export function contextHint(c: HintContext): string {
   // A hint for a gesture that currently does nothing is worse than no hint: explain the block first.
   if (c.locked) return editBlockLabel("locked");
   if (c.hiddenLayer) return editBlockLabel("hidden");
+  if (
+    c.notDraw &&
+    (c.tool === "brush" ||
+      c.tool === "eraser" ||
+      c.tool === "fill" ||
+      c.tool === "deform" ||
+      c.tool === "pose")
+  )
+    return editBlockLabel("not-draw");
 
   switch (c.tool) {
     case "select":

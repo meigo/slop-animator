@@ -184,39 +184,55 @@
          are guarded to match, since the button stays clickable and keyboard-activatable. -->
     {@const btn =
       "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
-    {@const noSel = appState.selectionActive ? "" : " — select an area first"}
-    {@const noClip = appState.hasPixelClipboard ? "" : " — nothing copied yet"}
     {@const canDeselect = appState.selectionActive || appState.selectionFloating}
+    {@const canCopy = appState.selectionActive && activeLayer().kind === "draw"}
+    {@const canCut = appState.selectionActive && canPaint}
+    {@const canPaste = appState.hasPixelClipboard && canPaint}
+    {@const whyCopy = !appState.selectionActive
+      ? " — select an area first"
+      : activeLayer().kind !== "draw"
+        ? ` — ${editBlockLabel("not-draw")}`
+        : ""}
+    {@const whyWrite = editBlock
+      ? ` — ${editBlockLabel(editBlock)}`
+      : !appState.selectionActive
+        ? " — select an area first"
+        : ""}
+    {@const whyPaste = editBlock
+      ? ` — ${editBlockLabel(editBlock)}`
+      : !appState.hasPixelClipboard
+        ? " — nothing copied yet"
+        : ""}
     <button
       class={btn}
-      title={"Copy (Cmd/Ctrl+C)" + noSel}
-      aria-disabled={!appState.selectionActive}
+      title={"Copy (Cmd/Ctrl+C)" + whyCopy}
+      aria-disabled={!canCopy}
       onclick={() => {
-        if (appState.selectionActive) selectionActions.copy?.();
+        if (canCopy) selectionActions.copy?.();
       }}><Copy size={16} /></button
     >
     <button
       class={btn}
-      title={"Cut (Cmd/Ctrl+X)" + noSel}
-      aria-disabled={!appState.selectionActive}
+      title={"Cut (Cmd/Ctrl+X)" + whyWrite}
+      aria-disabled={!canCut}
       onclick={() => {
-        if (appState.selectionActive) selectionActions.cut?.();
+        if (canCut) selectionActions.cut?.();
       }}><Scissors size={16} /></button
     >
     <button
       class={btn}
-      title={"Paste (Cmd/Ctrl+V)" + noClip}
-      aria-disabled={!appState.hasPixelClipboard}
+      title={"Paste (Cmd/Ctrl+V)" + whyPaste}
+      aria-disabled={!canPaste}
       onclick={() => {
-        if (appState.hasPixelClipboard) selectionActions.paste?.();
+        if (canPaste) selectionActions.paste?.();
       }}><ClipboardPaste size={16} /></button
     >
     <button
       class={btn}
-      title={"Delete (Del)" + noSel}
-      aria-disabled={!appState.selectionActive}
+      title={"Delete (Del)" + whyWrite}
+      aria-disabled={!canCut}
       onclick={() => {
-        if (appState.selectionActive) selectionActions.del?.();
+        if (canCut) selectionActions.del?.();
       }}><Trash2 size={16} /></button
     >
     <button
@@ -232,15 +248,23 @@
   {:else if appState.tool === "transform"}
     {@const _activeLayer = activeLayer()}
     {@const _groupedActive = _activeLayer.groupId != null}
+    {@const _onRef = _activeLayer.kind === "ref"}
+    {@const _scopeShown =
+      _onRef && appState.transformScope === "frame" ? "layer" : appState.transformScope}
     <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
       <button
-        class="px-2 py-1"
-        class:bg-surface-active={appState.transformScope === "frame"}
-        onclick={() => (appState.transformScope = "frame")}>Frame</button
+        class="px-2 py-1 aria-disabled:opacity-40 aria-disabled:cursor-default"
+        class:bg-surface-active={_scopeShown === "frame"}
+        aria-disabled={_onRef}
+        title={_onRef ? "References have no per-frame transform" : "Transform this frame only"}
+        onclick={() => {
+          if (!_onRef) appState.transformScope = "frame";
+        }}>Frame</button
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={appState.transformScope === "layer"}
+        class:bg-surface-active={_scopeShown === "layer"}
+        title="Transform the whole layer"
         onclick={() => (appState.transformScope = "layer")}>Layer</button
       >
       <button

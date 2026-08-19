@@ -49,6 +49,7 @@
       tool: appState.tool,
       locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's
       hiddenLayer: !isLayerVisible(l, appState.project.groups), // hidden by itself or by its group
+      notDraw: l.kind !== "draw",
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
