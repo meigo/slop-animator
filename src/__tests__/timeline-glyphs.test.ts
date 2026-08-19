@@ -25,8 +25,12 @@ describe("computeTimelineGlyphs", () => {
     expect(computeTimelineGlyphs([key(true), key(), hold()], 3, isEmpty)).toEqual(["◇", "◆", "—"]);
   });
 
-  it("frames past the track length render blank", () => {
-    expect(computeTimelineGlyphs([key()], 4, isEmpty)).toEqual(["◆", "", "", ""]);
+  it("frames past an inked key keep holding (—), not blank", () => {
+    expect(computeTimelineGlyphs([key()], 4, isEmpty)).toEqual(["◆", "—", "—", "—"]);
+  });
+
+  it("frames past a blank key stay blank — the blank key is what stops the hold", () => {
+    expect(computeTimelineGlyphs([key(), key(true)], 5, isEmpty)).toEqual(["◆", "◇", "", "", ""]);
   });
 
   it("all holds (no key) → all blank", () => {

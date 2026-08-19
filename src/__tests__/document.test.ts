@@ -65,9 +65,9 @@ describe("resolveKeyframeIndex", () => {
     expect(resolveKeyframeIndex([makeKey(), makeHold(), makeKey(), makeHold()], 3)).toBe(2);
   });
 
-  it("returns null past the end of the track (blank after end)", () => {
-    expect(resolveKeyframeIndex([makeKey(), makeHold()], 5)).toBeNull();
-    expect(resolveKeyframeIndex([makeKey(), makeHold()], 2)).toBeNull();
+  it("holds the last key past the end of the track — only a later blank key stops a hold", () => {
+    expect(resolveKeyframeIndex([makeKey(), makeHold()], 5)).toBe(0);
+    expect(resolveKeyframeIndex([makeKey(), makeHold()], 2)).toBe(0);
   });
 });
 

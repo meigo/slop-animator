@@ -3012,3 +3012,6 @@ is those two actions and is gone. Delete hides while a timeline selection is up.
 `insertFrameAllLayers` pads a shorter layer up to the insert column first, or the
 new document frame stays empty-after-end on that row (not a hold).
 `insertKeyframe` / `duplicateKeyframe` / `setHold` stay in `timeline.ts`.
+A hold continues until a blank key (◇), not until the layer runs out of cells:
+`resolveKeyframeIndex` and the timeline glyphs treat past-the-track as an implicit
+hold of the last key. Clear (◇) is how a drawing ends.

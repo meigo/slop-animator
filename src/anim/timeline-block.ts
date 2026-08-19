@@ -187,8 +187,7 @@ export function anyEditablePasteTarget(project: Project, topLayerId: number): bo
 }
 
 /** The key a HOLD written at `frame` would show, given every cell before `frame` is already final.
- *  Past the track's end the pad holds writeColumn adds chain back to the last existing cell, so
- *  clamp instead of taking resolveKeyframeIndex's "blank after the end" null. */
+ *  Clamp to the last cell so we don't pass a negative index; resolve holds past the track. */
 function keyShownBefore(layer: DrawingLayer, frame: number): Cell | null {
   const at = Math.min(frame - 1, layer.cells.length - 1);
   if (at < 0) return null;

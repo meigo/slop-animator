@@ -414,9 +414,8 @@ export type MergePlan =
 /**
  * Plan merging `upperCells` down onto `belowCells` without touching pixels.
  * A keyframe is produced wherever the *composite the two layers show* changes — i.e. whenever
- * either layer's resolved keyframe changes, which also covers a layer's content STARTING (its
- * first key) and ENDING (past its last cell). The end transition yields a blank keyframe so the
- * merged track goes blank there instead of holding the previous drawing past the layer's end.
+ * either layer's resolved keyframe changes (content starting, or a blank key stopping a hold).
+ * A layer that simply runs out of cells keeps holding its last key — same rule as render.
  * Each keyframe carries the canvas each layer shows there (or null if blank) to composite.
  * Length = the longer layer; leading all-blank frames stay holds.
  */

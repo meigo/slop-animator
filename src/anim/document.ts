@@ -416,12 +416,13 @@ export interface Project {
 
 /**
  * Index of the keyframe shown at `frame` on this cell track: the nearest "key" cell at
- * or before `frame`. Returns null when `frame` is past this track's end (blank after end)
- * or no key precedes it.
+ * or before `frame`. Past the track the last key keeps holding — a blank key (◇) is what
+ * stops a hold, not running out of cells. Returns null when no key precedes the frame.
  */
 export function resolveKeyframeIndex(cells: Cell[], frame: number): number | null {
-  if (frame < 0 || frame >= cells.length) return null;
-  for (let i = frame; i >= 0; i--) {
+  if (frame < 0 || cells.length === 0) return null;
+  const from = Math.min(frame, cells.length - 1);
+  for (let i = from; i >= 0; i--) {
     if (cells[i].kind === "key") return i;
   }
   return null;

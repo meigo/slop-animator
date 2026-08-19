@@ -522,25 +522,27 @@ describe("planMergeDown", () => {
   });
 
   it("extends to the longer layer (upper longer than below)", () => {
-    const below = [k(fakeOps.create())];
+    const bcanvas = fakeOps.create();
+    const below = [k(bcanvas)];
     const u2 = fakeOps.create();
     const upper = [h(), k(u2)];
     const plan = planMergeDown(below, upper);
     expect(plan.length).toBe(2);
-    expect(plan[1]).toEqual({ kind: "key", below: null, upper: u2 }); // past below's end → below blank
+    // Below ran out of cells — it still holds, so the upper key composites on that drawing.
+    expect(plan[1]).toEqual({ kind: "key", below: bcanvas, upper: u2 });
   });
 
-  it("inserts a blank keyframe where a layer's content ends, so it does not hold past its end", () => {
+  it("a shorter layer keeps holding past its last cell; only a blank key would stop it", () => {
     const bcanvas = fakeOps.create();
     const ucanvas = fakeOps.create();
-    const below = [k(bcanvas), h()]; // content on 0–1, then ENDS (length 2)
-    const upper = [h(), h(), h(), k(ucanvas)]; // blank 0–2, key at 3 (length 4)
+    const below = [k(bcanvas), h()]; // last key is inked — holds through the rest
+    const upper = [h(), h(), h(), k(ucanvas)];
     const plan = planMergeDown(below, upper);
     expect(plan.length).toBe(4);
-    expect(plan[0]).toEqual({ kind: "key", below: bcanvas, upper: null }); // below starts
-    expect(plan[1]).toEqual({ kind: "hold" }); // below holds
-    expect(plan[2]).toEqual({ kind: "key", below: null, upper: null }); // below ENDED → blank key
-    expect(plan[3]).toEqual({ kind: "key", below: null, upper: ucanvas }); // upper starts
+    expect(plan[0]).toEqual({ kind: "key", below: bcanvas, upper: null });
+    expect(plan[1]).toEqual({ kind: "hold" });
+    expect(plan[2]).toEqual({ kind: "hold" }); // still below's key, nothing new
+    expect(plan[3]).toEqual({ kind: "key", below: bcanvas, upper: ucanvas });
   });
 
   it("keeps leading blank frames as holds (no spurious keyframe before any content)", () => {

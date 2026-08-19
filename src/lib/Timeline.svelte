@@ -180,10 +180,9 @@
   // and a stale name is the one thing that would make the precedence rule unsafe.
   const trimTarget = $derived(trimToPlayheadInfo());
 
-  // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared/inserted-blank — a real keyframe
-  // boundary with no content), — hold over an inked key, blank for anything else (no key / hold over
-  // a blank key / past the layer's end). ◇ makes a blank keyframe visible as "the next keyframe" a
-  // hold stops at, rather than an invisible gap.
+  // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared — a real keyframe boundary with
+  // no content), — hold over an inked key. A hold stops only after a ◇, including past the layer's
+  // last cell (those frames keep showing —). Blank for no key yet, or a hold after a blank key.
   //
   // Computed for the WHOLE track in one O(frames) forward pass and memoized by `appState.version` (any
   // edit bumps it; isCellEmpty shares the same key). Scrubbing changes only the playhead — version is

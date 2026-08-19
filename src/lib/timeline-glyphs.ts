@@ -7,8 +7,9 @@ import type { Cell } from "../anim/document";
  * Replaces a per-cell `resolveKeyframeIndex` backward scan (O(frames²) and, over a reactive
  * `$state` proxy, very expensive). Reads each cell once; `isEmpty` is called once per key cell.
  *
- * `frameCount` is the document length (≥ the track length); frames past the track render "".
- * `isEmpty(canvas)` reports whether a key cell's canvas has no ink.
+ * `frameCount` is the document length (≥ the track length). Past the track an inked key
+ * keeps holding (`—`); a blank key (◇) is what stops the hold. `isEmpty(canvas)` reports
+ * whether a key cell's canvas has no ink.
  */
 export function computeTimelineGlyphs(
   cells: Cell[],
@@ -24,8 +25,12 @@ export function computeTimelineGlyphs(
       hasKey = true;
       inkedKey = !isEmpty(cell.canvas);
     }
-    if (!cell || !hasKey) {
+    if (!hasKey) {
       out[f] = "";
+      continue;
+    }
+    if (!cell) {
+      out[f] = inkedKey ? "—" : "";
       continue;
     }
     const keyHere = cell.kind === "key";
