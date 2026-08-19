@@ -2247,8 +2247,8 @@
           </span>
         </div>
       {:else if row.kind === "track" || row.kind === "grouptrack"}
-        <!-- One row per ANIMATED PROPERTY — a layer's transform or opacity, or a group's transform.
-             All three share this markup through a `TrackRowSpec`, because a per-property copy is
+        <!-- One row per ANIMATED PROPERTY — layer transform/opacity or group transform/opacity.
+             All four share this markup through a `TrackRowSpec`, because a per-property copy is
              how two rows come to answer the same question differently. Like the group row it
              carries NO `data-layer-id`: `layerIdAtPoint`, the marquee and every block op resolve
              rows through that attribute, and a track holds no cells, so there is nothing on it to

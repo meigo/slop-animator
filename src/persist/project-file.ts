@@ -17,6 +17,9 @@ import {
   type TransformTrack,
   type Track,
   TRACK_PROPS,
+  GROUP_TRACK_PROPS,
+  type TrackProp,
+  type GroupTrackProp,
   type Keyframe,
   type KeyInterp,
   type LayerTracks,
@@ -484,9 +487,10 @@ function sanitiseTrackBox(box: TransformTrack["box"] | undefined): TransformTrac
 function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefined): T | undefined {
   if (!tracks) return undefined;
   const out = {} as T;
-  // TRACK_PROPS with a `never` arm, matching `copyTracks`/`shiftLayerTrackKeys`. A bag field missed
-  // here is not merely unvalidated — it is never copied into `out`, so it VANISHES on reload.
-  for (const p of TRACK_PROPS) {
+  // Union of layer + group props (deduped) with a `never` arm, matching `copyTracks`. A bag field
+  // missed here is not merely unvalidated — it is never copied into `out`, so it VANISHES on reload.
+  // Looping only TRACK_PROPS would drop a future group-only field on every open.
+  for (const p of new Set<TrackProp | GroupTrackProp>([...TRACK_PROPS, ...GROUP_TRACK_PROPS])) {
     switch (p) {
       case "transform": {
         const transform = sanitiseTrack(tracks.transform, isTransformValue);

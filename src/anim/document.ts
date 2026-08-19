@@ -163,12 +163,12 @@ export function isLayerAnimated(layer: Layer): boolean {
  *  now reaches TWO levels — a copied bag must share neither the bag object nor any track in it. */
 export function copyTracks<T extends LayerTracks | GroupTracks>(tracks: T): T {
   const out = {} as T;
-  // Driven off TRACK_PROPS with a `never` arm, like `shiftLayerTrackKeys`: hand-enumerating the
-  // properties here is the shape this codebase has already been bitten by three times (the frame
-  // shifter, merge-down, rasterize each compiled and quietly ignored the new property). A fourth
-  // bag field missed HERE would be shared with the undo snapshot rather than copied, so an edit
-  // would reach back and corrupt the before-state — gotcha #8, silently. A compile error is cheap.
-  for (const p of TRACK_PROPS) {
+  // Union of layer + group props (deduped) with a `never` arm, like `shiftLayerTrackKeys`.
+  // Hand-enumerating here is the shape this codebase has already been bitten by three times
+  // (frame shifter, merge-down, rasterize each compiled and quietly ignored the new property).
+  // A bag field missed HERE would be shared with the undo snapshot rather than copied — gotcha #8.
+  // Looping only TRACK_PROPS would drop a future group-only field on every snapshot.
+  for (const p of new Set<TrackProp | GroupTrackProp>([...TRACK_PROPS, ...GROUP_TRACK_PROPS])) {
     switch (p) {
       case "transform":
         if (tracks.transform) out.transform = copyTransformTrack(tracks.transform);

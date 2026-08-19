@@ -229,6 +229,11 @@ describe("buildFrameDrawList", () => {
   it("uses 100 for an ungrouped layer and for a group with no opacity", () => {
     const p = proj([layer(1, [makeKey()], { opacity: 50 })], 1);
     expect(buildFrameDrawList(p, 0)[0].opacity).toBe(50);
+
+    const member = layer(2, [makeKey()], { opacity: 50, groupId: 1 });
+    const p2 = proj([member], 1);
+    p2.groups = [{ id: 1, name: "G", collapsed: false, visible: true }];
+    expect(buildFrameDrawList(p2, 0)[0].opacity).toBe(50);
   });
 
   it("resolves an animated group opacity at the frame", () => {
@@ -252,6 +257,40 @@ describe("buildFrameDrawList", () => {
     ];
     expect(buildFrameDrawList(p, 0)[0].opacity).toBe(100);
     expect(buildFrameDrawList(p, 1)[0].opacity).toBe(0);
+  });
+
+  it("multiplies animated layer opacity by animated group opacity", () => {
+    const member = layer(1, [makeKey(), makeKey()], {
+      opacity: 100,
+      groupId: 1,
+      tracks: {
+        opacity: {
+          keys: [
+            { frame: 0, v: 50 },
+            { frame: 1, v: 50 },
+          ],
+        },
+      },
+    });
+    const p = proj([member], 2);
+    p.groups = [
+      {
+        id: 1,
+        name: "G",
+        collapsed: false,
+        visible: true,
+        tracks: {
+          opacity: {
+            keys: [
+              { frame: 0, v: 100 },
+              { frame: 1, v: 50 },
+            ],
+          },
+        },
+      },
+    ];
+    expect(buildFrameDrawList(p, 0)[0].opacity).toBe(50);
+    expect(buildFrameDrawList(p, 1)[0].opacity).toBe(25);
   });
 });
 
