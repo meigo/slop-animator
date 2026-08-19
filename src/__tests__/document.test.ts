@@ -30,6 +30,7 @@ import {
   nonEmptyGroups,
   refVisibleSpan,
   isRefVisibleAtFrame,
+  layerAcceptsPropertyTracks,
   IDENTITY_TRANSFORM,
   isIdentityTransform,
   transformBaseRect,
@@ -993,6 +994,26 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
     expect(refVisibleSpan(l, 12)).toEqual({ start: 0, end: 0 });
     expect(isRefVisibleAtFrame(l, 0, 12)).toBe(true);
     expect(isRefVisibleAtFrame(l, 1, 12)).toBe(false);
+  });
+
+  it("a trimmed video's span is its KEPT footage, not the whole file", () => {
+    // 2s at 12fps = 24 source frames. Skip 6, keep 12 → 12 project frames at 1×, still starting at 0
+    // because a head trim also moves offsetFrames so the kept picture stays put.
+    const l = videoRef(2, { trimInFrames: 6, trimLenFrames: 12, offsetFrames: -6 });
+    expect(refVisibleSpan(l, 12)).toEqual({ start: 6, end: 17 });
+    expect(isRefVisibleAtFrame(l, 5, 12)).toBe(false);
+    expect(isRefVisibleAtFrame(l, 6, 12)).toBe(true);
+    expect(isRefVisibleAtFrame(l, 17, 12)).toBe(true);
+    expect(isRefVisibleAtFrame(l, 18, 12)).toBe(false);
+  });
+
+  it("drawing layers can carry transform/opacity tracks; references cannot", () => {
+    expect(layerAcceptsPropertyTracks(layer(1, [makeKey()]))).toBe(true);
+    expect(layerAcceptsPropertyTracks(imageRef())).toBe(false);
+    expect(layerAcceptsPropertyTracks(videoRef(2))).toBe(false);
+    expect(
+      layerAcceptsPropertyTracks(imageRef({ media: { type: "missing", was: "video", name: "x" } })),
+    ).toBe(false);
   });
 });
 

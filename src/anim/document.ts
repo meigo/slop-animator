@@ -155,13 +155,11 @@ export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
  *  layer-only property cannot sneak onto a group by sharing the layer loop. */
 export const GROUP_TRACK_PROPS: GroupTrackProp[] = ["transform", "opacity"];
 
-/** Can this layer grow a transform/opacity track? Image refs are guides (place + trim), not
- *  keyed plates. Video refs and drawing layers can. */
+/** Can this layer grow a transform/opacity track? Only drawings — references are guides
+ *  (place + trim), not keyed plates. A leftover track on an old file is ignored by
+ *  `transformAt`/`opacityAt` because they ask this first. */
 export function layerAcceptsPropertyTracks(layer: Layer): boolean {
-  if (layer.kind === "draw") return true;
-  if (layer.kind !== "ref") return false;
-  const m = layer.media;
-  return m.type === "video" || (m.type === "missing" && m.was === "video");
+  return layer.kind === "draw";
 }
 
 /** Does this layer carry ANY track? Every "is it animated?" gate asks through here rather than
@@ -234,6 +232,11 @@ export interface ReferenceLayer {
   visible: boolean;
   opacity: number; // 0..100
   offsetFrames: number; // video time offset in frames; ignored for images
+  /** Source frames skipped at the head of a VIDEO. Absent/0 = from the file start.
+   *  Non-destructive: the media is never modified. Images ignore this. */
+  trimInFrames?: number;
+  /** Source frames kept from `trimInFrames`. Absent = to the end of the file. Video only. */
+  trimLenFrames?: number;
   speed: number; // video playback speed multiplier (1 = real-time; 2 = 2× faster, 0.5 = half); video-only
   audioEnabled: boolean; // video plays its own soundtrack when true (unmuted during playback); video-only, ignored for images
   locked?: boolean; // pins the TRANSFORM (the ref gizmo is live under any tool, so a stray canvas
@@ -907,8 +910,8 @@ export function isLayerVisible(layer: Layer, groups: LayerGroup[]): boolean {
 }
 
 /** The inclusive project-frame span a reference draws over, or null for "always visible".
- *  A video's span IS its footage (derived, so there is only ever one span to reason about);
- *  an image has no footage, so its span is whatever the artist trimmed. */
+ *  A video's span IS its (possibly trimmed) footage — derived, so there is only ever one span
+ *  to reason about. An image has no footage, so its span is whatever the artist trimmed. */
 export function refVisibleSpan(
   layer: ReferenceLayer,
   fps: number,
@@ -918,7 +921,10 @@ export function refVisibleSpan(
     // Metadata loads lazily (preload="metadata"). With no duration there is no span to derive,
     // and blinking the layer out on first paint would read as a bug, so treat it as always.
     if (!Number.isFinite(dur) || dur <= 0) return null;
-    const { startFrame, spanFrames } = videoClipLayout(layer.offsetFrames, layer.speed, dur, fps);
+    const { startFrame, spanFrames } = videoClipLayout(layer.offsetFrames, layer.speed, dur, fps, {
+      trimInFrames: layer.trimInFrames,
+      trimLenFrames: layer.trimLenFrames,
+    });
     return { start: startFrame, end: startFrame + spanFrames - 1 };
   }
   // Missing media draws nothing either way; a stored range on a video is ignored rather than an

@@ -173,6 +173,23 @@ describe("animationBar — start", () => {
     expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
   });
 
+  it("a video ref has no layer animate actions either — same guide rule", () => {
+    const ref = {
+      kind: "ref",
+      id: 1,
+      name: "V",
+      visible: true,
+      locked: false,
+      groupId: null,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      media: { type: "video", el: { duration: 2 } as HTMLVideoElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    } as Layer;
+    expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
+  });
+
   it("an image ref in a group still offers Animate group, not layer props", () => {
     const ref = {
       kind: "ref",

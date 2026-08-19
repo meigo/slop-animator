@@ -63,6 +63,8 @@ export interface ReferenceJson {
   visible: boolean;
   opacity: number;
   offsetFrames: number;
+  trimInFrames?: number;
+  trimLenFrames?: number;
   speed?: number;
   audioEnabled?: boolean;
   locked?: boolean;
@@ -253,6 +255,8 @@ export function projectToJson(project: Project): ProjectJson {
         visible: l.visible,
         opacity: l.opacity,
         offsetFrames: l.offsetFrames,
+        trimInFrames: l.trimInFrames,
+        trimLenFrames: l.trimLenFrames,
         speed: l.speed,
         audioEnabled: l.audioEnabled,
         locked: l.locked,
@@ -610,6 +614,8 @@ export async function loadProjectBlob(
       visible: rj.visible,
       opacity: rj.opacity,
       offsetFrames: rj.offsetFrames,
+      trimInFrames: rj.trimInFrames,
+      trimLenFrames: rj.trimLenFrames,
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
       locked: rj.locked ?? false,

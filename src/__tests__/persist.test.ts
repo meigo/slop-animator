@@ -511,6 +511,21 @@ describe("reference range persistence", () => {
   it("an untrimmed reference writes no range", () => {
     expect(projectToJson(projWith(rlayer(2))).references[0].range).toBeUndefined();
   });
+
+  it("round-trips a video source trim", () => {
+    const l = rlayer(2);
+    l.trimInFrames = 6;
+    l.trimLenFrames = 12;
+    const j = projectToJson(projWith(l)).references[0];
+    expect(j.trimInFrames).toBe(6);
+    expect(j.trimLenFrames).toBe(12);
+  });
+
+  it("an untrimmed video writes no trim fields", () => {
+    const j = projectToJson(projWith(rlayer(2))).references[0];
+    expect(j.trimInFrames).toBeUndefined();
+    expect(j.trimLenFrames).toBeUndefined();
+  });
 });
 
 // ── Audit wave (2026-08-16) ───────────────────────────────────────────────────────────────────

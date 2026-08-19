@@ -5,6 +5,11 @@ import {
   rangeAfterSlide,
   rangeAfterTrim,
   trimDeltaToPlayhead,
+  trimVideoHead,
+  trimVideoTail,
+  videoWantedTime,
+  videoClipOriginOffset,
+  VIDEO_MIN_TRIM_FRAMES,
 } from "../anim/clip-layout";
 
 describe("videoClipLayout", () => {
@@ -33,6 +38,35 @@ describe("videoClipLayout", () => {
 
   it("zero duration → 0 span", () => {
     expect(videoClipLayout(0, 1, 0, 12).spanFrames).toBe(0);
+  });
+
+  it("absent trim leaves the untrimmed layout unchanged", () => {
+    expect(videoClipLayout(0, 1, 2, 12, {})).toEqual(videoClipLayout(0, 1, 2, 12));
+    expect(videoClipLayout(12, 2, 2, 12, {})).toEqual(videoClipLayout(12, 2, 2, 12));
+  });
+
+  it("a kept length shortens the span; start still comes from offset", () => {
+    // 2s × 12fps = 24 source frames. Keep 12 at 1× → 12 project frames, start still 0.
+    expect(videoClipLayout(0, 1, 2, 12, { trimInFrames: 0, trimLenFrames: 12 })).toEqual({
+      startFrame: 0,
+      spanFrames: 12,
+    });
+  });
+
+  it("head-trimmed offset (moved with trimIn) places the kept start", () => {
+    // trimIn 6, offset -6 (the pair trimVideoHead writes): start = 6, span = 12.
+    expect(videoClipLayout(-6, 1, 2, 12, { trimInFrames: 6, trimLenFrames: 12 })).toEqual({
+      startFrame: 6,
+      spanFrames: 12,
+    });
+  });
+
+  it("speed 2 halves a trimmed span too", () => {
+    // 12 source frames at 2× → 6 project frames
+    expect(videoClipLayout(0, 2, 2, 12, { trimInFrames: 0, trimLenFrames: 12 })).toEqual({
+      startFrame: 0,
+      spanFrames: 6,
+    });
   });
 });
 
@@ -116,5 +150,101 @@ describe("trimDeltaToPlayhead", () => {
 
   it("end on a single-frame clip resolves to zero at its own frame", () => {
     expect(trimDeltaToPlayhead("end", 7, { startFrame: 7, lengthFrames: 1 })).toBe(0);
+  });
+});
+
+describe("trimVideoHead", () => {
+  const EXTENT = 24; // 2s at 12fps
+
+  it("at 1× moves offset opposite trimIn so the kept picture stays put", () => {
+    // Drag the head 6 project frames right: skip 6 source frames, start later, same pixels at 6.
+    const r = trimVideoHead(0, 0, 24, 6, 1, EXTENT);
+    expect(r).toEqual({ offsetFrames: -6, trimInFrames: 6, trimLenFrames: 18 });
+    expect(videoWantedTime(6, r.offsetFrames, 1, 12, r.trimInFrames)).toBe(
+      videoWantedTime(6, 0, 1, 12, 0),
+    );
+  });
+
+  it("at 2× converts a project-frame delta into speed-scaled source frames", () => {
+    // 3 project frames at 2× = 6 source frames. offset -= 6, trimIn += 6.
+    const r = trimVideoHead(0, 0, 24, 3, 2, EXTENT);
+    expect(r).toEqual({ offsetFrames: -6, trimInFrames: 6, trimLenFrames: 18 });
+    expect(videoClipLayout(r.offsetFrames, 2, 2, 12, r).startFrame).toBe(3);
+  });
+
+  it("clamps the SOURCE delta, not the two results independently", () => {
+    // Dragging past the source start must not move offset without trimIn (that would re-sync).
+    const r = trimVideoHead(-6, 6, 18, -99, 1, EXTENT);
+    expect(r).toEqual({ offsetFrames: 0, trimInFrames: 0, trimLenFrames: 24 });
+    expect(r.offsetFrames + r.trimInFrames).toBe(0);
+  });
+
+  it("cannot eat the last source frame", () => {
+    const r = trimVideoHead(0, 0, 24, 999, 1, EXTENT);
+    expect(r.trimLenFrames).toBe(VIDEO_MIN_TRIM_FRAMES);
+    expect(r.trimInFrames + r.trimLenFrames).toBe(24);
+  });
+
+  it("a zero delta is a no-op, including on an untrimmed clip", () => {
+    expect(trimVideoHead(0, undefined, undefined, 0, 1, EXTENT)).toEqual({
+      offsetFrames: 0,
+      trimInFrames: 0,
+      trimLenFrames: 24,
+    });
+  });
+});
+
+describe("trimVideoTail", () => {
+  const EXTENT = 24;
+
+  it("shortens only the kept length", () => {
+    expect(trimVideoTail(0, 24, -6, 1, EXTENT)).toEqual({
+      trimInFrames: 0,
+      trimLenFrames: 18,
+    });
+  });
+
+  it("at 2× a project-frame delta is speed-scaled", () => {
+    expect(trimVideoTail(0, 24, -3, 2, EXTENT)).toEqual({
+      trimInFrames: 0,
+      trimLenFrames: 18,
+    });
+  });
+
+  it("cannot shrink below one source frame or grow past the source tail", () => {
+    expect(trimVideoTail(0, 24, -999, 1, EXTENT).trimLenFrames).toBe(VIDEO_MIN_TRIM_FRAMES);
+    expect(trimVideoTail(6, 12, 999, 1, EXTENT)).toEqual({
+      trimInFrames: 6,
+      trimLenFrames: 18,
+    });
+  });
+});
+
+describe("videoWantedTime", () => {
+  it("untrimmed matches (offset + frame*speed) / fps", () => {
+    expect(videoWantedTime(6, 0, 2, 12)).toBe(1);
+    expect(videoWantedTime(6, 12, 2, 12)).toBe(2);
+  });
+
+  it("adds trimIn as source time so a head trim seeks into the file", () => {
+    // After trimVideoHead(0,0,24,6,1,24): offset -6, trimIn 6. At project frame 6:
+    // (6 + -6 + 6) / 12 = 0.5s — the same picture untrimmed frame 6 showed.
+    expect(videoWantedTime(6, -6, 1, 12, 6)).toBe(0.5);
+    expect(videoWantedTime(6, 0, 1, 12, 0)).toBe(0.5);
+  });
+});
+
+describe("videoClipOriginOffset", () => {
+  it("adds trimIn so source frame 0 stays at the pre-trim start", () => {
+    // trimVideoHead by 6 at 1×: offset -6, trimIn 6 → origin 0, same as before the trim.
+    expect(videoClipOriginOffset(-6, 6)).toBe(0);
+    expect(videoClipOriginOffset(0, undefined)).toBe(0);
+  });
+
+  it("full-file layout after a head trim still starts where the untrimmed clip did", () => {
+    const r = trimVideoHead(0, 0, 24, 6, 1, 24);
+    const origin = videoClipOriginOffset(r.offsetFrames, r.trimInFrames);
+    expect(videoClipLayout(origin, 1, 2, 12).startFrame).toBe(0);
+    expect(videoClipLayout(r.offsetFrames, 1, 2, 12, r).startFrame).toBe(6);
   });
 });

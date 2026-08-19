@@ -5,6 +5,7 @@ import {
   type ReferenceMedia,
   type Project,
 } from "./document";
+import { videoWantedTime } from "./clip-layout";
 
 export function loadImageMedia(file: File): Promise<ReferenceMedia> {
   return new Promise((resolve, reject) => {
@@ -111,9 +112,8 @@ export function syncReferenceVideos(
     // behind a fast scrub. The seeked event bumps the version, so the next tick re-syncs to the
     // *latest* playhead, dropping the intermediate targets.
     if (vid.seeking) continue;
-    const off = Number.isFinite(layer.offsetFrames) ? layer.offsetFrames : 0;
     const spd = Number.isFinite(layer.speed) && layer.speed > 0 ? layer.speed : 1;
-    const wanted = (off + frame * spd) / fps;
+    const wanted = videoWantedTime(frame, layer.offsetFrames, spd, fps, layer.trimInFrames);
     const dur = isFinite(vid.duration) ? vid.duration : wanted;
     const clamped = Math.max(0, Math.min(dur, wanted));
     const rate = Math.max(0.0625, Math.min(16, spd));
