@@ -53,6 +53,7 @@
     resetGroupTransform,
     setActiveLayer,
     isRowSelected,
+    isTrackSelected,
     toggleEmbedMedia,
     applyLayerOpacityAt,
     applyGroupOpacityAt,
@@ -892,10 +893,10 @@
         {#if "layer" in seg}
           {@render layerRow(seg.layer)}
         {:else}
-          {@const gOpTrack = seg.group.tracks?.opacity}
-          {@const gOpFrame = groupOpacityFrameFor(seg.group)}
-          {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
-          {@const gOpPinned = !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
+          {@const groupDetail =
+            isTrackSelected("group", seg.group.id, "opacity") ||
+            isTrackSelected("group", seg.group.id, "transform") ||
+            appState.project.layers.some((l) => l.groupId === seg.group.id && isRowSelected(l.id))}
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div class="flex items-center gap-1 p-1 hover:bg-surface-hover" role="presentation">
               <button
@@ -954,39 +955,49 @@
                 <Ungroup size={14} />
               </button>
             </div>
-            <!-- Group opacity: on the header even when collapsed. Labeled so it cannot be mistaken
-                 for the selected member's layer slider when both show at once. -->
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary">
-              <span
-                class="flex items-center gap-2"
-                title={gOpPinned
-                  ? "Group opacity — animated, and a locked member pins the group"
-                  : gOpTrack
-                    ? `Group opacity — animated; a change keys frame ${gOpFrame + 1}`
-                    : "Group opacity"}
+            <!-- Same rule as a layer's Row 2: detail controls only for the group you're on
+                 (a member selected, or this group's own track). Always-on looked like selection. -->
+            {#if groupDetail}
+              {@const gOpTrack = seg.group.tracks?.opacity}
+              {@const gOpFrame = groupOpacityFrameFor(seg.group)}
+              {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
+              {@const gOpPinned =
+                !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
+              <div
+                class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
               >
-                <span class="text-xs text-text-muted">Group</span>
-                <input
-                  use:settleGroupOpacityOnUnmount={seg.group.id}
-                  class="w-12 aria-disabled:opacity-40"
-                  class:pointer-events-none={gOpPinned}
-                  aria-disabled={gOpPinned}
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={gOpNow}
-                  oninput={(e) => onGroupOpacityInput(seg.group.id, Number(e.currentTarget.value))}
-                  onchange={groupOpacityChange}
-                  onpointerup={settleGroupOpacityDrag}
-                  onpointercancel={settleGroupOpacityDrag}
-                  onkeydown={groupOpacityKeyDown}
-                  onkeyup={groupOpacityKeyUp}
-                  onblur={groupOpacityBlur}
-                  onclick={(e) => e.stopPropagation()}
-                />
-                <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(gOpNow)}</span>
-              </span>
-            </div>
+                <span
+                  class="flex items-center gap-2"
+                  title={gOpPinned
+                    ? "Group opacity — animated, and a locked member pins the group"
+                    : gOpTrack
+                      ? `Group opacity — animated; a change keys frame ${gOpFrame + 1}`
+                      : "Group opacity"}
+                >
+                  <span class="text-xs text-text-muted">Group</span>
+                  <input
+                    use:settleGroupOpacityOnUnmount={seg.group.id}
+                    class="w-12 aria-disabled:opacity-40"
+                    class:pointer-events-none={gOpPinned}
+                    aria-disabled={gOpPinned}
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={gOpNow}
+                    oninput={(e) =>
+                      onGroupOpacityInput(seg.group.id, Number(e.currentTarget.value))}
+                    onchange={groupOpacityChange}
+                    onpointerup={settleGroupOpacityDrag}
+                    onpointercancel={settleGroupOpacityDrag}
+                    onkeydown={groupOpacityKeyDown}
+                    onkeyup={groupOpacityKeyUp}
+                    onblur={groupOpacityBlur}
+                    onclick={(e) => e.stopPropagation()}
+                  />
+                  <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(gOpNow)}</span>
+                </span>
+              </div>
+            {/if}
             <div class="group-members pl-3" class:hidden={seg.group.collapsed} use:membersSortable>
               {#each seg.layers as layer (layer.id)}
                 {@render layerRow(layer)}
