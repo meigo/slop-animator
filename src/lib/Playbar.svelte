@@ -60,7 +60,7 @@
   // Text buttons need horizontal padding instead of a fixed square ("Out" doesn't fit w-7).
   const textBtn =
     "h-7 px-2 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
-  const divider = "w-px h-5 bg-border mx-1 shrink-0";
+  const divider = "mx-3 h-5 w-px shrink-0 bg-border";
 </script>
 
 {#if variant === "transport"}

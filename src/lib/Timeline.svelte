@@ -1614,9 +1614,9 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <!-- resize grip: overlays the top padding strip, full width; drag to resize the panel -->
+  <!-- Resize tab sits ABOVE the panel (into the canvas), attached with a rounded-top plate. -->
   <div
-    class="absolute top-0 inset-x-0 h-2 z-30 flex items-center justify-center cursor-row-resize text-text-muted hover:text-text"
+    class="absolute top-0 left-1/2 z-30 -translate-x-1/2 -translate-y-full cursor-row-resize text-text-muted hover:text-text"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1627,14 +1627,15 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <!-- Canvas / bottom-chrome edge. Playbar and the timeline tools are one strip now, so this
-         grip sits on the panel edge again — drag-to-resize is the learned convention. The bar
-         brightening on hover is the feedback; no full-width tint (too loud). -->
-    <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
+    <div
+      class="flex h-2.5 items-center justify-center rounded-t-md border border-b-0 border-border bg-surface px-3"
+    >
+      <div class="h-0.5 w-6 rounded bg-current opacity-60"></div>
+    </div>
   </div>
   <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
     <Playbar />
-    <span class="mx-1 h-5 w-px bg-border"></span>
+    <span class="mx-3 h-5 w-px bg-border"></span>
     <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
          property row. Clear blanks THIS layer's key — hide it there. -->
     <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
@@ -1654,7 +1655,7 @@
     <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).
          Sit with the other per-row tools. Does not switch the tool. -->
     {#if animBar.kind !== "empty"}
-      <span class="w-px h-5 bg-border mx-1"></span>
+      <span class="mx-3 h-5 w-px bg-border"></span>
     {/if}
     {#if animBar.kind === "start"}
       {#each animBar.items as item (item.action)}
@@ -1713,7 +1714,7 @@
       >
     {/if}
 
-    <span class="w-px h-5 bg-border mx-1"></span>
+    <span class="mx-3 h-5 w-px bg-border"></span>
 
     <!-- Trim to playhead. Reaches a clip edge that is pages away horizontally, which is otherwise a
          long scroll-and-drag. Acts on the SELECTED row and nothing else — the audio lane or an
@@ -1741,7 +1742,7 @@
       }}><ArrowLeftToLine size={16} /></button
     >
 
-    <span class="w-px h-5 bg-border mx-1"></span>
+    <span class="mx-3 h-5 w-px bg-border"></span>
 
     <!-- onion skin (a frame-drawing aid, lives with the frame tools) -->
     <button
@@ -1812,7 +1813,7 @@
       {/if}
     </div>
 
-    <span class="w-px h-5 bg-border mx-1"></span>
+    <span class="mx-3 h-5 w-px bg-border"></span>
 
     <!-- line boil: quick toggle + a settings popover for the params -->
     <button
