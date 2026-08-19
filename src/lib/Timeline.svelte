@@ -114,6 +114,7 @@
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
+  import { collapsedGroupSelected } from "../anim/active-row";
   import {
     videoClipLayout,
     offsetAfterClipDrag,
@@ -2225,13 +2226,18 @@
         {@const g = row.group}
         {@const groupAnimated = isGroupAnimated(g)}
         {@const showTrackFold = groupAnimated && !g.collapsed}
+        {@const groupLit = collapsedGroupSelected(appState.activeRow, g, appState.project.layers)}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
              and is where a transform track would live. -->
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-secondary hover:bg-surface-hover"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
+            class:bg-surface={!groupLit}
+            class:bg-surface-active={groupLit}
+            class:text-text={groupLit}
+            class:text-text-secondary={!groupLit}
             style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
             title={g.collapsed ? "Expand group" : "Collapse group"}
             onpointerdown={(e) => {

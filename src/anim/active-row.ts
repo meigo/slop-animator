@@ -27,6 +27,19 @@ export function audioRowSelected(row: ActiveRow): boolean {
   return row.kind === "audio";
 }
 
+/** The group header stands in for a selection you cannot see: folded, and either a member
+ *  (or its track) is selected, or this group's own track is focused. Expanded groups never
+ *  light the header — that would be two selected rows. */
+export function collapsedGroupSelected(
+  row: ActiveRow,
+  group: { id: number; collapsed?: boolean },
+  layers: { id: number; groupId?: number | null }[],
+): boolean {
+  if (!group.collapsed) return false;
+  if (row.kind === "track" && row.owner === "group" && row.id === group.id) return true;
+  return layers.some((l) => l.groupId === group.id && layerRowSelected(row, l.id));
+}
+
 export function resolveStaleTrackFocus(
   row: ActiveRow,
   doc: { layers: Layer[]; groups: LayerGroup[] },
