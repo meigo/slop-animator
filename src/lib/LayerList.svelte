@@ -897,7 +897,7 @@
           {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
           {@const gOpPinned = !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
-            <div class="flex items-center gap-1 p-1 bg-surface-hover" role="presentation">
+            <div class="flex items-center gap-1 p-1 hover:bg-surface-hover" role="presentation">
               <button
                 class="text-text-secondary hover:text-text"
                 title="Collapse group"
@@ -956,9 +956,7 @@
             </div>
             <!-- Group opacity: on the header even when collapsed. Labeled so it cannot be mistaken
                  for the selected member's layer slider when both show at once. -->
-            <div
-              class="flex flex-wrap items-center gap-x-2 gap-y-1 bg-surface-hover px-1 pb-1 text-text-secondary"
-            >
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary">
               <span
                 class="flex items-center gap-2"
                 title={gOpPinned
