@@ -3,7 +3,6 @@
   import ToolOptions from "./lib/ToolOptions.svelte";
   import Canvas from "./lib/Canvas.svelte";
   import LayerList from "./lib/LayerList.svelte";
-  import Playbar from "./lib/Playbar.svelte";
   import Timeline from "./lib/Timeline.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
@@ -317,7 +316,6 @@
     <Canvas />
     <LayerList />
   </div>
-  <Playbar />
   <Timeline />
   <StatusBar />
 </div>

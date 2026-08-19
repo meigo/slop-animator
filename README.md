@@ -33,6 +33,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Animate, add-key (current frame), easing, step, delete-key and stop live on the
   timeline bar and follow the selected row. Drawing frame tools hide while a
   property row is selected, so the two keying strips are never on screen together
+- Playback and timeline tools share one bar above the ruler (play, In/Out, add/clear/delete
+  frame, onion, boil; fps/length in the right-hand gear)
 - A drawing key is created by drawing on a hold. The timeline bar adds a frame
   (a hold on every layer, same as growing the length), blanks the current key,
   or deletes a frame — not insert / duplicate / hold

@@ -53,17 +53,18 @@
     input.value = String(appState.project.frameCount); // normalize the displayed value (clamp / no-op)
   }
 
+  let { variant = "transport" }: { variant?: "transport" | "settings" } = $props();
+
   const btn =
-    "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
+    "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
   // Text buttons need horizontal padding instead of a fixed square ("Out" doesn't fit w-7).
   const textBtn =
-    "h-7 px-2 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
-  const divider = "w-px h-5 bg-border mx-1"; // same separator the timeline tool bar uses
+    "h-7 px-2 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
+  const divider = "w-px h-5 bg-border mx-1 shrink-0";
 </script>
 
-<div class="flex items-center gap-2 p-2 border-t border-border bg-surface text-text text-sm">
-  <!-- transport -->
-  <div class="flex items-center gap-1">
+{#if variant === "transport"}
+  <div class="flex items-center gap-1 shrink-0">
     <button class={btn} title="First frame" onclick={() => go(0)}><SkipBack size={16} /></button>
     <button class={btn} title="Previous frame" onclick={() => go(appState.playhead - 1)}
       ><ChevronLeft size={20} strokeWidth={1.6} /></button
@@ -110,59 +111,56 @@
       <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
   </div>
-
-  <div class="ml-auto flex items-center gap-1">
-    <span class={divider}></span>
-    <!-- playback settings -->
-    <div class="relative" use:clickOutside={() => (settingsOpen = false)}>
-      <button
-        class={btn}
-        class:bg-surface-active={settingsOpen}
-        title="Playback settings"
-        onclick={() => (settingsOpen = !settingsOpen)}
+{:else}
+  <!-- playback settings: fps + length, last on the merged timeline bar -->
+  <div class="relative shrink-0" use:clickOutside={() => (settingsOpen = false)}>
+    <button
+      class={btn}
+      class:bg-surface-active={settingsOpen}
+      title="Playback settings"
+      onclick={() => (settingsOpen = !settingsOpen)}
+    >
+      <Settings size={16} />
+    </button>
+    {#if settingsOpen}
+      <div
+        class="absolute right-0 bottom-full mb-2 z-30 w-48 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
       >
-        <Settings size={16} />
-      </button>
-      {#if settingsOpen}
-        <div
-          class="absolute right-0 bottom-full mb-2 z-30 w-48 p-3 rounded-lg bg-surface border border-border shadow-md flex flex-col gap-2 text-xs"
-        >
-          <div class="flex items-center gap-2">
-            <span class="text-text-secondary w-8">fps</span>
-            <input
-              class="w-12 bg-surface border border-border text-text px-1"
-              type="number"
-              min="1"
-              max="60"
-              value={appState.project.fps}
-              onchange={(e) => setFps(+e.currentTarget.value)}
-            />
-            <div class="flex gap-px ml-auto">
-              {#each FPS_PRESETS as p (p)}
-                <button
-                  class="px-1.5 py-0.5 rounded"
-                  class:bg-surface-active={appState.project.fps === p}
-                  onclick={() => setFps(p)}>{p}</button
-                >
-              {/each}
-            </div>
+        <div class="flex items-center gap-2">
+          <span class="text-text-secondary w-8">fps</span>
+          <input
+            class="w-12 bg-surface border border-border text-text px-1"
+            type="number"
+            min="1"
+            max="60"
+            value={appState.project.fps}
+            onchange={(e) => setFps(+e.currentTarget.value)}
+          />
+          <div class="flex gap-px ml-auto">
+            {#each FPS_PRESETS as p (p)}
+              <button
+                class="px-1.5 py-0.5 rounded"
+                class:bg-surface-active={appState.project.fps === p}
+                onclick={() => setFps(p)}>{p}</button
+              >
+            {/each}
           </div>
-          <!-- Length lives with fps: both are TIMING PARAMS you set rather than transport you flip.
+        </div>
+        <!-- Length lives with fps: both are TIMING PARAMS you set rather than transport you flip.
                The common adjustment is dragging the ruler's right edge in the timeline; this is the
                type-an-exact-number path. -->
-          <label class="flex items-center justify-between gap-2"
-            >Length
-            <input
-              class="w-16 bg-surface border border-border text-text px-1"
-              type="number"
-              min="1"
-              max="9999"
-              value={appState.project.frameCount}
-              onchange={commitLength}
-            />
-          </label>
-        </div>
-      {/if}
-    </div>
+        <label class="flex items-center justify-between gap-2"
+          >Length
+          <input
+            class="w-16 bg-surface border border-border text-text px-1"
+            type="number"
+            min="1"
+            max="9999"
+            value={appState.project.frameCount}
+            onchange={commitLength}
+          />
+        </label>
+      </div>
+    {/if}
   </div>
-</div>
+{/if}

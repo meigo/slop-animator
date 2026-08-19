@@ -3015,3 +3015,9 @@ new document frame stays empty-after-end on that row (not a hold).
 A hold continues until a blank key (◇), not until the layer runs out of cells:
 `resolveKeyframeIndex` and the timeline glyphs treat past-the-track as an implicit
 hold of the last key. Clear (◇) is how a drawing ends.
+
+**Playbar merged into the timeline strip (2026-08-19):** transport + In/Out sit on the
+same row as Add/Clear/Delete, animation tools, trim, onion, and boil. Playback ⚙
+(fps/length) is `ml-auto` at the right. The height grip is again the canvas /
+bottom-chrome edge. `Playbar.svelte` is two variants (`transport` | `settings`)
+mounted inside Timeline; App no longer has a separate playbar row.

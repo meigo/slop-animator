@@ -126,6 +126,7 @@
   import AudioLane from "./AudioLane.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
   import TrackKeyControls from "./TrackKeyControls.svelte";
+  import Playbar from "./Playbar.svelte";
 
   const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
   // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
@@ -1626,15 +1627,14 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <!-- This one KEEPS a visual hint, unlike the two vertical grips. Those sit on a panel EDGE,
-         where drag-to-resize is a learned convention that needs no badge; this is an INTERIOR
-         divider between the canvas and the timeline, so nothing about its position suggests it can
-         be dragged. It also takes NO background tint, unlike them: this grip spans the full width,
-         so the same bg-text/10 covers a hundred times the area and reads far louder. The bar
-         brightening on hover is the whole feedback it needs. -->
+    <!-- Canvas / bottom-chrome edge. Playbar and the timeline tools are one strip now, so this
+         grip sits on the panel edge again — drag-to-resize is the learned convention. The bar
+         brightening on hover is the feedback; no full-width tint (too loud). -->
     <div class="h-0.5 w-8 rounded bg-current opacity-60"></div>
   </div>
-  <div class="flex items-center gap-1 mb-2 flex-wrap shrink-0">
+  <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
+    <Playbar />
+    <span class="mx-1 h-5 w-px bg-border"></span>
     <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
          property row. Clear blanks THIS layer's key — hide it there. -->
     <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
@@ -1898,6 +1898,9 @@
         </div>
       {/if}
     </div>
+
+    <span class="ml-auto"></span>
+    <Playbar variant="settings" />
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
