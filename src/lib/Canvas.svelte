@@ -51,6 +51,7 @@
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
   import LayerBoundsHint from "./LayerBoundsHint.svelte";
+  import { editBlockLabel } from "./status-hint";
   import {
     transformBaseRect,
     isIdentityTransform,
@@ -63,6 +64,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerVisible,
+    whyNotEditable,
     isRefVisibleAtFrame,
     groupTransformAt,
     transformAt,
@@ -2043,6 +2045,14 @@
     WRITING_TOOLS.includes(appState.tool) &&
       !isLayerEditable(activeLayer(), appState.project.groups),
   );
+  // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
+  // don't move it, and not in ToolOptions — an inline span there shoved Size/Press sideways.
+  // Hidden while a marquee is up: the selection bar already carries the reason.
+  const editBlockCaption = $derived.by(() => {
+    if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
+    const block = whyNotEditable(activeLayer(), appState.project.groups);
+    return block ? editBlockLabel(block) : null;
+  });
 </script>
 
 <div
@@ -2074,6 +2084,11 @@
   <!-- z-10: a CSS-transformed wrapper (the display) can composite above a later sibling
        on WebKit. The overlay must sit above the paper so a lifted selection stays visible. -->
   <canvas bind:this={overlay} class="pointer-events-none absolute inset-0 z-10"></canvas>
+  {#if editBlockCaption}
+    <div class="pointer-events-none absolute top-2 left-2 z-10 text-xs text-amber-500">
+      {editBlockCaption}
+    </div>
+  {/if}
   <SelectionActions
     getSelection={() => selection}
     getViewport={() => viewport}

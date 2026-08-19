@@ -13,19 +13,7 @@
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
-  import { whyNotEditable } from "../anim/document";
-  import { editBlockLabel } from "./status-hint";
   import { MAX_GAP } from "../core/fill-holes";
-
-  const WRITING_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "transform"];
-  const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
-  // Selection bar already carries this caption when a marquee is up — don't double it.
-  const showEditBlock = $derived(
-    editBlock !== null &&
-      WRITING_TOOLS.includes(appState.tool) &&
-      !appState.selectionActive &&
-      !appState.selectionFloating,
-  );
 
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
@@ -76,9 +64,6 @@
 <div
   class="flex items-center gap-2 px-2 h-10 border-b border-border bg-surface text-text overflow-x-auto *:shrink-0"
 >
-  {#if showEditBlock && editBlock}
-    <span class="text-xs text-amber-500 shrink-0">{editBlockLabel(editBlock)}</span>
-  {/if}
   {#if appState.tool === "brush" || appState.tool === "eraser"}
     {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
     <label class="flex items-center gap-1 text-sm text-text-secondary"
