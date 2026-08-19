@@ -6,6 +6,7 @@ const base: HintContext = {
   locked: false,
   hiddenLayer: false,
   notDraw: false,
+  audioRow: false,
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
@@ -43,6 +44,23 @@ describe("reference layers", () => {
 
   it("lock still outranks a reference", () => {
     expect(contextHint(ctx({ tool: "brush", notDraw: true, locked: true }))).toMatch(/locked/);
+  });
+});
+
+describe("audio row selected", () => {
+  it("pixel tools and transform say to pick a drawing layer", () => {
+    expect(contextHint(ctx({ tool: "brush", audioRow: true }))).toBe(
+      "Switch to a drawing layer to edit",
+    );
+    expect(contextHint(ctx({ tool: "transform", audioRow: true }))).toBe(
+      "Switch to a drawing layer to edit",
+    );
+  });
+
+  it("does not inherit a leftover layer's lock", () => {
+    expect(contextHint(ctx({ tool: "transform", audioRow: true, locked: true }))).toMatch(
+      /drawing layer/,
+    );
   });
 });
 
@@ -105,6 +123,7 @@ describe("contextHint — animated layer", () => {
     locked: false,
     hiddenLayer: false,
     notDraw: false,
+    audioRow: false,
     selectionActive: false,
     selectionFloating: false,
     poseActive: false,

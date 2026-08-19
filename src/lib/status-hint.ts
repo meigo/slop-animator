@@ -27,6 +27,9 @@ export interface HintContext {
   /** Active layer is a reference (or otherwise not a drawing). Pixel tools refuse; transform,
    *  select, and eyedropper still do something. */
   notDraw: boolean;
+  /** Timeline audio row is selected. The remembered draw-target layer is not what you are
+   *  working on — transform must not promise a leftover-layer drag. */
+  audioRow: boolean;
   /** A committed marquee exists (not lifted). */
   selectionActive: boolean;
   /** Pixels are lifted/floating — for the deform tool this also means "in the warp grid". */
@@ -42,6 +45,17 @@ export interface HintContext {
 
 export function contextHint(c: HintContext): string {
   // A hint for a gesture that currently does nothing is worse than no hint: explain the block first.
+  if (c.audioRow) {
+    if (
+      c.tool === "brush" ||
+      c.tool === "eraser" ||
+      c.tool === "fill" ||
+      c.tool === "deform" ||
+      c.tool === "pose" ||
+      c.tool === "transform"
+    )
+      return editBlockLabel("not-draw");
+  }
   if (c.locked) return editBlockLabel("locked");
   if (c.hiddenLayer) return editBlockLabel("hidden");
   if (

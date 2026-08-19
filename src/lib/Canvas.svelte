@@ -1040,15 +1040,12 @@
       if (done) dropStrokeUntilUp = false;
       return;
     }
-    if (
-      isAudioRowSelected() &&
-      (appState.tool === "brush" ||
-        appState.tool === "eraser" ||
-        appState.tool === "fill" ||
-        appState.tool === "deform" ||
-        appState.tool === "pose")
-    )
-      return;
+    if (isAudioRowSelected()) {
+      // Pixel tools already dim; leftover-layer transform is refused (gizmo is hidden).
+      // Eyedropper and select/lasso still run — they are not a write to the remembered layer.
+      const t = appState.tool;
+      if (t !== "eyedropper" && t !== "select" && t !== "lasso") return;
+    }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
       // pick has to be adjustable — drag to slide the sample point, lift to take it. (The pointer-down
@@ -1061,7 +1058,7 @@
       return;
     }
     const al = activeLayer();
-    if (al.kind === "ref") {
+    if (al.kind === "ref" && !isAudioRowSelected()) {
       // A pinned reference: its gizmo is live under EVERY tool, so this is the one guard that stops
       // a stray canvas drag from nudging an aligned reference. Derived, so a locked/hidden GROUP
       // pins its refs too (the gizmo already used the derived form — these must agree).
@@ -2058,7 +2055,8 @@
     const groups = appState.project.groups;
     if (PIXEL_TOOLS.includes(appState.tool))
       return isAudioRowSelected() || !isLayerEditable(l, groups);
-    if (appState.tool === "transform") return l.kind === "draw" && !isLayerEditable(l, groups);
+    if (appState.tool === "transform")
+      return isAudioRowSelected() || (l.kind === "draw" && !isLayerEditable(l, groups));
     return false;
   });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom

@@ -76,6 +76,7 @@
       onTouchDown(e);
       return;
     }
+    selectAudioLane();
     dragStart = {
       x: e.clientX,
       sx: getScrollLeft(),
@@ -158,6 +159,7 @@
       return;
     }
     if (trimDrag) return; // a handle already owns this gesture
+    selectAudioLane();
     trimDrag = {
       edge,
       x: e.clientX,

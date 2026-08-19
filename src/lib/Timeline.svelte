@@ -406,6 +406,7 @@
   let relinkTargetId: number | null = null;
   function startRelink(id: number) {
     if (panEndedWithMovement) return; // a finger scroll that ended on the button, not a tap
+    setActiveLayer(id);
     relinkTargetId = id;
     relinkInput.value = "";
     relinkInput.click();
@@ -429,6 +430,7 @@
       touchPanDown(e);
       return;
     }
+    setActiveLayer(layer.id);
     if (layer.media.type !== "video") return;
     const dur = layer.media.el.duration;
     if (!Number.isFinite(dur) || dur <= 0) return;
@@ -492,6 +494,7 @@
       touchPanDown(e);
       return;
     }
+    setActiveLayer(layer.id);
     if (layer.media.type !== "video") return;
     const dur = layer.media.el.duration;
     if (!Number.isFinite(dur) || dur <= 0) return;
@@ -605,6 +608,7 @@
       touchPanDown(e); // finger navigates, pen edits (the app-wide rule)
       return;
     }
+    setActiveLayer(layer.id);
     const span = refVisibleSpan(layer, appState.project.fps);
     // An untrimmed block has no body to slide; an edge drag materialises the implicit whole-project
     // range and trims from there.

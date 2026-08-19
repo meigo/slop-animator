@@ -12,6 +12,7 @@
     resetGroupTransform,
     transformDragGuard,
     transformActions,
+    isAudioRowSelected,
   } from "../state/appState.svelte";
   import {
     transformBaseRect,
@@ -100,6 +101,9 @@
   } | null = null;
 
   function activeTransformLayer(): Layer | null {
+    // The selected ROW is what you are working on. Audio keeps activeLayerId as a memory
+    // only — transforming that unhighlighted layer would be the leftover-target bug.
+    if (isAudioRowSelected()) return null;
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
     // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too. Also gated

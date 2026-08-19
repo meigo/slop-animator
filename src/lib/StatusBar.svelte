@@ -43,13 +43,16 @@
       appState.tool,
       appState.transformScope,
     );
+    const audioOn = isAudioRowSelected();
     const keys =
-      (!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null;
+      !audioOn &&
+      ((!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null);
     return contextHint({
       tool: appState.tool,
-      locked: isLayerLocked(l, appState.project.groups), // own lock OR its group's
-      hiddenLayer: !isLayerVisible(l, appState.project.groups), // hidden by itself or by its group
-      notDraw: l.kind !== "draw" || isAudioRowSelected(),
+      locked: audioOn ? false : isLayerLocked(l, appState.project.groups),
+      hiddenLayer: audioOn ? false : !isLayerVisible(l, appState.project.groups),
+      notDraw: l.kind !== "draw",
+      audioRow: audioOn,
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
@@ -57,6 +60,9 @@
       animatedFrame: keys ? (appState.transformDragFrame ?? appState.playhead) : null,
     });
   });
+  const targetName = $derived(
+    isAudioRowSelected() ? (appState.project.audio?.name ?? "audio") : activeLayer().name,
+  );
 </script>
 
 <div
@@ -74,6 +80,6 @@
   <span class="shrink-0 tabular-nums"
     >f <span class="inline-block text-right" style="min-width: {frameDigits}ch"
       >{appState.playhead + 1}</span
-    >/{appState.project.frameCount} · {toolLabel} · {activeLayer().name}</span
+    >/{appState.project.frameCount} · {toolLabel} · {targetName}</span
   >
 </div>
