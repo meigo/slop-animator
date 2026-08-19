@@ -1489,9 +1489,12 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   // track whenever the active layer was not an image ref, which meant the buttons acted on audio
   // while a drawing layer was selected — the same control doing different things for reasons that
   // were invisible on screen.
-  if (state.activeRow.kind === "audio")
+  const row = state.activeRow;
+  if (row.kind === "audio")
     return state.project.audio ? { target: "audio", label: "the audio clip" } : null;
-  const l = state.project.layers.find((x) => x.id === state.activeLayerId);
+  // The selected ROW, not the draw target. A ref's transform track is keying, not a clip trim.
+  if (row.kind !== "layer") return null;
+  const l = state.project.layers.find((x) => x.id === row.id);
   if (l?.kind === "ref" && l.media.type === "image")
     return { target: "ref", label: `${l.name}'s range` };
   return null;

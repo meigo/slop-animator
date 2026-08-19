@@ -181,6 +181,11 @@
   // dependency needs listing here. Staying reactive matters: the button's title NAMES its target,
   // and a stale name is the one thing that would make the precedence rule unsafe.
   const trimTarget = $derived(trimToPlayheadInfo());
+  const drawingRowSelected = $derived.by(() => {
+    const row = appState.activeRow;
+    if (row.kind !== "layer") return false;
+    return appState.project.layers.find((l) => l.id === row.id)?.kind === "draw";
+  });
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared — a real keyframe boundary with
   // no content), — hold over an inked key. A hold stops only after a ◇, including past the layer's
@@ -1639,7 +1644,7 @@
     <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
       ><Plus size={16} /></button
     >
-    {#if appState.activeRow.kind !== "track"}
+    {#if drawingRowSelected}
       <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
         ><Diamond size={16} /></button
       >
@@ -1712,33 +1717,19 @@
       >
     {/if}
 
-    <span class="mx-3 h-5 w-px bg-border"></span>
-
-    <!-- Trim to playhead. Reaches a clip edge that is pages away horizontally, which is otherwise a
-         long scroll-and-drag. Acts on the SELECTED row and nothing else — the audio lane or an
-         active image reference — so one control never means two things. Dimmed with the reason
-         otherwise. aria-disabled, not disabled: a disabled button dispatches no pointer events, so
-         the status bar could never read that reason. -->
-    <button
-      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
-      title={trimTarget
-        ? `Trim ${trimTarget.label} start to the playhead`
-        : "Trim start to the playhead — select the audio lane or an image reference layer first"}
-      aria-disabled={!trimTarget}
-      onclick={() => {
-        if (trimTarget) trimToPlayhead("start");
-      }}><ArrowRightToLine size={16} /></button
-    >
-    <button
-      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
-      title={trimTarget
-        ? `Trim ${trimTarget.label} end to the playhead`
-        : "Trim end to the playhead — select the audio lane or an image reference layer first"}
-      aria-disabled={!trimTarget}
-      onclick={() => {
-        if (trimTarget) trimToPlayhead("end");
-      }}><ArrowLeftToLine size={16} /></button
-    >
+    {#if trimTarget}
+      <span class="mx-3 h-5 w-px bg-border"></span>
+      <button
+        class={toolBtn}
+        title="Trim {trimTarget.label} start to the playhead"
+        onclick={() => trimToPlayhead("start")}><ArrowRightToLine size={16} /></button
+      >
+      <button
+        class={toolBtn}
+        title="Trim {trimTarget.label} end to the playhead"
+        onclick={() => trimToPlayhead("end")}><ArrowLeftToLine size={16} /></button
+      >
+    {/if}
 
     <span class="ml-auto"></span>
 
