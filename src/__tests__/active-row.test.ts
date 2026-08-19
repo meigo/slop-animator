@@ -122,6 +122,16 @@ describe("groupHeaderSelected", () => {
     ).toBe(true);
   });
 
+  it("is true when this group's own track is focused, even if expanded — the panel has no track row to light", () => {
+    expect(
+      groupHeaderSelected(
+        { kind: "track", owner: "group", id: 10, prop: "opacity" },
+        open,
+        members,
+      ),
+    ).toBe(true);
+  });
+
   it("is false for a sibling layer, audio, or another group", () => {
     expect(groupHeaderSelected({ kind: "layer", id: 3 }, folded, members)).toBe(false);
     expect(groupHeaderSelected({ kind: "audio" }, folded, members)).toBe(false);

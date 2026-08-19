@@ -3065,3 +3065,11 @@ entry, ToolOptions paint-block, and the status-bar name/hint all ask it.
 `targetLayerId` is now `workingTarget` then "is it a layer?". Transform stays live
 on a group (header or track); audio still blocks it. The gizmo still hides only for
 audio — a group track is a reason to show it.
+
+**Group tracks light the group header (2026-08-20):** `groupHeaderSelected` returned
+early on an expanded group before seeing a group-owned track, so selecting Transform
+or Opacity on a group left the layer panel with no highlight (it has no track rows).
+The working target being this group (header or its track) now lights the header, same
+as a layer track lighting its owner. Folded + a member selected still proxies; expanded
+
+- a member still lights only the member.
