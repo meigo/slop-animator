@@ -193,6 +193,9 @@
     if (row.kind !== "layer") return false;
     return appState.project.layers.find((l) => l.id === row.id)?.kind === "draw";
   });
+  // Onion "step by keyframes" reads the ACTIVE layer's keys — empty on a ref, so the ghosts
+  // vanish with no explanation. Dim the control rather than silently doing nothing.
+  const onionKeysOk = $derived(activeLayer().kind === "draw");
 
   // Cell glyphs: ◆ keyframe with ink, ◇ a blank keyframe (cleared — a real keyframe boundary with
   // no content), — hold over an inked key. A hold stops only after a ◇, including past the layer's
@@ -1907,9 +1910,24 @@
           </label>
           <label
             class="flex items-center gap-2"
-            title="Onion: step to neighbouring keyframes instead of frames — holds don't use up a ghost"
+            class:opacity-40={!onionKeysOk}
+            title={onionKeysOk
+              ? "Onion: step to neighbouring keyframes instead of frames — holds don't use up a ghost"
+              : "Step by keyframes — the active layer has no keyframes (pick a drawing layer)"}
           >
-            <input type="checkbox" bind:checked={appState.onion.byKeyframes} onchange={repaint} />
+            <input
+              type="checkbox"
+              checked={appState.onion.byKeyframes}
+              aria-disabled={!onionKeysOk}
+              onchange={(e) => {
+                if (!onionKeysOk) {
+                  e.currentTarget.checked = !!appState.onion.byKeyframes;
+                  return;
+                }
+                appState.onion.byKeyframes = e.currentTarget.checked;
+                repaint();
+              }}
+            />
             step by keyframes
           </label>
           <span class="text-text-muted"

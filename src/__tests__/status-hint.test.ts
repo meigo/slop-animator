@@ -5,6 +5,7 @@ const base: HintContext = {
   tool: "brush",
   locked: false,
   hiddenLayer: false,
+  notDraw: false,
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
@@ -27,6 +28,21 @@ describe("hidden layers", () => {
     expect(contextHint(ctx({ tool: "select", locked: true, hiddenLayer: true }))).toMatch(
       /Layer locked/,
     );
+  });
+});
+
+describe("reference layers", () => {
+  it("pixel tools say to switch; transform/select/eyedropper stay usable", () => {
+    for (const tool of ["brush", "eraser", "fill", "deform", "pose"]) {
+      expect(contextHint(ctx({ tool, notDraw: true }))).toBe("Switch to a drawing layer to edit");
+    }
+    expect(contextHint(ctx({ tool: "transform", notDraw: true }))).toMatch(/Drag to move/);
+    expect(contextHint(ctx({ tool: "select", notDraw: true }))).toMatch(/Drag to select/);
+    expect(contextHint(ctx({ tool: "eyedropper", notDraw: true }))).toBe("");
+  });
+
+  it("lock still outranks a reference", () => {
+    expect(contextHint(ctx({ tool: "brush", notDraw: true, locked: true }))).toMatch(/locked/);
   });
 });
 
@@ -88,6 +104,7 @@ describe("contextHint — animated layer", () => {
     tool: "transform",
     locked: false,
     hiddenLayer: false,
+    notDraw: false,
     selectionActive: false,
     selectionFloating: false,
     poseActive: false,
