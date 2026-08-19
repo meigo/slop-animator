@@ -1628,9 +1628,9 @@
     onpointercancel={gripUp}
   >
     <div
-      class="flex h-2.5 items-center justify-center rounded-t-md border border-b-0 border-border bg-surface px-3"
+      class="flex h-3 items-center justify-center rounded-t-xl border border-b-0 border-border bg-surface px-8"
     >
-      <div class="h-0.5 w-6 rounded bg-current opacity-60"></div>
+      <div class="h-0.5 w-10 rounded-full bg-current opacity-60"></div>
     </div>
   </div>
   <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
