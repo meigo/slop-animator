@@ -2085,7 +2085,9 @@
        on WebKit. The overlay must sit above the paper so a lifted selection stays visible. -->
   <canvas bind:this={overlay} class="pointer-events-none absolute inset-0 z-10"></canvas>
   {#if editBlockCaption}
-    <div class="pointer-events-none absolute top-2 left-2 z-10 text-xs text-amber-500">
+    <div
+      class="pointer-events-none absolute top-2 left-2 z-10 rounded px-1.5 py-0.5 text-xs text-amber-500 bg-surface/70"
+    >
       {editBlockCaption}
     </div>
   {/if}
