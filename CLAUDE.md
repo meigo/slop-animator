@@ -3025,3 +3025,8 @@ mounted inside Timeline; App no longer has a separate playbar row.
 **Group tracks fold like layer tracks (2026-08-19):** `LayerGroup.tracksCollapsed` hides
 Transform/Opacity without hiding members. Group `collapsed` still means header-only.
 Animate unfolds both. Same Spline+chevron after the name as a layer.
+
+**Image refs are not keyed (2026-08-19):** an image reference is a guide (place + trim).
+It does not grow a transform or opacity track. Video refs and drawing layers still can.
+`layerAcceptsPropertyTracks` is the gate — UI, Animate actions, timeline rows, and
+`transformAt`/`opacityAt` all ask it, so a leftover track on an old file is ignored.

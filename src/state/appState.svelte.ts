@@ -30,6 +30,7 @@ import {
   normalizedTracks,
   layerTransformTrack,
   isLayerAnimated,
+  layerAcceptsPropertyTracks,
   groupTransform,
   groupTransformAt,
   groupOpacityAt,
@@ -825,7 +826,13 @@ function unfoldTracks(layer: Layer): void {
 /** Start animating a layer: its current static transform becomes the key at frame 0. */
 export function animateLayer(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l || layerTransformTrack(l) || isLayerLocked(l, state.project.groups)) return;
+  if (
+    !l ||
+    !layerAcceptsPropertyTracks(l) ||
+    layerTransformTrack(l) ||
+    isLayerLocked(l, state.project.groups)
+  )
+    return;
   if (!isLayerVisible(l, state.project.groups)) return;
   commitStructural(() => {
     // `box: null`, not a frozen `transformBaseRect` — the freeze-the-pivot rule is for
@@ -863,7 +870,13 @@ export function removeLayerAnimation(layerId: number): void {
  *  shape as `animateLayer` above, one property over. */
 export function animateLayerOpacity(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l || l.tracks?.opacity || isLayerLocked(l, state.project.groups)) return;
+  if (
+    !l ||
+    !layerAcceptsPropertyTracks(l) ||
+    l.tracks?.opacity ||
+    isLayerLocked(l, state.project.groups)
+  )
+    return;
   if (!isLayerVisible(l, state.project.groups)) return;
   commitStructural(() => {
     // Replaces the BAG as well as the track (gotcha #8), keeping any sibling track this layer

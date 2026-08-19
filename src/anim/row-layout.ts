@@ -2,6 +2,7 @@ import {
   groupOf,
   GROUP_TRACK_PROPS,
   TRACK_PROPS,
+  layerAcceptsPropertyTracks,
   type GroupTrackProp,
   type Layer,
   type LayerGroup,
@@ -69,6 +70,7 @@ export type TimelineRow =
  *  down to the chevron the timeline draws for it: one collapse idiom, not two. */
 function pushLayer(rows: TimelineRow[], layer: Layer): void {
   rows.push({ kind: "layer", layer });
+  if (!layerAcceptsPropertyTracks(layer)) return;
   if (layer.tracksCollapsed) return;
   for (const prop of TRACK_PROPS)
     if (layer.tracks?.[prop]) rows.push({ kind: "track", layer, prop });

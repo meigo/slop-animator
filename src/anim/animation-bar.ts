@@ -5,6 +5,7 @@ import {
   isLayerLocked,
   isLayerVisible,
   isRefVisibleAtFrame,
+  layerAcceptsPropertyTracks,
   type Layer,
   type LayerGroup,
   type TrackRef,
@@ -101,7 +102,7 @@ export function animationBar(args: {
 
   const items: AnimationStartItem[] = [];
 
-  if (!layer.tracks?.transform) {
+  if (layerAcceptsPropertyTracks(layer) && !layer.tracks?.transform) {
     items.push({
       action: "animate-transform",
       layerId: layer.id,
@@ -109,7 +110,7 @@ export function animationBar(args: {
     });
   }
 
-  if (!layer.tracks?.opacity) {
+  if (layerAcceptsPropertyTracks(layer) && !layer.tracks?.opacity) {
     items.push({
       action: "animate-opacity",
       layerId: layer.id,

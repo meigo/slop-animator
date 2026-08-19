@@ -155,11 +155,21 @@ export const TRACK_PROPS: TrackProp[] = ["transform", "opacity"];
  *  layer-only property cannot sneak onto a group by sharing the layer loop. */
 export const GROUP_TRACK_PROPS: GroupTrackProp[] = ["transform", "opacity"];
 
+/** Can this layer grow a transform/opacity track? Image refs are guides (place + trim), not
+ *  keyed plates. Video refs and drawing layers can. */
+export function layerAcceptsPropertyTracks(layer: Layer): boolean {
+  if (layer.kind === "draw") return true;
+  if (layer.kind !== "ref") return false;
+  const m = layer.media;
+  return m.type === "video" || (m.type === "missing" && m.was === "video");
+}
+
 /** Does this layer carry ANY track? Every "is it animated?" gate asks through here rather than
  *  enumerating properties by hand: a hand-written `tracks?.transform || tracks?.opacity` still
  *  COMPILES when a third property arrives, it just quietly answers the old question — which is how
  *  merge-down and rasterize each came to destroy an opacity track that the transform check missed. */
 export function isLayerAnimated(layer: Layer): boolean {
+  if (!layerAcceptsPropertyTracks(layer)) return false;
   return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
 }
 
@@ -507,6 +517,7 @@ export function resolveTrack<V>(
 /** The layer's opacity (0..100) at `frame`: its static field when there is no track, otherwise the
  *  track resolved. The frame-aware twin of `layer.opacity`, mirroring `transformAt` below. */
 export function opacityAt(layer: Layer, frame: number): number {
+  if (!layerAcceptsPropertyTracks(layer)) return layer.opacity;
   const track = layer.tracks?.opacity;
   if (!track || track.keys.length === 0) return layer.opacity;
   return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
@@ -515,6 +526,7 @@ export function opacityAt(layer: Layer, frame: number): number {
 /** The layer's transform at `frame`: its static value when there is no track, otherwise the track
  *  resolved (and held outside its key range — a track never extrapolates). */
 export function transformAt(layer: Layer, frame: number): RefTransform {
+  if (!layerAcceptsPropertyTracks(layer)) return layer.transform;
   const track = layerTransformTrack(layer);
   if (!track || track.keys.length === 0) return layer.transform;
   return resolveTrack(track, frame, lerpTransform);

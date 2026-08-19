@@ -156,7 +156,7 @@ describe("animationBar — start", () => {
     );
   });
 
-  it("dims Animate transform when an image ref is outside its range, and still offers opacity", () => {
+  it("an image ref has no layer animate actions — it is a guide, not a keyed plate", () => {
     const ref = {
       kind: "ref",
       id: 1,
@@ -168,16 +168,29 @@ describe("animationBar — start", () => {
       offsetFrames: 0,
       speed: 1,
       media: { type: "image", el: {} as HTMLImageElement },
-      range: { start: 0, end: 5 },
       transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
     } as Layer;
-    const bar = args({ layers: [ref], playhead: 10 });
+    expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
+  });
+
+  it("an image ref in a group still offers Animate group, not layer props", () => {
+    const ref = {
+      kind: "ref",
+      id: 1,
+      name: "R",
+      visible: true,
+      locked: false,
+      groupId: 10,
+      opacity: 60,
+      offsetFrames: 0,
+      speed: 1,
+      media: { type: "image", el: {} as HTMLImageElement },
+      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    } as Layer;
+    const bar = args({ layers: [ref], groups: [group(10)] });
     expect(bar.kind).toBe("start");
     if (bar.kind !== "start") return;
-    expect(bar.items.find((i) => i.action === "animate-transform")?.blocked).toBe(
-      "the reference is outside its visible range",
-    );
-    expect(bar.items.find((i) => i.action === "animate-opacity")?.blocked).toBeNull();
+    expect(bar.items.map((i) => i.action)).toEqual(["animate-group", "animate-group-opacity"]);
   });
 });
 
