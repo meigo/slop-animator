@@ -1490,11 +1490,11 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   return null;
 }
 
-/** Is this layer's row the selected one? Also true when a track OWNED by that layer (or a group
- *  track whose draw target is a member) is focused — see `activeRow` for why no view may combine
- *  this with `activeLayerId`. */
+/** Is this layer's row the selected one? Also true when a track OWNED by that layer is focused.
+ *  A group track does not light a member — see `activeRow` for why no view may combine this with
+ *  `activeLayerId`. */
 export function isRowSelected(layerId: number): boolean {
-  return layerRowSelected(state.activeRow, layerId, state.activeLayerId, state.project.layers);
+  return layerRowSelected(state.activeRow, layerId);
 }
 
 /** Is this exact property track the focused row? */

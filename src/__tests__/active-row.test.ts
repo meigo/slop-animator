@@ -18,31 +18,28 @@ const layer = (id: number, groupId: number | null = null): Layer =>
     groupId,
   }) as unknown as Layer;
 
-const layers: Layer[] = [layer(1, 10), layer(2, 10), layer(3)];
-
 describe("layerRowSelected", () => {
   it("matches a layer row", () => {
     const row: ActiveRow = { kind: "layer", id: 1 };
-    expect(layerRowSelected(row, 1, 1, layers)).toBe(true);
-    expect(layerRowSelected(row, 2, 1, layers)).toBe(false);
+    expect(layerRowSelected(row, 1)).toBe(true);
+    expect(layerRowSelected(row, 2)).toBe(false);
   });
 
   it("a layer-owned track keeps its OWNER layer selected", () => {
     const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "opacity" };
-    expect(layerRowSelected(row, 1, 1, layers)).toBe(true);
-    expect(layerRowSelected(row, 2, 1, layers)).toBe(false);
+    expect(layerRowSelected(row, 1)).toBe(true);
+    expect(layerRowSelected(row, 2)).toBe(false);
   });
 
-  it("a group-owned track selects only the draw target that is a member of that group", () => {
+  it("a group-owned track selects no layer row — only the track itself is lit", () => {
     const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "transform" };
-    expect(layerRowSelected(row, 1, 1, layers)).toBe(true);
-    expect(layerRowSelected(row, 2, 1, layers)).toBe(false);
-    // A layer that is the draw target but not in this group must not light.
-    expect(layerRowSelected(row, 3, 3, layers)).toBe(false);
+    expect(layerRowSelected(row, 1)).toBe(false);
+    expect(layerRowSelected(row, 2)).toBe(false);
+    expect(layerRowSelected(row, 3)).toBe(false);
   });
 
   it("audio selects no layer", () => {
-    expect(layerRowSelected({ kind: "audio" }, 1, 1, layers)).toBe(false);
+    expect(layerRowSelected({ kind: "audio" }, 1)).toBe(false);
   });
 });
 

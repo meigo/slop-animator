@@ -2179,9 +2179,8 @@
           <div class="flex w-max items-center" style="min-width: {stripMinW}px">
             <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
                  Transform scope at it — without switching the TOOL, so glancing at a track mid-
-                 brush does not yank you out of drawing. The owner layer row stays lit via
-                 `isRowSelected` when its track is focused; the track row itself uses
-                 `isTrackSelected`. -->
+                 brush does not yank you out of drawing. A layer-owned track also lights its
+                 owner via `isRowSelected`; a group track does not light a member. -->
             <button
               class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
               class:pl-4={spec.indent}

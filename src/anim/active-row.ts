@@ -6,19 +6,11 @@ export type ActiveRow =
   | { kind: "track"; owner: "layer"; id: number; prop: "transform" | "opacity" }
   | { kind: "track"; owner: "group"; id: number; prop: "transform" | "opacity" };
 
-export function layerRowSelected(
-  row: ActiveRow,
-  layerId: number,
-  activeLayerId: number,
-  layers: Layer[],
-): boolean {
+export function layerRowSelected(row: ActiveRow, layerId: number): boolean {
   if (row.kind === "layer") return row.id === layerId;
+  // A layer and its own track are one thing. A group track is not: lighting a member
+  // (the gizmo's draw target) made that child look selected while you were on Transform.
   if (row.kind === "track" && row.owner === "layer") return row.id === layerId;
-  if (row.kind === "track" && row.owner === "group") {
-    return (
-      layerId === activeLayerId && layers.some((l) => l.id === layerId && l.groupId === row.id)
-    );
-  }
   return false;
 }
 
