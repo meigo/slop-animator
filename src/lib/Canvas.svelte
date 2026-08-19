@@ -2038,20 +2038,28 @@
   // Tools that WRITE to the active layer. The eyedropper samples the composite and select/lasso can
   // still copy from a locked layer, so they are deliberately excluded — showing "not allowed" for a
   // gesture that does work would be a worse lie than showing nothing.
-  const WRITING_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "transform"];
-  // A locked/hidden active layer refuses every writing tool; say so in the cursor instead of just
-  // silently swallowing the stroke.
-  const toolBlocked = $derived(
-    WRITING_TOOLS.includes(appState.tool) &&
-      !isLayerEditable(activeLayer(), appState.project.groups),
-  );
+  // Eyedropper samples the composite and select/lasso can still copy, so they are not in this list.
+  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose"];
+  // Pixel tools need a drawable layer. Transform on a DRAWING layer does too; on a REF the gizmo
+  // is live (lock/span gate it separately) — treating that as blocked showed a not-allowed cursor
+  // and a "switch to a drawing layer" caption over something you can actually move.
+  const toolBlocked = $derived.by(() => {
+    const l = activeLayer();
+    const groups = appState.project.groups;
+    if (PIXEL_TOOLS.includes(appState.tool)) return !isLayerEditable(l, groups);
+    if (appState.tool === "transform") return l.kind === "draw" && !isLayerEditable(l, groups);
+    return false;
+  });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
   // don't move it, and not in ToolOptions — an inline span there shoved Size/Press sideways.
   // Hidden while a marquee is up: the selection bar already carries the reason.
+  // `not-draw` is omitted: a reference is a different kind of layer, not a broken drawing layer,
+  // and the toolbar already dims the pixel tools.
   const editBlockCaption = $derived.by(() => {
     if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
     const block = whyNotEditable(activeLayer(), appState.project.groups);
-    return block ? editBlockLabel(block) : null;
+    if (!block || block === "not-draw") return null;
+    return editBlockLabel(block);
   });
 </script>
 

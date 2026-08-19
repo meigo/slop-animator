@@ -13,7 +13,9 @@
     pasteImageReference,
     persistReferenceMedia,
     selectEyedropper,
+    activeLayer,
   } from "../state/appState.svelte";
+  import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
   import {
@@ -41,6 +43,13 @@
 
   const menuItem =
     "w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-hover flex items-center gap-2";
+  const toolBtn =
+    "size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
+  // Pixel tools do nothing on a reference. Dim them, still clickable — so `b` can arm the brush
+  // before switching back to a drawing layer. Don't hide: that shoves the remaining icons.
+  const pixelToolsDimmed = $derived(activeLayer().kind === "ref");
+  const pixelTitle = (name: string) =>
+    pixelToolsDimmed ? `${name} — ${editBlockLabel("not-draw")}` : name;
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";
@@ -161,57 +170,62 @@
   class="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-surface text-text [&>button]:shrink-0"
 >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "brush"}
-    title="Brush"
+    title={pixelTitle("Brush")}
+    aria-disabled={pixelToolsDimmed}
     onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "eraser"}
-    title="Eraser"
+    title={pixelTitle("Eraser")}
+    aria-disabled={pixelToolsDimmed}
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "fill"}
-    title="Fill"
+    title={pixelTitle("Fill")}
+    aria-disabled={pixelToolsDimmed}
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class={toolBtn}
     class:bg-surface-active={appState.tool === "eyedropper"}
     title="Eyedropper (sample color)"
     onclick={selectEyedropper}><Pipette size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class={toolBtn}
     class:bg-surface-active={appState.tool === "select"}
     title="Select"
     onclick={() => (appState.tool = "select")}><BoxSelect size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class={toolBtn}
     class:bg-surface-active={appState.tool === "lasso"}
     title="Lasso"
     onclick={() => (appState.tool = "lasso")}><Lasso size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class={toolBtn}
     class:bg-surface-active={appState.tool === "transform"}
     title="Transform layer (move/scale/rotate)"
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "deform"}
-    title="Deform (warp the drawing)"
+    title={pixelTitle("Deform (warp the drawing)")}
+    aria-disabled={pixelToolsDimmed}
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
   >
   <button
-    class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
+    class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "pose"}
-    title="Pose (mesh deform)"
+    title={pixelTitle("Pose (mesh deform)")}
+    aria-disabled={pixelToolsDimmed}
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
