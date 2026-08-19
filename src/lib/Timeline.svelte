@@ -1614,9 +1614,10 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <!-- Resize tab sits ABOVE the panel (into the canvas), attached with a rounded-top plate. -->
+  <!-- Bare top edge, same as the layer-panel grip: 8px hit, 4px hover tint on the divider.
+       The bar is a panel EDGE now (canvas / chrome), so it needs no badge. -->
   <div
-    class="absolute top-0 left-1/2 z-30 -translate-x-1/2 -translate-y-full cursor-row-resize text-text-muted hover:text-text"
+    class="group absolute inset-x-0 top-0 z-30 h-2 cursor-row-resize"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1627,11 +1628,7 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <div
-      class="flex h-3 items-center justify-center rounded-t-xl border border-b-0 border-border bg-surface px-8"
-    >
-      <div class="h-0.5 w-10 rounded-full bg-current opacity-60"></div>
-    </div>
+    <div class="absolute inset-x-0 top-0 h-1 group-hover:bg-text/10"></div>
   </div>
   <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
     <Playbar />
