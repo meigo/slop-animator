@@ -13,7 +13,7 @@
     pasteImageReference,
     persistReferenceMedia,
     selectEyedropper,
-    activeLayer,
+    pixelToolsDimmed,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -47,9 +47,9 @@
     "size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
   // Pixel tools do nothing on a reference. Dim them, still clickable — so `b` can arm the brush
   // before switching back to a drawing layer. Don't hide: that shoves the remaining icons.
-  const pixelToolsDimmed = $derived(activeLayer().kind === "ref");
+  const toolsDimmed = $derived(pixelToolsDimmed());
   const pixelTitle = (name: string) =>
-    pixelToolsDimmed ? `${name} — ${editBlockLabel("not-draw")}` : name;
+    toolsDimmed ? `${name} — ${editBlockLabel("not-draw")}` : name;
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";
@@ -173,21 +173,21 @@
     class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "brush"}
     title={pixelTitle("Brush")}
-    aria-disabled={pixelToolsDimmed}
+    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
   >
   <button
     class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "eraser"}
     title={pixelTitle("Eraser")}
-    aria-disabled={pixelToolsDimmed}
+    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
   >
   <button
     class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "fill"}
     title={pixelTitle("Fill")}
-    aria-disabled={pixelToolsDimmed}
+    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
   >
   <button
@@ -218,14 +218,14 @@
     class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "deform"}
     title={pixelTitle("Deform (warp the drawing)")}
-    aria-disabled={pixelToolsDimmed}
+    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
   >
   <button
     class="{toolBtn} aria-disabled:opacity-40"
     class:bg-surface-active={appState.tool === "pose"}
     title={pixelTitle("Pose (mesh deform)")}
-    aria-disabled={pixelToolsDimmed}
+    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches

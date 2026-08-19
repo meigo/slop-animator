@@ -1565,6 +1565,13 @@ export function isAudioRowSelected(): boolean {
   return audioRowSelected(state.activeRow);
 }
 
+/** Brush/eraser/fill/deform/pose have no target worth highlighting: a reference is selected,
+ *  or the audio lane is. `activeLayerId` still names a draw target during audio selection —
+ *  dimming without also refusing the stroke would paint into a layer that is not selected. */
+export function pixelToolsDimmed(): boolean {
+  return isAudioRowSelected() || activeLayer().kind === "ref";
+}
+
 /** Make the audio lane the active timeline row (it holds no layer id, so it needs its own flag). */
 export function selectAudioLane(): void {
   if (state.project.audio) state.activeRow = { kind: "audio" };
