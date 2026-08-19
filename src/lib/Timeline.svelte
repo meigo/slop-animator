@@ -2,9 +2,6 @@
   import {
     Plus,
     Diamond,
-    DiamondPlus,
-    Copy,
-    Minus,
     Trash2,
     Image,
     Film,
@@ -71,9 +68,6 @@
   } from "../state/appState.svelte";
   import {
     addFrame,
-    insertKeyframe,
-    duplicateKeyframe,
-    setHold,
     deleteFrame,
     insertFrameAllLayers,
     deleteFrameAllLayers,
@@ -1534,10 +1528,10 @@
     const l = appState.project.layers.find((x) => x.id === layerId);
     if (l?.kind === "draw") restoreCellTrack(l, cells);
   }
-  /** Where `addFrame`/`insertKeyframe`/`duplicateKeyframe` splice their new cell in: they clamp the
-   *  playhead to the last existing cell and insert AFTER it, so on a layer shorter than the project
-   *  that is not simply `playhead + 1`. The transform keys have to shift at exactly that index or a
-   *  layer's drawings and its travel drift apart. Read BEFORE the splice — it moves. */
+  /** Where `addFrame` splices its new hold: clamp the playhead to the last existing cell and insert
+   *  AFTER it, so on a layer shorter than the project that is not simply `playhead + 1`. The
+   *  transform keys have to shift at exactly that index or a layer's drawings and its travel drift
+   *  apart. Read BEFORE the splice — it moves. */
   function insertIndexFor(l: DrawingLayer): number {
     return Math.max(0, Math.min(appState.playhead, l.cells.length - 1)) + 1;
   }
@@ -1564,37 +1558,6 @@
       shiftLayerTrackKeys(l, at, 1);
       appState.playhead += 1;
     });
-  }
-  function keyTool() {
-    const l = activeLayer();
-    if (!isLayerEditable(l, appState.project.groups)) return;
-    // The new key CLONES the resolved key canvas, which a live lift has a hole punched in; the
-    // playhead move then banks the lift back into the ORIGINAL, so the clone keeps the hole forever.
-    liftGuard.discard?.();
-    const at = insertIndexFor(l);
-    commitStructural(() => {
-      insertKeyframe(l, appState.playhead, canvasOps);
-      shiftLayerTrackKeys(l, at, 1);
-      appState.playhead += 1;
-    });
-  }
-  function dupTool() {
-    const l = activeLayer();
-    if (!isLayerEditable(l, appState.project.groups)) return;
-    liftGuard.discard?.(); // clones the resolved key — same lift-hole hazard as keyTool above
-    const at = insertIndexFor(l);
-    commitStructural(() => {
-      duplicateKeyframe(l, appState.playhead, canvasOps);
-      shiftLayerTrackKeys(l, at, 1);
-      appState.playhead += 1;
-    });
-  }
-  function holdTool() {
-    const l = activeLayer();
-    if (!isLayerEditable(l, appState.project.groups)) return;
-    if (l.cells[appState.playhead]?.kind !== "key") return; // already a hold → nothing to do
-    liftGuard.discard?.(); // this replaces the active cell's canvas — discard any live lift first
-    commitStructural(() => setHold(l, appState.playhead));
   }
   // Document-wide ripple: shifts EVERY drawing layer plus everything in document-frame space, so a
   // reference aligned to a shot stays aligned. Deliberately not gated on the active layer being
@@ -1718,20 +1681,14 @@
       <button class={toolBtn} title="Add frame (after current)" onclick={frameTool}
         ><Plus size={16} /></button
       >
-      <button class={toolBtn} title="Insert keyframe (after current)" onclick={keyTool}
-        ><DiamondPlus size={16} /></button
-      >
-      <button class={toolBtn} title="Duplicate keyframe (after current)" onclick={dupTool}
-        ><Copy size={16} class="rotate-45" /></button
-      >
-      <button class={toolBtn} title="Hold (repeat previous frame)" onclick={holdTool}
-        ><Minus size={16} /></button
-      >
       <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
         ><Diamond size={16} /></button
       >
-      <button class={toolBtn} title="Delete frame" onclick={deleteTool}><Trash2 size={16} /></button
-      >
+      {#if !selRect}
+        <button class={toolBtn} title="Delete frame" onclick={deleteTool}
+          ><Trash2 size={16} /></button
+        >
+      {/if}
     {/if}
 
     <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).

@@ -33,6 +33,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Animate, add-key (current frame), easing, step, delete-key and stop live on the
   timeline bar and follow the selected row. Drawing frame tools hide while a
   property row is selected, so the two keying strips are never on screen together
+- A drawing key is created by drawing on a hold. The timeline bar adds a frame,
+  blanks the current key, or deletes a frame — not insert / duplicate / hold
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere

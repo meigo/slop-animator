@@ -3002,3 +3002,12 @@ group. Animate from a selected member (timeline bar); Stop bakes the playhead va
 restores static `group.opacity` only when opacity-track presence flips — same rule as layer opacity,
 so undoing Stop puts the baked number back and an unrelated undo does not revert a static nudge.
 Spec/plan: `docs/superpowers/{specs,plans}/2026-08-19-group-opacity-track*.md`.
+
+**Slim drawing-frame bar (2026-08-19):** Insert keyframe, Duplicate, and Hold left the
+timeline tool strip. Keys appear by drawing on a hold (in place, clone of the held
+drawing). The bar keeps Add frame (insert a hold after the playhead, this layer),
+Clear (blank this ◆), and Delete frame (remove this cell). Delete hides while a
+timeline selection is up so it does not sit next to the selection popup's trash.
+`insertKeyframe` / `duplicateKeyframe` / `setHold` stay in `timeline.ts` (tests +
+model); only the standing buttons are gone. Try-and-decide — block-first "plant a
+◆ without drawing" and in-place un-key can come back as a key-only action if missed.
