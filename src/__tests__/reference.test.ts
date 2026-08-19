@@ -27,7 +27,13 @@ function fakeVid(
   };
 }
 type FakeVid = ReturnType<typeof fakeVid>;
-function vidLayer(el: FakeVid, offsetFrames = 0, speed = 1, audioEnabled = false) {
+function vidLayer(
+  el: FakeVid,
+  offsetFrames = 0,
+  speed = 1,
+  audioEnabled = false,
+  trim: { trimInFrames?: number; trimLenFrames?: number } = {},
+) {
   return {
     kind: "ref",
     id: 1,
@@ -35,6 +41,7 @@ function vidLayer(el: FakeVid, offsetFrames = 0, speed = 1, audioEnabled = false
     offsetFrames,
     speed,
     audioEnabled,
+    ...trim,
   } as unknown as never;
 }
 function proj(layers: unknown[]): Project {
@@ -167,6 +174,32 @@ describe("syncReferenceVideos", () => {
     const v = fakeVid();
     syncReferenceVideos(proj([vidLayer(v, 12, 2)]), 6, 12, false); // (12 + 12)/12 = 2.0s
     expect(v.currentTime).toBe(2);
+  });
+
+  it("a head trim seeks into the file without moving the kept picture", () => {
+    // trimVideoHead at 1× by 6 frames: offset -6, trimIn 6. Project frame 6 must show
+    // source 0.5s — the same picture untrimmed frame 6 showed.
+    const v = fakeVid({ duration: 2 });
+    syncReferenceVideos(
+      proj([vidLayer(v, -6, 1, false, { trimInFrames: 6, trimLenFrames: 18 })]),
+      6,
+      12,
+      false,
+    );
+    expect(v.currentTime).toBe(0.5);
+  });
+
+  it("a tail trim blanks frames past the kept span", () => {
+    // Keep 12 source frames at 1× starting at 0 → visible 0..11. Frame 12 is out of span.
+    const v = fakeVid({ duration: 2, currentTime: 0 });
+    syncReferenceVideos(
+      proj([vidLayer(v, 0, 1, false, { trimInFrames: 0, trimLenFrames: 12 })]),
+      12,
+      12,
+      false,
+    );
+    expect(v.currentTime).toBe(0); // skip leaves it untouched
+    expect(v.pauseCount).toBe(0); // already paused
   });
 
   it("sets playbackRate from speed (clamped to [0.0625, 16])", () => {

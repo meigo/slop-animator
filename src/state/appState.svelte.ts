@@ -122,7 +122,13 @@ import {
 } from "../anim/panel-layout";
 import { trimHead, trimTail } from "../audio/trim";
 import { audioFrameSpan } from "../audio/peaks";
-import { trimDeltaToPlayhead, rangeAfterTrim } from "../anim/clip-layout";
+import {
+  trimDeltaToPlayhead,
+  rangeAfterTrim,
+  trimVideoHead,
+  trimVideoTail,
+  videoClipLayout,
+} from "../anim/clip-layout";
 
 export type Tool =
   | "brush"
@@ -445,6 +451,12 @@ function restoreStructure(s: StructSnapshot) {
         // commitStructural, so leaving it out let a ripple-insert + undo drift an aligned video one
         // frame later every time, silently. Third member of the range/audioOffsetFrames trio.
         live.offsetFrames = snap.offsetFrames;
+        // Same in-place-write / scalar-restore story as offset: a video trim writes these on the
+        // live layer, so the snapshot's copies (from cloneLayers' spread) are the before-state.
+        // Assign even when undefined — `null`/`undefined` means "was untrimmed", and restoring
+        // that has to CLEAR a later trim, not leave it.
+        live.trimInFrames = snap.trimInFrames;
+        live.trimLenFrames = snap.trimLenFrames;
       }
       return live;
     }
@@ -1494,10 +1506,24 @@ export function setAudioTrim(
   bump();
 }
 
+/** Write a completed video-ref trim. Offset moves with a head trim (see `trimVideoHead`); both
+ *  land in one undo entry. The timeline brackets the drag itself, so this does not commit. */
+export function setVideoTrim(
+  layer: ReferenceLayer,
+  trimInFrames: number,
+  trimLenFrames: number,
+  offsetFrames: number,
+): void {
+  layer.trimInFrames = trimInFrames;
+  layer.trimLenFrames = trimLenFrames;
+  layer.offsetFrames = offsetFrames;
+  bump();
+}
+
 /** Which clip a "trim to playhead" command would act on, and its label for the button's title.
  *  Exported so the UI can name the target BEFORE the press — the precedence is only acceptable
  *  because it is visible, not guessed at. */
-export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string } | null {
+export function trimToPlayheadInfo(): { target: "ref" | "video" | "audio"; label: string } | null {
   // Follows the SELECTED row, with no precedence or fallback. An earlier version picked the audio
   // track whenever the active layer was not an image ref, which meant the buttons acted on audio
   // while a drawing layer was selected — the same control doing different things for reasons that
@@ -1510,6 +1536,11 @@ export function trimToPlayheadInfo(): { target: "ref" | "audio"; label: string }
   const l = state.project.layers.find((x) => x.id === row.id);
   if (l?.kind === "ref" && l.media.type === "image")
     return { target: "ref", label: `${l.name}'s range` };
+  if (l?.kind === "ref" && l.media.type === "video") {
+    const dur = l.media.el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return null;
+    return { target: "video", label: `${l.name}'s clip` };
+  }
   return null;
 }
 
@@ -1586,6 +1617,39 @@ export function trimToPlayhead(edge: "start" | "end"): void {
   // is against the current EFFECTIVE values, mirroring AudioLane.trimMoveAt for the same reason:
   // the raw optional fields are undefined on an untouched clip while `next` holds resolved numbers,
   // so a raw compare always reads as changed.
+  if (info.target === "video") {
+    const l = state.project.layers.find((x) => x.id === state.activeLayerId);
+    if (!l || l.kind !== "ref" || l.media.type !== "video") return;
+    const dur = l.media.el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    const extent = Math.max(0, Math.ceil(dur * fps));
+    const tin = Math.max(0, l.trimInFrames ?? 0);
+    const len = l.trimLenFrames ?? extent - tin;
+    const lay = videoClipLayout(l.offsetFrames, l.speed, dur, fps, {
+      trimInFrames: tin,
+      trimLenFrames: len,
+    });
+    const delta = trimDeltaToPlayhead(edge, state.playhead, {
+      startFrame: lay.startFrame,
+      lengthFrames: lay.spanFrames,
+    });
+    const next =
+      edge === "start"
+        ? trimVideoHead(l.offsetFrames, tin, len, delta, l.speed, extent)
+        : { offsetFrames: l.offsetFrames, ...trimVideoTail(tin, len, delta, l.speed, extent) };
+    if (
+      next.offsetFrames === l.offsetFrames &&
+      next.trimInFrames === tin &&
+      next.trimLenFrames === len
+    )
+      return;
+    commitStructural(() => {
+      l.trimInFrames = next.trimInFrames;
+      l.trimLenFrames = next.trimLenFrames;
+      l.offsetFrames = next.offsetFrames;
+    });
+    return;
+  }
   if (info.target === "ref") {
     const l = state.project.layers.find((x) => x.id === state.activeLayerId);
     if (!l || l.kind !== "ref") return;

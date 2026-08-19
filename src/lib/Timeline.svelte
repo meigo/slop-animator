@@ -54,6 +54,7 @@
     revertStructural,
     trimToPlayhead,
     trimToPlayheadInfo,
+    setVideoTrim,
     animateLayer,
     animateLayerOpacity,
     animateGroup,
@@ -118,6 +119,9 @@
     offsetAfterClipDrag,
     rangeAfterSlide,
     rangeAfterTrim,
+    trimVideoHead,
+    trimVideoTail,
+    videoClipOriginOffset,
   } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
   import { columnAtX, lengthAtX, planCellPointer } from "./timeline-grid";
@@ -167,7 +171,10 @@
       if (l.media.type !== "video") continue;
       const dur = l.media.el.duration;
       if (!Number.isFinite(dur) || dur <= 0) continue;
-      const { startFrame, spanFrames } = videoClipLayout(l.offsetFrames, l.speed, dur, fps);
+      // Full file, including dimmed trimmed-away pads — so a head-trimmed clip's left pad
+      // still keeps the strip wide enough for the sticky gutters.
+      const origin = videoClipOriginOffset(l.offsetFrames, l.trimInFrames);
+      const { startFrame, spanFrames } = videoClipLayout(origin, l.speed, dur, fps);
       ends.push(startFrame + spanFrames);
     }
     // Hold the strip at its grab-time width for the whole length drag — see `lenDragFloor`.
@@ -411,6 +418,9 @@
   let clipDrag: { layer: ReferenceLayer; x: number; sx: number; startFrame: number } | null = null;
 
   function clipDown(e: PointerEvent, layer: ReferenceLayer) {
+    // A trim handle is a sibling, not a child, so this usually does not see handle presses.
+    // Guard anyway: if a handle already owns the gesture, do not also start a body slide.
+    if (videoTrimDrag) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e);
@@ -456,6 +466,115 @@
     stopEdgeScroll("clip");
     clipDrag = null;
     touchPanUp();
+  }
+
+  // Video source trim. Separate from the body slide (which only moves offsetFrames and is not
+  // undoable — same as the number field it replaced). A trim changes WHAT renders, so it
+  // brackets one undo entry per completed gesture, matching the image-range and audio-trim
+  // handles. Head trim uses trimVideoHead (offset and trimIn move opposite, scaled by speed).
+  let videoTrimDrag: {
+    layer: ReferenceLayer;
+    edge: "head" | "tail";
+    x: number;
+    sx: number;
+    from: { offsetFrames: number; trimInFrames: number; trimLenFrames: number };
+    extent: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
+
+  function videoTrimDown(e: PointerEvent, layer: ReferenceLayer, edge: "head" | "tail") {
+    if (videoTrimDrag) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e);
+      return;
+    }
+    if (layer.media.type !== "video") return;
+    const dur = layer.media.el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    const extent = Math.max(0, Math.ceil(dur * appState.project.fps));
+    const tin = Math.max(0, layer.trimInFrames ?? 0);
+    const len = layer.trimLenFrames ?? extent - tin;
+    videoTrimDrag = {
+      layer,
+      edge,
+      x: e.clientX,
+      sx: scrollX(),
+      from: { offsetFrames: layer.offsetFrames, trimInFrames: tin, trimLenFrames: len },
+      extent,
+      undo: beginStructuralEdit(),
+    };
+    edgePointerX = e.clientX;
+    startEdgeScroll(videoTrimMoveAt, "video-trim");
+    transformDragGuard.settle = settleVideoTrimDrag;
+  }
+
+  function videoTrimMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    edgePointerX = e.clientX;
+    videoTrimMoveAt(e.clientX);
+  }
+  function videoTrimMoveAt(clientX: number) {
+    if (!videoTrimDrag) return;
+    const delta = Math.round((clientX - videoTrimDrag.x + (scrollX() - videoTrimDrag.sx)) / CELL_W);
+    const f = videoTrimDrag.from;
+    const next =
+      videoTrimDrag.edge === "head"
+        ? trimVideoHead(
+            f.offsetFrames,
+            f.trimInFrames,
+            f.trimLenFrames,
+            delta,
+            videoTrimDrag.layer.speed,
+            videoTrimDrag.extent,
+          )
+        : {
+            offsetFrames: f.offsetFrames,
+            ...trimVideoTail(
+              f.trimInFrames,
+              f.trimLenFrames,
+              delta,
+              videoTrimDrag.layer.speed,
+              videoTrimDrag.extent,
+            ),
+          };
+    const layer = videoTrimDrag.layer;
+    const curIn = Math.max(0, layer.trimInFrames ?? 0);
+    const curLen = layer.trimLenFrames ?? videoTrimDrag.extent - curIn;
+    if (
+      layer.offsetFrames === next.offsetFrames &&
+      curIn === next.trimInFrames &&
+      curLen === next.trimLenFrames
+    )
+      return;
+    setVideoTrim(layer, next.trimInFrames, next.trimLenFrames, next.offsetFrames);
+  }
+
+  function settleVideoTrimDrag() {
+    stopEdgeScroll("video-trim");
+    if (!videoTrimDrag) return;
+    const layer = videoTrimDrag.layer;
+    const f = videoTrimDrag.from;
+    const curIn = Math.max(0, layer.trimInFrames ?? 0);
+    const curLen = layer.trimLenFrames ?? videoTrimDrag.extent - curIn;
+    const changed =
+      layer.offsetFrames !== f.offsetFrames ||
+      curIn !== f.trimInFrames ||
+      curLen !== f.trimLenFrames;
+    if (changed) commitStructuralEdit(videoTrimDrag.undo);
+    videoTrimDrag = null;
+    if (transformDragGuard.settle === settleVideoTrimDrag) transformDragGuard.settle = null;
+  }
+
+  function videoTrimUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanUp();
+      return;
+    }
+    settleVideoTrimDrag();
   }
 
   // Image-ref range drag. Mirrors clipDown/Move/Up, but writes layer.range and IS undoable:
@@ -2504,35 +2623,86 @@
           {:else}
             {@const ref = layer}
             {#if ref.media.type === "video" && Number.isFinite(ref.media.el.duration) && ref.media.el.duration > 0}
-              {@const lay = videoClipLayout(
-                ref.offsetFrames,
+              {@const dur = ref.media.el.duration}
+              {@const trim = {
+                trimInFrames: ref.trimInFrames,
+                trimLenFrames: ref.trimLenFrames,
+              }}
+              {@const full = videoClipLayout(
+                videoClipOriginOffset(ref.offsetFrames, ref.trimInFrames),
                 ref.speed,
-                ref.media.el.duration,
+                dur,
                 appState.project.fps,
               )}
+              {@const kept = videoClipLayout(
+                ref.offsetFrames,
+                ref.speed,
+                dur,
+                appState.project.fps,
+                trim,
+              )}
+              {@const keptLeft = (kept.startFrame - full.startFrame) * CELL_W}
               {@const tailFrames = Math.max(
                 0,
-                lay.startFrame + lay.spanFrames - appState.project.frameCount,
+                full.startFrame + full.spanFrames - appState.project.frameCount,
               )}
               <div
-                class="relative box-border h-6 cursor-grab overflow-hidden border border-media-clip-border bg-media-clip text-xs/6 text-text"
+                class="relative box-border h-6 overflow-hidden text-xs/6 text-text"
                 class:opacity-70={!isRowSelected(ref.id)}
-                style="touch-action: none; margin-left: {lay.startFrame *
-                  CELL_W}px; width: {lay.spanFrames * CELL_W}px"
+                style="touch-action: none; margin-left: {full.startFrame *
+                  CELL_W}px; width: {full.spanFrames * CELL_W}px"
                 role="presentation"
-                title="Drag to offset the video"
-                onpointerdown={(e) => clipDown(e, ref)}
-                onpointermove={clipMove}
-                onpointerup={clipUp}
-                onpointercancel={clipUp}
               >
-                <span class="relative z-10 block truncate px-1">{ref.name}</span>
+                <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
+                <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
+                <div
+                  class="absolute inset-y-0 box-border cursor-grab overflow-hidden border border-media-clip-border bg-media-clip"
+                  style="left: {keptLeft}px; width: {kept.spanFrames *
+                    CELL_W}px; touch-action: none"
+                  role="presentation"
+                  title="Drag to offset the video"
+                  onpointerdown={(e) => clipDown(e, ref)}
+                  onpointermove={clipMove}
+                  onpointerup={clipUp}
+                  onpointercancel={clipUp}
+                >
+                  <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
+                  <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
+                </div>
                 {#if tailFrames > 0}
                   <div
                     class="pointer-events-none absolute inset-y-0 right-0 bg-media-clip-dim"
                     style="width: {tailFrames * CELL_W}px"
                   ></div>
                 {/if}
+                <!-- Grips are the ONLY marking: cursor-ew-resize does nothing on iPad. z-10 so
+                     they slide UNDER the sticky gutter (z-20), same as the image-range handles. -->
+                <div
+                  class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                  style="left: {keptLeft}px; touch-action: none"
+                  role="presentation"
+                  title="Trim the start of the video"
+                  onpointerdown={(e) => videoTrimDown(e, ref, "head")}
+                  onpointermove={videoTrimMove}
+                  onpointerup={videoTrimUp}
+                  onpointercancel={videoTrimUp}
+                >
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                </div>
+                <div
+                  class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                  style="left: {keptLeft + kept.spanFrames * CELL_W - 8}px; touch-action: none"
+                  role="presentation"
+                  title="Trim the end of the video"
+                  onpointerdown={(e) => videoTrimDown(e, ref, "tail")}
+                  onpointermove={videoTrimMove}
+                  onpointerup={videoTrimUp}
+                  onpointercancel={videoTrimUp}
+                >
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                </div>
               </div>
             {:else if ref.media.type === "missing"}
               <!-- A call to action, not a label. Plain onclick, NOT onpointerdown + stopPropagation:

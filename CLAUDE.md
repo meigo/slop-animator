@@ -3026,7 +3026,21 @@ mounted inside Timeline; App no longer has a separate playbar row.
 Transform/Opacity without hiding members. Group `collapsed` still means header-only.
 Animate unfolds both. Same Spline+chevron after the name as a layer.
 
-**Image refs are not keyed (2026-08-19):** an image reference is a guide (place + trim).
-It does not grow a transform or opacity track. Video refs and drawing layers still can.
-`layerAcceptsPropertyTracks` is the gate — UI, Animate actions, timeline rows, and
-`transformAt`/`opacityAt` all ask it, so a leftover track on an old file is ignored.
+**References are not keyed (2026-08-19):** a reference is a guide (place + trim), not a
+keyed plate. `layerAcceptsPropertyTracks` is `kind === "draw"` only — UI, Animate
+actions, timeline rows, and `transformAt`/`opacityAt` all ask it, so a leftover track
+on an old file is ignored. Group Animate still appears when a ref is in a group.
+
+**Video clip source trim (2026-08-19):** a video reference can be trimmed at either end
+of its timeline clip, so a long take does not have to be precut outside the app. Model
+copies audio's optional `trimInFrames`/`trimLenFrames` (source frames, absent = untrimmed,
+format version stays 1). **Head trim cannot reuse audio `trimHead`:** video
+`startFrame = round(-offset/speed)`, so a project-frame drag Δ must do
+`offset -= Δ·speed`, `trimIn += Δ·speed`, `trimLen -= Δ·speed` — same-delta would re-sync
+the picture. Seek is `wanted = (trimIn + offset + frame·speed) / fps` (`videoWantedTime`);
+`trimIn` is added only there, the same two-clock rule audio uses. Trim-to-playhead
+follows the selected video row. One undo entry per completed handle gesture
+(`beginStructuralEdit` + `setVideoTrim`); `restoreStructure` copies the trim scalars
+like `offsetFrames` (in-place writes). Body slide stays non-undoable (inherited).
+Dimmed pads show the trimmed-away source so a handle can be dragged back. Refs still
+do not render in export. Spec: `docs/superpowers/specs/2026-08-19-video-clip-trim-design.md`.
