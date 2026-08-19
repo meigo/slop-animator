@@ -80,6 +80,7 @@ import {
   layerRowSelected,
   trackRowSelected,
   audioRowSelected,
+  groupRowSelected,
   resolveStaleTrackFocus,
   type ActiveRow,
 } from "../anim/active-row";
@@ -1569,7 +1570,28 @@ export function isAudioRowSelected(): boolean {
  *  or the audio lane is. `activeLayerId` still names a draw target during audio selection —
  *  dimming without also refusing the stroke would paint into a layer that is not selected. */
 export function pixelToolsDimmed(): boolean {
-  return isAudioRowSelected() || activeLayer().kind === "ref";
+  return isAudioRowSelected() || isGroupRowSelected() || activeLayer().kind === "ref";
+}
+
+/** Is this group's header the selected row (not a member, not a proxy)? */
+export function isGroupRowSelected(groupId?: number): boolean {
+  if (groupId != null) return groupRowSelected(state.activeRow, groupId);
+  return state.activeRow.kind === "group";
+}
+
+/** Select the group as the working row. Remembers a draw member as the transform anchor
+ *  (group scope) without lighting that member. Pixel tools dim. */
+export function selectGroup(id: number): void {
+  if (!state.project.groups.some((g) => g.id === id)) return;
+  state.activeRow = { kind: "group", id };
+  state.transformScope = "group";
+  const member = [...state.project.layers]
+    .reverse()
+    .find((l) => l.groupId === id && l.kind === "draw");
+  if (member && state.activeLayerId !== member.id) {
+    state.activeLayerId = member.id;
+    if (state.onion.enabled && !state.onion.allLayers) repaint();
+  }
 }
 
 /** Make the audio lane the active timeline row (it holds no layer id, so it needs its own flag). */

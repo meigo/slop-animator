@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   audioRowSelected,
-  collapsedGroupSelected,
+  groupHeaderSelected,
+  groupRowSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
   trackRowSelected,
@@ -44,19 +45,25 @@ describe("layerRowSelected", () => {
   });
 });
 
-describe("collapsedGroupSelected", () => {
+describe("groupHeaderSelected", () => {
   const members = [layer(1, 10), layer(2, 10), layer(3, null)];
   const folded = { id: 10, collapsed: true };
   const open = { id: 10, collapsed: false };
 
+  it("lights the header when the group row itself is selected, expanded or folded", () => {
+    expect(groupHeaderSelected({ kind: "group", id: 10 }, open, members)).toBe(true);
+    expect(groupHeaderSelected({ kind: "group", id: 10 }, folded, members)).toBe(true);
+    expect(groupHeaderSelected({ kind: "group", id: 99 }, open, members)).toBe(false);
+  });
+
   it("is false when the group is expanded — the member row is the selection", () => {
-    expect(collapsedGroupSelected({ kind: "layer", id: 1 }, open, members)).toBe(false);
+    expect(groupHeaderSelected({ kind: "layer", id: 1 }, open, members)).toBe(false);
   });
 
   it("is true when folded and a member (or its track) is selected", () => {
-    expect(collapsedGroupSelected({ kind: "layer", id: 1 }, folded, members)).toBe(true);
+    expect(groupHeaderSelected({ kind: "layer", id: 1 }, folded, members)).toBe(true);
     expect(
-      collapsedGroupSelected(
+      groupHeaderSelected(
         { kind: "track", owner: "layer", id: 1, prop: "opacity" },
         folded,
         members,
@@ -66,7 +73,7 @@ describe("collapsedGroupSelected", () => {
 
   it("is true when folded and this group's own track is focused", () => {
     expect(
-      collapsedGroupSelected(
+      groupHeaderSelected(
         { kind: "track", owner: "group", id: 10, prop: "transform" },
         folded,
         members,
@@ -75,15 +82,23 @@ describe("collapsedGroupSelected", () => {
   });
 
   it("is false for a sibling layer, audio, or another group", () => {
-    expect(collapsedGroupSelected({ kind: "layer", id: 3 }, folded, members)).toBe(false);
-    expect(collapsedGroupSelected({ kind: "audio" }, folded, members)).toBe(false);
+    expect(groupHeaderSelected({ kind: "layer", id: 3 }, folded, members)).toBe(false);
+    expect(groupHeaderSelected({ kind: "audio" }, folded, members)).toBe(false);
     expect(
-      collapsedGroupSelected(
+      groupHeaderSelected(
         { kind: "track", owner: "group", id: 99, prop: "opacity" },
         folded,
         members,
       ),
     ).toBe(false);
+  });
+});
+
+describe("groupRowSelected", () => {
+  it("matches only the group row", () => {
+    expect(groupRowSelected({ kind: "group", id: 10 }, 10)).toBe(true);
+    expect(groupRowSelected({ kind: "group", id: 10 }, 11)).toBe(false);
+    expect(groupRowSelected({ kind: "layer", id: 10 }, 10)).toBe(false);
   });
 });
 
@@ -177,5 +192,17 @@ describe("resolveStaleTrackFocus", () => {
       id: 1,
     });
     expect(resolveStaleTrackFocus({ kind: "audio" }, project, 1)).toEqual({ kind: "audio" });
+  });
+
+  it("keeps a live group row and falls back when the group is gone", () => {
+    expect(resolveStaleTrackFocus({ kind: "group", id: 10 }, project, 1)).toEqual({
+      kind: "group",
+      id: 10,
+    });
+    const gone = { ...project, groups: [] };
+    expect(resolveStaleTrackFocus({ kind: "group", id: 10 }, gone, 1)).toEqual({
+      kind: "layer",
+      id: 1,
+    });
   });
 });

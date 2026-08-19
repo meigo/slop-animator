@@ -9,6 +9,7 @@
     transformActions,
     fillActions,
     isAudioRowSelected,
+    isGroupRowSelected,
   } from "../state/appState.svelte";
 
   import { createCurveEditor } from "../core/pressure-curve";
@@ -25,7 +26,9 @@
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
   // Audio row is not a drawing target even though activeLayerId still names one.
-  const paintBlock = $derived(isAudioRowSelected() ? ("not-draw" as const) : editBlock);
+  const paintBlock = $derived(
+    isAudioRowSelected() || isGroupRowSelected() ? ("not-draw" as const) : editBlock,
+  );
   const canPaint = $derived(paintBlock === null);
 
   let curveOpen = $state(false);
@@ -189,12 +192,15 @@
       "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
     {@const canDeselect = appState.selectionActive || appState.selectionFloating}
     {@const canCopy =
-      appState.selectionActive && activeLayer().kind === "draw" && !isAudioRowSelected()}
+      appState.selectionActive &&
+      activeLayer().kind === "draw" &&
+      !isAudioRowSelected() &&
+      !isGroupRowSelected()}
     {@const canCut = appState.selectionActive && canPaint}
     {@const canPaste = appState.hasPixelClipboard && canPaint}
     {@const whyCopy = !appState.selectionActive
       ? " — select an area first"
-      : activeLayer().kind !== "draw" || isAudioRowSelected()
+      : activeLayer().kind !== "draw" || isAudioRowSelected() || isGroupRowSelected()
         ? ` — ${editBlockLabel("not-draw")}`
         : ""}
     {@const whyWrite = paintBlock

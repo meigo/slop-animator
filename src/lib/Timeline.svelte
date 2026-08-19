@@ -38,6 +38,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     setActiveLayer,
+    selectGroup,
     selectTrack,
     toggleGroupCollapsed,
     toggleTracksCollapsed,
@@ -114,7 +115,7 @@
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
-  import { collapsedGroupSelected } from "../anim/active-row";
+  import { groupHeaderSelected } from "../anim/active-row";
   import {
     videoClipLayout,
     offsetAfterClipDrag,
@@ -2226,20 +2227,20 @@
         {@const g = row.group}
         {@const groupAnimated = isGroupAnimated(g)}
         {@const showTrackFold = groupAnimated && !g.collapsed}
-        {@const groupLit = collapsedGroupSelected(appState.activeRow, g, appState.project.layers)}
+        {@const groupLit = groupHeaderSelected(appState.activeRow, g, appState.project.layers)}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
              and is where a transform track would live. -->
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
-          <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
+          <div
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:bg-surface-active={groupLit}
             class:text-text={groupLit}
             class:text-text-secondary={!groupLit}
             style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
-            title={g.collapsed ? "Expand group" : "Collapse group"}
+            role="presentation"
             onpointerdown={(e) => {
               if (isFinePointer(e)) return;
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -2254,14 +2255,23 @@
             onpointercancel={(e) => {
               if (!isFinePointer(e)) touchPanUp(e);
             }}
-            onclick={() => {
-              if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
-            }}
           >
-            <span class="flex w-3.5 shrink-0 justify-center">
+            <button
+              class="flex w-3.5 shrink-0 justify-center"
+              title={g.collapsed ? "Expand group" : "Collapse group"}
+              onclick={() => {
+                if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
+              }}
+            >
               {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
-            </span>
-            <span class="min-w-0 flex-1 truncate font-semibold">{g.name}</span>
+            </button>
+            <button
+              class="min-w-0 flex-1 truncate text-left font-semibold"
+              title="Select group"
+              onclick={() => {
+                if (!panEndedWithMovement) selectGroup(g.id);
+              }}>{g.name}</button
+            >
             {#if groupAnimated && !showTrackFold}
               <!-- Group is folded: property rows are gone with the members, so the Spline lives
                    on the header the same way a collapsed group's animation used to. -->
@@ -2274,7 +2284,7 @@
                    with nothing left to indicate it existed. -->
               <span class="shrink-0 text-text-muted">{row.hiddenCount}</span>
             {/if}
-          </button>
+          </div>
           {#if showTrackFold}
             <button
               class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
