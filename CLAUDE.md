@@ -3044,3 +3044,5 @@ follows the selected video row. One undo entry per completed handle gesture
 like `offsetFrames` (in-place writes). Body slide stays non-undoable (inherited).
 Dimmed pads show the trimmed-away source so a handle can be dragged back. Refs still
 do not render in export. Spec: `docs/superpowers/specs/2026-08-19-video-clip-trim-design.md`.
+**Verified 2026-08-19:** the user confirmed trim, sync-preserving head, and Animate-gone on
+refs all work.

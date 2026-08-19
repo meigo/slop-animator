@@ -1,7 +1,7 @@
 # Video clip source trim — design
 
 **Date:** 2026-08-19
-**Status:** Implemented (2026-08-19)
+**Status:** Implemented and browser-confirmed (2026-08-19)
 **Builds on:** video-ref clip drag (`2026-08-14-video-ref-clip-drag-design.md`), audio clip trim
 (`2026-08-16-audio-clip-trim-design.md`), reference layer visibility ranges
 (`2026-08-15-reference-layer-ranges-design.md`).
