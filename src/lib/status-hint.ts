@@ -30,7 +30,8 @@ export interface HintContext {
   /** Timeline audio row is selected. The remembered draw-target layer is not what you are
    *  working on — transform must not promise a leftover-layer drag. */
   audioRow: boolean;
-  /** Group header is the selected row. Pixel tools refuse; transform aims at the group. */
+  /** Group header or a group-owned track is the working target. Pixel tools refuse;
+   *  transform aims at the group. */
   groupRow: boolean;
   /** A committed marquee exists (not lifted). */
   selectionActive: boolean;

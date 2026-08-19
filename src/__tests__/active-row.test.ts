@@ -7,6 +7,7 @@ import {
   resolveStaleTrackFocus,
   targetLayerId,
   trackRowSelected,
+  workingTarget,
   type ActiveRow,
 } from "../anim/active-row";
 import type { Layer } from "../anim/document";
@@ -20,6 +21,32 @@ const layer = (id: number, groupId: number | null = null): Layer =>
     cells: [],
     groupId,
   }) as unknown as Layer;
+
+describe("workingTarget", () => {
+  it("a layer row (or its own track) is that layer", () => {
+    expect(workingTarget({ kind: "layer", id: 3 })).toEqual({ kind: "layer", id: 3 });
+    expect(workingTarget({ kind: "track", owner: "layer", id: 3, prop: "opacity" })).toEqual({
+      kind: "layer",
+      id: 3,
+    });
+  });
+
+  it("audio is audio — leftover draw memory is not a target", () => {
+    expect(workingTarget({ kind: "audio" })).toEqual({ kind: "audio" });
+  });
+
+  it("a group-owned track is the group, same as the group header", () => {
+    expect(workingTarget({ kind: "group", id: 10 })).toEqual({ kind: "group", id: 10 });
+    expect(workingTarget({ kind: "track", owner: "group", id: 10, prop: "transform" })).toEqual({
+      kind: "group",
+      id: 10,
+    });
+    expect(workingTarget({ kind: "track", owner: "group", id: 10, prop: "opacity" })).toEqual({
+      kind: "group",
+      id: 10,
+    });
+  });
+});
 
 describe("targetLayerId", () => {
   it("is the layer when a layer row (or its own track) is selected", () => {

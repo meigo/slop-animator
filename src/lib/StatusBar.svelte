@@ -1,10 +1,6 @@
 <script lang="ts">
-  import {
-    state as appState,
-    activeLayer,
-    isAudioRowSelected,
-    isGroupRowSelected,
-  } from "../state/appState.svelte";
+  import { state as appState, activeLayer } from "../state/appState.svelte";
+  import { workingTarget } from "../anim/active-row";
   import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
@@ -48,11 +44,13 @@
       appState.tool,
       appState.transformScope,
     );
-    const audioOn = isAudioRowSelected();
-    const groupOn = isGroupRowSelected();
+    const wt = workingTarget(appState.activeRow);
+    const audioOn = wt.kind === "audio";
+    const groupOn = wt.kind === "group";
+    // A group (header or track) can still auto-key — don't drop the frame hint just because
+    // the working target is the group. Audio has no transform, so leftover tracks stay silent.
     const keys =
       !audioOn &&
-      !groupOn &&
       ((!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null);
     return contextHint({
       tool: appState.tool,
@@ -69,10 +67,10 @@
     });
   });
   const targetName = $derived.by(() => {
-    if (isAudioRowSelected()) return appState.project.audio?.name ?? "audio";
-    const row = appState.activeRow;
-    if (row.kind === "group") {
-      return appState.project.groups.find((g) => g.id === row.id)?.name ?? activeLayer().name;
+    const wt = workingTarget(appState.activeRow);
+    if (wt.kind === "audio") return appState.project.audio?.name ?? "audio";
+    if (wt.kind === "group") {
+      return appState.project.groups.find((g) => g.id === wt.id)?.name ?? activeLayer().name;
     }
     return activeLayer().name;
   });
