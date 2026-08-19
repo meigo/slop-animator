@@ -30,9 +30,8 @@
     applyEyedropper,
     beginStructuralEdit,
     commitStructuralEdit,
-    isAudioRowSelected,
-    isGroupRowSelected,
   } from "../state/appState.svelte";
+  import { workingTarget } from "../anim/active-row";
   import { pixelCommand } from "../anim/history";
   import {
     selectionRef,
@@ -524,8 +523,7 @@
   function fillAllEnclosedOnCell() {
     const layer = activeLayer();
     if (
-      isAudioRowSelected() ||
-      isGroupRowSelected() ||
+      workingTarget(appState.activeRow).kind !== "layer" ||
       !isLayerEditable(layer, appState.project.groups)
     )
       return;
@@ -1046,12 +1044,14 @@
       if (done) dropStrokeUntilUp = false;
       return;
     }
-    if (isAudioRowSelected()) {
+    const wt = workingTarget(appState.activeRow);
+    if (wt.kind === "audio") {
       const t = appState.tool;
       if (t !== "eyedropper" && t !== "select" && t !== "lasso") return;
     }
-    if (isGroupRowSelected()) {
-      // Transform still aims at the group (scope set on select). Other pixel tools dim.
+    if (wt.kind === "group") {
+      // Transform still aims at the group (scope set on select, including a group track).
+      // Other pixel tools dim — leftover member is not the target.
       const t = appState.tool;
       if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform") return;
     }
@@ -1067,7 +1067,7 @@
       return;
     }
     const al = activeLayer();
-    if (al.kind === "ref" && !isAudioRowSelected() && !isGroupRowSelected()) {
+    if (al.kind === "ref" && wt.kind === "layer") {
       // A pinned reference: its gizmo is live under EVERY tool, so this is the one guard that stops
       // a stray canvas drag from nudging an aligned reference. Derived, so a locked/hidden GROUP
       // pins its refs too (the gizmo already used the derived form — these must agree).
@@ -1514,8 +1514,7 @@
   function enterDeform() {
     const al = activeLayer();
     if (
-      isAudioRowSelected() ||
-      isGroupRowSelected() ||
+      workingTarget(appState.activeRow).kind !== "layer" ||
       !isLayerEditable(al, appState.project.groups)
     )
       return;
@@ -1651,8 +1650,7 @@
   function enterPose() {
     const al = activeLayer();
     if (
-      isAudioRowSelected() ||
-      isGroupRowSelected() ||
+      workingTarget(appState.activeRow).kind !== "layer" ||
       !isLayerEditable(al, appState.project.groups)
     )
       return;
@@ -2072,12 +2070,13 @@
   const toolBlocked = $derived.by(() => {
     const l = activeLayer();
     const groups = appState.project.groups;
+    const wt = workingTarget(appState.activeRow);
     if (PIXEL_TOOLS.includes(appState.tool))
-      return isAudioRowSelected() || isGroupRowSelected() || !isLayerEditable(l, groups);
+      return wt.kind !== "layer" || !isLayerEditable(l, groups);
     if (appState.tool === "transform")
       return (
-        isAudioRowSelected() ||
-        (l.kind === "draw" && !isLayerEditable(l, groups) && !isGroupRowSelected())
+        wt.kind === "audio" ||
+        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups))
       );
     return false;
   });

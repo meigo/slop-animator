@@ -7,13 +7,26 @@ export type ActiveRow =
   | { kind: "track"; owner: "layer"; id: number; prop: "transform" | "opacity" }
   | { kind: "track"; owner: "group"; id: number; prop: "transform" | "opacity" };
 
+/** What the selected row is working on. A layer-owned track is its owner; a group-owned
+ *  track is the group. Audio / group / group-track never fall through to leftover
+ *  `activeLayerId` — that is memory, not the target. */
+export type WorkingTarget =
+  | { kind: "layer"; id: number }
+  | { kind: "group"; id: number }
+  | { kind: "audio" };
+
+export function workingTarget(row: ActiveRow): WorkingTarget {
+  if (row.kind === "audio") return { kind: "audio" };
+  if (row.kind === "layer") return { kind: "layer", id: row.id };
+  if (row.kind === "track" && row.owner === "layer") return { kind: "layer", id: row.id };
+  return { kind: "group", id: row.id };
+}
+
 /** The layer a layer-scoped action (duplicate, merge, delete, new group) should hit.
- *  Audio / group / a group-owned track have none — `activeLayerId` is leftover memory, not
- *  the working target. A layer-owned track is the same target as its owner. */
+ *  Null when the working target is audio or a group. */
 export function targetLayerId(row: ActiveRow): number | null {
-  if (row.kind === "layer") return row.id;
-  if (row.kind === "track" && row.owner === "layer") return row.id;
-  return null;
+  const t = workingTarget(row);
+  return t.kind === "layer" ? t.id : null;
 }
 
 export function layerRowSelected(row: ActiveRow, layerId: number): boolean {

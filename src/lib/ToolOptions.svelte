@@ -8,9 +8,8 @@
     selectionActions,
     transformActions,
     fillActions,
-    isAudioRowSelected,
-    isGroupRowSelected,
   } from "../state/appState.svelte";
+  import { workingTarget } from "../anim/active-row";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
@@ -25,9 +24,10 @@
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
-  // Audio row is not a drawing target even though activeLayerId still names one.
+  // Non-layer working row (audio / group / group track) is not a drawing target
+  // even though activeLayerId still names a leftover member.
   const paintBlock = $derived(
-    isAudioRowSelected() || isGroupRowSelected() ? ("not-draw" as const) : editBlock,
+    workingTarget(appState.activeRow).kind !== "layer" ? ("not-draw" as const) : editBlock,
   );
   const canPaint = $derived(paintBlock === null);
 
@@ -194,13 +194,12 @@
     {@const canCopy =
       appState.selectionActive &&
       activeLayer().kind === "draw" &&
-      !isAudioRowSelected() &&
-      !isGroupRowSelected()}
+      workingTarget(appState.activeRow).kind === "layer"}
     {@const canCut = appState.selectionActive && canPaint}
     {@const canPaste = appState.hasPixelClipboard && canPaint}
     {@const whyCopy = !appState.selectionActive
       ? " — select an area first"
-      : activeLayer().kind !== "draw" || isAudioRowSelected() || isGroupRowSelected()
+      : activeLayer().kind !== "draw" || workingTarget(appState.activeRow).kind !== "layer"
         ? ` — ${editBlockLabel("not-draw")}`
         : ""}
     {@const whyWrite = paintBlock

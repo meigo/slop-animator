@@ -3055,3 +3055,13 @@ the last drawing layer. `targetLayerId(activeRow)` is the layer those actions ma
 `groupActiveLayer` reads it too so a future caller cannot regroup the leftover member.
 Dimmed buttons say "select a layer first". Add layer stays live — it creates a new
 drawing layer and selects it.
+
+**Working target includes group tracks (2026-08-20):** `isGroupRowSelected()` is the
+header row only, so a group Transform/Opacity track still dimmed the panel header
+(via `targetLayerId`) while Toolbar/Canvas/ToolOptions/StatusBar painted the leftover
+member. `workingTarget(activeRow)` is the one fact: layer (or its track), group
+(header or its track), or audio. `pixelToolsDimmed`, stroke refuse, fill/deform/pose
+entry, ToolOptions paint-block, and the status-bar name/hint all ask it.
+`targetLayerId` is now `workingTarget` then "is it a layer?". Transform stays live
+on a group (header or track); audio still blocks it. The gizmo still hides only for
+audio — a group track is a reason to show it.

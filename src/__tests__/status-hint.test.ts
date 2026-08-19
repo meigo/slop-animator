@@ -48,6 +48,21 @@ describe("reference layers", () => {
   });
 });
 
+describe("group row selected", () => {
+  it("pixel tools say to pick a drawing layer; transform still aims at the group", () => {
+    expect(contextHint(ctx({ tool: "brush", groupRow: true }))).toBe(
+      "Switch to a drawing layer to edit",
+    );
+    expect(contextHint(ctx({ tool: "transform", groupRow: true }))).toMatch(/Drag to move/);
+  });
+
+  it("does not inherit a leftover member's lock", () => {
+    expect(contextHint(ctx({ tool: "brush", groupRow: true, locked: true }))).toMatch(
+      /drawing layer/,
+    );
+  });
+});
+
 describe("audio row selected", () => {
   it("pixel tools and transform say to pick a drawing layer", () => {
     expect(contextHint(ctx({ tool: "brush", audioRow: true }))).toBe(

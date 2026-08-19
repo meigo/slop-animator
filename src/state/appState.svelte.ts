@@ -83,6 +83,7 @@ import {
   groupRowSelected,
   resolveStaleTrackFocus,
   targetLayerId,
+  workingTarget,
   type ActiveRow,
 } from "../anim/active-row";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
@@ -1570,11 +1571,12 @@ export function isAudioRowSelected(): boolean {
   return audioRowSelected(state.activeRow);
 }
 
-/** Brush/eraser/fill/deform/pose have no target worth highlighting: a reference is selected,
- *  or the audio lane is. `activeLayerId` still names a draw target during audio selection —
- *  dimming without also refusing the stroke would paint into a layer that is not selected. */
+/** Brush/eraser/fill/deform/pose have no target worth highlighting: the working row is not
+ *  a layer (audio / group / group track), or the selected layer is a reference.
+ *  `activeLayerId` is leftover memory on a non-layer row — dimming without also refusing
+ *  the stroke would paint into a layer that is not selected. */
 export function pixelToolsDimmed(): boolean {
-  return isAudioRowSelected() || isGroupRowSelected() || activeLayer().kind === "ref";
+  return workingTarget(state.activeRow).kind !== "layer" || activeLayer().kind === "ref";
 }
 
 /** Is this group's header the selected row (not a member, not a proxy)? */
