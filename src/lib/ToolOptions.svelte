@@ -74,7 +74,7 @@
 </script>
 
 <div
-  class="flex items-center gap-2 px-2 h-10 border-b border-border bg-surface text-text overflow-x-auto"
+  class="flex items-center gap-2 px-2 h-10 border-b border-border bg-surface text-text overflow-x-auto *:shrink-0"
 >
   {#if showEditBlock && editBlock}
     <span class="text-xs text-amber-500 shrink-0">{editBlockLabel(editBlock)}</span>

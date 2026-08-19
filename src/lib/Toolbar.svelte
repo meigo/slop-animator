@@ -157,7 +157,9 @@
   }
 </script>
 
-<div class="flex items-center gap-1 p-2 border-b border-border bg-surface text-text">
+<div
+  class="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-surface text-text [&>button]:shrink-0"
+>
   <button
     class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
     class:bg-surface-active={appState.tool === "brush"}
@@ -231,113 +233,115 @@
       if (appState.canRedo) redo();
     }}><Redo2 size={18} /></button
   >
-  <span class="flex-1"></span>
-  <ToolbarMenu label="File">
-    {#snippet children(close)}
-      <button
-        class={menuItem}
-        onclick={() => {
-          pick("project");
-          close();
-        }}>Open…</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          saveProject();
-          close();
-        }}>Save</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          appState.sizeDialog.mode = "new";
-          appState.sizeDialog.open = true;
-          close();
-        }}>New…</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          appState.sizeDialog.mode = "resize";
-          appState.sizeDialog.open = true;
-          close();
-        }}>Resize canvas…</button
-      >
-    {/snippet}
-  </ToolbarMenu>
-  <ToolbarMenu label="Import/Export">
-    {#snippet children(close)}
-      <button
-        class={menuItem}
-        onclick={() => {
-          pick("image");
-          close();
-        }}>Add image…</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          pasteImage();
-          close();
-        }}>Paste image from clipboard</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          pick("video");
-          close();
-        }}>Add video…</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          pick("audio");
-          close();
-        }}>Import audio…</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          appState.exportOpen = true;
-          close();
-        }}>Export…</button
-      >
-    {/snippet}
-  </ToolbarMenu>
-  <ToolbarMenu label="View">
-    {#snippet children(close)}
-      <button
-        class={menuItem}
-        title="Fit the canvas to the window and re-centre it"
-        onclick={() => {
-          viewActions.fitView?.();
-          close();
-        }}>Fit to view (0)</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          toggleTheme();
-          close();
-        }}>{appState.theme === "dark" ? "Light theme" : "Dark theme"}</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          appState.project.transparentBg = !appState.project.transparentBg;
-          bump();
-          close();
-        }}>{appState.project.transparentBg ? "Opaque background" : "Transparent background"}</button
-      >
-      <button
-        class={menuItem}
-        onclick={() => {
-          appState.settingsOpen = true;
-          close();
-        }}>Project settings…</button
-      >
-    {/snippet}
-  </ToolbarMenu>
+  <div class="ml-auto flex max-w-full flex-wrap items-center gap-1 shrink-0">
+    <ToolbarMenu label="File">
+      {#snippet children(close)}
+        <button
+          class={menuItem}
+          onclick={() => {
+            pick("project");
+            close();
+          }}>Open…</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            saveProject();
+            close();
+          }}>Save</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            appState.sizeDialog.mode = "new";
+            appState.sizeDialog.open = true;
+            close();
+          }}>New…</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            appState.sizeDialog.mode = "resize";
+            appState.sizeDialog.open = true;
+            close();
+          }}>Resize canvas…</button
+        >
+      {/snippet}
+    </ToolbarMenu>
+    <ToolbarMenu label="Import/Export">
+      {#snippet children(close)}
+        <button
+          class={menuItem}
+          onclick={() => {
+            pick("image");
+            close();
+          }}>Add image…</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            pasteImage();
+            close();
+          }}>Paste image from clipboard</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            pick("video");
+            close();
+          }}>Add video…</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            pick("audio");
+            close();
+          }}>Import audio…</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            appState.exportOpen = true;
+            close();
+          }}>Export…</button
+        >
+      {/snippet}
+    </ToolbarMenu>
+    <ToolbarMenu label="View">
+      {#snippet children(close)}
+        <button
+          class={menuItem}
+          title="Fit the canvas to the window and re-centre it"
+          onclick={() => {
+            viewActions.fitView?.();
+            close();
+          }}>Fit to view (0)</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            toggleTheme();
+            close();
+          }}>{appState.theme === "dark" ? "Light theme" : "Dark theme"}</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            appState.project.transparentBg = !appState.project.transparentBg;
+            bump();
+            close();
+          }}
+          >{appState.project.transparentBg ? "Opaque background" : "Transparent background"}</button
+        >
+        <button
+          class={menuItem}
+          onclick={() => {
+            appState.settingsOpen = true;
+            close();
+          }}>Project settings…</button
+        >
+      {/snippet}
+    </ToolbarMenu>
+  </div>
   <input bind:this={fileInput} type="file" class="hidden" onchange={onFile} />
 </div>

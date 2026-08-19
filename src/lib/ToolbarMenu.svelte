@@ -8,9 +8,9 @@
   const close = () => (open = false);
 </script>
 
-<div class="relative" use:clickOutside={close}>
+<div class="relative shrink-0" use:clickOutside={close}>
   <button
-    class="h-8 px-2 rounded flex items-center gap-1 text-sm text-text-secondary hover:bg-surface-hover"
+    class="h-8 px-2 rounded flex items-center gap-1 text-sm text-text-secondary hover:bg-surface-hover shrink-0"
     class:bg-surface-active={open}
     onclick={() => (open = !open)}
   >
