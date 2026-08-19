@@ -54,17 +54,19 @@ export function groupRowSelected(row: ActiveRow, groupId: number): boolean {
   return row.kind === "group" && row.id === groupId;
 }
 
-/** Light the group header: the group row itself is selected, or it is folded and standing in
- *  for a hidden member / this group's own track. Expanded + a member selected lights only
- *  the member — two selected rows is the look we removed. */
+/** Light the group header: the working target is this group (header or its own track), or
+ *  it is folded and standing in for a hidden member. Expanded + a member selected lights
+ *  only the member — two selected rows is the look we removed. A group track lights the
+ *  header even when expanded: the layer panel has no track row, and a layer track already
+ *  lights its owner the same way. */
 export function groupHeaderSelected(
   row: ActiveRow,
   group: { id: number; collapsed?: boolean },
   layers: { id: number; groupId?: number | null }[],
 ): boolean {
-  if (row.kind === "group" && row.id === group.id) return true;
+  const wt = workingTarget(row);
+  if (wt.kind === "group" && wt.id === group.id) return true;
   if (!group.collapsed) return false;
-  if (row.kind === "track" && row.owner === "group" && row.id === group.id) return true;
   return layers.some((l) => l.groupId === group.id && layerRowSelected(row, l.id));
 }
 
