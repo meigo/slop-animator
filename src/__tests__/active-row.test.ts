@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   audioRowSelected,
+  collapsedGroupSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
   trackRowSelected,
@@ -40,6 +41,49 @@ describe("layerRowSelected", () => {
 
   it("audio selects no layer", () => {
     expect(layerRowSelected({ kind: "audio" }, 1)).toBe(false);
+  });
+});
+
+describe("collapsedGroupSelected", () => {
+  const members = [layer(1, 10), layer(2, 10), layer(3, null)];
+  const folded = { id: 10, collapsed: true };
+  const open = { id: 10, collapsed: false };
+
+  it("is false when the group is expanded — the member row is the selection", () => {
+    expect(collapsedGroupSelected({ kind: "layer", id: 1 }, open, members)).toBe(false);
+  });
+
+  it("is true when folded and a member (or its track) is selected", () => {
+    expect(collapsedGroupSelected({ kind: "layer", id: 1 }, folded, members)).toBe(true);
+    expect(
+      collapsedGroupSelected(
+        { kind: "track", owner: "layer", id: 1, prop: "opacity" },
+        folded,
+        members,
+      ),
+    ).toBe(true);
+  });
+
+  it("is true when folded and this group's own track is focused", () => {
+    expect(
+      collapsedGroupSelected(
+        { kind: "track", owner: "group", id: 10, prop: "transform" },
+        folded,
+        members,
+      ),
+    ).toBe(true);
+  });
+
+  it("is false for a sibling layer, audio, or another group", () => {
+    expect(collapsedGroupSelected({ kind: "layer", id: 3 }, folded, members)).toBe(false);
+    expect(collapsedGroupSelected({ kind: "audio" }, folded, members)).toBe(false);
+    expect(
+      collapsedGroupSelected(
+        { kind: "track", owner: "group", id: 99, prop: "opacity" },
+        folded,
+        members,
+      ),
+    ).toBe(false);
   });
 });
 

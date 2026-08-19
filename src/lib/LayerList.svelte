@@ -62,6 +62,7 @@
     transformDragGuard,
   } from "../state/appState.svelte";
   import type { StructSnapshot } from "../state/appState.svelte";
+  import { collapsedGroupSelected } from "../anim/active-row";
   import {
     createDrawingLayer,
     nextLayerName,
@@ -897,8 +898,17 @@
             isTrackSelected("group", seg.group.id, "opacity") ||
             isTrackSelected("group", seg.group.id, "transform") ||
             appState.project.layers.some((l) => l.groupId === seg.group.id && isRowSelected(l.id))}
+          {@const groupLit = collapsedGroupSelected(
+            appState.activeRow,
+            seg.group,
+            appState.project.layers,
+          )}
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
-            <div class="flex items-center gap-1 p-1 hover:bg-surface-hover" role="presentation">
+            <div
+              class="flex items-center gap-1 p-1 hover:bg-surface-hover"
+              class:bg-surface-active={groupLit}
+              role="presentation"
+            >
               <button
                 class="text-text-secondary hover:text-text"
                 title="Collapse group"
@@ -965,6 +975,7 @@
                 !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
               <div
                 class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
+                class:bg-surface-active={groupLit}
               >
                 <span
                   class="flex items-center gap-2"
