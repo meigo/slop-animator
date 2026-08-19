@@ -906,12 +906,11 @@ export function animateGroup(groupId: number): void {
     // Replaces the BAG as well as the track — gotcha #8 reaches groups too, and the spread keeps
     // any sibling track a group may gain later.
     g.tracks = { ...g.tracks, transform: createTransformTrack(groupTransform(g), box) };
-    // …and unfold, exactly as `animateLayer`/`animateLayerOpacity` do. A group's `collapsed` also
-    // hides its MEMBER rows, so this reveals more than the new track — but pressing Animate on a
-    // collapsed group otherwise produced no visible change whatsoever (the row is suppressed and
-    // the header carried nothing), and a button that appears to do nothing is worse than one that
-    // shows you rows you can fold away again.
+    // Unfold the group AND its track rows. `collapsed` hides members; `tracksCollapsed` would
+    // hide the row we just created. Animate that produced no visible change is worse than one
+    // that shows rows you can fold away again.
     g.collapsed = false;
+    g.tracksCollapsed = false;
   });
   selectTrack({ owner: "group", id: groupId, prop: "transform" });
 }
@@ -948,6 +947,7 @@ export function animateGroupOpacity(groupId: number): void {
       opacity: { keys: [{ frame: 0, v: groupOpacityAt(g, 0) }] },
     };
     g.collapsed = false;
+    g.tracksCollapsed = false;
   });
   selectTrack({ owner: "group", id: groupId, prop: "opacity" });
 }
@@ -1303,6 +1303,13 @@ export function toggleTracksCollapsed(layerId: number) {
   const l = state.project.layers.find((x) => x.id === layerId);
   if (l) {
     l.tracksCollapsed = !l.tracksCollapsed;
+    bump();
+  }
+}
+export function toggleGroupTracksCollapsed(groupId: number) {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (g) {
+    g.tracksCollapsed = !g.tracksCollapsed;
     bump();
   }
 }

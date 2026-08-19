@@ -3021,3 +3021,7 @@ same row as Add/Clear/Delete, animation tools, trim, onion, and boil. Playback â
 (fps/length) is `ml-auto` at the right. The height grip is again the canvas /
 bottom-chrome edge. `Playbar.svelte` is two variants (`transport` | `settings`)
 mounted inside Timeline; App no longer has a separate playbar row.
+
+**Group tracks fold like layer tracks (2026-08-19):** `LayerGroup.tracksCollapsed` hides
+Transform/Opacity without hiding members. Group `collapsed` still means header-only.
+Animate unfolds both. Same Spline+chevron after the name as a layer.

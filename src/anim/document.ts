@@ -35,6 +35,10 @@ export interface LayerGroup {
   transform?: RefTransform;
   transformBox?: { x: number; y: number; w: number; h: number } | null;
   tracks?: GroupTracks;
+  /** Fold this group's Transform/Opacity rows without hiding members. Same view-prop as a
+   *  layer's `tracksCollapsed`: persisted, not undoable, absent = expanded. Group `collapsed`
+   *  still hides members AND these rows. */
+  tracksCollapsed?: boolean;
 }
 
 export interface DrawingLayer {
@@ -157,6 +161,11 @@ export const GROUP_TRACK_PROPS: GroupTrackProp[] = ["transform", "opacity"];
  *  merge-down and rasterize each came to destroy an opacity track that the transform check missed. */
 export function isLayerAnimated(layer: Layer): boolean {
   return TRACK_PROPS.some((p) => !!layer.tracks?.[p]);
+}
+
+/** Does this group carry ANY track? Same rule as `isLayerAnimated` — loop the property list. */
+export function isGroupAnimated(group: LayerGroup): boolean {
+  return GROUP_TRACK_PROPS.some((p) => !!group.tracks?.[p]);
 }
 
 /** Deep-copy a whole bag. The no-mutation rule (gotcha #8: undo snapshots share layer objects)

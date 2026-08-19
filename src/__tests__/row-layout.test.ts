@@ -188,10 +188,17 @@ describe("timelineRows — group tracks", () => {
     expect(ids(rows)).toEqual(["G10", "L1"]);
   });
 
-  // Collapse means "show me only this group's header row" — one collapse concept, not two.
+  // Collapse means "show me only this group's header row" — members AND its tracks.
   it("hides the group's own track row while the group is collapsed", () => {
     const rows = timelineRows(buildSegments([layer(1, 10)], [animatedGroup(10, true)]));
     expect(ids(rows)).toEqual(["G10"]);
+  });
+
+  it("omits group track rows when tracksCollapsed, and keeps the members", () => {
+    const g = animatedGroup(10);
+    g.tracksCollapsed = true;
+    const rows = timelineRows(buildSegments([layer(1, 10)], [g]));
+    expect(ids(rows)).toEqual(["G10", "L1"]);
   });
 
   it("emits an opacity grouptrack under the header when only tracks.opacity is present", () => {

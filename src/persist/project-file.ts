@@ -156,6 +156,8 @@ export interface ProjectJson {
     transform?: RefTransform;
     transformBox?: { x: number; y: number; w: number; h: number } | null;
     tracks?: GroupTracks;
+    /** Fold the group's property rows. Absent = expanded. */
+    tracksCollapsed?: boolean;
   }[];
   layers: DrawingLayerJson[];
   references: ReferenceJson[];
@@ -210,6 +212,7 @@ export function projectToJson(project: Project): ProjectJson {
           ? { opacity: o }
           : {}),
         tracks: g.tracks,
+        tracksCollapsed: g.tracksCollapsed,
         ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
       };
     }),
@@ -649,6 +652,7 @@ export async function loadProjectBlob(
       transform: g.transform ? { ...g.transform } : undefined,
       transformBox: g.transformBox ? { ...g.transformBox } : null,
       tracks: sanitiseTracks(g.tracks),
+      tracksCollapsed: g.tracksCollapsed,
     };
   });
   for (const g of groups) maxId = Math.max(maxId, g.id);

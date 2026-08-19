@@ -671,6 +671,27 @@ describe("tracksCollapsed persistence", () => {
     const loaded = await loadProjectBlob(blob, 1);
     expect(loaded.layers[0].tracksCollapsed ?? false).toBe(false);
   });
+
+  it("round-trips a group's folded property rows", async () => {
+    const project = createProject();
+    project.groups = [{ id: 3, name: "G", collapsed: false, visible: true, tracksCollapsed: true }];
+    project.layers[0].groupId = 3;
+    const blob = await saveProjectBlob(project);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.groups[0].tracksCollapsed).toBe(true);
+  });
+
+  it("an old save's group with no field loads expanded", async () => {
+    const project = createProject();
+    project.groups = [{ id: 3, name: "G", collapsed: false, visible: true }];
+    project.layers[0].groupId = 3;
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.groups[0].tracksCollapsed).toBeUndefined();
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.groups[0].tracksCollapsed ?? false).toBe(false);
+  });
 });
 
 describe("track box sanitisation", () => {

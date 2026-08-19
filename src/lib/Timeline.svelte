@@ -22,7 +22,6 @@
   import {
     buildSegments,
     timelineRows,
-    GROUP_TRACK_PROPS,
     type GroupTrackProp,
     type TrackProp,
   } from "../anim/row-layout";
@@ -42,6 +41,7 @@
     selectTrack,
     toggleGroupCollapsed,
     toggleTracksCollapsed,
+    toggleGroupTracksCollapsed,
     liftGuard,
     transformDragGuard,
     setTimelineSelection,
@@ -95,6 +95,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerAnimated,
+    isGroupAnimated,
     isLayerVisible,
     countKeyframesPastLengthIn,
     groupHasLockedLayer,
@@ -2090,6 +2091,8 @@
     {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}:${row.prop}` : `g${row.group.id}`)}
       {#if row.kind === "group"}
         {@const g = row.group}
+        {@const groupAnimated = isGroupAnimated(g)}
+        {@const showTrackFold = groupAnimated && !g.collapsed}
         <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
@@ -2097,7 +2100,7 @@
         <div class="flex w-max items-center" style="min-width: {stripMinW}px">
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left bg-surface text-text-secondary hover:bg-surface-hover"
-            style="width: {LABEL_W}px; touch-action: none"
+            style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
             title={g.collapsed ? "Expand group" : "Collapse group"}
             onpointerdown={(e) => {
               if (isFinePointer(e)) return;
@@ -2121,12 +2124,9 @@
               {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
             </span>
             <span class="min-w-0 flex-1 truncate font-semibold">{g.name}</span>
-            {#if GROUP_TRACK_PROPS.some((p) => !!g.tracks?.[p])}
-              <!-- Says "this group is animated" when its property row is folded away — the same
-                   glyph, in the same job, that an animated LAYER's disclosure carries. Without it a
-                   collapsed group showed nothing at all: the row is suppressed by `collapsed`, so
-                   pressing Animate at group scope had no visible effect whatsoever. Any
-                   GROUP_TRACK_PROPS track counts — opacity alone used to leave the header blank. -->
+            {#if groupAnimated && !showTrackFold}
+              <!-- Group is folded: property rows are gone with the members, so the Spline lives
+                   on the header the same way a collapsed group's animation used to. -->
               <span class="shrink-0 text-text-secondary" title="Group is animated"
                 ><Spline size={11} /></span
               >
@@ -2137,6 +2137,35 @@
               <span class="shrink-0 text-text-muted">{row.hiddenCount}</span>
             {/if}
           </button>
+          {#if showTrackFold}
+            <button
+              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
+              style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
+              title={g.tracksCollapsed
+                ? "Show this group's animation rows"
+                : "Hide this group's animation rows"}
+              onpointerdown={(e) => {
+                if (isFinePointer(e)) return;
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                touchPanDown(e);
+              }}
+              onpointermove={(e) => {
+                if (!isFinePointer(e) && touchPan) touchPanMove(e);
+              }}
+              onpointerup={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onpointercancel={(e) => {
+                if (!isFinePointer(e)) touchPanUp(e);
+              }}
+              onclick={() => {
+                if (!panEndedWithMovement) toggleGroupTracksCollapsed(g.id);
+              }}
+            >
+              <Spline size={11} />
+              {#if g.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
+            </button>
+          {/if}
           <span
             class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 bg-surface border-r border-text-muted"
             role="presentation"

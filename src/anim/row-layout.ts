@@ -91,11 +91,12 @@ export function timelineRows(segments: Segment[]): TimelineRow[] {
     if (seg.group.collapsed) continue;
     // The group's OWN property rows sit directly under its header, above the members — a group
     // transform/opacity compose above its layers, so the rows read in the order they apply.
-    // Collapsing hides them along with the members: `collapsed` means "show me only this group's
-    // header row", which is the reading that keeps ONE collapse concept in the timeline rather
-    // than a second flag for a group's own tracks.
-    for (const prop of GROUP_TRACK_PROPS)
-      if (seg.group.tracks?.[prop]) rows.push({ kind: "grouptrack", group: seg.group, prop });
+    // `collapsed` still hides members AND these rows. `tracksCollapsed` folds only the property
+    // rows, the same extra fold a layer has — so a fade can sit as a header + members.
+    if (!seg.group.tracksCollapsed) {
+      for (const prop of GROUP_TRACK_PROPS)
+        if (seg.group.tracks?.[prop]) rows.push({ kind: "grouptrack", group: seg.group, prop });
+    }
     for (const layer of seg.layers) pushLayer(rows, layer);
   }
   return rows;
