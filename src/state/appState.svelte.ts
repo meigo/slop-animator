@@ -82,6 +82,7 @@ import {
   audioRowSelected,
   groupRowSelected,
   resolveStaleTrackFocus,
+  targetLayerId,
   type ActiveRow,
 } from "../anim/active-row";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
@@ -1291,9 +1292,12 @@ export function renameLayer(id: number, input: string) {
   bump();
 }
 
-/** Create a group from the active layer (a run of one); removes it from any prior group. */
+/** Create a group from the selected layer (a run of one); removes it from any prior group.
+ *  No-op when the working row is audio / a group / a group track — `activeLayerId` is leftover
+ *  memory there, not a target. */
 export function groupActiveLayer() {
-  const layer = state.project.layers.find((l) => l.id === state.activeLayerId);
+  const id = targetLayerId(state.activeRow);
+  const layer = id != null ? state.project.layers.find((l) => l.id === id) : undefined;
   if (!layer) return;
   commitStructural(() => {
     const g: LayerGroup = {

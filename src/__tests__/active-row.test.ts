@@ -5,6 +5,7 @@ import {
   groupRowSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
+  targetLayerId,
   trackRowSelected,
   type ActiveRow,
 } from "../anim/active-row";
@@ -19,6 +20,19 @@ const layer = (id: number, groupId: number | null = null): Layer =>
     cells: [],
     groupId,
   }) as unknown as Layer;
+
+describe("targetLayerId", () => {
+  it("is the layer when a layer row (or its own track) is selected", () => {
+    expect(targetLayerId({ kind: "layer", id: 3 })).toBe(3);
+    expect(targetLayerId({ kind: "track", owner: "layer", id: 3, prop: "opacity" })).toBe(3);
+  });
+
+  it("is null for audio, a group, or a group-owned track — leftover draw memory is not a target", () => {
+    expect(targetLayerId({ kind: "audio" })).toBeNull();
+    expect(targetLayerId({ kind: "group", id: 10 })).toBeNull();
+    expect(targetLayerId({ kind: "track", owner: "group", id: 10, prop: "transform" })).toBeNull();
+  });
+});
 
 describe("layerRowSelected", () => {
   it("matches a layer row", () => {

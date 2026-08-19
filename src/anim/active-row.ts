@@ -7,6 +7,15 @@ export type ActiveRow =
   | { kind: "track"; owner: "layer"; id: number; prop: "transform" | "opacity" }
   | { kind: "track"; owner: "group"; id: number; prop: "transform" | "opacity" };
 
+/** The layer a layer-scoped action (duplicate, merge, delete, new group) should hit.
+ *  Audio / group / a group-owned track have none — `activeLayerId` is leftover memory, not
+ *  the working target. A layer-owned track is the same target as its owner. */
+export function targetLayerId(row: ActiveRow): number | null {
+  if (row.kind === "layer") return row.id;
+  if (row.kind === "track" && row.owner === "layer") return row.id;
+  return null;
+}
+
 export function layerRowSelected(row: ActiveRow, layerId: number): boolean {
   if (row.kind === "layer") return row.id === layerId;
   // A layer and its own track are one thing. A group track is not: lighting a member
