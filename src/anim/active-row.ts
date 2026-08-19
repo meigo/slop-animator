@@ -3,6 +3,7 @@ import type { Layer, LayerGroup } from "./document";
 export type ActiveRow =
   | { kind: "layer"; id: number }
   | { kind: "audio" }
+  | { kind: "group"; id: number }
   | { kind: "track"; owner: "layer"; id: number; prop: "transform" | "opacity" }
   | { kind: "track"; owner: "group"; id: number; prop: "transform" | "opacity" };
 
@@ -27,14 +28,19 @@ export function audioRowSelected(row: ActiveRow): boolean {
   return row.kind === "audio";
 }
 
-/** The group header stands in for a selection you cannot see: folded, and either a member
- *  (or its track) is selected, or this group's own track is focused. Expanded groups never
- *  light the header — that would be two selected rows. */
-export function collapsedGroupSelected(
+export function groupRowSelected(row: ActiveRow, groupId: number): boolean {
+  return row.kind === "group" && row.id === groupId;
+}
+
+/** Light the group header: the group row itself is selected, or it is folded and standing in
+ *  for a hidden member / this group's own track. Expanded + a member selected lights only
+ *  the member — two selected rows is the look we removed. */
+export function groupHeaderSelected(
   row: ActiveRow,
   group: { id: number; collapsed?: boolean },
   layers: { id: number; groupId?: number | null }[],
 ): boolean {
+  if (row.kind === "group" && row.id === group.id) return true;
   if (!group.collapsed) return false;
   if (row.kind === "track" && row.owner === "group" && row.id === group.id) return true;
   return layers.some((l) => l.groupId === group.id && layerRowSelected(row, l.id));
@@ -45,6 +51,9 @@ export function resolveStaleTrackFocus(
   doc: { layers: Layer[]; groups: LayerGroup[] },
   activeLayerId: number,
 ): ActiveRow {
+  if (row.kind === "group") {
+    return doc.groups.some((g) => g.id === row.id) ? row : { kind: "layer", id: activeLayerId };
+  }
   if (row.kind !== "track") return row;
   if (row.owner === "layer") {
     const l = doc.layers.find((x) => x.id === row.id);

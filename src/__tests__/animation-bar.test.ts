@@ -156,6 +156,17 @@ describe("animationBar — start", () => {
     );
   });
 
+  it("selecting a group row offers only that group's Animate actions", () => {
+    const bar = args({
+      activeRow: { kind: "group", id: 10 },
+      layers: [draw(1, { groupId: 10 })],
+      groups: [group(10)],
+    });
+    expect(bar.kind).toBe("start");
+    if (bar.kind !== "start") return;
+    expect(bar.items.map((i) => i.action)).toEqual(["animate-group", "animate-group-opacity"]);
+  });
+
   it("an image ref has no layer animate actions — it is a guide, not a keyed plate", () => {
     const ref = {
       kind: "ref",

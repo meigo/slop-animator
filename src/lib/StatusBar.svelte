@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { state as appState, activeLayer, isAudioRowSelected } from "../state/appState.svelte";
+  import {
+    state as appState,
+    activeLayer,
+    isAudioRowSelected,
+    isGroupRowSelected,
+  } from "../state/appState.svelte";
   import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
@@ -44,15 +49,18 @@
       appState.transformScope,
     );
     const audioOn = isAudioRowSelected();
+    const groupOn = isGroupRowSelected();
     const keys =
       !audioOn &&
+      !groupOn &&
       ((!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null);
     return contextHint({
       tool: appState.tool,
-      locked: audioOn ? false : isLayerLocked(l, appState.project.groups),
-      hiddenLayer: audioOn ? false : !isLayerVisible(l, appState.project.groups),
+      locked: audioOn || groupOn ? false : isLayerLocked(l, appState.project.groups),
+      hiddenLayer: audioOn || groupOn ? false : !isLayerVisible(l, appState.project.groups),
       notDraw: l.kind !== "draw",
       audioRow: audioOn,
+      groupRow: groupOn,
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
@@ -60,9 +68,14 @@
       animatedFrame: keys ? (appState.transformDragFrame ?? appState.playhead) : null,
     });
   });
-  const targetName = $derived(
-    isAudioRowSelected() ? (appState.project.audio?.name ?? "audio") : activeLayer().name,
-  );
+  const targetName = $derived.by(() => {
+    if (isAudioRowSelected()) return appState.project.audio?.name ?? "audio";
+    const row = appState.activeRow;
+    if (row.kind === "group") {
+      return appState.project.groups.find((g) => g.id === row.id)?.name ?? activeLayer().name;
+    }
+    return activeLayer().name;
+  });
 </script>
 
 <div

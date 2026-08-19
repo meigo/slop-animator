@@ -84,6 +84,27 @@ export function animationBar(args: {
 
   if (activeRow.kind === "audio") return { kind: "empty" };
 
+  if (activeRow.kind === "group") {
+    const g = groups.find((x) => x.id === activeRow.id);
+    if (!g) return { kind: "empty" };
+    const items: AnimationStartItem[] = [];
+    if (!g.tracks?.transform) {
+      items.push({
+        action: "animate-group",
+        groupId: g.id,
+        blocked: groupAnimateBlocked(g, layers),
+      });
+    }
+    if (!g.tracks?.opacity) {
+      items.push({
+        action: "animate-group-opacity",
+        groupId: g.id,
+        blocked: groupAnimateBlocked(g, layers),
+      });
+    }
+    return items.length === 0 ? { kind: "empty" } : { kind: "start", items };
+  }
+
   if (activeRow.kind === "track") {
     const track: TrackRef =
       activeRow.owner === "group"

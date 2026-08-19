@@ -54,6 +54,8 @@
     setActiveLayer,
     isRowSelected,
     isTrackSelected,
+    selectGroup,
+    isGroupRowSelected,
     toggleEmbedMedia,
     applyLayerOpacityAt,
     applyGroupOpacityAt,
@@ -62,7 +64,7 @@
     transformDragGuard,
   } from "../state/appState.svelte";
   import type { StructSnapshot } from "../state/appState.svelte";
-  import { collapsedGroupSelected } from "../anim/active-row";
+  import { groupHeaderSelected } from "../anim/active-row";
   import {
     createDrawingLayer,
     nextLayerName,
@@ -895,10 +897,11 @@
           {@render layerRow(seg.layer)}
         {:else}
           {@const groupDetail =
+            isGroupRowSelected(seg.group.id) ||
             isTrackSelected("group", seg.group.id, "opacity") ||
             isTrackSelected("group", seg.group.id, "transform") ||
             appState.project.layers.some((l) => l.groupId === seg.group.id && isRowSelected(l.id))}
-          {@const groupLit = collapsedGroupSelected(
+          {@const groupLit = groupHeaderSelected(
             appState.activeRow,
             seg.group,
             appState.project.layers,
@@ -948,7 +951,11 @@
                   onblur={() => commitGroupEdit(seg.group.id)}
                 />
               {:else}
-                <span class="flex-1 text-xs font-semibold truncate">{seg.group.name}</span>
+                <button
+                  class="min-w-0 flex-1 truncate text-left text-xs font-semibold"
+                  title="Select group"
+                  onclick={() => selectGroup(seg.group.id)}>{seg.group.name}</button
+                >
                 <button
                   class="text-text-secondary hover:text-text"
                   title="Rename group"

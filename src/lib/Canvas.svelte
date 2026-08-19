@@ -31,6 +31,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     isAudioRowSelected,
+    isGroupRowSelected,
   } from "../state/appState.svelte";
   import { pixelCommand } from "../anim/history";
   import {
@@ -522,7 +523,12 @@
    *  this needs no pointer, so no compose inverse — it works on the cell's own pixels. */
   function fillAllEnclosedOnCell() {
     const layer = activeLayer();
-    if (isAudioRowSelected() || !isLayerEditable(layer, appState.project.groups)) return;
+    if (
+      isAudioRowSelected() ||
+      isGroupRowSelected() ||
+      !isLayerEditable(layer, appState.project.groups)
+    )
+      return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
     // `ensureDrawableKeyframe` is not just the ·→◆ marker on a hold — past the layer's end it
     // APPENDS holds and a blank keyframe — so running it before the region is known would leave the
@@ -1041,10 +1047,13 @@
       return;
     }
     if (isAudioRowSelected()) {
-      // Pixel tools already dim; leftover-layer transform is refused (gizmo is hidden).
-      // Eyedropper and select/lasso still run — they are not a write to the remembered layer.
       const t = appState.tool;
       if (t !== "eyedropper" && t !== "select" && t !== "lasso") return;
+    }
+    if (isGroupRowSelected()) {
+      // Transform still aims at the group (scope set on select). Other pixel tools dim.
+      const t = appState.tool;
+      if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform") return;
     }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
@@ -1058,7 +1067,7 @@
       return;
     }
     const al = activeLayer();
-    if (al.kind === "ref" && !isAudioRowSelected()) {
+    if (al.kind === "ref" && !isAudioRowSelected() && !isGroupRowSelected()) {
       // A pinned reference: its gizmo is live under EVERY tool, so this is the one guard that stops
       // a stray canvas drag from nudging an aligned reference. Derived, so a locked/hidden GROUP
       // pins its refs too (the gizmo already used the derived form — these must agree).
@@ -1504,7 +1513,12 @@
 
   function enterDeform() {
     const al = activeLayer();
-    if (isAudioRowSelected() || !isLayerEditable(al, appState.project.groups)) return;
+    if (
+      isAudioRowSelected() ||
+      isGroupRowSelected() ||
+      !isLayerEditable(al, appState.project.groups)
+    )
+      return;
     // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
     // in-progress lift, and that revert now includes the cell track (a lift on a hold materialised
     // a ◆). Materialising before cancelling meant cancel could remove the very cell whose canvas we
@@ -1636,7 +1650,12 @@
 
   function enterPose() {
     const al = activeLayer();
-    if (isAudioRowSelected() || !isLayerEditable(al, appState.project.groups)) return;
+    if (
+      isAudioRowSelected() ||
+      isGroupRowSelected() ||
+      !isLayerEditable(al, appState.project.groups)
+    )
+      return;
     // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
     // cancel() now reverts the cell track too, and could otherwise delete the cell whose canvas this
     // pose is about to lift from and bake into.
@@ -2054,9 +2073,12 @@
     const l = activeLayer();
     const groups = appState.project.groups;
     if (PIXEL_TOOLS.includes(appState.tool))
-      return isAudioRowSelected() || !isLayerEditable(l, groups);
+      return isAudioRowSelected() || isGroupRowSelected() || !isLayerEditable(l, groups);
     if (appState.tool === "transform")
-      return isAudioRowSelected() || (l.kind === "draw" && !isLayerEditable(l, groups));
+      return (
+        isAudioRowSelected() ||
+        (l.kind === "draw" && !isLayerEditable(l, groups) && !isGroupRowSelected())
+      );
     return false;
   });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
