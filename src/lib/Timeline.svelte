@@ -1764,7 +1764,15 @@
   >
     <div class="absolute inset-x-0 top-0 h-1 group-hover:bg-text/10"></div>
   </div>
-  <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
+  <!-- WRAPS, never scrolls. `overflow-x-auto` here is silently fatal: per CSS Overflow 3 a computed
+       `overflow-x: auto` forces `overflow-y` from `visible` to `auto`, so the bar becomes a ~28px
+       scroll box — and its three settings popovers are `absolute bottom-full`, i.e. entirely ABOVE
+       that box. Overflow past a scroller's START edge is neither painted nor scrollable to, so the
+       onion, boil and playback gears open panels nobody can see, on every device. Onion and boil
+       params have no other route. This is the same trap `.curve-popup` was made `position: fixed`
+       for (2026-07-12). Wrapping to a second line costs nothing and keeps every control reachable
+       in portrait, where the merged bar overruns the viewport by ~200px. -->
+  <div class="mb-2 flex shrink-0 flex-wrap items-center gap-1 *:shrink-0">
     <Playbar />
     <span class="mx-3 h-5 w-px bg-border"></span>
     <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
