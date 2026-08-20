@@ -13,7 +13,7 @@
     pasteImageReference,
     persistReferenceMedia,
     selectEyedropper,
-    pixelToolsDimmed,
+    pixelToolsBlock,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -47,9 +47,16 @@
     "size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
   // Pixel tools do nothing on a reference. Dim them, still clickable — so `b` can arm the brush
   // before switching back to a drawing layer. Don't hide: that shoves the remaining icons.
-  const toolsDimmed = $derived(pixelToolsDimmed());
+  // The REASON, not just a boolean: a group or audio row refuses because it is not a layer row,
+  // not because the active layer is the wrong kind (it usually is not).
+  // A PLAIN CLASS, deliberately NOT `aria-disabled`: these buttons still ACT, and arming a tool
+  // ahead of switching layers is the point. `aria-disabled` here was the app's only instance of a
+  // control announcing itself unavailable and then working — a lie to a screen reader, and the
+  // pattern the next control would have copied. The title carries the reason either way.
+  const toolsBlock = $derived(pixelToolsBlock());
+  const toolsDimmed = $derived(toolsBlock !== null);
   const pixelTitle = (name: string) =>
-    toolsDimmed ? `${name} — ${editBlockLabel("not-draw")}` : name;
+    toolsBlock ? `${name} — ${editBlockLabel(toolsBlock)}` : name;
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";
@@ -170,24 +177,24 @@
   class="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-surface text-text [&>button]:shrink-0"
 >
   <button
-    class="{toolBtn} aria-disabled:opacity-40"
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
     class:bg-surface-active={appState.tool === "brush"}
     title={pixelTitle("Brush")}
-    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
   >
   <button
-    class="{toolBtn} aria-disabled:opacity-40"
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
     class:bg-surface-active={appState.tool === "eraser"}
     title={pixelTitle("Eraser")}
-    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
   >
   <button
-    class="{toolBtn} aria-disabled:opacity-40"
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
     class:bg-surface-active={appState.tool === "fill"}
     title={pixelTitle("Fill")}
-    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
   >
   <button
@@ -215,17 +222,17 @@
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
   <button
-    class="{toolBtn} aria-disabled:opacity-40"
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
     class:bg-surface-active={appState.tool === "deform"}
     title={pixelTitle("Deform (warp the drawing)")}
-    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
   >
   <button
-    class="{toolBtn} aria-disabled:opacity-40"
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
     class:bg-surface-active={appState.tool === "pose"}
     title={pixelTitle("Pose (mesh deform)")}
-    aria-disabled={toolsDimmed}
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches

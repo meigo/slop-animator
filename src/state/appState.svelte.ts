@@ -29,6 +29,7 @@ import {
   copyTracks,
   normalizedTracks,
   layerTransformTrack,
+  layerOpacityTrack,
   isLayerAnimated,
   layerAcceptsPropertyTracks,
   groupTransform,
@@ -53,6 +54,7 @@ import {
   type RefTransform,
   type Project,
   type Layer,
+  type LayerEditBlock,
   type DrawingLayer,
   type Cell,
   type AudioTrack,
@@ -77,10 +79,13 @@ import {
   type TimelineSelection,
 } from "../anim/timeline-selection";
 import {
+  anyGroupRowSelected,
   layerRowSelected,
   trackRowSelected,
   audioRowSelected,
+  groupDetailShown,
   groupRowSelected,
+  plainLayerRowSelected,
   resolveStaleTrackFocus,
   targetLayerId,
   workingTarget,
@@ -144,10 +149,16 @@ export type Tool =
   | "deform"
   | "pose";
 
-/** A copied animation key, tagged so a transform cannot be pasted into an opacity track. */
-export type KeyClipboard =
+/** A copied animation key, tagged with BOTH halves of its source's identity so it can only be
+ *  pasted where it means the same thing. `prop` stops a transform landing in an opacity track.
+ *  `owner` stops a LAYER transform landing on a GROUP track: the stored value is layer-relative
+ *  (dx/dy from the fit centre, scale, rotation about the layer's base rect) while a group transform
+ *  pivots on the group's bounding box, so the pasted pose is plausible and is not the copied one.
+ *  Cross-owner paste is a listed non-goal, not an oversight. */
+export type KeyClipboard = { owner: "layer" | "group" } & (
   | { prop: "transform"; key: TransformKey }
-  | { prop: "opacity"; key: Keyframe<number> };
+  | { prop: "opacity"; key: Keyframe<number> }
+);
 
 interface AnimState {
   project: Project;
@@ -445,6 +456,14 @@ function restoreStructure(s: StructSnapshot) {
       // slider path pushes no command, so nothing else could ever put that number back: undoing the
       // bake left the track correctly gone and the layer sitting at whatever frame it stopped on.
       // The transform twin needs no such term only because `transform` is restored unconditionally.
+      // This NARROWS the view-prop invariant rather than closing it, and knowingly so: the trigger
+      // is the track's PRESENCE flipping, not the value changing, so a static slider nudge made
+      // after "Stop animating" is still not restorable — Stop animating -> nudge the slider -> undo
+      // -> redo lands on the BAKE value, not the nudge, because the nudge pushed no command to be
+      // redone. Making the static write undoable was considered and declined: it would put a
+      // per-pointermove command on a slider that has never had one, unlike opacity's siblings
+      // (visible/locked/name), which are equally non-undoable and equally unrestorable. Do not read
+      // this line as "opacity is undoable now".
       if (!!snap.tracks?.opacity !== !!live.tracks?.opacity) live.opacity = snap.opacity;
       live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       if (live.kind === "ref" && snap.kind === "ref") {
@@ -494,16 +513,6 @@ function restoreStructure(s: StructSnapshot) {
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
-  // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
-  // selection is session state, and undo must not move it BETWEEN rows: resetting it
-  // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
-  // "trim to playhead" retargeted from the audio clip to a layer. A track focus whose owner
-  // survived this undo stays; a track the undo just removed falls back to the draw target.
-  if (state.activeRow.kind === "layer") {
-    state.activeRow = { kind: "layer", id: s.activeLayerId };
-  } else {
-    state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
-  }
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
   // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
@@ -517,6 +526,19 @@ function restoreStructure(s: StructSnapshot) {
   // gone at the next autosave. `audio` and `audioUndecoded` are never both set, and restoring both
   // from the same snapshot preserves that.
   state.project.audioUndecoded = s.audioUndecoded;
+  // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
+  // selection is session state, and undo must not move it BETWEEN rows: resetting it
+  // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
+  // "trim to playhead" retargeted from the audio clip to a layer. A track focus whose owner
+  // survived this undo stays; a track the undo just removed falls back to the draw target.
+  // BELOW the audio restore on purpose: the audio row is resolved against the track this undo just
+  // put back (or took away), so undoing an IMPORT hands focus to a layer instead of leaving the row
+  // pointing at a lane that no longer renders. Running it earlier read the OUTGOING track.
+  if (plainLayerRowSelected(state.activeRow)) {
+    state.activeRow = { kind: "layer", id: s.activeLayerId };
+  } else {
+    state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
+  }
   if (state.project.audio) {
     if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
     if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
@@ -562,6 +584,13 @@ export function commitStructural(mutate: () => void): void {
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
   state.timelineSelection = null; // any structural edit can invalidate stored endpoints
+  // ...and the SELECTED ROW, for exactly the same reason: an edit can destroy the track, group or
+  // audio clip it points at. This used to be six copy-pasted repairs at the call sites, which is
+  // how `removeAudioTrack` came to be the one that forgot — leaving `{kind:"audio"}` selected with
+  // no lane rendered, and the app refusing every pixel tool with nothing lit to explain it.
+  // No-op whenever the row's target survived, so it costs a lookup and cannot surprise a caller
+  // that selects a row it just created (those all select AFTER the commit).
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
   commitStructuralEdit(before);
 }
 
@@ -618,11 +647,15 @@ export function rasterizeReference(layerId: number): void {
   // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
   // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
   // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
-  // ANY property, through the shared predicate rather than a hand-written list of them:
-  // `animateLayerOpacity` has no `kind` guard and the panel offers Animate on reference rows, so a
-  // ref can carry an opacity track — and `buildFrameDrawList` resolves it. Keeping only
-  // `ref.opacity` below would bake in the seed value the layer may render at on no frame, and hand
-  // the new drawing layer no track at all.
+  // ANY property, through the shared predicate rather than a hand-written list of them: keeping
+  // only `ref.opacity` below would bake in a seed value the layer may render at on no frame, and
+  // hand the new drawing layer no track at all.
+  // UNREACHABLE TODAY, and kept anyway. `isLayerAnimated` is gated on `layerAcceptsPropertyTracks`,
+  // which is now `kind === "draw"`, so no reference reports as animated — a leftover track from an
+  // older release is preserved on disk but inert. It stays because it is a call to the SHARED
+  // predicate rather than a hand-rolled condition: the day references become animatable again the
+  // guard starts working on its own, which is the opposite of how this refusal was lost in the
+  // first place. Do not re-word it into something ref-specific.
   if (isLayerAnimated(ref)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
@@ -637,6 +670,15 @@ export function rasterizeReference(layerId: number): void {
     // accepted commit trade). The keyframes reproduce the ref's VISIBILITY rather than showing on
     // every frame: a trimmed ref used to reappear on the frames it had been trimmed away from,
     // because a lone key at frame 0 resolves forward forever.
+    // `tracks` is deliberately NOT copied, and this is the ONE place the "leftover reference tracks
+    // are preserved, never destroyed" rule does not hold. It is preserved everywhere else because
+    // the bytes are the only copy of something the artist authored; here the artist is asking for a
+    // drawing layer, and handing it a track would hand it an animation THEY HAVE NEVER SEEN RENDER
+    // — references stopped resolving their tracks a release ago, so it would spring to life the
+    // moment the layer became a drawing one, moving or fading pixels for reasons nothing on screen
+    // explains. Discarding is the honest outcome: rasterize BAKES one placement, which is exactly
+    // the "a bake only means something for a transform that does not vary" argument the guard above
+    // makes, and the new layer starts static like every other rasterize result.
     const dl = createDrawingLayer(state.project.frameCount, ref.name);
     dl.id = ref.id;
     dl.groupId = ref.groupId;
@@ -677,8 +719,6 @@ export function removeLayer(id: number) {
       if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
   });
-  // A focused track on the removed layer (or left pointing at a now-missing owner) must fall back.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
@@ -877,8 +917,8 @@ export function removeLayerAnimation(layerId: number): void {
     l.transform = { ...resolved };
     l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
   });
-  // Do not call setActiveLayer — that would also reset transformScope when the layer is ungrouped.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
+  // The row repair is `commitStructural`'s, not ours. Deliberately NOT setActiveLayer — that would
+  // also reset transformScope when the layer is ungrouped.
 }
 
 /** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
@@ -888,7 +928,7 @@ export function animateLayerOpacity(layerId: number): void {
   if (
     !l ||
     !layerAcceptsPropertyTracks(l) ||
-    l.tracks?.opacity ||
+    layerOpacityTrack(l) ||
     isLayerLocked(l, state.project.groups)
   )
     return;
@@ -906,14 +946,13 @@ export function animateLayerOpacity(layerId: number): void {
  *  WYSIWYG, mirroring `removeLayerAnimation` for the transform. */
 export function removeLayerOpacityAnimation(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l || !l.tracks?.opacity || isLayerLocked(l, state.project.groups)) return;
+  if (!l || !layerOpacityTrack(l) || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const resolved = opacityAt(l, state.playhead);
   commitStructural(() => {
     l.opacity = resolved;
     l.tracks = normalizedTracks({ ...l.tracks, opacity: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a GROUP's transform: its current static transform becomes the key at frame 0.
@@ -960,7 +999,6 @@ export function removeGroupAnimation(groupId: number): void {
     if (box && !g.transformBox) g.transformBox = { ...box };
     g.tracks = normalizedTracks({ ...g.tracks, transform: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a group's opacity: the static value becomes the key at frame 0. No box — a
@@ -991,7 +1029,6 @@ export function removeGroupOpacityAnimation(groupId: number): void {
     g.opacity = resolved;
     g.tracks = normalizedTracks({ ...g.tracks, opacity: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Auto-key (or write the static field) with NO history entry — for Task 4's group opacity slider
@@ -1023,7 +1060,10 @@ export function applyGroupOpacityAt(groupId: number, frame: number, value: numbe
  *  ended up re-deriving why something existed. */
 function opacityKeyWrite(layerId: number, frame: number, value: number): (() => void) | null {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.tracks?.opacity;
+  // Through the accessor: a REFERENCE animated by the previous release still carries the bytes, and
+  // reading them raw here wrote keys `opacityAt` ignores — a slider that did nothing visible while
+  // pushing a real undo entry per drag.
+  const track = l && layerOpacityTrack(l);
   if (!l || !track || isLayerLocked(l, state.project.groups)) return null;
   if (!isLayerVisible(l, state.project.groups)) return null;
   const existing = track.keys.find((k) => k.frame === frame);
@@ -1118,7 +1158,7 @@ function trackTarget(ref: TrackRef): TrackTarget | null {
   if (!l || isLayerLocked(l, state.project.groups)) return null;
   if (!isLayerVisible(l, state.project.groups)) return null;
   if (ref.prop === "opacity") {
-    const track = l.tracks?.opacity;
+    const track = layerOpacityTrack(l);
     if (!track) return null;
     return {
       track,
@@ -1206,17 +1246,40 @@ export function copyTrackKey(ref: TrackRef): void {
   const track = trackForRef(state.project, ref);
   const key = track?.keys.find((k) => k.frame === state.playhead);
   if (!key) return;
-  state.keyClipboard =
-    ref.prop === "opacity"
-      ? { prop: "opacity", key: copyKeyframe(key as Keyframe<number>, (n) => n) }
-      : { prop: "transform", key: copyTransformKey(key as TransformKey) };
+  // SWITCH with a `never` arm, matching `trackForRef`, `copyTracks`, `sanitiseTracks` and both
+  // frame shifters. The ternary this replaces had an `else`: a third property would have compiled,
+  // been copied as a transform, and then been refused by the paste tag check with a title claiming
+  // the clipboard holds a transform. Read into a local first — narrowing `ref.prop` in the default
+  // arm narrows `ref` itself to never, so the check cannot then read a field off it.
+  const prop: TrackRef["prop"] = ref.prop;
+  switch (prop) {
+    case "opacity":
+      state.keyClipboard = {
+        owner: ref.owner,
+        prop: "opacity",
+        key: copyKeyframe(key as Keyframe<number>, (n) => n),
+      };
+      return;
+    case "transform":
+      state.keyClipboard = {
+        owner: ref.owner,
+        prop: "transform",
+        key: copyTransformKey(key as TransformKey),
+      };
+      return;
+    default: {
+      const unreachable: never = prop;
+      return unreachable;
+    }
+  }
 }
 
 /** Paste the copied key at the playhead. Refuses a missing track (do not silently start animating)
- *  and a clipboard whose property does not match the destination. */
+ *  and a clipboard whose property OR owner kind does not match the destination — see `KeyClipboard`
+ *  for why a layer key is not a group key. */
 export function pasteTrackKey(ref: TrackRef): void {
   const clip = state.keyClipboard;
-  if (!clip || clip.prop !== ref.prop) return;
+  if (!clip || clip.prop !== ref.prop || clip.owner !== ref.owner) return;
   const t = trackTarget(ref);
   if (!t) return;
   const at = state.playhead;
@@ -1323,8 +1386,6 @@ export function ungroup(groupId: number) {
       state.transformScope = "frame";
     }
   });
-  // Destroying the group also destroys its transform track — fall focus back if it was selected.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 /** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
  *  group's `collapsed` directly below: mutated in place with a `bump()` and NOT undoable — the
@@ -1334,6 +1395,7 @@ export function toggleTracksCollapsed(layerId: number) {
   const l = state.project.layers.find((x) => x.id === layerId);
   if (l) {
     l.tracksCollapsed = !l.tracksCollapsed;
+    refocusFoldedRow();
     bump();
   }
 }
@@ -1341,6 +1403,7 @@ export function toggleGroupTracksCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (g) {
     g.tracksCollapsed = !g.tracksCollapsed;
+    refocusFoldedRow();
     bump();
   }
 }
@@ -1348,8 +1411,15 @@ export function toggleGroupCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (g) {
     g.collapsed = !g.collapsed;
+    refocusFoldedRow();
     bump();
   }
+}
+/** A fold can hide the SELECTED row, which no structural edit did — so the three view-prop toggles
+ *  need the same repair `commitStructural` runs. Without it the animation bar kept driving a row
+ *  that was no longer on screen, and Stop animating removed a track the artist could not see. */
+function refocusFoldedRow() {
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 /** Lock/unlock a whole group. DERIVED onto members (see isLayerLocked) — members' own `locked`
  *  flags are untouched, so unlocking restores each one's individual state with nothing stored. */
@@ -1576,13 +1646,39 @@ export function isAudioRowSelected(): boolean {
  *  `activeLayerId` is leftover memory on a non-layer row — dimming without also refusing
  *  the stroke would paint into a layer that is not selected. */
 export function pixelToolsDimmed(): boolean {
-  return workingTarget(state.activeRow).kind !== "layer" || activeLayer().kind === "ref";
+  return pixelToolsBlock() !== null;
 }
 
-/** Is this group's header the selected row (not a member, not a proxy)? */
+/** WHY the pixel tools are dimmed, so the toolbar's titles can say something true. The two
+ *  refusals are different: on a group or audio row the active layer is usually a fine drawing
+ *  layer and the fix is to select a layer row, not to switch layer kind. */
+export function pixelToolsBlock(): LayerEditBlock | null {
+  if (workingTarget(state.activeRow).kind !== "layer") return "not-layer-row";
+  return activeLayer().kind === "ref" ? "not-draw" : null;
+}
+
+/** Is this group's header the selected row (not a member, not a proxy)? With no id: is SOME
+ *  group's header selected? Both go through `active-row.ts` — a view that answers a question about
+ *  the row union by comparing `.kind` itself is how the two ended up able to disagree. */
 export function isGroupRowSelected(groupId?: number): boolean {
   if (groupId != null) return groupRowSelected(state.activeRow, groupId);
-  return state.activeRow.kind === "group";
+  return anyGroupRowSelected(state.activeRow);
+}
+
+/** Show this group's detail strip? Deliberately BROADER than the header highlight — see
+ *  `groupDetailShown`, which the panel used to hand-roll beside it. */
+export function isGroupDetailShown(groupId: number): boolean {
+  return groupDetailShown(state.activeRow, groupId, state.project.layers);
+}
+
+/** The DRAWING layer a frame tool should act on, or null. Through `targetLayerId`, so a layer's own
+ *  track row counts as its layer — which is what `isRowSelected` already lights. Branching on
+ *  `activeRow.kind === "layer"` here made "Clear frame" report a non-drawing row while the layer's
+ *  row was visibly selected. */
+export function drawingRowLayerId(): number | null {
+  const id = targetLayerId(state.activeRow);
+  if (id == null) return null;
+  return state.project.layers.find((l) => l.id === id)?.kind === "draw" ? id : null;
 }
 
 /** Select the group as the working row. Remembers a draw member as the transform anchor

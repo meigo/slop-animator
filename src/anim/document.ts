@@ -222,7 +222,23 @@ export function normalizedTracks<T extends LayerTracks | GroupTracks>(tracks: T)
  *  src/anim, src/lib, src/state and src/persist — one accessor so they do not each reach into the
  *  bag, and so a future move of the bag is one edit rather than fifty-eight. */
 export function layerTransformTrack(layer: Layer): TransformTrack | undefined {
-  return layer.tracks?.transform;
+  // Gated, not raw: `layerAcceptsPropertyTracks` was threaded into every READER and into the UI
+  // that OFFERS animation, but not into the writers — so a reference animated by the PREVIOUS
+  // release (that build had no kind gate) came back with `transformAt` reading its static value
+  // while the gizmo's `setT` kept keying the ignored track: the ref could not be moved AT ALL, the
+  // no-op check reverted every drag, Reset-to-fit refused "Layer is animated", and no track row
+  // was emitted to reach Stop animating. Gating the ACCESSOR makes both drag sites, `animated` and
+  // both Apply/Reset refusals agree with the readers in one line.
+  // The bytes are deliberately NOT stripped on load: they are the only copy of that data, so a
+  // leftover track stays inert-but-intact rather than being destroyed.
+  return layerAcceptsPropertyTracks(layer) ? layer.tracks?.transform : undefined;
+}
+
+/** The layer's opacity track, or undefined. The twin of `layerTransformTrack` above, and gated for
+ *  exactly the same reason: `opacityAt` already asked `layerAcceptsPropertyTracks`, so a writer
+ *  reaching into the bag raw wrote keys nothing would ever read. */
+export function layerOpacityTrack(layer: Layer): Track<number> | undefined {
+  return layerAcceptsPropertyTracks(layer) ? layer.tracks?.opacity : undefined;
 }
 
 export interface ReferenceLayer {
@@ -275,8 +291,15 @@ export function isLayerEditable(layer: Layer, groups: LayerGroup[]): layer is Dr
   return layer.kind === "draw" && !isLayerLocked(layer, groups) && isLayerVisible(layer, groups);
 }
 
-/** Why `isLayerEditable` is false — lock wins over hidden (same precedence as the status hint). */
-export type LayerEditBlock = "locked" | "hidden" | "not-draw";
+/** Why an edit is refused — lock wins over hidden (same precedence as the status hint).
+ *
+ *  `not-layer-row` is never returned by `whyNotEditable` (which sees only a layer): it is raised by
+ *  callers that check `workingTarget(activeRow).kind !== "layer"`. The two are genuinely different
+ *  refusals and one message for both was actively wrong — on a GROUP or AUDIO row the active layer
+ *  IS an unlocked drawing layer, so "switch to a drawing layer" described a state that was not
+ *  true, and with the Transform tool on the audio row it misdirected (a REFERENCE row works fine).
+ */
+export type LayerEditBlock = "locked" | "hidden" | "not-draw" | "not-layer-row";
 
 export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlock | null {
   if (layer.kind !== "draw") return "not-draw";
@@ -342,6 +365,20 @@ export function whyNotMergeDown(
   // upper layer at its STATIC `upper.opacity`, which on an animated layer is retained but ignored,
   // so a fade-out would be burned in at its seed alpha and the track would vanish with the layer.
   if (isLayerAnimated(upper) || isLayerAnimated(below)) return "animated";
+  // ...and the OWNING GROUP's tracks, which `isLayerAnimated` cannot see — it reads the layer's own
+  // bag. Only across a group BOUNDARY: merging inside one group composes identically before and
+  // after, but a merge that crosses one silently changes which group contribution the pixels carry.
+  // The upper layer LOSES its group's (its pixels move into the lower layer's group), and, when the
+  // upper is ungrouped or in a different group, GAINS the lower's. Baking cannot stand in for
+  // either once the contribution varies per frame, which is the same argument the layer-level check
+  // above makes. Pre-existing in shape for a static group opacity; the group opacity TRACK is what
+  // made it reachable as silent animation loss.
+  const gUpper = groupOf(upper, groups);
+  const gBelow = groupOf(below, groups);
+  if ((gUpper?.id ?? null) !== (gBelow?.id ?? null)) {
+    if (gUpper && isGroupAnimated(gUpper)) return "animated";
+    if (gBelow && isGroupAnimated(gBelow)) return "animated";
+  }
   return null;
 }
 
@@ -520,8 +557,7 @@ export function resolveTrack<V>(
 /** The layer's opacity (0..100) at `frame`: its static field when there is no track, otherwise the
  *  track resolved. The frame-aware twin of `layer.opacity`, mirroring `transformAt` below. */
 export function opacityAt(layer: Layer, frame: number): number {
-  if (!layerAcceptsPropertyTracks(layer)) return layer.opacity;
-  const track = layer.tracks?.opacity;
+  const track = layerOpacityTrack(layer);
   if (!track || track.keys.length === 0) return layer.opacity;
   return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
 }
@@ -529,7 +565,6 @@ export function opacityAt(layer: Layer, frame: number): number {
 /** The layer's transform at `frame`: its static value when there is no track, otherwise the track
  *  resolved (and held outside its key range — a track never extrapolates). */
 export function transformAt(layer: Layer, frame: number): RefTransform {
-  if (!layerAcceptsPropertyTracks(layer)) return layer.transform;
   const track = layerTransformTrack(layer);
   if (!track || track.keys.length === 0) return layer.transform;
   return resolveTrack(track, frame, lerpTransform);
@@ -804,10 +839,13 @@ export function trackForRef(project: Project, ref: TrackRef): Track<unknown> | u
   const l = project.layers.find((x) => x.id === ref.id);
   const prop: keyof LayerTracks = ref.prop;
   switch (prop) {
+    // Through the accessors, so a leftover track on a reference reads as absent here exactly as it
+    // does in `transformAt`/`opacityAt` — the key controls must not offer to edit keys nothing
+    // resolves.
     case "transform":
-      return l?.tracks?.transform;
+      return l ? layerTransformTrack(l) : undefined;
     case "opacity":
-      return l?.tracks?.opacity;
+      return l ? layerOpacityTrack(l) : undefined;
     default: {
       const unreachable: never = prop;
       return unreachable;

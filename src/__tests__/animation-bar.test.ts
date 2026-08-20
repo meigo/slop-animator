@@ -22,8 +22,6 @@ const args = (over: Partial<Parameters<typeof animationBar>[0]> = {}) =>
     activeRow: { kind: "layer", id: 1 },
     layers: [draw(1)],
     groups: [],
-    playhead: 0,
-    fps: 12,
     ...over,
   });
 

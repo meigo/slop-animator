@@ -204,6 +204,42 @@ describe("timeline operations", () => {
     expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
   });
 
+  // A hold runs PAST the end of `cells` — only a blank key ◇ stops one — so a frame past the end
+  // DISPLAYS the held drawing. Materialising there once planted a BLANK key, silently discarding
+  // that drawing from the edited frame to the end of the animation, in the editor and both exports.
+  it("ensureDrawableKeyframe past the layer's end CLONES the drawing still on screen", () => {
+    const src = fakeOps.create() as unknown as { __id: number };
+    const l = layer([{ kind: "key", canvas: src as unknown as HTMLCanvasElement }]); // length 1
+    const { canvas } = ensureDrawableKeyframe(l, 3, fakeOps);
+    expect(l.cells.length).toBe(4);
+    expect(l.cells[1]).toEqual({ kind: "hold" });
+    expect(l.cells[2]).toEqual({ kind: "hold" });
+    expect(l.cells[3].kind).toBe("key");
+    expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBe(src.__id);
+  });
+
+  it("ensureDrawableKeyframe past the layer's end copies the held key's transform", () => {
+    const t = { dx: 12, dy: -4, scale: 1.5, rotation: 0.3 };
+    const box = { x: 10, y: 20, w: 100, h: 80 };
+    const l = layer([{ kind: "key", canvas: fakeOps.create(), transform: t, transformBox: box }]);
+    ensureDrawableKeyframe(l, 3, fakeOps);
+    const neu = l.cells[3];
+    expect(neu.kind).toBe("key");
+    if (neu.kind !== "key") return;
+    expect(neu.transform).toEqual(t);
+    expect(neu.transform).not.toBe(t); // new object — gotcha #8
+    expect(neu.transformBox).toEqual(box);
+    expect(neu.transformBox).not.toBe(box);
+  });
+
+  it("ensureDrawableKeyframe past a BLANK key stays blank — a ◇ stops the hold", () => {
+    const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
+    l.cells[0] = { kind: "hold" }; // nothing held at all
+    const { canvas } = ensureDrawableKeyframe(l, 4, fakeOps);
+    expect(l.cells[4].kind).toBe("key");
+    expect((canvas as unknown as { __cloneOf?: number }).__cloneOf).toBeUndefined();
+  });
+
   // Materialising a keyframe is a STRUCTURAL change made by a tool that records a PIXEL command.
   // For years nothing captured it: undo reverted the pixels and left a blank ◆ behind, and undoing
   // an earlier structural entry deleted the cell out from under the pixel command that owned it.
@@ -731,11 +767,15 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
     });
 
+    // Read RAW, not through `layerTransformTrack` — that accessor now hides a reference's leftover
+    // track so no writer can key into something the readers ignore. The bytes are still preserved
+    // (deliberately: they are the only copy), so the ripple must keep them coherent with the frames
+    // they were authored against.
     it("shifts a REFERENCE layer's track too", () => {
       const ref = imageRef() as unknown as DrawingLayer;
       ref.tracks = { transform: { keys: [{ frame: 6, v: T(6) }], box: null } };
       insertFrameAllLayers(proj([ref]), 2);
-      expect(track(ref).keys.map((k) => k.frame)).toEqual([7]);
+      expect(ref.tracks?.transform?.keys.map((k) => k.frame)).toEqual([7]);
     });
 
     // `interp` was added to `TransformKey` after this copy was written and the hand-written literal

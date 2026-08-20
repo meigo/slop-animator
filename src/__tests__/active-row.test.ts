@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  anyGroupRowSelected,
   audioRowSelected,
+  groupDetailShown,
   groupHeaderSelected,
+  plainLayerRowSelected,
   groupRowSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
+  rowAdmitsTransform,
+  whyRowRefusesTransform,
   targetLayerId,
   trackRowSelected,
   workingTarget,
   type ActiveRow,
 } from "../anim/active-row";
-import type { Layer } from "../anim/document";
+import type { AudioTrack, Layer } from "../anim/document";
 
 const layer = (id: number, groupId: number | null = null): Layer =>
   ({
@@ -169,6 +174,46 @@ describe("audioRowSelected", () => {
   });
 });
 
+describe("rowAdmitsTransform", () => {
+  const ref = (id: number, groupId: number | null = null) =>
+    ({ kind: "ref", id, groupId }) as unknown as Layer;
+
+  it("a layer row transforms at any scope — its own row is what is lit", () => {
+    for (const scope of ["frame", "layer", "group"] as const)
+      expect(rowAdmitsTransform({ kind: "layer", id: 1 }, scope, layer(1, 10))).toBe(true);
+  });
+
+  it("audio never transforms — activeLayerId under it is memory", () => {
+    expect(rowAdmitsTransform({ kind: "audio" }, "layer", layer(1, 10))).toBe(false);
+    expect(rowAdmitsTransform({ kind: "audio" }, "group", layer(1, 10))).toBe(false);
+  });
+
+  it("a group row admits only its OWN group, and only at group scope", () => {
+    const row: ActiveRow = { kind: "group", id: 10 };
+    expect(rowAdmitsTransform(row, "group", layer(1, 10))).toBe(true);
+    // Layer/frame scope would move the member's own transform while only the group is lit.
+    expect(rowAdmitsTransform(row, "layer", layer(1, 10))).toBe(false);
+    expect(rowAdmitsTransform(row, "frame", layer(1, 10))).toBe(false);
+    // The anchor left over in a DIFFERENT group would move THAT group.
+    expect(rowAdmitsTransform(row, "group", layer(1, 11))).toBe(false);
+    expect(rowAdmitsTransform(row, "group", layer(1, null))).toBe(false);
+    // A ref anchor never reaches the group branch of transformTarget — it would move the ref.
+    expect(rowAdmitsTransform(row, "group", ref(1, 10))).toBe(false);
+  });
+
+  it("a group TRACK row is the group, same rule", () => {
+    const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "transform" };
+    expect(rowAdmitsTransform(row, "group", layer(1, 10))).toBe(true);
+    expect(rowAdmitsTransform(row, "group", layer(1, 11))).toBe(false);
+    expect(rowAdmitsTransform(row, "layer", layer(1, 10))).toBe(false);
+  });
+
+  it("a layer's own track row is that layer, so it transforms", () => {
+    const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "transform" };
+    expect(rowAdmitsTransform(row, "layer", layer(1, null))).toBe(true);
+  });
+});
+
 describe("resolveStaleTrackFocus", () => {
   const project = {
     layers: [{ ...layer(1), tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } }, layer(2)],
@@ -237,12 +282,21 @@ describe("resolveStaleTrackFocus", () => {
     });
   });
 
-  it("leaves layer and audio rows alone", () => {
+  it("leaves a layer row alone, and keeps an audio row while the track exists", () => {
     expect(resolveStaleTrackFocus({ kind: "layer", id: 1 }, project, 2)).toEqual({
       kind: "layer",
       id: 1,
     });
-    expect(resolveStaleTrackFocus({ kind: "audio" }, project, 1)).toEqual({ kind: "audio" });
+    const withAudio = { ...project, audio: { name: "take" } as unknown as AudioTrack };
+    expect(resolveStaleTrackFocus({ kind: "audio" }, withAudio, 1)).toEqual({ kind: "audio" });
+  });
+
+  // Was pinned the other way: an audio row was passed through unchanged against a fixture with no
+  // audio at all. Removing the track (or undoing the import) then left the lane unrendered with the
+  // row still selected — every pixel tool refusing on every layer, an uncaptioned not-allowed
+  // cursor, and nothing lit anywhere to point at the way out.
+  it("falls the audio row back to the draw target once the track is gone", () => {
+    expect(resolveStaleTrackFocus({ kind: "audio" }, project, 3)).toEqual({ kind: "layer", id: 3 });
   });
 
   it("keeps a live group row and falls back when the group is gone", () => {
@@ -255,5 +309,162 @@ describe("resolveStaleTrackFocus", () => {
       kind: "layer",
       id: 1,
     });
+  });
+});
+
+describe("resolveStaleTrackFocus — a row the timeline no longer EMITS", () => {
+  const track = { opacity: { keys: [{ frame: 0, v: 100 }] } };
+  const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "opacity" };
+  const doc = (l: Partial<Layer>, groups: unknown[] = []) =>
+    ({
+      layers: [{ ...layer(1), tracks: track, ...l }],
+      groups,
+    }) as Parameters<typeof resolveStaleTrackFocus>[1];
+
+  it("falls a folded layer track back to its OWNER row, not the draw target", () => {
+    expect(resolveStaleTrackFocus(row, doc({ tracksCollapsed: true }), 7)).toEqual({
+      kind: "layer",
+      id: 1,
+    });
+  });
+
+  it("walks out to the group row when the whole group is collapsed", () => {
+    const g = { id: 10, name: "G", collapsed: true, visible: true };
+    expect(resolveStaleTrackFocus(row, doc({ groupId: 10 }, [g]), 7)).toEqual({
+      kind: "group",
+      id: 10,
+    });
+  });
+
+  it("keeps the row while the fold is open", () => {
+    const g = { id: 10, name: "G", collapsed: false, visible: true };
+    expect(resolveStaleTrackFocus(row, doc({ groupId: 10 }, [g]), 7)).toEqual(row);
+  });
+
+  it("falls a REFERENCE's leftover track back — refs emit no property rows", () => {
+    expect(resolveStaleTrackFocus(row, doc({ kind: "ref" } as Partial<Layer>), 7)).toEqual({
+      kind: "layer",
+      id: 1,
+    });
+  });
+
+  it("falls a folded GROUP track back to the group header", () => {
+    const groups = [
+      {
+        id: 10,
+        name: "G",
+        collapsed: false,
+        tracksCollapsed: true,
+        visible: true,
+        tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } },
+      },
+    ];
+    const gRow: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "opacity" };
+    const d = { layers: [], groups } as unknown as Parameters<typeof resolveStaleTrackFocus>[1];
+    expect(resolveStaleTrackFocus(gRow, d, 7)).toEqual({ kind: "group", id: 10 });
+  });
+});
+
+describe("groupDetailShown", () => {
+  const members = [
+    { id: 1, groupId: 10 },
+    { id: 2, groupId: null },
+  ];
+
+  it("shows for the group's own header and for either of its tracks", () => {
+    expect(groupDetailShown({ kind: "group", id: 10 }, 10, members)).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "group", id: 10, prop: "opacity" }, 10, members),
+    ).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "group", id: 10, prop: "transform" }, 10, members),
+    ).toBe(true);
+  });
+
+  it("shows for a MEMBER's row, and for that member's own track", () => {
+    expect(groupDetailShown({ kind: "layer", id: 1 }, 10, members)).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "layer", id: 1, prop: "opacity" }, 10, members),
+    ).toBe(true);
+  });
+
+  it("does not show for an outsider, another group, or audio", () => {
+    expect(groupDetailShown({ kind: "layer", id: 2 }, 10, members)).toBe(false);
+    expect(groupDetailShown({ kind: "group", id: 11 }, 10, members)).toBe(false);
+    expect(groupDetailShown({ kind: "audio" }, 10, members)).toBe(false);
+  });
+
+  // The asymmetry this pair exists to make readable: with the group EXPANDED and a member
+  // selected, the detail strip shows under a header that is deliberately NOT lit.
+  it("is BROADER than groupHeaderSelected while the group is expanded", () => {
+    const row: ActiveRow = { kind: "layer", id: 1 };
+    const g = { id: 10, collapsed: false };
+    expect(groupDetailShown(row, 10, members)).toBe(true);
+    expect(groupHeaderSelected(row, g, members)).toBe(false);
+    // Collapsed, the header stands in for the hidden member and the two agree again.
+    expect(groupHeaderSelected(row, { ...g, collapsed: true }, members)).toBe(true);
+  });
+});
+
+describe("row-union accessors", () => {
+  it("anyGroupRowSelected is a group HEADER only, never a group track", () => {
+    expect(anyGroupRowSelected({ kind: "group", id: 10 })).toBe(true);
+    expect(anyGroupRowSelected({ kind: "track", owner: "group", id: 10, prop: "opacity" })).toBe(
+      false,
+    );
+    expect(anyGroupRowSelected({ kind: "layer", id: 1 })).toBe(false);
+  });
+
+  it("plainLayerRowSelected excludes the layer's own track — undo must not re-point a track row", () => {
+    expect(plainLayerRowSelected({ kind: "layer", id: 1 })).toBe(true);
+    expect(plainLayerRowSelected({ kind: "track", owner: "layer", id: 1, prop: "opacity" })).toBe(
+      false,
+    );
+    expect(plainLayerRowSelected({ kind: "audio" })).toBe(false);
+  });
+});
+
+// The refusals are not interchangeable: "wrong scope" is one tap away, "no draw member" is not
+// fixable at all for a group of references — and the status bar has to say which.
+describe("whyRowRefusesTransform", () => {
+  const g10 = { kind: "draw" as const, groupId: 10 };
+
+  it("agrees with rowAdmitsTransform in every case", () => {
+    const rows: ActiveRow[] = [
+      { kind: "layer", id: 1 },
+      { kind: "audio" },
+      { kind: "group", id: 10 },
+      { kind: "track", owner: "group", id: 10, prop: "transform" },
+    ];
+    const layers = [
+      g10,
+      { kind: "ref" as const, groupId: 10 },
+      { kind: "draw" as const, groupId: 11 },
+    ];
+    for (const row of rows)
+      for (const scope of ["frame", "layer", "group"] as const)
+        for (const l of layers)
+          expect(rowAdmitsTransform(row, scope, l)).toBe(
+            whyRowRefusesTransform(row, scope, l) === null,
+          );
+  });
+
+  it("names the audio lane, the wrong scope and a group with no draw member", () => {
+    expect(whyRowRefusesTransform({ kind: "audio" }, "group", g10)).toBe("audio-row");
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "layer", g10)).toBe("wrong-scope");
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "frame", g10)).toBe("wrong-scope");
+    // Group scope, but the anchor is a reference — a group of references has nothing to transform.
+    expect(
+      whyRowRefusesTransform({ kind: "group", id: 10 }, "group", { kind: "ref", groupId: 10 }),
+    ).toBe("no-draw-member");
+    // ...or the anchor was left in ANOTHER group.
+    expect(
+      whyRowRefusesTransform({ kind: "group", id: 10 }, "group", { kind: "draw", groupId: 11 }),
+    ).toBe("no-draw-member");
+  });
+
+  it("is null on a layer row at any scope, and on a valid group drag", () => {
+    expect(whyRowRefusesTransform({ kind: "layer", id: 1 }, "frame", g10)).toBeNull();
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "group", g10)).toBeNull();
   });
 });

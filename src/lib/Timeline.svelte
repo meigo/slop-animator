@@ -51,6 +51,7 @@
     relinkReference,
     isRowSelected,
     isTrackSelected,
+    drawingRowLayerId,
     applyAnimationLength,
     revertStructural,
     trimToPlayhead,
@@ -190,11 +191,9 @@
   // dependency needs listing here. Staying reactive matters: the button's title NAMES its target,
   // and a stale name is the one thing that would make the precedence rule unsafe.
   const trimTarget = $derived(trimToPlayheadInfo());
-  const drawingRowSelected = $derived.by(() => {
-    const row = appState.activeRow;
-    if (row.kind !== "layer") return false;
-    return appState.project.layers.find((l) => l.id === row.id)?.kind === "draw";
-  });
+  // Through the accessor, never a hand-rolled `.kind` branch: this used to say "not a drawing row"
+  // for a layer's own TRACK row while `isRowSelected` had that layer's row visibly lit.
+  const drawingRowSelected = $derived(drawingRowLayerId() !== null);
   // Onion "step by keyframes" reads the ACTIVE layer's keys — empty on a ref, so the ghosts
   // vanish with no explanation. Dim the control rather than silently doing nothing.
   const onionKeysOk = $derived(activeLayer().kind === "draw");
@@ -319,8 +318,7 @@
   /** Pointer position when the tick was armed. The tick re-applies the drag whenever the scroller
    *  moved, so without this a press that NEVER moved still dragged: hold inside the left trigger
    *  zone and the content scrolls under a stationary pointer, and each frame re-applies the drag at
-   *  a new column. `clipMoveAt` writes `offsetFrames` with no undo bracket at all, so that alone
-   *  slid a video's in-point unrecoverably. */
+   *  a new column — which for `clipMoveAt` slid a video's in-point for a press that never moved. */
   let edgeOriginX = 0;
   let edgeOriginY = 0;
 
@@ -420,8 +418,20 @@
     relinkReference(id, await loadReferenceMedia(file, () => repaint()), file);
   }
 
-  // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
-  let clipDrag: { layer: ReferenceLayer; x: number; sx: number; startFrame: number } | null = null;
+  // Video-ref clip drag: writes offsetFrames live, and brackets ONE undo entry per completed
+  // gesture. `offsetFrames` is a snapshot-restored field (`restoreStructure` writes it back
+  // unconditionally), and the invariant there is that every writer of a captured field must push a
+  // command — otherwise an unrelated undo silently reverts the writes that never did. The trim
+  // handle on this very clip is bracketed and writes the same field, so an unbracketed slide after
+  // a trim was discarded by the next ⌘Z with no redo able to recover it.
+  let clipDrag: {
+    layer: ReferenceLayer;
+    x: number;
+    sx: number;
+    startFrame: number;
+    from: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
 
   function clipDown(e: PointerEvent, layer: ReferenceLayer) {
     // A trim handle is a sibling, not a child, so this usually does not see handle presses.
@@ -442,9 +452,17 @@
       dur,
       appState.project.fps,
     );
-    clipDrag = { layer, x: e.clientX, sx: scrollX(), startFrame };
+    clipDrag = {
+      layer,
+      x: e.clientX,
+      sx: scrollX(),
+      startFrame,
+      from: layer.offsetFrames,
+      undo: beginStructuralEdit(),
+    };
     edgePointerX = e.clientX;
     startEdgeScroll(clipMoveAt, "clip");
+    transformDragGuard.settle = settleClipDrag;
   }
 
   function clipMove(e: PointerEvent) {
@@ -469,9 +487,19 @@
     }
   }
 
-  function clipUp() {
+  /** Release the slide: commit only when the offset actually moved (a click without a drag must
+   *  push nothing, or the next ⌘Z looks dead). Also the `transformDragGuard` hook, so an undo or an
+   *  Open mid-drag cannot leave the bracket open. */
+  function settleClipDrag() {
     stopEdgeScroll("clip");
+    if (!clipDrag) return;
+    if (clipDrag.layer.offsetFrames !== clipDrag.from) commitStructuralEdit(clipDrag.undo);
     clipDrag = null;
+    if (transformDragGuard.settle === settleClipDrag) transformDragGuard.settle = null;
+  }
+
+  function clipUp() {
+    settleClipDrag();
     touchPanUp();
   }
 
@@ -1073,8 +1101,12 @@
   /** Which drawing-layer row the pointer is physically over (pointer capture routes all moves to the
    *  origin row, so hit-test by client coords to allow vertical cross-layer selection). */
   function layerIdAtPoint(clientX: number, clientY: number, fallback: number): number {
+    // SCOPED to the grid, the same containment the nearest-row fallback below already has. The
+    // layer PANEL puts `data-layer-id` on every one of its rows, so an unscoped hit-test let a
+    // marquee dragged up out of the timeline retarget onto a panel row — the single place the
+    // "property and group rows carry no layer identity" invariant leaked out of the timeline.
     const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-layer-id]");
-    if (el) return Number(el.dataset.layerId);
+    if (el && gridWrapper?.contains(el)) return Number(el.dataset.layerId);
     // Pointer is off the track rows (e.g. dragging below the last track or above the first, or over
     // the label gutter): clamp the selection to the vertically-nearest row instead of snapping back
     // to the origin, so the marquee keeps extending to the top/bottom track.
@@ -1120,6 +1152,11 @@
      *  `interp`, never the value itself. */
     track: Track<unknown>;
     label: string;
+    /** Which property this row animates. The row's title has to name the control that KEYS it, and
+     *  the two properties are keyed from opposite ends of the app — a single tail promising the
+     *  Transform tool sent an opacity row's reader to a tool that cannot touch it. On iPad this
+     *  title IS the status-bar hint, so it is read rather than skimmed. */
+    prop: TrackProp;
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
@@ -1154,6 +1191,7 @@
     return {
       track,
       label: TRACK_LABEL[prop],
+      prop,
       owner: layer.name,
       indent: layer.groupId != null,
       selected: isTrackSelected("layer", layer.id, prop),
@@ -1193,6 +1231,7 @@
     return {
       track,
       label: TRACK_LABEL[prop],
+      prop,
       owner: group.name,
       indent: false,
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
@@ -1721,14 +1760,15 @@
   const toolBtn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
 
-  // Follows `activeRow` (+ project/playhead) so the animation tool group re-renders with focus.
+  // Follows `activeRow` (+ the layer/group arrays) so the animation tool group re-renders with
+  // focus. Deliberately NOT the playhead: nothing the bar OFFERS depends on the frame — the one
+  // reason that did (a reference outside its visible range) went with references becoming
+  // unanimatable — and a per-frame dependency would re-derive it on every scrub tick.
   const animBar = $derived(
     animationBar({
       activeRow: appState.activeRow,
       layers: appState.project.layers,
       groups: appState.project.groups,
-      playhead: appState.playhead,
-      fps: appState.project.fps,
     }),
   );
 </script>
@@ -1748,10 +1788,17 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <!-- Bare top edge, same as the layer-panel grip: 8px hit, 4px hover tint on the divider.
-       The bar is a panel EDGE now (canvas / chrome), so it needs no badge. -->
+  <!-- 8px hit strip with a VISIBLE BAR and no background tint — deliberately the opposite of the
+       two vertical grips, which are bare edges with a tint. Two reasons, both recorded in CLAUDE.md
+       and neither retracted since. (1) This is an INTERIOR divider between the canvas and the
+       timeline: nothing about its position says "drag me", where a panel's outer edge is a learned
+       convention that needs no badge. (2) Hover does not exist on iPad, so a tint-only grip has NO
+       affordance on the device this app is for — the bar is the one that survives. The tint is also
+       area-sensitive: the same `bg-text/10` that is a subtle sliver on an 8px vertical edge is a
+       loud full-width band here. The hit area is 8px either way; the bar is what made this one look
+       bigger. -->
   <div
-    class="group absolute inset-x-0 top-0 z-30 h-2 cursor-row-resize"
+    class="group absolute inset-x-0 top-0 z-30 flex h-2 items-center justify-center cursor-row-resize"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1762,21 +1809,41 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <div class="absolute inset-x-0 top-0 h-1 group-hover:bg-text/10"></div>
+    <div class="h-0.5 w-10 rounded-full bg-text-muted group-hover:bg-text"></div>
   </div>
-  <div class="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto *:shrink-0">
+  <!-- WRAPS, never scrolls. `overflow-x-auto` here is silently fatal: per CSS Overflow 3 a computed
+       `overflow-x: auto` forces `overflow-y` from `visible` to `auto`, so the bar becomes a ~28px
+       scroll box — and its three settings popovers are `absolute bottom-full`, i.e. entirely ABOVE
+       that box. Overflow past a scroller's START edge is neither painted nor scrollable to, so the
+       onion, boil and playback gears open panels nobody can see, on every device. Onion and boil
+       params have no other route. This is the same trap `.curve-popup` was made `position: fixed`
+       for (2026-07-12). Wrapping to a second line costs nothing and keeps every control reachable
+       in portrait, where the merged bar overruns the viewport by ~200px. -->
+  <div class="mb-2 flex shrink-0 flex-wrap items-center gap-1 *:shrink-0">
     <Playbar />
     <span class="mx-3 h-5 w-px bg-border"></span>
     <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
-         property row. Clear blanks THIS layer's key — hide it there. -->
+         property row. Clear blanks THIS layer's key, so it only ACTS on a drawing row — but it
+         dims there rather than disappearing. Hiding it slid the destructive
+         "Delete frame (all layers)" ~32px left into the slot the finger had just learned, so the
+         next tap aimed at Clear removed a frame column from every drawing layer; positions must
+         not shift. It is also the only thing that says clearing needs a drawing layer, and a title
+         can only be read (hover, or an iPad tap via the status bar) from a control that still
+         dispatches pointer events — hence `aria-disabled`, never `disabled` and never absent. -->
     <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
       ><Plus size={16} /></button
     >
-    {#if drawingRowSelected}
-      <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
-        ><Diamond size={16} /></button
-      >
-    {/if}
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!drawingRowSelected}
+      title={drawingRowSelected
+        ? "Clear frame (blank this keyframe)"
+        : "Clear frame — select a drawing layer"}
+      onclick={() => {
+        if (!drawingRowSelected) return;
+        clearFrame();
+      }}><Diamond size={16} /></button
+    >
     {#if !selRect}
       <button class={toolBtn} title="Delete frame (all layers)" onclick={deleteTool}
         ><Trash2 size={16} /></button
@@ -1845,19 +1912,33 @@
       >
     {/if}
 
-    {#if trimTarget}
-      <span class="mx-3 h-5 w-px bg-border"></span>
-      <button
-        class={toolBtn}
-        title="Trim {trimTarget.label} start to the playhead"
-        onclick={() => trimToPlayhead("start")}><ArrowRightToLine size={16} /></button
-      >
-      <button
-        class={toolBtn}
-        title="Trim {trimTarget.label} end to the playhead"
-        onclick={() => trimToPlayhead("end")}><ArrowLeftToLine size={16} /></button
-      >
-    {/if}
+    <!-- Dimmed, not hidden. The disabled title is the ONLY thing in the app that names this
+         capability or says how to reach it, and on iPad a tap on the button is the only way to
+         read it — hiding the pair made the feature undiscoverable to anyone who had never happened
+         to select the audio lane or an image reference row. -->
+    <span class="mx-3 h-5 w-px bg-border"></span>
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!trimTarget}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} start to the playhead`
+        : "Trim start to the playhead — select the audio lane or an image reference layer first"}
+      onclick={() => {
+        if (!trimTarget) return;
+        trimToPlayhead("start");
+      }}><ArrowRightToLine size={16} /></button
+    >
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!trimTarget}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} end to the playhead`
+        : "Trim end to the playhead — select the audio lane or an image reference layer first"}
+      onclick={() => {
+        if (!trimTarget) return;
+        trimToPlayhead("end");
+      }}><ArrowLeftToLine size={16} /></button
+    >
 
     <span class="ml-auto"></span>
 
@@ -2219,6 +2300,7 @@
       onEdgeScrollStop={stopEdgeScroll}
       onEdgePointerX={(x) => (edgePointerX = x)}
       getScrollLeft={scrollX}
+      didPan={() => panEndedWithMovement}
     />
 
     <!-- layer rows (top layer first) -->
@@ -2366,7 +2448,9 @@
               class:text-text-secondary={spec.selected}
               class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
-              title="{spec.label} keys for {spec.owner} — select it and aim the Transform tool at it"
+              title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
+                ? 'aim the Transform tool at it'
+                : 'move its opacity slider to key a change'}"
               onpointerdown={(e) => {
                 if (isFinePointer(e)) return;
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);

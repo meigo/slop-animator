@@ -53,9 +53,8 @@
     resetGroupTransform,
     setActiveLayer,
     isRowSelected,
-    isTrackSelected,
     selectGroup,
-    isGroupRowSelected,
+    isGroupDetailShown,
     toggleEmbedMedia,
     applyLayerOpacityAt,
     applyGroupOpacityAt,
@@ -75,6 +74,7 @@
     cellTransform,
     resolvedKeyCell,
     layerTransformTrack,
+    layerOpacityTrack,
     opacityAt,
     groupOpacityAt,
     groupHasLockedLayer,
@@ -236,7 +236,10 @@
 
   function opacityKeyValue(layerId: number, frame: number): number | null {
     const l = appState.project.layers.find((x) => x.id === layerId);
-    return l?.tracks?.opacity?.keys.find((k) => k.frame === frame)?.v ?? null;
+    // Through the accessor, like every other opacity-track read — a leftover track on a REFERENCE
+    // is inert, so this must not report a key the store's writers will refuse.
+    const track = l && layerOpacityTrack(l);
+    return track?.keys.find((k) => k.frame === frame)?.v ?? null;
   }
 
   function onOpacityInput(layer: Layer, value: number) {
@@ -246,7 +249,10 @@
     // loses its implicit pointer capture. Without this the next layer's drag would inherit the open
     // bracket and write ITS keys to the abandoned gesture's layer id and frame.
     if (opacityUndo && opacityUndoLayerId !== layer.id) settleOpacityDrag();
-    if (!layer.tracks?.opacity) {
+    // The accessor, not the raw bag: on a reference carrying a leftover track from the previous
+    // release the raw read took the key-writing branch, which wrote into a track `opacityAt`
+    // ignores — no visible change, one undo entry per drag.
+    if (!layerOpacityTrack(layer)) {
       layer.opacity = value; // static: unchanged behaviour, straight assignment + repaint
       bump();
       return;
@@ -260,11 +266,17 @@
       // would leave it open and the release would commit a snapshot of the pre-undo document.
       // Chain the previous owner: the settle slot is shared by every undoable drag (gizmo, range,
       // hold-span, both opacity sliders). Replacing it would orphan an earlier open bracket.
+      // The hook must also CALL through, not merely restore: a single `settle?.()` drains only the
+      // slot it finds, so an outer bracket (a timeline range drag, reachable with a second contact
+      // on iPad) survived the undo and its release then committed a pre-undo snapshot — exactly
+      // what the guard exists to prevent. Every settle in the chain is idempotent (each guards on
+      // its own open bracket), so calling through is safe.
       const prev = transformDragGuard.settle;
       opacitySettlePrev = prev;
       const hook = () => {
         settleOpacityDrag();
         if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+        prev?.();
       };
       opacitySettleHook = hook;
       transformDragGuard.settle = hook;
@@ -381,12 +393,14 @@
       groupOpacityUndoGroupId = groupId;
       groupOpacityUndoFrame = appState.playhead;
       groupOpacityUndoStartV = groupOpacityKeyValue(groupId, groupOpacityUndoFrame);
-      // Same shared-slot chain as the layer slider — restore the previous owner on settle.
+      // Same shared-slot chain as the layer slider — restore the previous owner AND call through,
+      // or one settle drains only the innermost bracket and leaves the outer one open.
       const prev = transformDragGuard.settle;
       groupOpacitySettlePrev = prev;
       const hook = () => {
         settleGroupOpacityDrag();
         if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+        prev?.();
       };
       groupOpacitySettleHook = hook;
       transformDragGuard.settle = hook;
@@ -630,7 +644,7 @@
     {#if active}
       <!-- Reads through `opacityAt`, never the raw field: on an animated layer the static number is
            retained but IGNORED, so a slider bound to it would sit still while the drawing faded. -->
-      {@const opacityTrack = layer.tracks?.opacity}
+      {@const opacityTrack = layerOpacityTrack(layer)}
       {@const opacityFrame = opacityFrameFor(layer)}
       {@const opacityNow = opacityAt(layer, opacityFrame)}
       {@const opacityOk = opacityEditable(layer)}
@@ -888,11 +902,7 @@
         {#if "layer" in seg}
           {@render layerRow(seg.layer)}
         {:else}
-          {@const groupDetail =
-            isGroupRowSelected(seg.group.id) ||
-            isTrackSelected("group", seg.group.id, "opacity") ||
-            isTrackSelected("group", seg.group.id, "transform") ||
-            appState.project.layers.some((l) => l.groupId === seg.group.id && isRowSelected(l.id))}
+          {@const groupDetail = isGroupDetailShown(seg.group.id)}
           {@const groupLit = groupHeaderSelected(
             appState.activeRow,
             seg.group,

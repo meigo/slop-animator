@@ -3073,3 +3073,58 @@ The working target being this group (header or its track) now lights the header,
 as a layer track lighting its owner. Folded + a member selected still proxies; expanded
 
 - a member still lights only the member.
+
+**Three lessons from the four-lens review (2026-08-20).** Sixteen Minors were cleared alongside the
+Criticals and Importants; these three are the ones worth carrying forward, because each is a shape
+that will recur rather than a fact about one control.
+
+**A selection model changes in TWO layers, and only one of them is visible.** This was the review's
+dominant root cause — three of the four Criticals were this one shape, found independently by two
+lenses. Six commits converted what LIGHTS UP to the new `activeRow` model and did it well; the
+CAPABILITY layer — the predicates deciding what a gesture is ALLOWED to act on — kept resolving
+through `activeLayerId`. So controls acted on stale targets while the correct row was lit and named:
+a group of reference layers left `activeLayerId` pointing into a DIFFERENT group, and dragging moved
+G2 while G1 was highlighted; select/lasso lifted and moved pixels out of a leftover layer with the
+audio lane selected; the Group scope button was simultaneously lit and `aria-disabled` saying
+"Active layer is not in a group". **The rule: when a selection model changes, convert the predicates
+that decide what may ACT on the selection in the SAME pass as the ones that decide what looks
+selected.** The compiler cannot help you here, and that is the whole trap — the old target still
+resolves to something, so every call site keeps building and keeps returning a plausible answer. The
+only signal is a review asking "what does this control DO on the new row kind?", control by control.
+The tail of it kept surfacing all the way to the last round: `contextHint` still described a
+transform gesture on group rows that had just gained two new ways to refuse one. When a predicate
+gains a term, grep its NAME for readers that were written against the older, simpler version.
+
+**A bar that hosts popovers must never become a scroll container.** The merged timeline bar gained
+`overflow-x-auto` to cope with narrow viewports, and all three of its settings popovers went dark on
+every device. Per CSS Overflow 3 an `overflow-x: auto` with `overflow-y: visible` computes
+`overflow-y` to **auto** as well — so the bar became a ~28px scroll box, and an `absolute bottom-full`
+panel sits entirely ABOVE that box, where overflow past a scroller's start edge is neither painted
+nor scrollable to. Onion params and boil params have no other route, so they were simply gone. This
+is the SECOND time it has been paid for here: `.curve-popup` was made `position: fixed` for the same
+reason in 2026-07. The bar **wraps** instead. Reach for `flex-wrap` on any bar that owns a popover,
+and treat `overflow-*: auto` on such a bar as a defect on sight — the failure is total and silent,
+and it does not reproduce at desktop width.
+**Record the trade the wrap makes:** on a portrait iPad the bar now runs to a second or third line
+INSIDE a fixed `timelineHeight`, squeezing the grid below it. That is correct against popovers that
+could not be opened at all, and the height grip is right there — but it will read as a regression to
+whoever sees it next, so it is a known cost, not a bug.
+
+**A gate threaded into every reader is not enforced.** `layerAcceptsPropertyTracks` narrowed
+animation to drawing layers, and was wired into `transformAt`/`opacityAt`, into `isLayerAnimated`,
+and into the UI that OFFERS animation — but not into the writers, which still read the track bag
+raw. A reference animated by the PREVIOUS release therefore came back inert in BOTH properties: the
+gizmo wrote keys into a track the renderer ignored, so the layer could not be moved at all and the
+no-op check reverted every drag; the opacity slider pushed a real undo entry per drag and changed
+nothing. And there was no way out, because the only recovery — Stop animating — lives behind a track
+row a reference can no longer emit. Bytes were preserved, so it was a wrong result rather than
+destruction, but on existing files with no route back. **Gate at the shared ACCESSOR, where readers
+and writers meet**, not at each reader: one line at `layerTransformTrack` covers the gizmo, the
+Canvas drag, `animated`, and both Apply/Reset refusals. The same review found the tail of that shape
+as dead code — a "reference outside its visible range" refusal in `animation-bar.ts` that could no
+longer fire, and an unreachable guard in `rasterizeReference`. The first was deleted; the second was
+KEPT, because it is a call to the shared `isLayerAnimated` predicate rather than a hand-rolled
+condition, so it resumes working on its own the day references become animatable again. That is the
+distinction worth keeping: retire a dead REASON STRING (it misdescribes the world to the reader),
+keep a dead guard that is expressed through a shared predicate (it is a correct refusal waiting for
+its condition).

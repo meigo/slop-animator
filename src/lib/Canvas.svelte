@@ -31,7 +31,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
   } from "../state/appState.svelte";
-  import { workingTarget } from "../anim/active-row";
+  import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
   import { pixelCommand } from "../anim/history";
   import {
     selectionRef,
@@ -529,7 +529,7 @@
       return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
     // `ensureDrawableKeyframe` is not just the ·→◆ marker on a hold — past the layer's end it
-    // APPENDS holds and a blank keyframe — so running it before the region is known would leave the
+    // APPENDS holds and a keyframe — so running it before the region is known would leave the
     // model changed (and `project.frameCount` stale) on the nothing-to-fill path, which returns
     // without a `bump()`. Null = nothing at or before the playhead, i.e. a blank cell to come.
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -544,7 +544,8 @@
     });
     if (area === 0) return nothing();
 
-    // Only now materialise the keyframe — on a hold it clones the very canvas just measured.
+    // Only now materialise the keyframe — on a hold (including one running past the layer's end)
+    // it clones the very canvas just measured.
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const layerId = layer.id;
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -1054,6 +1055,16 @@
       // Other pixel tools dim — leftover member is not the target.
       const t = appState.tool;
       if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform") return;
+      // ...but only while the gesture really is that group's: the anchor `activeLayerId` under a
+      // group row is memory, so layer scope, an anchor left in ANOTHER group, or a ref anchor would
+      // each move something the lit row does not name. Same predicate as
+      // RefTransformGizmo.activeTransformLayer, and these two MUST agree for the same reason the
+      // gizmo and refPinned below do — a hidden handle set does not disable this drag.
+      if (
+        t === "transform" &&
+        !rowAdmitsTransform(appState.activeRow, appState.transformScope, activeLayer())
+      )
+        return;
     }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
@@ -1391,6 +1402,12 @@
   /** Snapshot → paper crop → punch the cell → beginTransform. False if nothing to lift. */
   function liftPaperCrop(): boolean {
     if (!selection?.rect) return false;
+    // The working ROW must be a layer, not only the leftover `activeLayerId`. `onStroke` admits
+    // select/lasso on an audio or group row on a "copy is a read" rationale — sound for
+    // `copySelection`, but the PRIMARY select gesture is a WRITE: with the audio lane selected a
+    // marquee drag lifted and moved pixels out of a layer no row named, undoably, materialising a
+    // ◆ on a hold, while ToolOptions had Cut/Paste/Delete dimmed one bar away.
+    if (workingTarget(appState.activeRow).kind !== "layer") return false;
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return false;
     const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
@@ -1419,13 +1436,16 @@
     return true;
   }
 
-  // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
-  // active layer isn't an editable (unlocked, visible) drawing layer.
+  // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null
+  // unless the working ROW is a layer AND that layer is an editable (unlocked, visible) drawing
+  // layer. The row check is not redundant: `activeLayerId` is memory that survives selecting the
+  // audio lane or a group row, so without it these writes land in a layer nothing on screen names.
   function activeDrawableCtx(): {
     ctx: CanvasRenderingContext2D;
     layer: DrawingLayer;
     materialized: CellTrackChange | null;
   } | null {
+    if (workingTarget(appState.activeRow).kind !== "layer") return null;
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return null;
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
@@ -2082,10 +2102,14 @@
   });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
   // don't move it, and not in ToolOptions — an inline span there shoved Size/Press sideways.
-  // Hidden while a marquee is up: the selection bar already carries the reason.
+  // Hidden while a marquee is up: the selection bar already carries the reason. Hidden during
+  // PLAYBACK too — it answers "why won't this gesture write?", and nobody is gesturing while
+  // watching the animation; an amber box parked over the stage for the whole take is just chrome
+  // in front of the work.
   // `not-draw` is omitted: a reference is a different kind of layer, not a broken drawing layer,
   // and the toolbar already dims the pixel tools.
   const editBlockCaption = $derived.by(() => {
+    if (appState.playback.isPlaying) return null;
     if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
     const block = whyNotEditable(activeLayer(), appState.project.groups);
     if (!block || block === "not-draw") return null;

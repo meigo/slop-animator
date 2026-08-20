@@ -8,6 +8,7 @@ const base: HintContext = {
   notDraw: false,
   audioRow: false,
   groupRow: false,
+  groupTransformBlock: null,
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
@@ -49,33 +50,66 @@ describe("reference layers", () => {
 });
 
 describe("group row selected", () => {
-  it("pixel tools say to pick a drawing layer; transform still aims at the group", () => {
-    expect(contextHint(ctx({ tool: "brush", groupRow: true }))).toBe(
-      "Switch to a drawing layer to edit",
-    );
+  // NOT "switch to a drawing layer": on a group row the active layer usually IS an unlocked
+  // drawing layer, so that message described a state that was not true. The row is the problem.
+  it("pixel tools say to pick a LAYER ROW; transform still aims at the group", () => {
+    expect(contextHint(ctx({ tool: "brush", groupRow: true }))).toBe("Select a layer row to edit");
     expect(contextHint(ctx({ tool: "transform", groupRow: true }))).toMatch(/Drag to move/);
   });
 
   it("does not inherit a leftover member's lock", () => {
-    expect(contextHint(ctx({ tool: "brush", groupRow: true, locked: true }))).toMatch(
-      /drawing layer/,
-    );
+    expect(contextHint(ctx({ tool: "brush", groupRow: true, locked: true }))).toMatch(/layer row/);
+  });
+
+  // The gizmo hides and the canvas drag returns in both of these, and until now the bar described
+  // the gesture anyway — "a hint for a gesture that does nothing is worse than none", applied to
+  // the case that created it. Each names the fix it actually has.
+  it("says WHY when the group row refuses the transform, per reason", () => {
+    expect(
+      contextHint(ctx({ tool: "transform", groupRow: true, groupTransformBlock: "wrong-scope" })),
+    ).toBe("Group row — set Transform scope to Group");
+    expect(
+      contextHint(
+        ctx({ tool: "transform", groupRow: true, groupTransformBlock: "no-draw-member" }),
+      ),
+    ).toBe("This group has no drawing layer to transform");
+  });
+
+  it("still describes the gesture when the group row ADMITS it", () => {
+    expect(
+      contextHint(ctx({ tool: "transform", groupRow: true, groupTransformBlock: null })),
+    ).toMatch(/Drag to move/);
+  });
+
+  // Audio is answered by its own branch above, so this value can never reach the group branch —
+  // asserted so an `else` cannot creep back in and print the group message for it.
+  it("leaves other tools alone on a refusing group row", () => {
+    expect(
+      contextHint(ctx({ tool: "select", groupRow: true, groupTransformBlock: "wrong-scope" })),
+    ).toBe("Drag to select an area");
   });
 });
 
 describe("audio row selected", () => {
-  it("pixel tools and transform say to pick a drawing layer", () => {
-    expect(contextHint(ctx({ tool: "brush", audioRow: true }))).toBe(
-      "Switch to a drawing layer to edit",
-    );
+  // Transform in particular was actively misdirected by the old copy: a REFERENCE row transforms
+  // fine, so "switch to a drawing layer" pointed at the wrong remedy.
+  it("pixel tools and transform say to pick a LAYER ROW", () => {
+    expect(contextHint(ctx({ tool: "brush", audioRow: true }))).toBe("Select a layer row to edit");
     expect(contextHint(ctx({ tool: "transform", audioRow: true }))).toBe(
-      "Switch to a drawing layer to edit",
+      "Select a layer row to edit",
     );
   });
 
   it("does not inherit a leftover layer's lock", () => {
     expect(contextHint(ctx({ tool: "transform", audioRow: true, locked: true }))).toMatch(
-      /drawing layer/,
+      /layer row/,
+    );
+  });
+
+  // The two refusals must stay distinguishable: a reference layer really is the wrong KIND.
+  it("is a different message from a reference layer's", () => {
+    expect(contextHint(ctx({ tool: "brush", audioRow: true }))).not.toBe(
+      contextHint(ctx({ tool: "brush", notDraw: true })),
     );
   });
 });
@@ -85,6 +119,7 @@ describe("editBlockLabel", () => {
     expect(editBlockLabel("locked")).toBe("Layer locked — unlock it to edit");
     expect(editBlockLabel("hidden")).toBe("Layer hidden — show it to edit");
     expect(editBlockLabel("not-draw")).toBe("Switch to a drawing layer to edit");
+    expect(editBlockLabel("not-layer-row")).toBe("Select a layer row to edit");
   });
 });
 
@@ -141,6 +176,7 @@ describe("contextHint — animated layer", () => {
     notDraw: false,
     audioRow: false,
     groupRow: false,
+    groupTransformBlock: null,
     selectionActive: false,
     selectionFloating: false,
     poseActive: false,

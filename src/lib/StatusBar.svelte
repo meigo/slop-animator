@@ -1,6 +1,6 @@
 <script lang="ts">
   import { state as appState, activeLayer } from "../state/appState.svelte";
-  import { workingTarget } from "../anim/active-row";
+  import { whyRowRefusesTransform, workingTarget } from "../anim/active-row";
   import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
@@ -59,6 +59,11 @@
       notDraw: l.kind !== "draw",
       audioRow: audioOn,
       groupRow: groupOn,
+      // The SAME predicate the gizmo and the canvas drag ask, with the SAME raw scope they pass —
+      // a hint derived from anything else could describe a gesture those two refuse.
+      groupTransformBlock: groupOn
+        ? whyRowRefusesTransform(appState.activeRow, appState.transformScope, l)
+        : null,
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,

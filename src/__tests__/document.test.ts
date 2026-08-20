@@ -31,6 +31,11 @@ import {
   refVisibleSpan,
   isRefVisibleAtFrame,
   layerAcceptsPropertyTracks,
+  layerOpacityTrack,
+  layerTransformTrack,
+  isLayerAnimated,
+  transformAt,
+  opacityAt,
   IDENTITY_TRANSFORM,
   isIdentityTransform,
   transformBaseRect,
@@ -859,6 +864,27 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       expect(whyNotMergeDown([below, { ...upper, tracks: { opacity } }], [], 2)).toBe("animated");
     });
 
+    // `isLayerAnimated` reads the LAYER's own bag, so a group opacity track was invisible to it —
+    // and a merge across a group boundary drops the upper layer's group contribution entirely.
+    it("refuses across a group boundary when the owning GROUP is animated", () => {
+      const opacity = { keys: [{ frame: 0, v: 100 }] };
+      const below = layer(1, [makeKey()]);
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([below, upper], [g({ tracks: { opacity } })], 2)).toBe("animated");
+      // ...and the other way: the upper layer's pixels would GAIN the lower's group animation.
+      const belowIn = { ...layer(1, [makeKey()]), groupId: 7 };
+      expect(
+        whyNotMergeDown([belowIn, layer(2, [makeKey()])], [g({ tracks: { opacity } })], 2),
+      ).toBe("animated");
+    });
+
+    it("allows a merge INSIDE an animated group — the contribution is unchanged either way", () => {
+      const opacity = { keys: [{ frame: 0, v: 100 }] };
+      const below = { ...layer(1, [makeKey()]), groupId: 7 };
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([below, upper], [g({ tracks: { opacity } })], 2)).toBeNull();
+    });
+
     it("reports the structural block before the read-only one", () => {
       // A locked BOTTOM layer has nothing below it either — the more fundamental reason wins.
       const layers = [layer(1, [makeKey()], { locked: true }), layer(2, [makeKey()])];
@@ -1014,6 +1040,34 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
     expect(
       layerAcceptsPropertyTracks(imageRef({ media: { type: "missing", was: "video", name: "x" } })),
     ).toBe(false);
+  });
+
+  // A project saved by the PREVIOUS release can carry an animated reference (that build had no kind
+  // gate). Every READER already ignored it; the WRITERS read the bag raw, so the gizmo kept keying a
+  // track nothing resolved and the reference could not be moved at all, with no route out. The gate
+  // lives on the accessors so both drag sites, `animated` and both Apply/Reset refusals agree.
+  it("a leftover reference track reads as absent through the accessors — but is NOT destroyed", () => {
+    const ref = imageRef() as Layer;
+    ref.tracks = {
+      transform: { keys: [{ frame: 3, v: { dx: 5, dy: 0, scale: 1, rotation: 0 } }], box: null },
+      opacity: { keys: [{ frame: 3, v: 40 }] },
+    };
+    expect(layerTransformTrack(ref)).toBeUndefined();
+    expect(layerOpacityTrack(ref)).toBeUndefined();
+    expect(isLayerAnimated(ref)).toBe(false);
+    // The readers agree: the STATIC values are what render, at every frame.
+    expect(transformAt(ref, 3)).toEqual(ref.transform);
+    expect(opacityAt(ref, 3)).toBe(ref.opacity);
+    // Inert, not stripped — the bytes are the only copy of that data.
+    expect(ref.tracks?.transform?.keys).toHaveLength(1);
+    expect(ref.tracks?.opacity?.keys).toHaveLength(1);
+  });
+
+  it("a drawing layer's tracks still read through", () => {
+    const l = layer(1, [makeKey()]);
+    l.tracks = { opacity: { keys: [{ frame: 0, v: 20 }] } };
+    expect(layerOpacityTrack(l)?.keys).toHaveLength(1);
+    expect(opacityAt(l, 0)).toBe(20);
   });
 });
 

@@ -92,7 +92,8 @@ export function restoreCellTrack(layer: DrawingLayer, cells: Cell[]): void {
 
 /**
  * Guarantee the cell at `frame` is a keyframe and return its canvas, so a tool can draw on it.
- * - Past the layer's end → extend with holds up to `frame`, then a fresh blank keyframe.
+ * - Past the layer's end → extend with holds up to AND INCLUDING `frame`, then materialise as a hold
+ *   (below): a hold runs past the end of `cells`, so those frames show the held drawing.
  * - Already a keyframe → returns its canvas unchanged.
  * - A hold over an earlier keyframe → clones that drawing (draw-on-hold = clone & edit on top).
  * - A hold with nothing held → a fresh blank keyframe.
@@ -110,18 +111,17 @@ export function ensureDrawableKeyframe(
   frame: number,
   ops: CanvasOps,
 ): { canvas: HTMLCanvasElement; materialized: CellTrackChange | null } {
-  if (frame >= layer.cells.length) {
-    const before = layer.cells.slice();
-    while (layer.cells.length < frame) layer.cells.push({ kind: "hold" });
-    const canvas = ops.create();
-    layer.cells.push({ kind: "key", canvas });
-    return { canvas, materialized: { before, after: layer.cells.slice() } };
-  }
-
-  const current = layer.cells[frame];
-  if (current.kind === "key") return { canvas: current.canvas, materialized: null };
+  const existing = frame < layer.cells.length ? layer.cells[frame] : null;
+  if (existing && existing.kind === "key") return { canvas: existing.canvas, materialized: null };
 
   const before = layer.cells.slice();
+  // Pad INCLUSIVE, then fall through to the hold branch below. A hold continues past the end of
+  // `cells` — only a blank key ◇ stops one — so these frames DISPLAY the held drawing and must
+  // materialise exactly like any other hold: clone the resolved key and carry its transform. The
+  // old exclusive pad planted a BLANK key here, silently discarding the drawing on screen from this
+  // frame to the end of the animation.
+  while (layer.cells.length <= frame) layer.cells.push({ kind: "hold" });
+
   const ki = resolveKeyframeIndex(layer.cells, frame);
   const held = ki === null ? null : layer.cells[ki];
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();

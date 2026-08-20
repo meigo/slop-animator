@@ -96,17 +96,27 @@
       : "Update this property every N frames, so it can sit on 2s like the drawings",
   );
 
+  // BOTH halves of the clipboard's identity have to match, and they are reported separately: an
+  // owner mismatch is not the same refusal as an empty clipboard or the wrong property, and this
+  // title is the only place the difference is ever stated (on iPad a tap on it is the status hint).
+  // A layer transform is stored relative to the LAYER's base rect while a group transform pivots on
+  // the group's bbox, so pasting across would land a plausible pose that is not the copied one; a
+  // group's opacity multiplies its members' rather than replacing it, so that one does not transfer
+  // either. The tag is uniform rather than per-property so there is one rule to remember.
   const clip = $derived(appState.keyClipboard);
-  const clipMatches = $derived(!!clip && clip.prop === trackRef.prop);
-  const canPaste = $derived(!blocked && clipMatches);
+  const propMatches = $derived(!!clip && clip.prop === trackRef.prop);
+  const ownerMatches = $derived(!!clip && clip.owner === trackRef.owner);
+  const canPaste = $derived(!blocked && propMatches && ownerMatches);
   const pasteTitle = $derived(
     blocked
       ? `Paste key — ${blocked}`
       : !clip
         ? "Paste key — nothing copied yet"
-        : !clipMatches
+        : !propMatches
           ? `Paste key — copied key is ${clip.prop === "opacity" ? "opacity" : "a transform"}`
-          : "Paste the copied key here, replacing any key on this frame",
+          : !ownerMatches
+            ? `Paste key — copied from a ${clip.owner}, and this row animates a ${trackRef.owner}`
+            : "Paste the copied key here, replacing any key on this frame",
   );
 
   // Literal class strings rather than interpolated ones, so the Tailwind lint can still read them.
