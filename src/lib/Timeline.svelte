@@ -1805,15 +1805,27 @@
     <Playbar />
     <span class="mx-3 h-5 w-px bg-border"></span>
     <!-- Add/Delete are document-wide (every drawing layer + clips), so they stay up on a
-         property row. Clear blanks THIS layer's key — hide it there. -->
+         property row. Clear blanks THIS layer's key, so it only ACTS on a drawing row — but it
+         dims there rather than disappearing. Hiding it slid the destructive
+         "Delete frame (all layers)" ~32px left into the slot the finger had just learned, so the
+         next tap aimed at Clear removed a frame column from every drawing layer; positions must
+         not shift. It is also the only thing that says clearing needs a drawing layer, and a title
+         can only be read (hover, or an iPad tap via the status bar) from a control that still
+         dispatches pointer events — hence `aria-disabled`, never `disabled` and never absent. -->
     <button class={toolBtn} title="Add frame (after current, all layers)" onclick={frameTool}
       ><Plus size={16} /></button
     >
-    {#if drawingRowSelected}
-      <button class={toolBtn} title="Clear frame (blank this keyframe)" onclick={clearFrame}
-        ><Diamond size={16} /></button
-      >
-    {/if}
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!drawingRowSelected}
+      title={drawingRowSelected
+        ? "Clear frame (blank this keyframe)"
+        : "Clear frame — select a drawing layer"}
+      onclick={() => {
+        if (!drawingRowSelected) return;
+        clearFrame();
+      }}><Diamond size={16} /></button
+    >
     {#if !selRect}
       <button class={toolBtn} title="Delete frame (all layers)" onclick={deleteTool}
         ><Trash2 size={16} /></button
@@ -1882,19 +1894,33 @@
       >
     {/if}
 
-    {#if trimTarget}
-      <span class="mx-3 h-5 w-px bg-border"></span>
-      <button
-        class={toolBtn}
-        title="Trim {trimTarget.label} start to the playhead"
-        onclick={() => trimToPlayhead("start")}><ArrowRightToLine size={16} /></button
-      >
-      <button
-        class={toolBtn}
-        title="Trim {trimTarget.label} end to the playhead"
-        onclick={() => trimToPlayhead("end")}><ArrowLeftToLine size={16} /></button
-      >
-    {/if}
+    <!-- Dimmed, not hidden. The disabled title is the ONLY thing in the app that names this
+         capability or says how to reach it, and on iPad a tap on the button is the only way to
+         read it — hiding the pair made the feature undiscoverable to anyone who had never happened
+         to select the audio lane or an image reference row. -->
+    <span class="mx-3 h-5 w-px bg-border"></span>
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!trimTarget}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} start to the playhead`
+        : "Trim start to the playhead — select the audio lane or an image reference layer first"}
+      onclick={() => {
+        if (!trimTarget) return;
+        trimToPlayhead("start");
+      }}><ArrowRightToLine size={16} /></button
+    >
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={!trimTarget}
+      title={trimTarget
+        ? `Trim ${trimTarget.label} end to the playhead`
+        : "Trim end to the playhead — select the audio lane or an image reference layer first"}
+      onclick={() => {
+        if (!trimTarget) return;
+        trimToPlayhead("end");
+      }}><ArrowLeftToLine size={16} /></button
+    >
 
     <span class="ml-auto"></span>
 
