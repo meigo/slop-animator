@@ -2102,10 +2102,14 @@
   });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
   // don't move it, and not in ToolOptions — an inline span there shoved Size/Press sideways.
-  // Hidden while a marquee is up: the selection bar already carries the reason.
+  // Hidden while a marquee is up: the selection bar already carries the reason. Hidden during
+  // PLAYBACK too — it answers "why won't this gesture write?", and nobody is gesturing while
+  // watching the animation; an amber box parked over the stage for the whole take is just chrome
+  // in front of the work.
   // `not-draw` is omitted: a reference is a different kind of layer, not a broken drawing layer,
   // and the toolbar already dims the pixel tools.
   const editBlockCaption = $derived.by(() => {
+    if (appState.playback.isPlaying) return null;
     if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
     const block = whyNotEditable(activeLayer(), appState.project.groups);
     if (!block || block === "not-draw") return null;

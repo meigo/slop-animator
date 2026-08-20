@@ -1102,8 +1102,12 @@
   /** Which drawing-layer row the pointer is physically over (pointer capture routes all moves to the
    *  origin row, so hit-test by client coords to allow vertical cross-layer selection). */
   function layerIdAtPoint(clientX: number, clientY: number, fallback: number): number {
+    // SCOPED to the grid, the same containment the nearest-row fallback below already has. The
+    // layer PANEL puts `data-layer-id` on every one of its rows, so an unscoped hit-test let a
+    // marquee dragged up out of the timeline retarget onto a panel row — the single place the
+    // "property and group rows carry no layer identity" invariant leaked out of the timeline.
     const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-layer-id]");
-    if (el) return Number(el.dataset.layerId);
+    if (el && gridWrapper?.contains(el)) return Number(el.dataset.layerId);
     // Pointer is off the track rows (e.g. dragging below the last track or above the first, or over
     // the label gutter): clamp the selection to the vertically-nearest row instead of snapping back
     // to the origin, so the marquee keeps extending to the top/bottom track.
@@ -1149,6 +1153,11 @@
      *  `interp`, never the value itself. */
     track: Track<unknown>;
     label: string;
+    /** Which property this row animates. The row's title has to name the control that KEYS it, and
+     *  the two properties are keyed from opposite ends of the app — a single tail promising the
+     *  Transform tool sent an opacity row's reader to a tool that cannot touch it. On iPad this
+     *  title IS the status-bar hint, so it is read rather than skimmed. */
+    prop: TrackProp;
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
@@ -1183,6 +1192,7 @@
     return {
       track,
       label: TRACK_LABEL[prop],
+      prop,
       owner: layer.name,
       indent: layer.groupId != null,
       selected: isTrackSelected("layer", layer.id, prop),
@@ -1222,6 +1232,7 @@
     return {
       track,
       label: TRACK_LABEL[prop],
+      prop,
       owner: group.name,
       indent: false,
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
@@ -1777,10 +1788,17 @@
     class="hidden"
     onchange={onRelinkFile}
   />
-  <!-- Bare top edge, same as the layer-panel grip: 8px hit, 4px hover tint on the divider.
-       The bar is a panel EDGE now (canvas / chrome), so it needs no badge. -->
+  <!-- 8px hit strip with a VISIBLE BAR and no background tint — deliberately the opposite of the
+       two vertical grips, which are bare edges with a tint. Two reasons, both recorded in CLAUDE.md
+       and neither retracted since. (1) This is an INTERIOR divider between the canvas and the
+       timeline: nothing about its position says "drag me", where a panel's outer edge is a learned
+       convention that needs no badge. (2) Hover does not exist on iPad, so a tint-only grip has NO
+       affordance on the device this app is for — the bar is the one that survives. The tint is also
+       area-sensitive: the same `bg-text/10` that is a subtle sliver on an 8px vertical edge is a
+       loud full-width band here. The hit area is 8px either way; the bar is what made this one look
+       bigger. -->
   <div
-    class="group absolute inset-x-0 top-0 z-30 h-2 cursor-row-resize"
+    class="group absolute inset-x-0 top-0 z-30 flex h-2 items-center justify-center cursor-row-resize"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1791,7 +1809,7 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <div class="absolute inset-x-0 top-0 h-1 group-hover:bg-text/10"></div>
+    <div class="h-0.5 w-10 rounded-full bg-text-muted group-hover:bg-text"></div>
   </div>
   <!-- WRAPS, never scrolls. `overflow-x-auto` here is silently fatal: per CSS Overflow 3 a computed
        `overflow-x: auto` forces `overflow-y` from `visible` to `auto`, so the bar becomes a ~28px
@@ -2430,7 +2448,9 @@
               class:text-text-secondary={spec.selected}
               class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
-              title="{spec.label} keys for {spec.owner} — select it and aim the Transform tool at it"
+              title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
+                ? 'aim the Transform tool at it'
+                : 'move its opacity slider to key a change'}"
               onpointerdown={(e) => {
                 if (isFinePointer(e)) return;
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);

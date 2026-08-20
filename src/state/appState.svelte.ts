@@ -146,10 +146,16 @@ export type Tool =
   | "deform"
   | "pose";
 
-/** A copied animation key, tagged so a transform cannot be pasted into an opacity track. */
-export type KeyClipboard =
+/** A copied animation key, tagged with BOTH halves of its source's identity so it can only be
+ *  pasted where it means the same thing. `prop` stops a transform landing in an opacity track.
+ *  `owner` stops a LAYER transform landing on a GROUP track: the stored value is layer-relative
+ *  (dx/dy from the fit centre, scale, rotation about the layer's base rect) while a group transform
+ *  pivots on the group's bounding box, so the pasted pose is plausible and is not the copied one.
+ *  Cross-owner paste is a listed non-goal, not an oversight. */
+export type KeyClipboard = { owner: "layer" | "group" } & (
   | { prop: "transform"; key: TransformKey }
-  | { prop: "opacity"; key: Keyframe<number> };
+  | { prop: "opacity"; key: Keyframe<number> }
+);
 
 interface AnimState {
   project: Project;
@@ -1216,17 +1222,40 @@ export function copyTrackKey(ref: TrackRef): void {
   const track = trackForRef(state.project, ref);
   const key = track?.keys.find((k) => k.frame === state.playhead);
   if (!key) return;
-  state.keyClipboard =
-    ref.prop === "opacity"
-      ? { prop: "opacity", key: copyKeyframe(key as Keyframe<number>, (n) => n) }
-      : { prop: "transform", key: copyTransformKey(key as TransformKey) };
+  // SWITCH with a `never` arm, matching `trackForRef`, `copyTracks`, `sanitiseTracks` and both
+  // frame shifters. The ternary this replaces had an `else`: a third property would have compiled,
+  // been copied as a transform, and then been refused by the paste tag check with a title claiming
+  // the clipboard holds a transform. Read into a local first — narrowing `ref.prop` in the default
+  // arm narrows `ref` itself to never, so the check cannot then read a field off it.
+  const prop: TrackRef["prop"] = ref.prop;
+  switch (prop) {
+    case "opacity":
+      state.keyClipboard = {
+        owner: ref.owner,
+        prop: "opacity",
+        key: copyKeyframe(key as Keyframe<number>, (n) => n),
+      };
+      return;
+    case "transform":
+      state.keyClipboard = {
+        owner: ref.owner,
+        prop: "transform",
+        key: copyTransformKey(key as TransformKey),
+      };
+      return;
+    default: {
+      const unreachable: never = prop;
+      return unreachable;
+    }
+  }
 }
 
 /** Paste the copied key at the playhead. Refuses a missing track (do not silently start animating)
- *  and a clipboard whose property does not match the destination. */
+ *  and a clipboard whose property OR owner kind does not match the destination — see `KeyClipboard`
+ *  for why a layer key is not a group key. */
 export function pasteTrackKey(ref: TrackRef): void {
   const clip = state.keyClipboard;
-  if (!clip || clip.prop !== ref.prop) return;
+  if (!clip || clip.prop !== ref.prop || clip.owner !== ref.owner) return;
   const t = trackTarget(ref);
   if (!t) return;
   const at = state.playhead;
