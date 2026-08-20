@@ -9,6 +9,19 @@ TypeScript + Vite + Tailwind 4 + Vitest.
 > changing a subsystem. This file captures conventions, hard-won gotchas, current state, and the
 > roadmap so you can pick up cold.
 
+## How to read this file
+
+- **It is an APPEND-ONLY LOG. Later entries supersede earlier ones.** Where two entries disagree, the
+  later one is current — check the date on each before acting on either.
+- **When the code and this file conflict, the code is more likely to be right.** Check `git log` for
+  the change first: several commits converging on one answer, or a message that states the intent, is
+  a DECISION — not drift for a reviewer to correct. Update this file instead of the code, and ask if
+  you are unsure. (Reverting a deliberate decision because this file still described the old one has
+  already happened once — see the closing entry, `All three resize grips are bare edges`.)
+- **When you supersede an entry, MARK THE OLD ONE** with a one-line `> **SUPERSEDED …**` blockquote
+  pointing at the new one. An unmarked stale rule is indistinguishable from a live one, and an agent
+  that greps and lands on it first will act on it.
+
 ## Commands
 
 - `npm run dev` — Vite dev server (localhost, HTTP).
@@ -17,7 +30,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **493 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **940 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -63,7 +76,7 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 - `src/core/brush.ts` (perfect-freehand "smooth"), `ink-brush.ts`, `stamp-brush.ts`
   (pencil/charcoal/airbrush), `pressure-curve.ts`, `ref-transform.ts` (gizmo math:
   `inverseTransformPoint`/`forwardTransformPoint`/`applyMove|Scale|Rotate`), `selection.ts`,
-  `fill.ts`, `input.ts`, `cell-ink.ts` (per-cell ink/`contentBounds` caches).
+  `fill.ts`, `input.ts`. `src/lib/cell-ink.ts` — per-cell ink/`contentBounds` caches.
 - `src/state/appState.svelte.ts` — the global `$state` store (`state`), all mutation actions,
   history/undo, preferences gather/apply. **The single source of truth.**
 - `src/lib/*.svelte` — UI: `Canvas`, `Toolbar`, `LayerList`, `Timeline`, `Playbar`, `AudioLane`,
@@ -111,16 +124,13 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
    are now restored by `restoreStructure` (transform restore moved out of the draw-only branch), so
    ref-layer drags are undoable too. The gizmo's "Reset to fit" button routes through the same
    undoable `resetCellTransform`/`resetGroupTransform`/`resetLayerTransform` actions rather than a
-   direct mutation. Known gap, not fixed by this feature: `input.ts` still has no `pointercancel`
-   listener, so an OS-cancelled pointer stream (e.g. iPad palm rejection) on the Canvas on-canvas drag
-   path can leave `refDrag`/`refDragUndo`/`refDragFreeze` set. If that happens, the _next_ gesture's
-   grab block sees `refDrag` already non-null and skips re-snapshotting, so the stale snapshot from the
-   cancelled gesture gets committed at that next gesture's release — silently merging two separate
-   drags into one undo entry. In practice this is rarely reachable: `input.ts` binds
-   `pointerleave → onPointerUp`, and per the pointer-events spec a `pointercancel` is followed by
-   `pointerout`/`pointerleave` at the capturing element, so `done: true` usually still arrives even on
-   an OS cancel. The gizmo's own handle-drag path is unaffected either way, since it binds
-   `pointercancel` itself on `window`.
+   direct mutation. **CLOSED 2026-08-14 — `input.ts` binds `pointercancel` (`input.ts:201`, routed to
+   the same `onPointerUp` as up/leave), so an OS-cancelled stream (iPad palm rejection) ends the
+   gesture instead of leaving `refDrag`/`refDragUndo`/`refDragFreeze` set** for the next gesture's
+   grab block to skip re-snapshotting and then commit as one merged undo entry. That was the gap this
+   feature shipped with; it is not a live hazard. The binding is not a full abort-restore — the
+   cancelled gesture SETTLES rather than reverting. The gizmo's own handle-drag path was never
+   affected either way, since it binds `pointercancel` itself on `window`.
 7. Mouse strokes report no pressure (`hasPressure:false`) → drawn at constant nominal width
    (`sizeRange` collapses to 1); only pen pressure widens.
 8. **Undo snapshots SHARE cell/canvas object refs** (`cloneLayers` only `slice()`s the array). A
@@ -181,9 +191,12 @@ affected-region tint; context-aware default reach); **transparent background** (
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
-- **Transform later**: animated/keyframed transforms — `LayerGroup.transform` and `Layer.transform`
-  mirror each other in shape (per Phase B spec), ready for a `RefTransform → KeyframedTransform`
-  migration. Cells stay static-only (they're already the frame-level keyframe).
+- ~~**Transform later**: animated/keyframed transforms~~ — **SHIPPED 2026-08-18** and NOT via the
+  `RefTransform → KeyframedTransform` migration sketched here. See the **Layer transform track** and
+  **Multi-property animation rows** entries below: an optional `tracks` bag (`LayerTracks`
+  `{ transform?, opacity? }` / `GroupTracks` `{ transform?, opacity? }`) beside the static field,
+  additive, save-format version unmoved. Cells stay static-only (they're already the frame-level
+  keyframe) — that half still holds.
 - **Mesh-deform / Pose tool — SHIPPED** (FFD + Rigid Deform, and the geodesic-MLS Pose tool with the
   unified rotation+reach gizmo, plus fill-outlines — see the 2026-08-15 entry below). Still deferred:
   **true Igarashi ARAP** (a real sparse solver, chosen against for now — geodesic-MLS is
@@ -193,8 +206,10 @@ affected-region tint; context-aware default reach); **transparent background** (
   center); only a full flatten of all member key cells is correct. Add when there's demand.
 - **User-pickable group pivot** (Flash/Animate-style draggable transformation point) — additive,
   non-breaking. Useful when animated rotations land.
-- **Audio Phase 2** (scrub, drag-offset clip, mute — fields exist in model/persistence) and **Phase 3**
-  (mux audio into export). See `docs/.../2026-06-15-audio-track-phase1-design.md`.
+- ~~**Audio Phase 2** (scrub, drag-offset clip, mute) and **Phase 3** (mux audio into export)~~ —
+  BOTH SHIPPED: P2 on 2026-08-09, P3 on 2026-08-11, with clip trim on 2026-08-16 and every audio
+  edit undoable by 2026-08-15. See those entries below; the audio roadmap is closed.
+  Background: `docs/.../2026-06-15-audio-track-phase1-design.md`.
 - ~~Per-layer boil-strength UI slider~~ — SHIPPED 2026-08-09: a 0–1 (step 0.05) slider beside
   opacity in the LayerList Row 2 (draw layers only, `bind` + `bump`, not undoable — matches
   opacity). Data path was already complete. Owed the usual iPad eyeball.
@@ -216,8 +231,11 @@ affected-region tint; context-aware default reach); **transparent background** (
   the frame_ (bolder regions)? — different frequencies. Must stay render-time/non-destructive, per
   `prefers-manual-over-auto-altering-art`.
 - **Onion-skin settings as a global preference** — extend `Preferences` + gather/applyPreferences.
-- **Reference media auto-restore** — currently re-pick the file (no-bytes placeholders persist). True
-  auto-restore needs File System Access (Chromium desktop) or a native wrapper; shelved.
+- **Reference media auto-restore** — mostly SHIPPED 2026-08-08 (see the reference-media-persistence
+  entry): IMAGES always persist and restore, and videos do too once `embedMedia` is opted in. What
+  remains deferred is the NON-embedded video, which still comes back as a re-link placeholder;
+  restoring that without copying the bytes needs File System Access (Chromium desktop) or a native
+  wrapper, so it stays shelved.
 - **Tiled + copy-on-write cell storage** — would cut RAM and enable an _expandable_ canvas (paint
   beyond the doc bounds for transformed layers); big cross-cutting change. See
   `memory`-derived notes / `future` discussion.
@@ -419,10 +437,11 @@ by **direct object ref** (`refDragFreeze`/`dragFreeze`, not re-resolved by `acti
 at release — a review-caught bug, fixed in `cde3b4a`) → `commitStructuralEdit()` or revert-the-freeze
 at release depending on `isSameTransform`. Pure logic (`isSameTransform`) is unit-tested; the two
 drag-lifecycle integrations are build+review-verified only (Canvas/gizmo are DOM-only, no unit
-harness — project convention). Known gap, not fixed here: `input.ts` has no `pointercancel` listener,
-so an OS-cancelled captured stream (iPad palm rejection) on the Canvas on-canvas drag path leaks
-`refDragUndo`/`refDragFreeze` until the next gesture overwrites it; the gizmo's handle-drag path binds
-`pointercancel` itself and is unaffected. **Owed a browser pass:** move → undo → back; scale/rotate →
+harness — project convention). Known gap at the time, **CLOSED 2026-08-14**: `input.ts` had no
+`pointercancel` listener, so an OS-cancelled captured stream (iPad palm rejection) on the Canvas
+on-canvas drag path leaked `refDragUndo`/`refDragFreeze` until the next gesture overwrote it. It
+binds one now (`input.ts:201`, same handler as up/leave); the gizmo's handle-drag path always bound
+`pointercancel` itself and was unaffected. **Owed a browser pass:** move → undo → back; scale/rotate →
 undo; frame-scope drag → undo restores the cell transform; drag then undo an _earlier_ structural op
 (the drag must not revert with it); click-without-move pushes nothing; Reset-to-fit → undo; ref-layer
 drag → undo; redo for all of the above; mid-drag `pointercancel` (iPad palm rejection) still commits;
@@ -491,9 +510,12 @@ flag because `selectionActive` deliberately excludes floats (Copy/Cut/Delete nee
 marquee), so the button would have been disabled exactly when most wanted. (2) **`contextHint()`**
 (`src/lib/status-hint.ts`, pure + unit-tested, 6 cases) fills the status bar's idle left half with
 the current tool's non-obvious gestures; `statusHint || contextHint(...)` so a real hover always
-wins. Precedence: locked layer > tool-blocked-by-layer-transform > tool/state hint — a hint for a
-gesture that currently does nothing is worse than none, and both of those states fail _silently_
-today. Content rule: no keyboard-shortcut lists, nothing restating a visible button. The
+wins. Precedence AS SHIPPED: locked layer > tool-blocked-by-layer-transform > tool/state hint — a
+hint for a gesture that currently does nothing is worse than none, and both of those states fail
+_silently_ today. **The ORDER has since grown and the layer-transform gate is gone** (removed
+2026-08-14 with `toCellSpace`, when a transformed layer became editable in place): `contextHint` now
+reads audio row > group row (its own `TransformRefusal` reasons) > locked > hidden > not-draw >
+tool/state hint. The principle is what survives, not the list — read `src/lib/status-hint.ts`. Content rule: no keyboard-shortcut lists, nothing restating a visible button. The
 **Deform/Pose hints say "leaving the tool bakes it"** — on iPad a tool switch is the ONLY commit path
 (Enter needs a keyboard) and nothing said so. New reactive `appState.poseActive` mirrors `meshPose`
 at all 4 assignment sites (a plain `poseActions.active()` function isn't reactive). The Transform
@@ -522,7 +544,14 @@ SCOPE-AWARE in both `Canvas.onStroke` and the gizmo's `activeTransformLayer` —
 before the scope dispatch and silently killed group drags whose anchor layer was hidden; review
 caught it), and timeline BLOCK ops (paste/
 delete/move) still skip only _locked_ rows — hiding is a transient view state while lock is an
-explicit "don't touch", so bulk ops keep honoring lock only. **Owed a browser pass:** marquee visible
+explicit "don't touch", so bulk ops keep honoring lock only.
+
+> **SUPERSEDED for the block-ops half — see the 2026-08-11 high-effort review fixes entry below.**
+> Block ops now skip on `isLayerEditable` (draw + unlocked + VISIBLE), so a hidden row is inert too,
+> matching the row gestures and the selection bar. The group-transform non-change above still holds.
+> Do not restore lock-only from this paragraph; it is the older of the two.
+
+**Owed a browser pass:** marquee visible
 on a hidden layer; strokes/fill/lift/deform/pose/frame-tools all refuse with the hint; unhide →
 editing resumes; a lift in progress when you hide stays alive and hidden; iPad.
 
@@ -546,9 +575,11 @@ ACTIVE layer, where the other video-only controls (offset, speed, re-link) alrea
 this establishes: **Row 1 = state you scan ACROSS layers (visibility, lock, type); Row 2 = controls
 for the layer you're working on.** Apply it to any future per-layer control. Row 1 is now at most
 eye + lock + type before the name. Row 2 then **wraps** (`flex-wrap` + `gap-y-1`) rather than getting
-a hand-partitioned third row: the panel is a fixed `w-56` (224px) and this row keeps gaining controls
-(two were added on 2026-08-09 alone), so a fixed partition would need re-cutting each time while wrap
-can never clip. Sliders slimmed to `w-12` / readouts `w-5` so a DRAW layer still fits one line and
+a hand-partitioned third row: the panel was a fixed `w-56` (224px) at the time and this row keeps
+gaining controls (two were added on 2026-08-09 alone), so a fixed partition would need re-cutting
+each time while wrap can never clip. **The panel is DRAG-RESIZABLE since 2026-08-16**
+(`panel-layout.ts`, `state.layerPanelWidth`, default still 224) — which only strengthens the rule:
+wrap is what makes the resize safe, so any new per-layer control must keep that property. Sliders slimmed to `w-12` / readouts `w-5` so a DRAW layer still fits one line and
 only video refs flow onto a second; the offset+speed inputs sit in a nested flex so they stay
 adjacent across the wrap. **Owed:** eyeball the wrap on iPad.
 
@@ -582,14 +613,22 @@ the gutter marker's sticky position at `left: LABEL_W` while scrolling horizonta
 **Timeline gutter geometry (2026-08-11):** the gutter was one 80px column that every row filled
 differently — layer rows put the read-only marker in a separate column AFTER it, while the audio
 lane crammed its mute + ✕ INSIDE it, so nothing aligned and names truncated to "R…". Now three
-constants in `Timeline.svelte`: `LABEL_W` (120, name), `MARKER_W` (22, read-only/hidden marker —
+constants in `Timeline.svelte`: `LABEL_W` (120 then, name), `MARKER_W` (22 then / **28 now**,
+read-only/hidden marker —
 **always rendered, blank when editable**, which both aligns the rows and gives the frame cells a gap
 after the name), and `GUTTER_W = LABEL_W + MARKER_W`, which is what the ruler spacer, both playhead
 offsets and `TimelineSelectionBar`'s `labelW` now use. `AudioLane` takes `labelW` + `markerW` and
 puts its ✕ in the marker column, so it lines up with the layer rows' lock/hidden icons. Anything new
 in the gutter must pick a column rather than inventing its own offset. The gutter stays FIXED-width
 (a drag-resizable one was considered and deferred: `LABEL_W` would have to become reactive state
-threaded through four consumers plus prefs persistence). **Owed:** horizontal-scroll check that all
+threaded through four consumers plus prefs persistence).
+
+> **SUPERSEDED 2026-08-16 — see "The timeline gutter's name column is drag-resizable" below.**
+> `LABEL_W`/`GUTTER_W` ARE reactive `$derived` state now, persisted as `timelineLabelWidth`, and the
+> deferral above is exactly what got done. `MARKER_W` is 28 and stays fixed. The three-column
+> geometry rule is what survives here — and it is why the resize was a two-line change.
+
+**Owed:** horizontal-scroll check that all
 three sticky columns hold together, and the audio ✕ alignment on iPad.
 
 **Live-counter jitter (2026-08-11):** any readout that updates while scrubbing needs BOTH fixes or
@@ -739,9 +778,13 @@ what "mid-gesture" means for every pointer gesture in the app.**
 swallowed strokes — the guards refused the write but the UI still showed a brush ring, i.e. it
 promised a stroke it would not make. `Canvas` now derives `toolBlocked` (a WRITING tool +
 `!isLayerEditable`) and swaps in `cursor-not-allowed`, and `BrushCursor` hides its ring in the same
-condition. WRITING_TOOLS is deliberately brush/eraser/fill/deform/pose/transform only: the
-**eyedropper samples the composite** and **select/lasso can still COPY** from a locked layer, so
-flagging those would be a worse lie than showing nothing. Pan (space/middle-drag) keeps its grab
+condition. The list is deliberately brush/eraser/fill/deform/pose — the **eyedropper samples the
+composite** and **select/lasso can still COPY** from a locked layer, so flagging those would be a
+worse lie than showing nothing. (The identifier is `PIXEL_TOOLS` in `Canvas.svelte`, not
+`WRITING_TOOLS`, and **`transform` was deliberately SPLIT OUT of it**: transform is blocked on a
+non-editable DRAWING layer and on the audio row, but a REFERENCE layer's gizmo is live under every
+tool, so folding transform back into the flat list showed a not-allowed cursor and a "switch to a
+drawing layer" caption over something you can actually move. Don't re-merge them.) Pan (space/middle-drag) keeps its grab
 cursor, since panning works regardless. Together with the amber icons and the status hint, a
 read-only layer now announces itself in four places.
 
@@ -1026,7 +1069,9 @@ least one, and still caps at 50 commands.
 and the viewport zoomed it in CSS, so a layer at 0.3 then zoomed to work on it was a
 handful of display pixels blown up. `drawCellComposed`/`drawTransformed` now use
 `imageSmoothingQuality: high`, and the display backing store supersamples by
-`min(zoom, 2)` (export stays 1×). Cells stay DPR=1. Zoom past 2× can still soften;
+`min(zoom, 2)` (export stays 1×) — **superseded a few entries below: that factor is QUANTISED to
+`[2, 1.5, 1]` (`OUTPUT_SCALE_STEPS`), because a continuous one reallocated the backing store on
+every pinch `pointermove`.** Cells stay DPR=1. Zoom past 2× can still soften;
 a full screen-space camera is the next step if that shows up.
 
 **Two-finger rotate is live again, snap window tightened (2026-08-14):** a 15° engage
@@ -1077,7 +1122,9 @@ listener still reads its title on press; and `startRelink` bails when the gestur
 ends on the button — selecting a layer that way is harmless, opening a file picker is not.
 Image / unknown-duration refs keep a type label only. The LayerList offset number is gone; speed
 stays. Audio lane got a matching clip fill under the waveform. No filmstrip, trim, or model
-change; drag is not undoable (same as the old number field). Every row shares
+change; drag was not undoable at the time (same as the old number field) — **it IS now: the body
+slide brackets `beginStructuralEdit`/`commitStructuralEdit` via `settleClipDrag`, and the video clip
+gained trim handles on the same bracket.** Every row shares
 `timelineStripFrames` (doc length or the furthest clip tail) as `min-width` so sticky
 gutters stay pinned when a clip hangs past the last frame — sticky is trapped in the
 row's own box. A full-height sticky gutter plate (z-15) sits between the playhead
@@ -1190,8 +1237,10 @@ inverse-map through `selection.composeSteps` (`group ∘ layer ∘ cell`). A liv
 on layer/frame switch (gotcha #9). Deform/Pose stay cell-local — and stay COMPOSED, via
 `Selection.cellSpaceLift` (see the amended 2026-08-14 entry above; a whole-branch review caught
 that the blanket `applyCompose = null` had knocked the deform overlay off its ink).
-`composeSteps` has ONE writer, `Canvas.syncComposeSteps()`, which refuses to touch a live lift and
-is called on version / playhead / dims / active-layer change and at gesture start — never every
+`composeSteps` has FIVE writers — `Canvas.syncComposeSteps()` plus the four lift entry points, which
+install their own chain for the lift's lifetime. **What makes that split safe is the fact worth
+stating: `syncComposeSteps` BAILS on a live lift**, so it can never overwrite a chain a lift owns.
+It is called on version / playhead / dims / active-layer change and at gesture start — never every
 frame (`cellComposeSteps` can trigger a full-resolution `contentBounds` scan on a cache miss).
 The hand-written inverse lives in the pure, unit-tested `inverseComposeMatrix` (`selection-map.ts`),
 asserted against `inverseChain` over a rotated 3-step chain. Spec/plan:
@@ -1388,10 +1437,13 @@ which is also why the old clamp was lying. Image ref rows render a clip block (r
 definition, so its edges aren't real positions and its body has nothing to slide), **solid +
 grab-cursor once trimmed**, with edge handles that trim and a body that slides. Trim/slide push one
 undo entry per completed gesture via the same `beginStructuralEdit`/`commitStructuralEdit` +
-`transformDragGuard.settle` bracket the hold-span resize uses — **deliberately diverging from the
-video and audio clip drags, which stay non-undoable** (inherited from the numeric fields they
-replaced): those move where a reference _sits_, this changes **what renders**, and a mis-drag that
-silently blanks frames is exactly the loss undo exists for. `cloneLayers` deep-copies `range` the
+`transformDragGuard.settle` bracket the hold-span resize uses — at the time **deliberately diverging
+from the video and audio clip drags, which were non-undoable** (inherited from the numeric fields
+they replaced): those move where a reference _sits_, this changes **what renders**, and a mis-drag
+that silently blanks frames is exactly the loss undo exists for. **That CONTRAST is gone — the audio
+offset drag became undoable on 2026-08-15 and the video clip slide in the fix wave after it, so all
+of them now bracket one undo entry per gesture. Do not strip this drag's bracket to "restore the
+symmetry"; the symmetry was restored the other way.** `cloneLayers` deep-copies `range` the
 same way it already deep-copies `transform` (gotcha #8 — snapshots share refs, so the drag replaces
 `layer.range` wholesale rather than writing `.start`/`.end` in place), and `restoreStructure` copies
 `range` as a structural field alongside `transform`, not left as a view-prop.
@@ -1464,31 +1516,40 @@ are unaffected — `isRefVisibleAtFrame` is true everywhere when there is no ran
 
 **Ripple insert/delete (2026-08-15, closes gap 3 — but the reported premise was wrong).** The review
 said "frame insert/delete does not shift ranges". Checking first showed there was **no document-wide
-frame op at all**: every frame tool acts on the ACTIVE LAYER only (`Timeline.svelte`'s
+frame op at all**: every frame tool acted on the ACTIVE LAYER only at the time (`Timeline.svelte`'s
 `frameTool`/`keyTool`/`dupTool`/`deleteTool`), and `insertFrameAllLayers`/`deleteFrameAllLayers` had
 existed in `timeline.ts` with **zero production callers** — tests only. So "shift the range by the
 inserted count" was unimplementable as stated: when layer A gains a frame and layer B does not, a
 document-space range has no single correct shift, and moving it would sync the ref to A while
 desyncing it from B. **The real gap was the missing operation**, so that is what was built. Those two
 functions are now wired to a pair of timeline-bar buttons and extended to ripple everything living in
-document-frame space: image ref ranges, video clip offsets, and the audio track. Per-layer tools are
-untouched.
-The shift math is pure and unit-tested (`shiftSpan`, `shiftStartFrame`). **The straddle rule is the
-part worth knowing:** a span containing the inserted frame GROWS rather than moving — insert a
-breakdown mid-action and the reference should cover it, not slide off it — while a span entirely
-after the frame moves and one entirely before is untouched. Delete mirrors it, flooring a span at one
-frame rather than inverting it. Audio and video have no `end` to grow, so a clip STRADDLING the
-frame is left alone: a video's length is its footage and cannot absorb a frame, so it will drift if
-you insert mid-clip. That is honest rather than fixable.
-**`StructSnapshot` gained `audioOffsetFrames`, and that widening is load-bearing.** Audio is
-otherwise deliberately outside undo (set/remove-track, mute and the waveform drag are all
-non-undoable, matching opacity), but this is the first operation that moves audio _programmatically_
-— without the field, undoing a ripple would restore every layer and range and leave the audio
-shifted, which is worse than never shifting it. `restoreStructure` applies it only when the track
-still exists AND the snapshot had one. (Set/remove-track and mute later became undoable too, so the
-snapshot now carries the track and both its flags — see the audio-undo entries below.) The ripple ops are **not** gated on the active layer being
-editable, unlike the per-layer tools: this is a document op, and skipping locked rows would destroy
-the very alignment it exists to preserve (same treatment a document resize gives them).
+document-frame space: image ref ranges, video clip offsets, and the audio track. Per-layer tools were
+untouched by THIS change.
+
+> **SUPERSEDED — the frame tools are no longer per-layer.** `frameTool` (Add frame) and `deleteTool`
+> (Delete frame) ARE the document-wide ripple ops now: they call `insertFrameAllLayers`/
+> `deleteFrameAllLayers` directly, deliberately ungated on the active layer (skipping a locked row
+> would break the alignment). Insert-keyframe, Duplicate and Hold left the bar entirely; **`clearFrame`
+> is the only per-layer frame tool left.** The straddle/shift reasoning below is unchanged and still
+> current — only the "per-layer tools are untouched" framing is stale.
+> The shift math is pure and unit-tested (`shiftSpan`, `shiftStartFrame`). **The straddle rule is the
+> part worth knowing:** a span containing the inserted frame GROWS rather than moving — insert a
+> breakdown mid-action and the reference should cover it, not slide off it — while a span entirely
+> after the frame moves and one entirely before is untouched. Delete mirrors it, flooring a span at one
+> frame rather than inverting it. Audio and video have no `end` to grow, so a clip STRADDLING the
+> frame is left alone: a video's length is its footage and cannot absorb a frame, so it will drift if
+> you insert mid-clip. That is honest rather than fixable.
+> **`StructSnapshot` gained `audioOffsetFrames`, and that widening is load-bearing.** Audio is
+> otherwise deliberately outside undo (set/remove-track, mute and the waveform drag are all
+> non-undoable, matching opacity), but this is the first operation that moves audio _programmatically_
+> — without the field, undoing a ripple would restore every layer and range and leave the audio
+> shifted, which is worse than never shifting it. `restoreStructure` applies it only when the track
+> still exists AND the snapshot had one. (Set/remove-track and mute later became undoable too, so the
+> snapshot now carries the track and both its flags — see the audio-undo entries below.) The ripple ops are **not** gated on the active layer being
+> editable, unlike the per-layer tools: this is a document op, and skipping locked rows would destroy
+> the very alignment it exists to preserve (same treatment a document resize gives them). (Add and
+> Delete frame ARE these ripple ops now, so that ungated treatment is the bar's behaviour, not just
+> these two functions' — see the superseded note above.)
 
 **`replaceProject` settles in-flight drags (2026-08-15, closes gap 4).** It called
 `liftGuard.discard?.()` but never `transformDragGuard.settle?.()`, so a drag surviving an Open/New
@@ -1504,7 +1565,11 @@ oversight.
 **All four review gaps from this feature are now closed.** The only thing deliberately left alone is
 that the PER-LAYER frame tools do not shift reference ranges — which is correct, not a gap: a
 per-layer op has no single right answer for a document-space span (see the ripple entry above).
-Recorded so the question is not re-opened from scratch.
+Recorded so the question is not re-opened from scratch. **Read this as a rule about per-layer ops in
+general, NOT as a description of today's bar: Add and Delete frame became the document-wide ripple
+ops, and Insert-keyframe/Duplicate/Hold left the bar. `clearFrame` is the last per-layer frame tool,
+and it changes no frame numbering, so nothing there has a range to shift. Do not "restore" a
+per-layer Add or Delete on the strength of this paragraph.**
 
 **Owed a browser pass:** an image ref shows a dashed block spanning `0..frameCount-1` while
 untrimmed; trimming an edge converts it to a solid block and the image disappears outside the span
@@ -1607,14 +1672,14 @@ every existing preferences blob look identical; the test pins that number for th
 It carries the same `touch-action: none` + pointer-capture + `pointercancel` trio every drag surface
 here needs. **It RESERVES a 12px strip rather than overlaying the rows** (corrected 2026-08-16 from a
 screenshot): overlaying put it directly on top of each row's `layer-drag-handle`, so the two
-grab targets sat on the same pixels. The strip comes from `pl-2` on the panel's TWO direct children,
+grab targets sat on the same pixels. The strip comes from padding on the panel's TWO direct children,
 not on the root — padding the root would inset the header's bottom border and leave it short of the
-left edge. It was briefly 12px, trimmed to **8px** once the grip lost its visual bar: with no mark to
-sit in, the strip only has to stop the grip colliding with the drag handles. `MIN_PANEL_WIDTH` is
-180 of usable content PLUS that strip = **188**, since the floor is a guarantee about CONTENT width
-and the reserve has to be added on top of it. `DEFAULT_PANEL_WIDTH` stays 224 so the
-panel's overall width is unchanged; that costs stored preferences 12px of content, which the row's
-`flex-wrap` absorbs and the drag itself remedies.
+left edge. **CURRENT VALUES (this paragraph's `pl-2` / 12px / 8px / `MIN_PANEL_WIDTH` 188 are all
+superseded — see "All three are 8px" below, which is the settled version): the reservation is `pl-1`
+= 4px, and `MIN_PANEL_WIDTH` is 184** (180 of usable content plus that 4px reserve — the floor is a
+guarantee about CONTENT width, so the reserve is added on top of it; a test pins the number).
+`DEFAULT_PANEL_WIDTH` stays 224 so the panel's overall width is unchanged; that costs stored
+preferences a few px of content, which the row's `flex-wrap` absorbs and the drag itself remedies.
 This is only safe because the layer detail row is already `flex-wrap` (the 2026-08-11 de-crowding
 work): a narrower panel wraps to more lines rather than clipping, and a wider one un-wraps. Any
 future per-layer control must keep that property or the minimum width becomes a real constraint.
@@ -1633,16 +1698,19 @@ playhead offsets, the full-height sticky plate, `stripMinW`, `AudioLane`'s `labe
 rather than hardcoding 120. **That is why the earlier gutter-geometry work mattered:** collapsing the
 three ad-hoc offsets into `LABEL_W`/`MARKER_W`/`GUTTER_W` is what made this a two-line change instead
 of a hunt. Anything new in the gutter must keep reading them.
-`MARKER_W` stays FIXED at 22 — it holds one 11px glyph and has nothing to gain from resizing; only
-the name column moves. `clampGutterLabelWidth` (pure, unit-tested) clamps to [80, **40%** of the
+`MARKER_W` stays FIXED — 22 when this was written, **28 since** (widened so the lock/hidden glyph is
+not crowded against the divider; see the end of this entry). It holds one 11px glyph and has nothing
+to gain from resizing; only the name column moves. `clampGutterLabelWidth` (pure, unit-tested) clamps to [80, **40%** of the
 viewport], tighter than the layer panel's 50% because this column eats horizontally into the frame
 strip, which is the timeline's actual content. `DEFAULT_GUTTER_LABEL_WIDTH` is 120, the old constant,
 so nothing moves on first run; persisted as `timelineLabelWidth` through the existing prefs pair.
-**The grip's z-index is the non-obvious part:** it is `z-25`, above the PER-ROW sticky labels at
-z-20. At z-15 (beside the plate) or lower, whichever row you pressed would swallow the gesture with
-its own label. It straddles the divider (`left: GUTTER_W - 3`, 6px wide), is sticky so it rides that
-edge through horizontal scroll, and is pulled out of flow with the same negative margin the plate
-uses so it adds no height. Dragging RIGHT widens — not inverted, unlike the layer panel's grip, whose
+**The grip's z-index is the non-obvious part:** it must sit above the PER-ROW sticky labels at z-20 —
+at z-15 (beside the plate) or lower, whichever row you pressed would swallow the gesture with its own
+label. It was `z-25` here; it is **`z-40` now**, because it also crosses the ruler row (z-35) and has
+to stay grabbable through it — see the z-index ladder entry. It straddles the divider (`left:
+GUTTER_W - 3`, 6px wide **— superseded: `GUTTER_W - 6`, 8px wide and deliberately asymmetric, see
+"The GUTTER's grip" below**), is sticky so it rides that edge through horizontal scroll, and is
+pulled out of flow with the same negative margin the plate uses so it adds no height. Dragging RIGHT widens — not inverted, unlike the layer panel's grip, whose
 panel is docked on the other side.
 **Two follow-ups from a screenshot (2026-08-16).** (1) The divider stopped level with the last row:
 the per-row `border-r` only covers its own row, and the full-height plate that hides the playhead
@@ -1661,8 +1729,12 @@ affordance is now the divider line that was already there, plus `hover:bg-text/1
 so the edge tints under the pointer instead of carrying permanent chrome. Rationale: dragging a panel
 edge is a learned convention that needs no badge, and two resize edges in one app must look alike —
 a bare edge on one and a mark on the other was the actual inconsistency.
-The timeline's height grip briefly lost its bar too, then had it restored — see the paragraph above
-for why that one is the exception. Worth keeping from that detour: its hit area was ALREADY the same
+The timeline's height grip briefly lost its bar too, then had it restored — see the paragraph below
+for why that one was the exception.
+**SUPERSEDED 2026-08-19 — it is NOT an exception any more.** All three grips are bare edges with the
+same 8px hit / 4px hover tint; see the closing entry, `All three resize grips are bare edges`. **This
+sentence is the one a reviewer read as drift and "corrected" back, reverting a deliberate decision —
+do not restore the bar from it.** Worth keeping from that detour: its hit area was ALREADY the same
 8px as the other two (`h-2` vs `w-2`), so the "wider grab area" it appeared to have was purely the
 bar. Measure before resizing a hit area; the difference was chrome.
 **All three are 8px** (briefly 12px on 2026-08-16, reverted the same day — thicker read as heavy).
@@ -1792,14 +1864,25 @@ acted on audio whenever a drawing layer was selected, for reasons invisible on s
 added a boolean `audioLaneActive` beside `activeLayerId`, which meant every view that draws a
 selection had to spell out `id === activeLayerId && !audioLaneActive` by hand. Forgetting the second
 term is not hypothetical: it shipped twice, once as a double highlight in the gutter and once as a
-layer panel disagreeing with it. `activeRow` is now
-`{ kind: "layer"; id } | { kind: "audio" }`, and the rule is: **no view may COMBINE it with
-`activeLayerId`.** Ask `isRowSelected(id)` or `isAudioRowSelected()` for selection; read
+layer panel disagreeing with it. `activeRow` became a discriminated union, and the rule is: **no view
+may COMBINE it with `activeLayerId`-derived state.** Ask an accessor for selection; read
 `activeLayerId` for the draw target; never both in one expression. The two remain separate fields on
 purpose — `activeLayerId` must survive selecting the audio lane, because it is still what a stroke
 lands on — but they answer different questions and no longer meet in a conjunction anyone can forget.
-`setActiveLayer` and `selectAudioLane` are the only writers, and `restoreStructure` returns selection
-to the restored layer.
+**That rule is the load-bearing half and still holds exactly as written** (it is echoed in two code
+comments, and it has shipped as a bug twice).
+
+**The UNION HAS GROWN — it started as `layer | audio`, and it is FIVE cases now** (`src/anim/
+active-row.ts`): `{ kind: "layer"; id }` | `{ kind: "audio" }` | `{ kind: "group"; id }` |
+`{ kind: "track"; owner: "layer"; id; prop }` | `{ kind: "track"; owner: "group"; id; prop }`.
+The accessor set is correspondingly bigger: `isRowSelected(id)`, `isAudioRowSelected()`,
+`isGroupRowSelected(id?)`, `isGroupDetailShown(id)`, `isTrackSelected(owner, id, prop)`,
+`drawingRowLayerId()`, `pixelToolsBlock()`, and the two pure primitives `workingTarget(row)` /
+`targetLayerId(row)` that the rest are defined in terms of. Public writers are `setActiveLayer`,
+`selectAudioLane`, `selectGroup` and `selectTrack` (plus `restoreStructure`/`commitStructural`/
+`refocusFoldedRow` internally, which re-point a stale row rather than moving the selection between
+row kinds). **A view that answers a question about the union by comparing `.kind` itself is exactly
+how two views came to disagree — go through `active-row.ts`.**
 This was chosen over making audio a real LAYER, which is the correct long-term model and was measured
 first: 64 explicit `kind === "draw"/"ref"` checks a compiler sweep would catch, but **29 sites written
 as `kind !== "draw"` / `!== "ref"` that today MEAN "is a reference" and would silently start catching
@@ -1902,10 +1985,12 @@ then the single prompt; decline it and confirm the length snaps back; undo after
 handle staying at the ruler's end while scrolling horizontally; iPad.
 
 **Edge auto-scroll while dragging (2026-08-16).** Reported as: dragging the playhead or a trim edge
-past the viewport does nothing, so you must stop, scroll by hand, and resume. All six HORIZONTAL
-timeline drags now scroll when the pointer nears an edge — ruler scrub, animation length, audio
-offset, audio trim, image-ref range, video clip slide. The two panel-resize grips deliberately do
-NOT: scrolling the content while sizing a panel would be wrong.
+past the viewport does nothing, so you must stop, scroll by hand, and resume. **Every HORIZONTAL
+timeline drag** now scrolls when the pointer nears an edge; the authoritative list is the set of
+`startEdgeScroll(apply, owner)` call sites, each tagged with its owner string, and it has grown since
+(ruler scrub, animation length, audio offset, audio trim, image-ref range, video clip slide, video
+trim, transform-key move, the timeline row drag). The two panel-resize grips deliberately do NOT:
+scrolling the content while sizing a panel would be wrong.
 **A screen-space drag origin must be corrected by the scroll, or auto-scroll does nothing useful.**
 Five of the drags stored the pointer x at grab and computed `round((clientX - x) / CELL_W)`. Scrolling
 does not change either term, so re-applying with a still pointer produced the SAME delta while the
@@ -1944,7 +2029,7 @@ future left-edge geometry in this scroller; the sticky gutter has caught this se
 `AudioLane` does not own the scroller, so Timeline passes it `onEdgeScrollStart/Stop/PointerX`
 alongside the existing touch-pan callbacks. Every start is paired with a stop on the settle path, not
 on `pointerup` alone — the settles are also what undo/Open call through `transformDragGuard`.
-**Owed a browser pass:** drag each of the seven past both edges and back; a marquee extending across pages while the tracks scroll; that a trim edge keeps
+**Owed a browser pass:** drag each registered owner past both edges and back; a marquee extending across pages while the tracks scroll; that a trim edge keeps
 following while the content scrolls; that it stops at either end without spinning; release outside
 the viewport; ⌘Z mid-autoscroll; iPad with a Pencil.
 
@@ -2428,12 +2513,16 @@ marquee dragged ACROSS a group row still spans the layers either side, via that 
 Anything added to the timeline later that is not a layer should follow this rule rather than adding
 guards.
 
-Group MEMBERS are indented 12px in the gutter, matching the panel's `.group-members pl-3` — with a
-group row now present, an un-indented member reads as the group's sibling rather than its child. This
-is the one deliberate exception to the rule that every row starts its name at the same x; the marker
-column is a separate sticky element pinned at `LABEL_W`, so it stays aligned regardless. Note the
-gutter's name column can be dragged down to 80px, where 12px is a real bite out of a truncating name —
-accepted, because the panel sets the convention and two views disagreeing about hierarchy is worse.
+Group MEMBERS are indented **16px** in the gutter, matching where the panel puts them — with a group
+row now present, an un-indented member reads as the group's sibling rather than its child. **The two
+surfaces use DIFFERENT CLASSES to reach the same position, which is the non-obvious part and reads
+as a mismatch until you trace it:** the gutter row is `pl-4` (16px) with no list padding under it,
+while the panel's `.group-members` is `pl-3` (12px) sitting on top of the list container's own `pl-1`
+(4px) — 12 + 4 = 16 either way. Compare the RESULTING OFFSET, never the class value. This is the one
+deliberate exception to the rule that every row starts its name at the same x; the marker column is a
+separate sticky element pinned at `LABEL_W`, so it stays aligned regardless. Note the gutter's name
+column can be dragged down to 80px, where 16px is a real bite out of a truncating name — accepted,
+because the panel sets the convention and two views disagreeing about hierarchy is worse.
 
 The row is a collapse toggle (chevron + name + hidden-member count), so a collapsed group is finally
 visible and expandable from the timeline. Its frame strip is deliberately empty — that is where a
@@ -2516,9 +2605,12 @@ The two things you always want next, and the only reason to click that row. It d
 switch the TOOL: being yanked out of the brush mid-drawing to glance at a track would cost more than
 it saves, and the scope is persisted state that simply takes effect the moment you do reach for
 Transform. Highlight follows the OWNER (`isRowSelected(tl.id)`) rather than introducing a selection
-state of its own — a layer and its track are one thing, so both rows light together, and `activeRow`
-stays the two-case union it became when the audio lane needed one (see the accessor rule there: no
-view may combine `activeRow` with `activeLayerId`).
+state of its own — a layer and its track are one thing, so both rows light together. `activeRow` was
+a two-case union when this was written; it is **FIVE cases now** (layer / audio / group /
+layer-owned track / group-owned track — see the accessor-rule entry above for the full list and the
+accessor set). The rule that matters is unchanged and still absolute: **no view may combine
+`activeRow` with `activeLayerId`-derived state**; go through `active-row.ts` rather than comparing
+`.kind` in a view.
 
 **A keyed `{#each}` cannot hold a pointer capture (2026-08-18).** Reported as "I can move the key by
 only 1 frame, then it stops". The markers live in `{#each keys as k (k.frame)}`, so the instant the
@@ -2611,65 +2703,74 @@ layer's transform can now vary over time instead of being one static value, clos
 so every existing project loads unaffected and the save-format version does not move (still `1`); an
 old build opening a new save simply never reads a field it doesn't know about, and `projectToJson`/
 `projectFromJson` pass it through like any other optional layer field.
-**`track.box` is stored NULL for a layer track, never a frozen `transformBaseRect`.** This deliberately
-diverges from the cell/group freeze-the-pivot convention (gotcha #5): that rule exists for
-CONTENT-DERIVED boxes, which drift as you draw more: a layer's base rect is the document rect (or a
-reference's media contain-fit), and neither drifts from drawing — `resizeProject` never touches
-`transform`/`transformTrack`, so a box frozen at track-creation time would silently describe the OLD
-document size after a later resize. The gizmo instead recomputes `base` LIVE every frame via
-`transformBaseRect`, the same call the static (non-animated) path already made — animating a layer
-changes what feeds the pivot maths not at all. `box` stays a field on `TransformTrack` for a future
-group-level track, where the box genuinely would be content-derived and the freeze rule would apply.
-**Rotation interpolates ABSOLUTELY, with no shortest-path normalisation.** `lerpTransform` does plain
-`a + (b - a) * u` on `rotation` (radians), not an angle-wrapped slerp — the gizmo already accumulates
-rotation past ±360° for the static case (spin the handle twice, get 4π), and a track key just captures
-whatever that accumulated value is. Two keys 2π apart therefore hold a full visible spin between them
-rather than snapping to the "shorter" zero-rotation path a wrapped interpolation would silently
-substitute — the animator asked for two turns, not none.
-**`sampleEvery` quantises time GLOBALLY, then evaluates.** `transformAt` computes `q =
+
+> **SUPERSEDED the NEXT DAY by "Multi-property animation rows" (2026-08-18) — the TYPE SIGNATURE
+> above is three ways out of date.** The field is `Layer.tracks?: LayerTracks` (a typed bag, not a
+> lone `transformTrack`); `interp` moved from the TRACK onto each KEY (`TransformKey.interp?:
+KeyInterp`, five presets, absent = linear) and `TransformTrack.interp` is gone; and reads go
+> through the gated accessor / `resolveTrack`, not the raw field. Everything else in this entry —
+> `box`, absolute rotation, the `sampleEvery` grid anchor, the `getT`/`setT` keying, the optional/
+> additive persistence story — is unchanged and still current.
+> **`track.box` is stored NULL for a layer track, never a frozen `transformBaseRect`.** This deliberately
+> diverges from the cell/group freeze-the-pivot convention (gotcha #5): that rule exists for
+> CONTENT-DERIVED boxes, which drift as you draw more: a layer's base rect is the document rect (or a
+> reference's media contain-fit), and neither drifts from drawing — `resizeProject` never touches
+> `transform`/`transformTrack`, so a box frozen at track-creation time would silently describe the OLD
+> document size after a later resize. The gizmo instead recomputes `base` LIVE every frame via
+> `transformBaseRect`, the same call the static (non-animated) path already made — animating a layer
+> changes what feeds the pivot maths not at all. `box` stays a field on `TransformTrack` for a future
+> group-level track, where the box genuinely would be content-derived and the freeze rule would apply.
+> **Rotation interpolates ABSOLUTELY, with no shortest-path normalisation.** `lerpTransform` does plain
+> `a + (b - a) * u` on `rotation` (radians), not an angle-wrapped slerp — the gizmo already accumulates
+> rotation past ±360° for the static case (spin the handle twice, get 4π), and a track key just captures
+> whatever that accumulated value is. Two keys 2π apart therefore hold a full visible spin between them
+> rather than snapping to the "shorter" zero-rotation path a wrapped interpolation would silently
+> substitute — the animator asked for two turns, not none.
+> **`sampleEvery` quantises time GLOBALLY, then evaluates.** `transformAt` computes `q =
 quantiseFrame(frame, first.frame, sampleEvery)` — floored onto a grid anchored at the FIRST key's
-frame, never at the segment's own start — before doing the linear lerp between whichever two keys
-bracket `q`. Anchoring per-segment would make the held step change size/phase at every key (the same
-class of bug the drawing-side "step on 2s/3s" logic already avoids); anchoring once at the track's
-first key keeps the stepping rhythm constant across the whole track regardless of where keys land.
-`interp: "hold"` skips quantisation entirely (it already reads as a step function) and MAX_SAMPLE_EVERY
-(12) is clamped in the store, not just the widget's `max=`, per the established `MAX_GAP` pattern —
-a browser accepts a typed value past a number input's advisory max.
-**Keying rides inside the gizmo's existing `getT`/`setT` pair, so no drag lifecycle changed.** The
-Frame/Layer/Group scope dispatch in `Canvas.svelte`/`RefTransformGizmo.svelte` already reads/writes
-the active transform through one `getT`/`setT` closure per scope (gotcha #6); the "layer" branch's
-`setT` now checks `layer.transformTrack` and, when present, calls `withTransformKey(track, playhead,
+> frame, never at the segment's own start — before doing the linear lerp between whichever two keys
+> bracket `q`. Anchoring per-segment would make the held step change size/phase at every key (the same
+> class of bug the drawing-side "step on 2s/3s" logic already avoids); anchoring once at the track's
+> first key keeps the stepping rhythm constant across the whole track regardless of where keys land.
+> `interp: "hold"` skips quantisation entirely (it already reads as a step function) and MAX_SAMPLE_EVERY
+> (12) is clamped in the store, not just the widget's `max=`, per the established `MAX_GAP` pattern —
+> a browser accepts a typed value past a number input's advisory max.
+> **Keying rides inside the gizmo's existing `getT`/`setT` pair, so no drag lifecycle changed.** The
+> Frame/Layer/Group scope dispatch in `Canvas.svelte`/`RefTransformGizmo.svelte` already reads/writes
+> the active transform through one `getT`/`setT` closure per scope (gotcha #6); the "layer" branch's
+> `setT` now checks `layer.transformTrack` and, when present, calls `withTransformKey(track, playhead,
 nt)` instead of writing `layer.transform` directly — auto-key is therefore not a new gesture or a new
-undo path, it is what the SAME drag already did, now landing in a different field. This is also why
-Apply/Reset had to gain their own guard in this task: those two actions bypass the gizmo entirely and
-write straight to `layer.transform`/bake the cells, which means nothing once a track exists — there is
-no single "the" transform to bake or reset.
-**A no-op gesture's transient key is reverted by restoring the grab-time track reference, not by
-diffing.** Both drag sites freeze `{ layer, prevTrack: layer.transformTrack }` at grab
-(`refTrackFreeze`/`trackFreeze`) the same way the existing `transformBox` freeze already captures a
-direct object ref rather than re-resolving by id at release (gotcha #6's documented reasoning applies
-unchanged: re-resolving risks a mid-gesture retarget stomping an unrelated layer's track). On an
-`isSameTransform` no-op the settle branch reassigns `layer.transformTrack = prevTrack`, discarding
-whatever key `setT` wrote mid-drag before any key even existed for the pointer-down frame — a
-click-without-move on an animated layer must not silently plant a key, matching the pre-existing
-"click-without-move pushes nothing" contract for static transforms.
-**The transform row carries no `data-layer-id`, which is what keeps it out of the timeline's
-selection/gutter axes for free.** Every layer-row gesture (marquee hit-testing, block move, the
-lock/hidden gutter marker, `TimelineSelectionBar`'s row lookup) keys off `[data-layer-id]` elements;
-the transform row is a read-only ◆-per-key strip with nothing to select or paste (a track holds no
-cells), so simply never emitting the attribute means none of that machinery has to learn a new row
-kind or a new exclusion — the row is inert to selection by omission, the same trick the group-header
-row already uses for the same reason.
-**Owed a browser pass** (Tasks 1-8 are build+review-verified per project convention; canvas/DOM has no
-node harness): Animate on a static layer starts a track at frame 0 and a first drag elsewhere tweens
-cleanly; scrubbing between keys shows the interpolated pose; Stop animating bakes the ON-SCREEN value
-(not the pre-animation one); Delete key on the last remaining key is a no-op; Hold vs Linear and
-`sampleEvery` visibly change playback; Apply/Reset on an animated layer refuse with the "Layer is
-animated" hint and leave the track untouched; the status bar names the frame a drag will key, and
-switches back to the plain hint once the track is removed; onion skins, export and the transformed-
-layer bounds hint all resolve per-frame rather than showing a stale static pose; undo/redo across
-Animate/Stop-animating/a keyed drag/Delete key/interpolation changes; a reference layer's track
-survives a re-link; iPad for the gizmo drag and the new ToolOptions controls.
+> undo path, it is what the SAME drag already did, now landing in a different field. This is also why
+> Apply/Reset had to gain their own guard in this task: those two actions bypass the gizmo entirely and
+> write straight to `layer.transform`/bake the cells, which means nothing once a track exists — there is
+> no single "the" transform to bake or reset.
+> **A no-op gesture's transient key is reverted by restoring the grab-time track reference, not by
+> diffing.** Both drag sites freeze `{ layer, prevTrack: layer.transformTrack }` at grab
+> (`refTrackFreeze`/`trackFreeze`) the same way the existing `transformBox` freeze already captures a
+> direct object ref rather than re-resolving by id at release (gotcha #6's documented reasoning applies
+> unchanged: re-resolving risks a mid-gesture retarget stomping an unrelated layer's track). On an
+> `isSameTransform` no-op the settle branch reassigns `layer.transformTrack = prevTrack`, discarding
+> whatever key `setT` wrote mid-drag before any key even existed for the pointer-down frame — a
+> click-without-move on an animated layer must not silently plant a key, matching the pre-existing
+> "click-without-move pushes nothing" contract for static transforms.
+> **The transform row carries no `data-layer-id`, which is what keeps it out of the timeline's
+> selection/gutter axes for free.** Every layer-row gesture (marquee hit-testing, block move, the
+> lock/hidden gutter marker, `TimelineSelectionBar`'s row lookup) keys off `[data-layer-id]` elements;
+> the transform row is a read-only ◆-per-key strip with nothing to select or paste (a track holds no
+> cells), so simply never emitting the attribute means none of that machinery has to learn a new row
+> kind or a new exclusion — the row is inert to selection by omission, the same trick the group-header
+> row already uses for the same reason.
+> **Owed a browser pass** (Tasks 1-8 are build+review-verified per project convention; canvas/DOM has no
+> node harness): Animate on a static layer starts a track at frame 0 and a first drag elsewhere tweens
+> cleanly; scrubbing between keys shows the interpolated pose; Stop animating bakes the ON-SCREEN value
+> (not the pre-animation one); Delete key on the last remaining key is a no-op; Hold vs Linear and
+> `sampleEvery` visibly change playback; Apply/Reset on an animated layer refuse with the "Layer is
+> animated" hint and leave the track untouched; the status bar names the frame a drag will key, and
+> switches back to the plain hint once the track is removed; onion skins, export and the transformed-
+> layer bounds hint all resolve per-frame rather than showing a stale static pose; undo/redo across
+> Animate/Stop-animating/a keyed drag/Delete key/interpolation changes; a reference layer's track
+> survives a re-link; iPad for the gizmo drag and the new key controls (they were in ToolOptions when
+> this was written — they live on the TIMELINE TOOL BAR now, `TrackKeyControls`, single host).
 
 **Multi-property animation rows (2026-08-18, merged).** The app went from ONE animatable property
 (a layer's transform) to three — layer transform, layer opacity, group transform — each with its own
@@ -2700,7 +2801,7 @@ answers, one of them invented by a second implementation nobody reviewed as a se
 see it when the drifting field is optional.**
 
 **A typed bag, not a string-keyed record.** `LayerTracks { transform?, opacity? }` /
-`GroupTracks { transform? }`. A `Record<string, Track<unknown>>` reads as the more "extensible"
+`GroupTracks { transform?, opacity? }` — the group bag carries opacity too. A `Record<string, Track<unknown>>` reads as the more "extensible"
 model and is the wrong trade here: it loses the value type at every call site and pushes casts into
 the render path, in exchange for extensibility over a property set that is small and closed. Adding a
 fourth property is one field.
@@ -2776,9 +2877,12 @@ than discovered, because the file opens cleanly and simply has no animation in i
 
 **Deferred, with reasons — these are decisions, not oversights:**
 
-- **Copy/paste of a key ACROSS property types.** The clipboard holds a `TransformKey`; carrying any
-  property's key needs a tagged clipboard plus a refusal story for pasting an opacity value into a
-  transform key. Copy/Paste key therefore stay transform-only.
+- ~~**Copy/paste of a key ACROSS property types.**~~ **DONE, not deferred** — the clipboard IS
+  tagged (`KeyClipboard = { owner: "layer" | "group" } & ({ prop: "transform"; key: TransformKey } |
+{ prop: "opacity"; key: Keyframe<number> })`), it carries opacity keys, and `pasteTrackKey`
+  refuses a clipboard whose property OR owner kind does not match the destination. `copyTrackKey`
+  switches on `prop` with a `never` arm so a third property cannot compile as a silent transform.
+  Copy/Paste key are NOT transform-only.
 - **`resizeProject` does not touch `track.box`.** A group whose members carry no ink freezes the
   full-document rect, so an animated empty group survives a canvas resize with a stale pivot. The
   same pre-existing hazard `g.transformBox` already has, so not a regression — recorded, not fixed.
@@ -2865,6 +2969,9 @@ tap IS the activation). The group half was inert there anyway, since the gizmo a
 both gate their group branch on `kind === "draw"`. Related: a group's Transform row picked its
 topmost member of ANY kind, so a ref there aimed the gizmo at that REF's own transform while the row
 promised the group's — it prefers a draw member now, with the old lookup as the fallback.
+**SUPERSEDED later in the same wave — the fallback is GONE: it picks a draw member or NONE, never a
+ref** (see "Is this animated?" below). An all-ref group is reachable, and a wrong target is worse
+than no target. Do not reinstate the fallback from this sentence.
 
 **Smaller, same wave.** The group Transform row refused retiming on a HIDDEN group while ToolOptions
 still deleted and re-eased those keys and the gizmo still dragged them — now lock-only, matching
@@ -2892,8 +2999,9 @@ dropped and the existing empty-array branch collapses the track.
   out of scope for a fix wave.
 - **Two elements in `Timeline.svelte` still route pointer events without a type check.** The layer
   READ-ONLY MARKER and the layer NAME BUTTON keep the ungated `onpointermove`/`onpointerup` shape
-  that the fix wave corrected on the two disclosure buttons — so four elements in that file gate
-  pointer type and two do not. Both predate this branch, and a mechanical pass over every gutter
+  that the fix wave corrected on the two disclosure buttons — so most elements in that file gate
+  pointer type and these two do not (four gated at the time of writing, seven now; the SPLIT is the
+  finding, not the count). Both predate this branch, and a mechanical pass over every gutter
   element is a different change with its own iPad verification (finger-pan vs Pencil-edit is exactly
   the behaviour a device pass exists to confirm), so they were left deliberately rather than swept in
   behind a fix wave. **Recorded because an undocumented split inside ONE file is precisely how
@@ -2986,8 +3094,10 @@ VALUE that came through it, not merely that something survived.** A test that bu
 today's types is testing today's code against itself. Applies to any future `tracks` change; the
 format version deliberately does not move for additive fields, so the loader is the only guard.
 
-**Timeline animation tools (2026-08-18):** Animate / Ease / Step / Delete key / Stop left ToolOptions
-and the layer-list detail row and now live on the timeline tool bar next to Insert keyframe. The
+**Timeline animation tools (2026-08-18):** Animate / Add key / Copy / Paste / Ease / Step /
+Delete key / Stop left ToolOptions and the layer-list detail row and now live on the timeline tool
+bar. (They landed next to Insert keyframe; **that button has since left the bar entirely** — the
+neighbours now are the frame tools that remain, so don't site anything by it.) The
 Transform tool is a manipulator again (Frame/Layer/Group + Reset stay in ToolOptions); the opacity
 slider still keys without a wrapping control strip. `activeRow` gained a track case
 (`{ kind: "track"; owner; id; prop }`) so selecting a property row focuses that track; `animationBar`
@@ -3068,8 +3178,16 @@ member. `workingTarget(activeRow)` is the one fact: layer (or its track), group
 (header or its track), or audio. `pixelToolsDimmed`, stroke refuse, fill/deform/pose
 entry, ToolOptions paint-block, and the status-bar name/hint all ask it.
 `targetLayerId` is now `workingTarget` then "is it a layer?". Transform stays live
-on a group (header or track); audio still blocks it. The gizmo still hides only for
-audio — a group track is a reason to show it.
+on a group (header or track); audio still blocks it.
+**CORRECTED — the gizmo does NOT hide "only for audio".** It goes through the pure
+`rowAdmitsTransform`/`whyRowRefusesTransform`, which has three refusals: `audio-row`,
+`wrong-scope` (a group row at Frame or Layer scope aims at the remembered anchor, which
+the lit row does not name) and `no-draw-member` (group scope but the anchor is a ref or
+belongs to another group — a group of references has nothing to transform this way).
+`Canvas.onStroke`'s group branch shares the same predicate BECAUSE the two must agree:
+hiding the handles alone leaves the canvas drag reachable with nothing on screen to
+explain it. Restoring "only for audio" re-opens the lit-and-refused contradiction that
+`37cbf21` closed — the status bar would describe a drag that silently returns.
 
 **Group tracks light the group header (2026-08-20):** `groupHeaderSelected` returned
 early on an expanded group before seeing a group-owned track, so selecting Transform
