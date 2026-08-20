@@ -1761,14 +1761,15 @@
   const toolBtn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border";
 
-  // Follows `activeRow` (+ project/playhead) so the animation tool group re-renders with focus.
+  // Follows `activeRow` (+ the layer/group arrays) so the animation tool group re-renders with
+  // focus. Deliberately NOT the playhead: nothing the bar OFFERS depends on the frame — the one
+  // reason that did (a reference outside its visible range) went with references becoming
+  // unanimatable — and a per-frame dependency would re-derive it on every scrub tick.
   const animBar = $derived(
     animationBar({
       activeRow: appState.activeRow,
       layers: appState.project.layers,
       groups: appState.project.groups,
-      playhead: appState.playhead,
-      fps: appState.project.fps,
     }),
   );
 </script>

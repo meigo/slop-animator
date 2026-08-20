@@ -4,7 +4,6 @@ import {
   groupOf,
   isLayerLocked,
   isLayerVisible,
-  isRefVisibleAtFrame,
   layerAcceptsPropertyTracks,
   type Layer,
   type LayerGroup,
@@ -29,20 +28,6 @@ export type AnimationBar =
 function layerBlocked(layer: Layer, groups: LayerGroup[]): string | null {
   if (isLayerLocked(layer, groups)) return "the layer is locked";
   if (!isLayerVisible(layer, groups)) return "the layer is hidden";
-  return null;
-}
-
-function transformStartBlocked(
-  layer: Layer,
-  groups: LayerGroup[],
-  playhead: number,
-  fps: number,
-): string | null {
-  const base = layerBlocked(layer, groups);
-  if (base) return base;
-  if (layer.kind === "ref" && !isRefVisibleAtFrame(layer, playhead, fps)) {
-    return "the reference is outside its visible range";
-  }
   return null;
 }
 
@@ -77,10 +62,8 @@ export function animationBar(args: {
   activeRow: ActiveRow;
   layers: Layer[];
   groups: LayerGroup[];
-  playhead: number;
-  fps: number;
 }): AnimationBar {
-  const { activeRow, layers, groups, playhead, fps } = args;
+  const { activeRow, layers, groups } = args;
 
   if (activeRow.kind === "audio") return { kind: "empty" };
 
@@ -123,11 +106,14 @@ export function animationBar(args: {
 
   const items: AnimationStartItem[] = [];
 
+  // `layerAcceptsPropertyTracks` is `kind === "draw"`, so a REFERENCE never reaches either item.
+  // That is what retired the old "the reference is outside its visible range" reason: it could no
+  // longer fire, and a dead branch here reads as "references still animate, just not right now".
   if (layerAcceptsPropertyTracks(layer) && !layer.tracks?.transform) {
     items.push({
       action: "animate-transform",
       layerId: layer.id,
-      blocked: transformStartBlocked(layer, groups, playhead, fps),
+      blocked: layerBlocked(layer, groups),
     });
   }
 

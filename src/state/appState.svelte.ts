@@ -453,6 +453,14 @@ function restoreStructure(s: StructSnapshot) {
       // slider path pushes no command, so nothing else could ever put that number back: undoing the
       // bake left the track correctly gone and the layer sitting at whatever frame it stopped on.
       // The transform twin needs no such term only because `transform` is restored unconditionally.
+      // This NARROWS the view-prop invariant rather than closing it, and knowingly so: the trigger
+      // is the track's PRESENCE flipping, not the value changing, so a static slider nudge made
+      // after "Stop animating" is still not restorable — Stop animating -> nudge the slider -> undo
+      // -> redo lands on the BAKE value, not the nudge, because the nudge pushed no command to be
+      // redone. Making the static write undoable was considered and declined: it would put a
+      // per-pointermove command on a slider that has never had one, unlike opacity's siblings
+      // (visible/locked/name), which are equally non-undoable and equally unrestorable. Do not read
+      // this line as "opacity is undoable now".
       if (!!snap.tracks?.opacity !== !!live.tracks?.opacity) live.opacity = snap.opacity;
       live.tracks = snap.tracks ? copyTracks(snap.tracks) : undefined;
       if (live.kind === "ref" && snap.kind === "ref") {
@@ -636,11 +644,15 @@ export function rasterizeReference(layerId: number): void {
   // does not vary — same refusal as Apply/Reset. `drawReferenceMedia` below is deliberately called
   // without a frame (it omits the group transform on purpose), so on an animated ref it would bake
   // the retained-but-ignored static transform: pixels at a position the layer never rendered at.
-  // ANY property, through the shared predicate rather than a hand-written list of them:
-  // `animateLayerOpacity` has no `kind` guard and the panel offers Animate on reference rows, so a
-  // ref can carry an opacity track — and `buildFrameDrawList` resolves it. Keeping only
-  // `ref.opacity` below would bake in the seed value the layer may render at on no frame, and hand
-  // the new drawing layer no track at all.
+  // ANY property, through the shared predicate rather than a hand-written list of them: keeping
+  // only `ref.opacity` below would bake in a seed value the layer may render at on no frame, and
+  // hand the new drawing layer no track at all.
+  // UNREACHABLE TODAY, and kept anyway. `isLayerAnimated` is gated on `layerAcceptsPropertyTracks`,
+  // which is now `kind === "draw"`, so no reference reports as animated — a leftover track from an
+  // older release is preserved on disk but inert. It stays because it is a call to the SHARED
+  // predicate rather than a hand-rolled condition: the day references become animatable again the
+  // guard starts working on its own, which is the opposite of how this refusal was lost in the
+  // first place. Do not re-word it into something ref-specific.
   if (isLayerAnimated(ref)) {
     state.statusHint = "Layer is animated — Stop animating first";
     return;
