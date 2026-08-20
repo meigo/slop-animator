@@ -1402,6 +1402,12 @@
   /** Snapshot → paper crop → punch the cell → beginTransform. False if nothing to lift. */
   function liftPaperCrop(): boolean {
     if (!selection?.rect) return false;
+    // The working ROW must be a layer, not only the leftover `activeLayerId`. `onStroke` admits
+    // select/lasso on an audio or group row on a "copy is a read" rationale — sound for
+    // `copySelection`, but the PRIMARY select gesture is a WRITE: with the audio lane selected a
+    // marquee drag lifted and moved pixels out of a layer no row named, undoably, materialising a
+    // ◆ on a hold, while ToolOptions had Cut/Paste/Delete dimmed one bar away.
+    if (workingTarget(appState.activeRow).kind !== "layer") return false;
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return false;
     const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
@@ -1430,13 +1436,16 @@
     return true;
   }
 
-  // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null if the
-  // active layer isn't an editable (unlocked, visible) drawing layer.
+  // Drawable ctx for the current frame (for delete/paste — materializes a key on a hold). Null
+  // unless the working ROW is a layer AND that layer is an editable (unlocked, visible) drawing
+  // layer. The row check is not redundant: `activeLayerId` is memory that survives selecting the
+  // audio lane or a group row, so without it these writes land in a layer nothing on screen names.
   function activeDrawableCtx(): {
     ctx: CanvasRenderingContext2D;
     layer: DrawingLayer;
     materialized: CellTrackChange | null;
   } | null {
+    if (workingTarget(appState.activeRow).kind !== "layer") return null;
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return null;
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
