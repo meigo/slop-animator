@@ -53,9 +53,8 @@
     resetGroupTransform,
     setActiveLayer,
     isRowSelected,
-    isTrackSelected,
     selectGroup,
-    isGroupRowSelected,
+    isGroupDetailShown,
     toggleEmbedMedia,
     applyLayerOpacityAt,
     applyGroupOpacityAt,
@@ -903,11 +902,7 @@
         {#if "layer" in seg}
           {@render layerRow(seg.layer)}
         {:else}
-          {@const groupDetail =
-            isGroupRowSelected(seg.group.id) ||
-            isTrackSelected("group", seg.group.id, "opacity") ||
-            isTrackSelected("group", seg.group.id, "transform") ||
-            appState.project.layers.some((l) => l.groupId === seg.group.id && isRowSelected(l.id))}
+          {@const groupDetail = isGroupDetailShown(seg.group.id)}
           {@const groupLit = groupHeaderSelected(
             appState.activeRow,
             seg.group,

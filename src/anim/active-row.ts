@@ -60,6 +60,38 @@ export function groupRowSelected(row: ActiveRow, groupId: number): boolean {
   return row.kind === "group" && row.id === groupId;
 }
 
+/** Is SOME group's header the selected row? The un-parameterised twin of `groupRowSelected`, here
+ *  rather than as a bare `row.kind === "group"` at the call site: every question about the row
+ *  union is asked through this module, so the day a row kind is added the compiler and the reader
+ *  both arrive here instead of at a scattered set of `.kind` comparisons. */
+export function anyGroupRowSelected(row: ActiveRow): boolean {
+  return row.kind === "group";
+}
+
+/** Is the selected row a plain LAYER row — not that layer's track, not a group, not audio?
+ *  Narrower than `layerRowSelected` on purpose, and used by exactly one caller: `restoreStructure`
+ *  re-points the selection at the layer an undo restored, and must not do that for a TRACK row (the
+ *  track focus survives an unrelated undo) or move the selection between row kinds. */
+export function plainLayerRowSelected(row: ActiveRow): boolean {
+  return row.kind === "layer";
+}
+
+/** Show a group's detail strip (its opacity slider and the rest of Row 2)? Sits beside
+ *  `groupHeaderSelected` because the pair must be READ together: this one is deliberately BROADER.
+ *  An expanded group with a member selected shows the group's controls under a header that is NOT
+ *  lit — the member row is the lit one, and lighting both was the double-selection look we removed
+ *  — whereas a layer's own Row 2 renders exactly when its row is lit. That asymmetry is intended,
+ *  but it is the kind of thing that reads as a bug from either call site alone. */
+export function groupDetailShown(
+  row: ActiveRow,
+  groupId: number,
+  layers: { id: number; groupId?: number | null }[],
+): boolean {
+  const wt = workingTarget(row);
+  if (wt.kind === "group" && wt.id === groupId) return true;
+  return layers.some((l) => l.groupId === groupId && layerRowSelected(row, l.id));
+}
+
 /** Light the group header: the working target is this group (header or its own track), or
  *  it is folded and standing in for a hidden member. Expanded + a member selected lights
  *  only the member — two selected rows is the look we removed. A group track lights the
@@ -72,8 +104,10 @@ export function groupHeaderSelected(
 ): boolean {
   const wt = workingTarget(row);
   if (wt.kind === "group" && wt.id === group.id) return true;
+  // Expanded: a member's selection stays the member's. Collapsed: the header is standing in for a
+  // row that is not on screen, so it inherits it — which is exactly `groupDetailShown`'s rule.
   if (!group.collapsed) return false;
-  return layers.some((l) => l.groupId === group.id && layerRowSelected(row, l.id));
+  return groupDetailShown(row, group.id, layers);
 }
 
 /** May a Transform gesture act on `layer` while `row` is the selected row?

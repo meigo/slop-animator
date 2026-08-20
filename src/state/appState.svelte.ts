@@ -79,10 +79,13 @@ import {
   type TimelineSelection,
 } from "../anim/timeline-selection";
 import {
+  anyGroupRowSelected,
   layerRowSelected,
   trackRowSelected,
   audioRowSelected,
+  groupDetailShown,
   groupRowSelected,
+  plainLayerRowSelected,
   resolveStaleTrackFocus,
   targetLayerId,
   workingTarget,
@@ -531,7 +534,7 @@ function restoreStructure(s: StructSnapshot) {
   // BELOW the audio restore on purpose: the audio row is resolved against the track this undo just
   // put back (or took away), so undoing an IMPORT hands focus to a layer instead of leaving the row
   // pointing at a lane that no longer renders. Running it earlier read the OUTGOING track.
-  if (state.activeRow.kind === "layer") {
+  if (plainLayerRowSelected(state.activeRow)) {
     state.activeRow = { kind: "layer", id: s.activeLayerId };
   } else {
     state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
@@ -1645,10 +1648,28 @@ export function pixelToolsBlock(): LayerEditBlock | null {
   return activeLayer().kind === "ref" ? "not-draw" : null;
 }
 
-/** Is this group's header the selected row (not a member, not a proxy)? */
+/** Is this group's header the selected row (not a member, not a proxy)? With no id: is SOME
+ *  group's header selected? Both go through `active-row.ts` — a view that answers a question about
+ *  the row union by comparing `.kind` itself is how the two ended up able to disagree. */
 export function isGroupRowSelected(groupId?: number): boolean {
   if (groupId != null) return groupRowSelected(state.activeRow, groupId);
-  return state.activeRow.kind === "group";
+  return anyGroupRowSelected(state.activeRow);
+}
+
+/** Show this group's detail strip? Deliberately BROADER than the header highlight — see
+ *  `groupDetailShown`, which the panel used to hand-roll beside it. */
+export function isGroupDetailShown(groupId: number): boolean {
+  return groupDetailShown(state.activeRow, groupId, state.project.layers);
+}
+
+/** The DRAWING layer a frame tool should act on, or null. Through `targetLayerId`, so a layer's own
+ *  track row counts as its layer — which is what `isRowSelected` already lights. Branching on
+ *  `activeRow.kind === "layer"` here made "Clear frame" report a non-drawing row while the layer's
+ *  row was visibly selected. */
+export function drawingRowLayerId(): number | null {
+  const id = targetLayerId(state.activeRow);
+  if (id == null) return null;
+  return state.project.layers.find((l) => l.id === id)?.kind === "draw" ? id : null;
 }
 
 /** Select the group as the working row. Remembers a draw member as the transform anchor

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  anyGroupRowSelected,
   audioRowSelected,
+  groupDetailShown,
   groupHeaderSelected,
+  plainLayerRowSelected,
   groupRowSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
@@ -358,5 +361,64 @@ describe("resolveStaleTrackFocus — a row the timeline no longer EMITS", () => 
     const gRow: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "opacity" };
     const d = { layers: [], groups } as unknown as Parameters<typeof resolveStaleTrackFocus>[1];
     expect(resolveStaleTrackFocus(gRow, d, 7)).toEqual({ kind: "group", id: 10 });
+  });
+});
+
+describe("groupDetailShown", () => {
+  const members = [
+    { id: 1, groupId: 10 },
+    { id: 2, groupId: null },
+  ];
+
+  it("shows for the group's own header and for either of its tracks", () => {
+    expect(groupDetailShown({ kind: "group", id: 10 }, 10, members)).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "group", id: 10, prop: "opacity" }, 10, members),
+    ).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "group", id: 10, prop: "transform" }, 10, members),
+    ).toBe(true);
+  });
+
+  it("shows for a MEMBER's row, and for that member's own track", () => {
+    expect(groupDetailShown({ kind: "layer", id: 1 }, 10, members)).toBe(true);
+    expect(
+      groupDetailShown({ kind: "track", owner: "layer", id: 1, prop: "opacity" }, 10, members),
+    ).toBe(true);
+  });
+
+  it("does not show for an outsider, another group, or audio", () => {
+    expect(groupDetailShown({ kind: "layer", id: 2 }, 10, members)).toBe(false);
+    expect(groupDetailShown({ kind: "group", id: 11 }, 10, members)).toBe(false);
+    expect(groupDetailShown({ kind: "audio" }, 10, members)).toBe(false);
+  });
+
+  // The asymmetry this pair exists to make readable: with the group EXPANDED and a member
+  // selected, the detail strip shows under a header that is deliberately NOT lit.
+  it("is BROADER than groupHeaderSelected while the group is expanded", () => {
+    const row: ActiveRow = { kind: "layer", id: 1 };
+    const g = { id: 10, collapsed: false };
+    expect(groupDetailShown(row, 10, members)).toBe(true);
+    expect(groupHeaderSelected(row, g, members)).toBe(false);
+    // Collapsed, the header stands in for the hidden member and the two agree again.
+    expect(groupHeaderSelected(row, { ...g, collapsed: true }, members)).toBe(true);
+  });
+});
+
+describe("row-union accessors", () => {
+  it("anyGroupRowSelected is a group HEADER only, never a group track", () => {
+    expect(anyGroupRowSelected({ kind: "group", id: 10 })).toBe(true);
+    expect(anyGroupRowSelected({ kind: "track", owner: "group", id: 10, prop: "opacity" })).toBe(
+      false,
+    );
+    expect(anyGroupRowSelected({ kind: "layer", id: 1 })).toBe(false);
+  });
+
+  it("plainLayerRowSelected excludes the layer's own track — undo must not re-point a track row", () => {
+    expect(plainLayerRowSelected({ kind: "layer", id: 1 })).toBe(true);
+    expect(plainLayerRowSelected({ kind: "track", owner: "layer", id: 1, prop: "opacity" })).toBe(
+      false,
+    );
+    expect(plainLayerRowSelected({ kind: "audio" })).toBe(false);
   });
 });

@@ -51,6 +51,7 @@
     relinkReference,
     isRowSelected,
     isTrackSelected,
+    drawingRowLayerId,
     applyAnimationLength,
     revertStructural,
     trimToPlayhead,
@@ -190,11 +191,9 @@
   // dependency needs listing here. Staying reactive matters: the button's title NAMES its target,
   // and a stale name is the one thing that would make the precedence rule unsafe.
   const trimTarget = $derived(trimToPlayheadInfo());
-  const drawingRowSelected = $derived.by(() => {
-    const row = appState.activeRow;
-    if (row.kind !== "layer") return false;
-    return appState.project.layers.find((l) => l.id === row.id)?.kind === "draw";
-  });
+  // Through the accessor, never a hand-rolled `.kind` branch: this used to say "not a drawing row"
+  // for a layer's own TRACK row while `isRowSelected` had that layer's row visibly lit.
+  const drawingRowSelected = $derived(drawingRowLayerId() !== null);
   // Onion "step by keyframes" reads the ACTIVE layer's keys — empty on a ref, so the ghosts
   // vanish with no explanation. Dim the control rather than silently doing nothing.
   const onionKeysOk = $derived(activeLayer().kind === "draw");
