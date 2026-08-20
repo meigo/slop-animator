@@ -319,8 +319,7 @@
   /** Pointer position when the tick was armed. The tick re-applies the drag whenever the scroller
    *  moved, so without this a press that NEVER moved still dragged: hold inside the left trigger
    *  zone and the content scrolls under a stationary pointer, and each frame re-applies the drag at
-   *  a new column. `clipMoveAt` writes `offsetFrames` with no undo bracket at all, so that alone
-   *  slid a video's in-point unrecoverably. */
+   *  a new column — which for `clipMoveAt` slid a video's in-point for a press that never moved. */
   let edgeOriginX = 0;
   let edgeOriginY = 0;
 
@@ -420,8 +419,20 @@
     relinkReference(id, await loadReferenceMedia(file, () => repaint()), file);
   }
 
-  // Video-ref clip drag: live offsetFrames write (not undoable), same pattern as AudioLane.
-  let clipDrag: { layer: ReferenceLayer; x: number; sx: number; startFrame: number } | null = null;
+  // Video-ref clip drag: writes offsetFrames live, and brackets ONE undo entry per completed
+  // gesture. `offsetFrames` is a snapshot-restored field (`restoreStructure` writes it back
+  // unconditionally), and the invariant there is that every writer of a captured field must push a
+  // command — otherwise an unrelated undo silently reverts the writes that never did. The trim
+  // handle on this very clip is bracketed and writes the same field, so an unbracketed slide after
+  // a trim was discarded by the next ⌘Z with no redo able to recover it.
+  let clipDrag: {
+    layer: ReferenceLayer;
+    x: number;
+    sx: number;
+    startFrame: number;
+    from: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = null;
 
   function clipDown(e: PointerEvent, layer: ReferenceLayer) {
     // A trim handle is a sibling, not a child, so this usually does not see handle presses.
@@ -442,9 +453,17 @@
       dur,
       appState.project.fps,
     );
-    clipDrag = { layer, x: e.clientX, sx: scrollX(), startFrame };
+    clipDrag = {
+      layer,
+      x: e.clientX,
+      sx: scrollX(),
+      startFrame,
+      from: layer.offsetFrames,
+      undo: beginStructuralEdit(),
+    };
     edgePointerX = e.clientX;
     startEdgeScroll(clipMoveAt, "clip");
+    transformDragGuard.settle = settleClipDrag;
   }
 
   function clipMove(e: PointerEvent) {
@@ -469,9 +488,19 @@
     }
   }
 
-  function clipUp() {
+  /** Release the slide: commit only when the offset actually moved (a click without a drag must
+   *  push nothing, or the next ⌘Z looks dead). Also the `transformDragGuard` hook, so an undo or an
+   *  Open mid-drag cannot leave the bracket open. */
+  function settleClipDrag() {
     stopEdgeScroll("clip");
+    if (!clipDrag) return;
+    if (clipDrag.layer.offsetFrames !== clipDrag.from) commitStructuralEdit(clipDrag.undo);
     clipDrag = null;
+    if (transformDragGuard.settle === settleClipDrag) transformDragGuard.settle = null;
+  }
+
+  function clipUp() {
+    settleClipDrag();
     touchPanUp();
   }
 
