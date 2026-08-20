@@ -267,11 +267,17 @@
       // would leave it open and the release would commit a snapshot of the pre-undo document.
       // Chain the previous owner: the settle slot is shared by every undoable drag (gizmo, range,
       // hold-span, both opacity sliders). Replacing it would orphan an earlier open bracket.
+      // The hook must also CALL through, not merely restore: a single `settle?.()` drains only the
+      // slot it finds, so an outer bracket (a timeline range drag, reachable with a second contact
+      // on iPad) survived the undo and its release then committed a pre-undo snapshot — exactly
+      // what the guard exists to prevent. Every settle in the chain is idempotent (each guards on
+      // its own open bracket), so calling through is safe.
       const prev = transformDragGuard.settle;
       opacitySettlePrev = prev;
       const hook = () => {
         settleOpacityDrag();
         if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+        prev?.();
       };
       opacitySettleHook = hook;
       transformDragGuard.settle = hook;
@@ -388,12 +394,14 @@
       groupOpacityUndoGroupId = groupId;
       groupOpacityUndoFrame = appState.playhead;
       groupOpacityUndoStartV = groupOpacityKeyValue(groupId, groupOpacityUndoFrame);
-      // Same shared-slot chain as the layer slider — restore the previous owner on settle.
+      // Same shared-slot chain as the layer slider — restore the previous owner AND call through,
+      // or one settle drains only the innermost bracket and leaves the outer one open.
       const prev = transformDragGuard.settle;
       groupOpacitySettlePrev = prev;
       const hook = () => {
         settleGroupOpacityDrag();
         if (transformDragGuard.settle === hook) transformDragGuard.settle = prev;
+        prev?.();
       };
       groupOpacitySettleHook = hook;
       transformDragGuard.settle = hook;
