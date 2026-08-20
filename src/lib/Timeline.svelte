@@ -1797,8 +1797,12 @@
        area-sensitive: the same `bg-text/10` that is a subtle sliver on an 8px vertical edge is a
        loud full-width band here. The hit area is 8px either way; the bar is what made this one look
        bigger. -->
+  <!-- BARE top edge, matching the layer-panel grip: 8px hit, 4px hover tint on the divider, no
+       badge. This supersedes the older "interior dividers keep a visual bar" rule — see the
+       2026-08-20 note in CLAUDE.md. The timeline reads as a PANEL now, not as a divider inside one,
+       and the app should not carry two different resize affordances. -->
   <div
-    class="group absolute inset-x-0 top-0 z-30 flex h-2 items-center justify-center cursor-row-resize"
+    class="group absolute inset-x-0 top-0 z-30 h-2 cursor-row-resize"
     style="touch-action: none"
     role="separator"
     aria-orientation="horizontal"
@@ -1809,7 +1813,7 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <div class="h-0.5 w-10 rounded-full bg-text-muted group-hover:bg-text"></div>
+    <div class="absolute inset-x-0 top-0 h-1 group-hover:bg-text/10"></div>
   </div>
   <!-- WRAPS, never scrolls. `overflow-x-auto` here is silently fatal: per CSS Overflow 3 a computed
        `overflow-x: auto` forces `overflow-y` from `visible` to `auto`, so the bar becomes a ~28px

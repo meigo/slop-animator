@@ -1682,6 +1682,11 @@ read as a mismatched notch against the active/hover row colour. Hit area and tin
 concerns on any overlay grip — size them separately.
 **`MARKER_W` is 28**, widened from 22 so the lock/hidden glyph is not crowded against the divider.
 
+> **SUPERSEDED 2026-08-19 — see the 2026-08-20 note at the end of this file.** The timeline's height
+> grip is now a BARE EDGE with a hover tint, exactly like the two vertical ones. The paragraph below
+> is kept for its reasoning about tint area, which still holds, and as the record of a rule that was
+> reverted deliberately rather than drifted away from.
+
 **The TIMELINE's height grip keeps a visual bar and takes NO background tint; the two vertical ones
 are the reverse.** The tint is area-sensitive: this grip spans the full width, so the same
 `bg-text/10` that is a subtle 8px sliver on a vertical edge became a loud full-width band. The bar
@@ -3144,3 +3149,21 @@ full one. That is the hold-past-end rule working as intended. The only observabl
 when you DRAW on such a frame — the held drawing must survive with the new stroke on top of it,
 where the old code planted a blank key and discarded the artwork to the end of the animation. The
 unit tests pin that; a browser pass on it distinguishes almost nothing.
+
+**All three resize grips are bare edges (2026-08-19, and a process lesson from getting this wrong on
+2026-08-20).** The timeline's height grip lost its visual bar and took the same 8px hit / 4px hover
+tint as the two vertical panel grips, after three iterations that went tab -> wider rounder tab ->
+bare edge. The reasoning that retired the older rule: the timeline reads as a PANEL now rather than
+as a divider inside one, so the "interior divider needs a badge, panel edge does not" distinction no
+longer picks out anything real — and an app with two different resize affordances teaches two
+conventions for one gesture. The known cost is unchanged and accepted: hover does not exist on iPad,
+so none of the three has a resting affordance there; all three carry `title=`, which the status bar
+surfaces on press.
+**The process lesson is the more useful half.** A review flagged this as "the code and the log
+disagree", and the log was followed — restoring the bar and reverting a deliberate decision made the
+day before. That is backwards. **CLAUDE.md records why something WAS decided; it is not evidence
+that the decision still stands.** When code and this file conflict, check which is newer and whether
+the change looks deliberate: three commits converging on one answer, with a message that states the
+intent ("Drop the tab. 8px hit along the top border, 4px hover tint"), is a decision — not drift for
+a reviewer to correct. Ask before reverting anything this file merely fails to mention, and update
+the entry instead of the code when the code wins.
