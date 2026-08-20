@@ -9,7 +9,7 @@
     transformActions,
     fillActions,
   } from "../state/appState.svelte";
-  import { workingTarget } from "../anim/active-row";
+  import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
@@ -256,10 +256,26 @@
     >
   {:else if appState.tool === "transform"}
     {@const _activeLayer = activeLayer()}
-    {@const _groupedActive = _activeLayer.groupId != null}
     {@const _onRef = _activeLayer.kind === "ref"}
+    <!-- Group scope must be legal for the SELECTED ROW, not merely for the anchor layer: under a
+         group row `activeLayerId` is remembered anchor, not target (see `rowAdmitsTransform`), so an
+         anchor left in a DIFFERENT group — or a ref anchor — cannot transform the lit group. Asking
+         the same predicate the gizmo and the canvas drag ask stops this button offering a scope
+         those two refuse. -->
+    {@const _groupedActive =
+      _activeLayer.groupId != null && rowAdmitsTransform(appState.activeRow, "group", _activeLayer)}
+    <!-- Which scope is IN EFFECT, so a lit button can never contradict its own aria-disabled state
+         (it did: Group was lit AND disabled saying "Active layer is not in a group"). Group scope on
+         an ungrouped layer falls through to the layer branch in both drag paths; under a group row
+         it is refused outright, so nothing is being transformed and nothing lights. -->
     {@const _scopeShown =
-      _onRef && appState.transformScope === "frame" ? "layer" : appState.transformScope}
+      appState.transformScope === "group" && !_groupedActive
+        ? workingTarget(appState.activeRow).kind === "group"
+          ? null
+          : "layer"
+        : _onRef && appState.transformScope === "frame"
+          ? "layer"
+          : appState.transformScope}
     <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
       <button
         class="px-2 py-1 aria-disabled:opacity-40 aria-disabled:cursor-default"
@@ -278,11 +294,15 @@
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={appState.transformScope === "group"}
+        class:bg-surface-active={_scopeShown === "group"}
         class:opacity-40={!_groupedActive}
         class:cursor-not-allowed={!_groupedActive}
         aria-disabled={!_groupedActive}
-        title={_groupedActive ? "Transform the group" : "Active layer is not in a group"}
+        title={_groupedActive
+          ? "Transform the group"
+          : workingTarget(appState.activeRow).kind === "layer"
+            ? "Active layer is not in a group"
+            : "The selected row has no drawing layer to transform as a group"}
         onclick={() => {
           if (_groupedActive) appState.transformScope = "group";
         }}>Group</button

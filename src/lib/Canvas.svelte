@@ -31,7 +31,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
   } from "../state/appState.svelte";
-  import { workingTarget } from "../anim/active-row";
+  import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
   import { pixelCommand } from "../anim/history";
   import {
     selectionRef,
@@ -1054,6 +1054,16 @@
       // Other pixel tools dim — leftover member is not the target.
       const t = appState.tool;
       if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform") return;
+      // ...but only while the gesture really is that group's: the anchor `activeLayerId` under a
+      // group row is memory, so layer scope, an anchor left in ANOTHER group, or a ref anchor would
+      // each move something the lit row does not name. Same predicate as
+      // RefTransformGizmo.activeTransformLayer, and these two MUST agree for the same reason the
+      // gizmo and refPinned below do — a hidden handle set does not disable this drag.
+      if (
+        t === "transform" &&
+        !rowAdmitsTransform(appState.activeRow, appState.transformScope, activeLayer())
+      )
+        return;
     }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the

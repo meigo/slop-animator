@@ -12,8 +12,8 @@
     resetGroupTransform,
     transformDragGuard,
     transformActions,
-    isAudioRowSelected,
   } from "../state/appState.svelte";
+  import { rowAdmitsTransform } from "../anim/active-row";
   import {
     transformBaseRect,
     cellTransform,
@@ -101,11 +101,14 @@
   } | null = null;
 
   function activeTransformLayer(): Layer | null {
-    // The selected ROW is what you are working on. Audio keeps activeLayerId as a memory
-    // only — transforming that unhighlighted layer would be the leftover-target bug.
-    if (isAudioRowSelected()) return null;
     const l = appState.project.layers.find((x) => x.id === appState.activeLayerId);
     if (!l) return null;
+    // The selected ROW is what you are working on. Under audio or a GROUP row, `activeLayerId` is
+    // memory, not the target — transforming it would move something no lit row names. The whole
+    // rule lives in the pure `rowAdmitsTransform`, which Canvas.onStroke's group branch shares
+    // BECAUSE the two must agree: hiding the handles alone leaves the canvas drag reachable with
+    // nothing on screen to explain it (the same pairing `refPinned` documents).
+    if (!rowAdmitsTransform(appState.activeRow, appState.transformScope, l)) return null;
     // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too. Also gated
     // on the ref's own frame SPAN — outside it the ref draws nothing, so handles over blank canvas
     // would offer to move something invisible. Canvas.svelte's refPinned must agree with this.

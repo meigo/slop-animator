@@ -70,6 +70,33 @@ export function groupHeaderSelected(
   return layers.some((l) => l.groupId === group.id && layerRowSelected(row, l.id));
 }
 
+/** May a Transform gesture act on `layer` while `row` is the selected row?
+ *
+ *  The CAPABILITY twin of the highlight predicates above, and it exists because the six highlight
+ *  fixes converted what LIGHTS UP without converting what a drag is allowed to touch. A GROUP row
+ *  is working on THAT group; `activeLayerId` under it is a remembered ANCHOR, not the target — so
+ *  the gesture is only the lit row's while the scope really is "group" AND that anchor is a DRAW
+ *  layer really inside it. Every other combination moved something the artist could not see was
+ *  selected: layer scope moved the member's own transform, an anchor left over in another group
+ *  moved THAT group, and a ref anchor fell through to the ref's own transform (only a draw layer
+ *  reaches the group branch of `transformTarget`). Audio never transforms at all.
+ *
+ *  Both transform surfaces ask through here — `RefTransformGizmo.activeTransformLayer` (what draws
+ *  handles) and `Canvas.onStroke`'s group branch (what a canvas drag may write). They must agree,
+ *  exactly as the gizmo and `refPinned` must for a pinned reference: hiding the handles alone would
+ *  leave the drag reachable with nothing on screen to explain it. */
+export function rowAdmitsTransform(
+  row: ActiveRow,
+  scope: "frame" | "layer" | "group",
+  layer: { kind: Layer["kind"]; groupId?: number | null },
+): boolean {
+  const wt = workingTarget(row);
+  if (wt.kind === "audio") return false;
+  if (wt.kind === "group")
+    return scope === "group" && layer.kind === "draw" && (layer.groupId ?? null) === wt.id;
+  return true;
+}
+
 export function resolveStaleTrackFocus(
   row: ActiveRow,
   doc: { layers: Layer[]; groups: LayerGroup[] },

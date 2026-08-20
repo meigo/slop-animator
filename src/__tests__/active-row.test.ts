@@ -5,6 +5,7 @@ import {
   groupRowSelected,
   layerRowSelected,
   resolveStaleTrackFocus,
+  rowAdmitsTransform,
   targetLayerId,
   trackRowSelected,
   workingTarget,
@@ -166,6 +167,46 @@ describe("audioRowSelected", () => {
   it("is true only for the audio case", () => {
     expect(audioRowSelected({ kind: "audio" })).toBe(true);
     expect(audioRowSelected({ kind: "layer", id: 1 })).toBe(false);
+  });
+});
+
+describe("rowAdmitsTransform", () => {
+  const ref = (id: number, groupId: number | null = null) =>
+    ({ kind: "ref", id, groupId }) as unknown as Layer;
+
+  it("a layer row transforms at any scope — its own row is what is lit", () => {
+    for (const scope of ["frame", "layer", "group"] as const)
+      expect(rowAdmitsTransform({ kind: "layer", id: 1 }, scope, layer(1, 10))).toBe(true);
+  });
+
+  it("audio never transforms — activeLayerId under it is memory", () => {
+    expect(rowAdmitsTransform({ kind: "audio" }, "layer", layer(1, 10))).toBe(false);
+    expect(rowAdmitsTransform({ kind: "audio" }, "group", layer(1, 10))).toBe(false);
+  });
+
+  it("a group row admits only its OWN group, and only at group scope", () => {
+    const row: ActiveRow = { kind: "group", id: 10 };
+    expect(rowAdmitsTransform(row, "group", layer(1, 10))).toBe(true);
+    // Layer/frame scope would move the member's own transform while only the group is lit.
+    expect(rowAdmitsTransform(row, "layer", layer(1, 10))).toBe(false);
+    expect(rowAdmitsTransform(row, "frame", layer(1, 10))).toBe(false);
+    // The anchor left over in a DIFFERENT group would move THAT group.
+    expect(rowAdmitsTransform(row, "group", layer(1, 11))).toBe(false);
+    expect(rowAdmitsTransform(row, "group", layer(1, null))).toBe(false);
+    // A ref anchor never reaches the group branch of transformTarget — it would move the ref.
+    expect(rowAdmitsTransform(row, "group", ref(1, 10))).toBe(false);
+  });
+
+  it("a group TRACK row is the group, same rule", () => {
+    const row: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "transform" };
+    expect(rowAdmitsTransform(row, "group", layer(1, 10))).toBe(true);
+    expect(rowAdmitsTransform(row, "group", layer(1, 11))).toBe(false);
+    expect(rowAdmitsTransform(row, "layer", layer(1, 10))).toBe(false);
+  });
+
+  it("a layer's own track row is that layer, so it transforms", () => {
+    const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "transform" };
+    expect(rowAdmitsTransform(row, "layer", layer(1, null))).toBe(true);
   });
 });
 
