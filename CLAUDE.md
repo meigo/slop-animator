@@ -3128,3 +3128,19 @@ condition, so it resumes working on its own the day references become animatable
 distinction worth keeping: retire a dead REASON STRING (it misdescribes the world to the reader),
 keep a dead guard that is expressed through a shared predicate (it is a correct refusal waiting for
 its condition).
+
+**Browser-confirmed 2026-08-20 (the two Criticals worth checking):** the onion, boil and playback
+gears all open their popovers again — the `flex-wrap` fix works and no popover is clipped. And a
+group containing only REFERENCE layers behaves correctly under the Transform tool: the gizmo hides,
+and the status bar SAYS WHY rather than describing a drag that would return early. That second check
+covers both halves of the fix — `rowAdmitsTransform` refusing, and `whyRowRefusesTransform` supplying
+the reason it is now literally defined by.
+**Deliberately NOT verified, and not worth chasing:** the past-the-end materialisation fix. A layer
+shorter than the document is reachable in one gesture (a block paste that overruns grows ONLY its
+target layer, and `frameCount` is `max(cells.length)` — nothing pads the rest, on paste or on load),
+but it is INVISIBLE by construction: `computeTimelineGlyphs` loops to `frameCount` rather than
+`cells.length` and emits a hold dash past a layer's end, so a short layer renders identically to a
+full one. That is the hold-past-end rule working as intended. The only observable is what happens
+when you DRAW on such a frame — the held drawing must survive with the new stroke on top of it,
+where the old code planted a blank key and discarded the artwork to the end of the animation. The
+unit tests pin that; a browser pass on it distinguishes almost nothing.
