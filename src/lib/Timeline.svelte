@@ -503,10 +503,11 @@
     touchPanUp();
   }
 
-  // Video source trim. Separate from the body slide (which only moves offsetFrames and is not
-  // undoable — same as the number field it replaced). A trim changes WHAT renders, so it
-  // brackets one undo entry per completed gesture, matching the image-range and audio-trim
-  // handles. Head trim uses trimVideoHead (offset and trimIn move opposite, scaled by speed).
+  // Video source trim. Separate from the body slide, which only moves offsetFrames — both bracket
+  // one undo entry per completed gesture (see settleClipDrag above; the slide stopped being
+  // non-undoable when the audio offset did). A trim changes WHAT renders rather than where the clip
+  // sits, matching the image-range and audio-trim handles. Head trim uses trimVideoHead (offset and
+  // trimIn move opposite, scaled by speed).
   let videoTrimDrag: {
     layer: ReferenceLayer;
     edge: "head" | "tail";
@@ -1919,14 +1920,14 @@
     <!-- Dimmed, not hidden. The disabled title is the ONLY thing in the app that names this
          capability or says how to reach it, and on iPad a tap on the button is the only way to
          read it — hiding the pair made the feature undiscoverable to anyone who had never happened
-         to select the audio lane or an image reference row. -->
+         to select the audio lane, a reference row, or a video clip. -->
     <span class="mx-3 h-5 w-px bg-border"></span>
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
       aria-disabled={!trimTarget}
       title={trimTarget
         ? `Trim ${trimTarget.label} start to the playhead`
-        : "Trim start to the playhead — select the audio lane or an image reference layer first"}
+        : "Trim start to the playhead — select the audio lane, an image reference layer, or a video reference layer first"}
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("start");
@@ -1937,7 +1938,7 @@
       aria-disabled={!trimTarget}
       title={trimTarget
         ? `Trim ${trimTarget.label} end to the playhead`
-        : "Trim end to the playhead — select the audio lane or an image reference layer first"}
+        : "Trim end to the playhead — select the audio lane, an image reference layer, or a video reference layer first"}
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("end");
@@ -2629,10 +2630,13 @@
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
-                 A GROUP MEMBER is the one deliberate exception: `pl-4` above indents it by the same
-                 12px the panel uses (`.group-members pl-3`), because with group rows now present an
-                 un-indented member reads as the group's SIBLING. The marker column is a separate
-                 sticky element pinned at LABEL_W, so it stays aligned regardless. -->
+                 A GROUP MEMBER is the one deliberate exception: `pl-4` above lands it at the same
+                 POSITION the panel uses, 16px, because with group rows now present an un-indented
+                 member reads as the group's SIBLING. The two surfaces get there with different
+                 classes — the panel's `.group-members pl-3` (12px) sits on top of the list's own
+                 `pl-1` (4px), where this row has no list padding under it — so compare the resulting
+                 offset, never the class value. The marker column is a separate sticky element pinned
+                 at LABEL_W, so it stays aligned regardless. -->
             <span
               class="flex w-3.5 shrink-0 justify-center"
               role="presentation"

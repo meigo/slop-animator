@@ -652,8 +652,10 @@
            organization), but the store's key writers refuse it — so an ANIMATED one is dimmed rather
            than silently swallowing drags. -->
       {@const opacityInert = !!opacityTrack && !opacityOk}
-      <!-- Wraps rather than clipping: the panel is a fixed w-56 and this row keeps gaining controls.
-           Sizes are tuned so a DRAW layer stays on one line; a video ref flows onto a second. -->
+      <!-- Wraps rather than clipping: the panel is DRAG-RESIZABLE (panel-layout.ts, default 224px)
+           and this row keeps gaining controls, so wrap is what makes both safe — a narrower panel
+           takes another line instead of clipping. Sizes are tuned so a DRAW layer stays on one line
+           at the default width; a video ref flows onto a second. -->
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary">
         <!-- Slider + readout share one wrapper so they can never wrap apart — and so the title can
              live on an element that still receives pointer events when the slider itself is made
