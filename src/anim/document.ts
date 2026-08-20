@@ -291,8 +291,15 @@ export function isLayerEditable(layer: Layer, groups: LayerGroup[]): layer is Dr
   return layer.kind === "draw" && !isLayerLocked(layer, groups) && isLayerVisible(layer, groups);
 }
 
-/** Why `isLayerEditable` is false — lock wins over hidden (same precedence as the status hint). */
-export type LayerEditBlock = "locked" | "hidden" | "not-draw";
+/** Why an edit is refused — lock wins over hidden (same precedence as the status hint).
+ *
+ *  `not-layer-row` is never returned by `whyNotEditable` (which sees only a layer): it is raised by
+ *  callers that check `workingTarget(activeRow).kind !== "layer"`. The two are genuinely different
+ *  refusals and one message for both was actively wrong — on a GROUP or AUDIO row the active layer
+ *  IS an unlocked drawing layer, so "switch to a drawing layer" described a state that was not
+ *  true, and with the Transform tool on the audio row it misdirected (a REFERENCE row works fine).
+ */
+export type LayerEditBlock = "locked" | "hidden" | "not-draw" | "not-layer-row";
 
 export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlock | null {
   if (layer.kind !== "draw") return "not-draw";

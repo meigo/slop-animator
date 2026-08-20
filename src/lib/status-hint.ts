@@ -15,6 +15,8 @@ export function editBlockLabel(block: LayerEditBlock): string {
       return "Layer hidden — show it to edit";
     case "not-draw":
       return "Switch to a drawing layer to edit";
+    case "not-layer-row":
+      return "Select a layer row to edit";
   }
 }
 
@@ -28,7 +30,8 @@ export interface HintContext {
    *  select, and eyedropper still do something. */
   notDraw: boolean;
   /** Timeline audio row is selected. The remembered draw-target layer is not what you are
-   *  working on — transform must not promise a leftover-layer drag. */
+   *  working on — transform must not promise a leftover-layer drag. Blocked as `not-layer-row`,
+   *  NOT `not-draw`: the active layer here is usually a perfectly good drawing layer. */
   audioRow: boolean;
   /** Group header or a group-owned track is the working target. Pixel tools refuse;
    *  transform aims at the group. */
@@ -57,7 +60,7 @@ export function contextHint(c: HintContext): string {
       c.tool === "pose" ||
       c.tool === "transform"
     )
-      return editBlockLabel("not-draw");
+      return editBlockLabel("not-layer-row");
   }
   if (c.groupRow) {
     if (
@@ -67,7 +70,7 @@ export function contextHint(c: HintContext): string {
       c.tool === "deform" ||
       c.tool === "pose"
     )
-      return editBlockLabel("not-draw");
+      return editBlockLabel("not-layer-row");
   }
   if (c.locked) return editBlockLabel("locked");
   if (c.hiddenLayer) return editBlockLabel("hidden");

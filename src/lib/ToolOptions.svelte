@@ -27,7 +27,7 @@
   // Non-layer working row (audio / group / group track) is not a drawing target
   // even though activeLayerId still names a leftover member.
   const paintBlock = $derived(
-    workingTarget(appState.activeRow).kind !== "layer" ? ("not-draw" as const) : editBlock,
+    workingTarget(appState.activeRow).kind !== "layer" ? ("not-layer-row" as const) : editBlock,
   );
   const canPaint = $derived(paintBlock === null);
 
@@ -199,9 +199,11 @@
     {@const canPaste = appState.hasPixelClipboard && canPaint}
     {@const whyCopy = !appState.selectionActive
       ? " — select an area first"
-      : activeLayer().kind !== "draw" || workingTarget(appState.activeRow).kind !== "layer"
-        ? ` — ${editBlockLabel("not-draw")}`
-        : ""}
+      : workingTarget(appState.activeRow).kind !== "layer"
+        ? ` — ${editBlockLabel("not-layer-row")}`
+        : activeLayer().kind !== "draw"
+          ? ` — ${editBlockLabel("not-draw")}`
+          : ""}
     {@const whyWrite = paintBlock
       ? ` — ${editBlockLabel(paintBlock)}`
       : !appState.selectionActive

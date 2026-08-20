@@ -13,7 +13,7 @@
     pasteImageReference,
     persistReferenceMedia,
     selectEyedropper,
-    pixelToolsDimmed,
+    pixelToolsBlock,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -47,9 +47,12 @@
     "size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
   // Pixel tools do nothing on a reference. Dim them, still clickable — so `b` can arm the brush
   // before switching back to a drawing layer. Don't hide: that shoves the remaining icons.
-  const toolsDimmed = $derived(pixelToolsDimmed());
+  // The REASON, not just a boolean: a group or audio row refuses because it is not a layer row,
+  // not because the active layer is the wrong kind (it usually is not).
+  const toolsBlock = $derived(pixelToolsBlock());
+  const toolsDimmed = $derived(toolsBlock !== null);
   const pixelTitle = (name: string) =>
-    toolsDimmed ? `${name} — ${editBlockLabel("not-draw")}` : name;
+    toolsBlock ? `${name} — ${editBlockLabel(toolsBlock)}` : name;
 
   let fileInput: HTMLInputElement;
   let pendingKind: "image" | "video" | "project" | "audio" = "image";

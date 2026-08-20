@@ -54,6 +54,7 @@ import {
   type RefTransform,
   type Project,
   type Layer,
+  type LayerEditBlock,
   type DrawingLayer,
   type Cell,
   type AudioTrack,
@@ -1583,7 +1584,15 @@ export function isAudioRowSelected(): boolean {
  *  `activeLayerId` is leftover memory on a non-layer row — dimming without also refusing
  *  the stroke would paint into a layer that is not selected. */
 export function pixelToolsDimmed(): boolean {
-  return workingTarget(state.activeRow).kind !== "layer" || activeLayer().kind === "ref";
+  return pixelToolsBlock() !== null;
+}
+
+/** WHY the pixel tools are dimmed, so the toolbar's titles can say something true. The two
+ *  refusals are different: on a group or audio row the active layer is usually a fine drawing
+ *  layer and the fix is to select a layer row, not to switch layer kind. */
+export function pixelToolsBlock(): LayerEditBlock | null {
+  if (workingTarget(state.activeRow).kind !== "layer") return "not-layer-row";
+  return activeLayer().kind === "ref" ? "not-draw" : null;
 }
 
 /** Is this group's header the selected row (not a member, not a proxy)? */
