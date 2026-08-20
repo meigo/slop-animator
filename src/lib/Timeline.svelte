@@ -2282,6 +2282,7 @@
       onEdgeScrollStop={stopEdgeScroll}
       onEdgePointerX={(x) => (edgePointerX = x)}
       getScrollLeft={scrollX}
+      didPan={() => panEndedWithMovement}
     />
 
     <!-- layer rows (top layer first) -->

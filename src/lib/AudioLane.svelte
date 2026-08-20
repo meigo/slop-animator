@@ -29,6 +29,7 @@
     onEdgeScrollStop,
     onEdgePointerX,
     getScrollLeft,
+    didPan,
   }: {
     cellW: number;
     labelW: number;
@@ -47,6 +48,11 @@
     /** The timeline scroller's offset. A screen-space drag origin goes stale as soon as the content
      *  scrolls under it, so both drags here add the change since grab. */
     getScrollLeft: () => number;
+    /** Whether the finger pan that just ended actually MOVED. The `pointerdown` handler routes touch
+     *  to the pan, but a `click` still fires on release — so without this a finger scroll starting
+     *  on the lane's sticky name label made audio the working row, and every pixel tool then
+     *  silently refused. The group, track and re-link rows in Timeline each learned the same. */
+    didPan: () => boolean;
   } = $props();
 
   // Drag the clip along the lane to set offsetFrames (snaps to whole frames; negative allowed —
@@ -335,7 +341,10 @@
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         onTouchDown(e);
       }}
-      onclick={selectAudioLane}
+      onclick={() => {
+        if (didPan()) return; // a finger scroll that ended here, not a tap
+        selectAudioLane();
+      }}
       onpointermove={(e) => {
         if (e.pointerType === "touch") onTouchMove(e);
       }}
