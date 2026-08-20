@@ -31,6 +31,11 @@ import {
   refVisibleSpan,
   isRefVisibleAtFrame,
   layerAcceptsPropertyTracks,
+  layerOpacityTrack,
+  layerTransformTrack,
+  isLayerAnimated,
+  transformAt,
+  opacityAt,
   IDENTITY_TRANSFORM,
   isIdentityTransform,
   transformBaseRect,
@@ -1014,6 +1019,34 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
     expect(
       layerAcceptsPropertyTracks(imageRef({ media: { type: "missing", was: "video", name: "x" } })),
     ).toBe(false);
+  });
+
+  // A project saved by the PREVIOUS release can carry an animated reference (that build had no kind
+  // gate). Every READER already ignored it; the WRITERS read the bag raw, so the gizmo kept keying a
+  // track nothing resolved and the reference could not be moved at all, with no route out. The gate
+  // lives on the accessors so both drag sites, `animated` and both Apply/Reset refusals agree.
+  it("a leftover reference track reads as absent through the accessors — but is NOT destroyed", () => {
+    const ref = imageRef() as Layer;
+    ref.tracks = {
+      transform: { keys: [{ frame: 3, v: { dx: 5, dy: 0, scale: 1, rotation: 0 } }], box: null },
+      opacity: { keys: [{ frame: 3, v: 40 }] },
+    };
+    expect(layerTransformTrack(ref)).toBeUndefined();
+    expect(layerOpacityTrack(ref)).toBeUndefined();
+    expect(isLayerAnimated(ref)).toBe(false);
+    // The readers agree: the STATIC values are what render, at every frame.
+    expect(transformAt(ref, 3)).toEqual(ref.transform);
+    expect(opacityAt(ref, 3)).toBe(ref.opacity);
+    // Inert, not stripped — the bytes are the only copy of that data.
+    expect(ref.tracks?.transform?.keys).toHaveLength(1);
+    expect(ref.tracks?.opacity?.keys).toHaveLength(1);
+  });
+
+  it("a drawing layer's tracks still read through", () => {
+    const l = layer(1, [makeKey()]);
+    l.tracks = { opacity: { keys: [{ frame: 0, v: 20 }] } };
+    expect(layerOpacityTrack(l)?.keys).toHaveLength(1);
+    expect(opacityAt(l, 0)).toBe(20);
   });
 });
 

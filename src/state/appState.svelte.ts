@@ -29,6 +29,7 @@ import {
   copyTracks,
   normalizedTracks,
   layerTransformTrack,
+  layerOpacityTrack,
   isLayerAnimated,
   layerAcceptsPropertyTracks,
   groupTransform,
@@ -888,7 +889,7 @@ export function animateLayerOpacity(layerId: number): void {
   if (
     !l ||
     !layerAcceptsPropertyTracks(l) ||
-    l.tracks?.opacity ||
+    layerOpacityTrack(l) ||
     isLayerLocked(l, state.project.groups)
   )
     return;
@@ -906,7 +907,7 @@ export function animateLayerOpacity(layerId: number): void {
  *  WYSIWYG, mirroring `removeLayerAnimation` for the transform. */
 export function removeLayerOpacityAnimation(layerId: number): void {
   const l = state.project.layers.find((x) => x.id === layerId);
-  if (!l || !l.tracks?.opacity || isLayerLocked(l, state.project.groups)) return;
+  if (!l || !layerOpacityTrack(l) || isLayerLocked(l, state.project.groups)) return;
   if (!isLayerVisible(l, state.project.groups)) return;
   const resolved = opacityAt(l, state.playhead);
   commitStructural(() => {
@@ -1023,7 +1024,10 @@ export function applyGroupOpacityAt(groupId: number, frame: number, value: numbe
  *  ended up re-deriving why something existed. */
 function opacityKeyWrite(layerId: number, frame: number, value: number): (() => void) | null {
   const l = state.project.layers.find((x) => x.id === layerId);
-  const track = l?.tracks?.opacity;
+  // Through the accessor: a REFERENCE animated by the previous release still carries the bytes, and
+  // reading them raw here wrote keys `opacityAt` ignores — a slider that did nothing visible while
+  // pushing a real undo entry per drag.
+  const track = l && layerOpacityTrack(l);
   if (!l || !track || isLayerLocked(l, state.project.groups)) return null;
   if (!isLayerVisible(l, state.project.groups)) return null;
   const existing = track.keys.find((k) => k.frame === frame);
@@ -1118,7 +1122,7 @@ function trackTarget(ref: TrackRef): TrackTarget | null {
   if (!l || isLayerLocked(l, state.project.groups)) return null;
   if (!isLayerVisible(l, state.project.groups)) return null;
   if (ref.prop === "opacity") {
-    const track = l.tracks?.opacity;
+    const track = layerOpacityTrack(l);
     if (!track) return null;
     return {
       track,

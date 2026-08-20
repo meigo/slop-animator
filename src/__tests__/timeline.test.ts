@@ -731,11 +731,15 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
     });
 
+    // Read RAW, not through `layerTransformTrack` — that accessor now hides a reference's leftover
+    // track so no writer can key into something the readers ignore. The bytes are still preserved
+    // (deliberately: they are the only copy), so the ripple must keep them coherent with the frames
+    // they were authored against.
     it("shifts a REFERENCE layer's track too", () => {
       const ref = imageRef() as unknown as DrawingLayer;
       ref.tracks = { transform: { keys: [{ frame: 6, v: T(6) }], box: null } };
       insertFrameAllLayers(proj([ref]), 2);
-      expect(track(ref).keys.map((k) => k.frame)).toEqual([7]);
+      expect(ref.tracks?.transform?.keys.map((k) => k.frame)).toEqual([7]);
     });
 
     // `interp` was added to `TransformKey` after this copy was written and the hand-written literal

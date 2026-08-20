@@ -75,6 +75,7 @@
     cellTransform,
     resolvedKeyCell,
     layerTransformTrack,
+    layerOpacityTrack,
     opacityAt,
     groupOpacityAt,
     groupHasLockedLayer,
@@ -236,7 +237,10 @@
 
   function opacityKeyValue(layerId: number, frame: number): number | null {
     const l = appState.project.layers.find((x) => x.id === layerId);
-    return l?.tracks?.opacity?.keys.find((k) => k.frame === frame)?.v ?? null;
+    // Through the accessor, like every other opacity-track read — a leftover track on a REFERENCE
+    // is inert, so this must not report a key the store's writers will refuse.
+    const track = l && layerOpacityTrack(l);
+    return track?.keys.find((k) => k.frame === frame)?.v ?? null;
   }
 
   function onOpacityInput(layer: Layer, value: number) {
@@ -246,7 +250,10 @@
     // loses its implicit pointer capture. Without this the next layer's drag would inherit the open
     // bracket and write ITS keys to the abandoned gesture's layer id and frame.
     if (opacityUndo && opacityUndoLayerId !== layer.id) settleOpacityDrag();
-    if (!layer.tracks?.opacity) {
+    // The accessor, not the raw bag: on a reference carrying a leftover track from the previous
+    // release the raw read took the key-writing branch, which wrote into a track `opacityAt`
+    // ignores — no visible change, one undo entry per drag.
+    if (!layerOpacityTrack(layer)) {
       layer.opacity = value; // static: unchanged behaviour, straight assignment + repaint
       bump();
       return;
@@ -630,7 +637,7 @@
     {#if active}
       <!-- Reads through `opacityAt`, never the raw field: on an animated layer the static number is
            retained but IGNORED, so a slider bound to it would sit still while the drawing faded. -->
-      {@const opacityTrack = layer.tracks?.opacity}
+      {@const opacityTrack = layerOpacityTrack(layer)}
       {@const opacityFrame = opacityFrameFor(layer)}
       {@const opacityNow = opacityAt(layer, opacityFrame)}
       {@const opacityOk = opacityEditable(layer)}
