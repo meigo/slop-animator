@@ -495,16 +495,6 @@ function restoreStructure(s: StructSnapshot) {
   state.project.width = s.width;
   state.project.height = s.height;
   state.activeLayerId = s.activeLayerId;
-  // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
-  // selection is session state, and undo must not move it BETWEEN rows: resetting it
-  // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
-  // "trim to playhead" retargeted from the audio clip to a layer. A track focus whose owner
-  // survived this undo stays; a track the undo just removed falls back to the draw target.
-  if (state.activeRow.kind === "layer") {
-    state.activeRow = { kind: "layer", id: s.activeLayerId };
-  } else {
-    state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
-  }
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
   // number — `s.audio.offsetFrames` is the LIVE value, since the lane drag writes it in place on
@@ -518,6 +508,19 @@ function restoreStructure(s: StructSnapshot) {
   // gone at the next autosave. `audio` and `audioUndecoded` are never both set, and restoring both
   // from the same snapshot preserves that.
   state.project.audioUndecoded = s.audioUndecoded;
+  // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
+  // selection is session state, and undo must not move it BETWEEN rows: resetting it
+  // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
+  // "trim to playhead" retargeted from the audio clip to a layer. A track focus whose owner
+  // survived this undo stays; a track the undo just removed falls back to the draw target.
+  // BELOW the audio restore on purpose: the audio row is resolved against the track this undo just
+  // put back (or took away), so undoing an IMPORT hands focus to a layer instead of leaving the row
+  // pointing at a lane that no longer renders. Running it earlier read the OUTGOING track.
+  if (state.activeRow.kind === "layer") {
+    state.activeRow = { kind: "layer", id: s.activeLayerId };
+  } else {
+    state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
+  }
   if (state.project.audio) {
     if (s.audioOffsetFrames !== null) state.project.audio.offsetFrames = s.audioOffsetFrames;
     if (s.audioMuted !== null) state.project.audio.muted = s.audioMuted;
@@ -563,6 +566,13 @@ export function commitStructural(mutate: () => void): void {
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
   state.timelineSelection = null; // any structural edit can invalidate stored endpoints
+  // ...and the SELECTED ROW, for exactly the same reason: an edit can destroy the track, group or
+  // audio clip it points at. This used to be six copy-pasted repairs at the call sites, which is
+  // how `removeAudioTrack` came to be the one that forgot — leaving `{kind:"audio"}` selected with
+  // no lane rendered, and the app refusing every pixel tool with nothing lit to explain it.
+  // No-op whenever the row's target survived, so it costs a lookup and cannot surprise a caller
+  // that selects a row it just created (those all select AFTER the commit).
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
   commitStructuralEdit(before);
 }
 
@@ -678,8 +688,6 @@ export function removeLayer(id: number) {
       if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
   });
-  // A focused track on the removed layer (or left pointing at a now-missing owner) must fall back.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
@@ -878,8 +886,8 @@ export function removeLayerAnimation(layerId: number): void {
     l.transform = { ...resolved };
     l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
   });
-  // Do not call setActiveLayer — that would also reset transformScope when the layer is ungrouped.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
+  // The row repair is `commitStructural`'s, not ours. Deliberately NOT setActiveLayer — that would
+  // also reset transformScope when the layer is ungrouped.
 }
 
 /** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
@@ -914,7 +922,6 @@ export function removeLayerOpacityAnimation(layerId: number): void {
     l.opacity = resolved;
     l.tracks = normalizedTracks({ ...l.tracks, opacity: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a GROUP's transform: its current static transform becomes the key at frame 0.
@@ -961,7 +968,6 @@ export function removeGroupAnimation(groupId: number): void {
     if (box && !g.transformBox) g.transformBox = { ...box };
     g.tracks = normalizedTracks({ ...g.tracks, transform: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Start animating a group's opacity: the static value becomes the key at frame 0. No box — a
@@ -992,7 +998,6 @@ export function removeGroupOpacityAnimation(groupId: number): void {
     g.opacity = resolved;
     g.tracks = normalizedTracks({ ...g.tracks, opacity: undefined });
   });
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 
 /** Auto-key (or write the static field) with NO history entry — for Task 4's group opacity slider
@@ -1327,8 +1332,6 @@ export function ungroup(groupId: number) {
       state.transformScope = "frame";
     }
   });
-  // Destroying the group also destroys its transform track — fall focus back if it was selected.
-  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 /** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
  *  group's `collapsed` directly below: mutated in place with a `bump()` and NOT undoable — the

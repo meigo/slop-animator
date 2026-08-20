@@ -1,4 +1,4 @@
-import type { Layer, LayerGroup } from "./document";
+import type { AudioTrack, Layer, LayerGroup } from "./document";
 
 export type ActiveRow =
   | { kind: "layer"; id: number }
@@ -97,11 +97,21 @@ export function rowAdmitsTransform(
   return true;
 }
 
+/** Re-point a row whose target the document no longer has. Every row kind that can OUTLIVE what it
+ *  points at is handled here — the audio lane included, because "the lane unrendered" and "the row
+ *  is still selected" were two different facts: with no lane on screen, every pixel tool refused on
+ *  every layer, the canvas showed cursor-not-allowed with NO caption (the active layer is fine, so
+ *  `whyNotEditable` returns null), no row was lit anywhere, and the hint read "switch to a drawing
+ *  layer" while you were already on one. Recovery existed — click any row — but nothing pointed at
+ *  it, and no later undo repaired it. */
 export function resolveStaleTrackFocus(
   row: ActiveRow,
-  doc: { layers: Layer[]; groups: LayerGroup[] },
+  doc: { layers: Layer[]; groups: LayerGroup[]; audio?: AudioTrack | null },
   activeLayerId: number,
 ): ActiveRow {
+  if (row.kind === "audio") {
+    return doc.audio ? row : { kind: "layer", id: activeLayerId };
+  }
   if (row.kind === "group") {
     return doc.groups.some((g) => g.id === row.id) ? row : { kind: "layer", id: activeLayerId };
   }

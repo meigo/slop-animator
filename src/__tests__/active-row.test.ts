@@ -11,7 +11,7 @@ import {
   workingTarget,
   type ActiveRow,
 } from "../anim/active-row";
-import type { Layer } from "../anim/document";
+import type { AudioTrack, Layer } from "../anim/document";
 
 const layer = (id: number, groupId: number | null = null): Layer =>
   ({
@@ -278,12 +278,21 @@ describe("resolveStaleTrackFocus", () => {
     });
   });
 
-  it("leaves layer and audio rows alone", () => {
+  it("leaves a layer row alone, and keeps an audio row while the track exists", () => {
     expect(resolveStaleTrackFocus({ kind: "layer", id: 1 }, project, 2)).toEqual({
       kind: "layer",
       id: 1,
     });
-    expect(resolveStaleTrackFocus({ kind: "audio" }, project, 1)).toEqual({ kind: "audio" });
+    const withAudio = { ...project, audio: { name: "take" } as unknown as AudioTrack };
+    expect(resolveStaleTrackFocus({ kind: "audio" }, withAudio, 1)).toEqual({ kind: "audio" });
+  });
+
+  // Was pinned the other way: an audio row was passed through unchanged against a fixture with no
+  // audio at all. Removing the track (or undoing the import) then left the lane unrendered with the
+  // row still selected — every pixel tool refusing on every layer, an uncaptioned not-allowed
+  // cursor, and nothing lit anywhere to point at the way out.
+  it("falls the audio row back to the draw target once the track is gone", () => {
+    expect(resolveStaleTrackFocus({ kind: "audio" }, project, 3)).toEqual({ kind: "layer", id: 3 });
   });
 
   it("keeps a live group row and falls back when the group is gone", () => {
