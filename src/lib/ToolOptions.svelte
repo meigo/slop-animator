@@ -266,12 +266,24 @@
          those two refuse. -->
     {@const _groupedActive =
       _activeLayer.groupId != null && rowAdmitsTransform(appState.activeRow, "group", _activeLayer)}
+    <!-- Does the SELECTED ROW refuse the scope in effect? Asked with the RAW scope, because that is
+         what `Canvas.onStroke` and the gizmo pass — a lit button derived from anything else could
+         disagree with the two surfaces that actually decide. -->
+    {@const _rowRefuses = !rowAdmitsTransform(
+      appState.activeRow,
+      appState.transformScope,
+      _activeLayer,
+    )}
     <!-- Which scope is IN EFFECT, so a lit button can never contradict its own aria-disabled state
          (it did: Group was lit AND disabled saying "Active layer is not in a group"). Group scope on
-         an ungrouped layer falls through to the layer branch in both drag paths; under a group row
-         it is refused outright, so nothing is being transformed and nothing lights. -->
-    {@const _scopeShown =
-      appState.transformScope === "group" && !_groupedActive
+         an ungrouped layer falls through to the layer branch in both drag paths. When the ROW
+         refuses the drag outright — a group row at Frame/Layer scope, a group with no draw member,
+         the audio lane — NOTHING is being transformed, so nothing lights: `Layer` used to stay lit
+         under a group row while the drag silently returned, which is the same contradiction one
+         button over. Only the `scope === "group"` case was covered before. -->
+    {@const _scopeShown = _rowRefuses
+      ? null
+      : appState.transformScope === "group" && !_groupedActive
         ? workingTarget(appState.activeRow).kind === "group"
           ? null
           : "layer"

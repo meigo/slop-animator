@@ -130,11 +130,33 @@ export function rowAdmitsTransform(
   scope: "frame" | "layer" | "group",
   layer: { kind: Layer["kind"]; groupId?: number | null },
 ): boolean {
+  return whyRowRefusesTransform(row, scope, layer) === null;
+}
+
+/** WHY `rowAdmitsTransform` says no — the refusals are different, and each has a different fix.
+ *  `rowAdmitsTransform` is DEFINED in terms of this rather than the two being written separately:
+ *  a refusal whose reason can drift from the refusal itself is how the status bar came to describe
+ *  a gesture that returns.
+ *
+ *  - `audio-row`: nothing on the audio lane transforms; the fix is to select a layer or group row.
+ *  - `wrong-scope`: a group row is working on the GROUP, so any other scope aims at the remembered
+ *    anchor layer, which the lit row does not name. Fix: set the scope to Group.
+ *  - `no-draw-member`: group scope, but the anchor is a reference or sits in another group — only a
+ *    DRAW member of THIS group reaches the group branch of `transformTarget`. A group of references
+ *    has nothing to transform this way at all. */
+export type TransformRefusal = "audio-row" | "wrong-scope" | "no-draw-member";
+
+export function whyRowRefusesTransform(
+  row: ActiveRow,
+  scope: "frame" | "layer" | "group",
+  layer: { kind: Layer["kind"]; groupId?: number | null },
+): TransformRefusal | null {
   const wt = workingTarget(row);
-  if (wt.kind === "audio") return false;
-  if (wt.kind === "group")
-    return scope === "group" && layer.kind === "draw" && (layer.groupId ?? null) === wt.id;
-  return true;
+  if (wt.kind === "audio") return "audio-row";
+  if (wt.kind !== "group") return null;
+  if (scope !== "group") return "wrong-scope";
+  if (layer.kind !== "draw" || (layer.groupId ?? null) !== wt.id) return "no-draw-member";
+  return null;
 }
 
 /** Re-point a row whose target the document no longer has. Every row kind that can OUTLIVE what it

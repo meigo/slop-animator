@@ -670,6 +670,15 @@ export function rasterizeReference(layerId: number): void {
     // accepted commit trade). The keyframes reproduce the ref's VISIBILITY rather than showing on
     // every frame: a trimmed ref used to reappear on the frames it had been trimmed away from,
     // because a lone key at frame 0 resolves forward forever.
+    // `tracks` is deliberately NOT copied, and this is the ONE place the "leftover reference tracks
+    // are preserved, never destroyed" rule does not hold. It is preserved everywhere else because
+    // the bytes are the only copy of something the artist authored; here the artist is asking for a
+    // drawing layer, and handing it a track would hand it an animation THEY HAVE NEVER SEEN RENDER
+    // — references stopped resolving their tracks a release ago, so it would spring to life the
+    // moment the layer became a drawing one, moving or fading pixels for reasons nothing on screen
+    // explains. Discarding is the honest outcome: rasterize BAKES one placement, which is exactly
+    // the "a bake only means something for a transform that does not vary" argument the guard above
+    // makes, and the new layer starts static like every other rasterize result.
     const dl = createDrawingLayer(state.project.frameCount, ref.name);
     dl.id = ref.id;
     dl.groupId = ref.groupId;

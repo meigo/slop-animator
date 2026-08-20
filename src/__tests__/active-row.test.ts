@@ -9,6 +9,7 @@ import {
   layerRowSelected,
   resolveStaleTrackFocus,
   rowAdmitsTransform,
+  whyRowRefusesTransform,
   targetLayerId,
   trackRowSelected,
   workingTarget,
@@ -420,5 +421,50 @@ describe("row-union accessors", () => {
       false,
     );
     expect(plainLayerRowSelected({ kind: "audio" })).toBe(false);
+  });
+});
+
+// The refusals are not interchangeable: "wrong scope" is one tap away, "no draw member" is not
+// fixable at all for a group of references — and the status bar has to say which.
+describe("whyRowRefusesTransform", () => {
+  const g10 = { kind: "draw" as const, groupId: 10 };
+
+  it("agrees with rowAdmitsTransform in every case", () => {
+    const rows: ActiveRow[] = [
+      { kind: "layer", id: 1 },
+      { kind: "audio" },
+      { kind: "group", id: 10 },
+      { kind: "track", owner: "group", id: 10, prop: "transform" },
+    ];
+    const layers = [
+      g10,
+      { kind: "ref" as const, groupId: 10 },
+      { kind: "draw" as const, groupId: 11 },
+    ];
+    for (const row of rows)
+      for (const scope of ["frame", "layer", "group"] as const)
+        for (const l of layers)
+          expect(rowAdmitsTransform(row, scope, l)).toBe(
+            whyRowRefusesTransform(row, scope, l) === null,
+          );
+  });
+
+  it("names the audio lane, the wrong scope and a group with no draw member", () => {
+    expect(whyRowRefusesTransform({ kind: "audio" }, "group", g10)).toBe("audio-row");
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "layer", g10)).toBe("wrong-scope");
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "frame", g10)).toBe("wrong-scope");
+    // Group scope, but the anchor is a reference — a group of references has nothing to transform.
+    expect(
+      whyRowRefusesTransform({ kind: "group", id: 10 }, "group", { kind: "ref", groupId: 10 }),
+    ).toBe("no-draw-member");
+    // ...or the anchor was left in ANOTHER group.
+    expect(
+      whyRowRefusesTransform({ kind: "group", id: 10 }, "group", { kind: "draw", groupId: 11 }),
+    ).toBe("no-draw-member");
+  });
+
+  it("is null on a layer row at any scope, and on a valid group drag", () => {
+    expect(whyRowRefusesTransform({ kind: "layer", id: 1 }, "frame", g10)).toBeNull();
+    expect(whyRowRefusesTransform({ kind: "group", id: 10 }, "group", g10)).toBeNull();
   });
 });

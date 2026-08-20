@@ -8,6 +8,7 @@ const base: HintContext = {
   notDraw: false,
   audioRow: false,
   groupRow: false,
+  groupTransformBlock: null,
   selectionActive: false,
   selectionFloating: false,
   poseActive: false,
@@ -58,6 +59,34 @@ describe("group row selected", () => {
 
   it("does not inherit a leftover member's lock", () => {
     expect(contextHint(ctx({ tool: "brush", groupRow: true, locked: true }))).toMatch(/layer row/);
+  });
+
+  // The gizmo hides and the canvas drag returns in both of these, and until now the bar described
+  // the gesture anyway — "a hint for a gesture that does nothing is worse than none", applied to
+  // the case that created it. Each names the fix it actually has.
+  it("says WHY when the group row refuses the transform, per reason", () => {
+    expect(
+      contextHint(ctx({ tool: "transform", groupRow: true, groupTransformBlock: "wrong-scope" })),
+    ).toBe("Group row — set Transform scope to Group");
+    expect(
+      contextHint(
+        ctx({ tool: "transform", groupRow: true, groupTransformBlock: "no-draw-member" }),
+      ),
+    ).toBe("This group has no drawing layer to transform");
+  });
+
+  it("still describes the gesture when the group row ADMITS it", () => {
+    expect(
+      contextHint(ctx({ tool: "transform", groupRow: true, groupTransformBlock: null })),
+    ).toMatch(/Drag to move/);
+  });
+
+  // Audio is answered by its own branch above, so this value can never reach the group branch —
+  // asserted so an `else` cannot creep back in and print the group message for it.
+  it("leaves other tools alone on a refusing group row", () => {
+    expect(
+      contextHint(ctx({ tool: "select", groupRow: true, groupTransformBlock: "wrong-scope" })),
+    ).toBe("Drag to select an area");
   });
 });
 
@@ -147,6 +176,7 @@ describe("contextHint — animated layer", () => {
     notDraw: false,
     audioRow: false,
     groupRow: false,
+    groupTransformBlock: null,
     selectionActive: false,
     selectionFloating: false,
     poseActive: false,

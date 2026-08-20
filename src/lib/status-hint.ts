@@ -4,6 +4,7 @@
  * always wins. Content rule (2026-08-11 spec): only what a first-time user CANNOT see — no
  * keyboard-shortcut lists, nothing that restates a visible button.
  */
+import type { TransformRefusal } from "../anim/active-row";
 import type { LayerEditBlock } from "../anim/document";
 
 /** On-canvas / tool-options copy for a layer that refuses edits. General — paint and transform. */
@@ -36,6 +37,12 @@ export interface HintContext {
   /** Group header or a group-owned track is the working target. Pixel tools refuse;
    *  transform aims at the group. */
   groupRow: boolean;
+  /** Why a group row refuses the Transform tool RIGHT NOW, or null when it admits it. `groupRow`
+   *  alone used to imply "transform works here", which stopped being true once
+   *  `rowAdmitsTransform` gained its scope and anchor terms: a group of REFERENCES, or any group
+   *  row at Frame/Layer scope, silently returns from the drag while the bar cheerfully described
+   *  the gesture. That is precisely the failure this whole function exists to prevent. */
+  groupTransformBlock: TransformRefusal | null;
   /** A committed marquee exists (not lifted). */
   selectionActive: boolean;
   /** Pixels are lifted/floating — for the deform tool this also means "in the warp grid". */
@@ -71,6 +78,15 @@ export function contextHint(c: HintContext): string {
       c.tool === "pose"
     )
       return editBlockLabel("not-layer-row");
+    // Transform is the one tool a group row usually DOES admit, so it is excluded above — but only
+    // usually. Each refusal names its own fix; "wrong scope" is one tap away, "no draw member" is
+    // not fixable at all for a group of references, and saying so beats promising a drag.
+    // Each value matched EXPLICITLY: `audio-row` cannot reach here (a row is one or the other), and
+    // an `else` would have silently printed the group message for it if that ever changed.
+    if (c.tool === "transform" && c.groupTransformBlock === "wrong-scope")
+      return "Group row — set Transform scope to Group";
+    if (c.tool === "transform" && c.groupTransformBlock === "no-draw-member")
+      return "This group has no drawing layer to transform";
   }
   if (c.locked) return editBlockLabel("locked");
   if (c.hiddenLayer) return editBlockLabel("hidden");
