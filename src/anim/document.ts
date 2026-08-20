@@ -365,6 +365,20 @@ export function whyNotMergeDown(
   // upper layer at its STATIC `upper.opacity`, which on an animated layer is retained but ignored,
   // so a fade-out would be burned in at its seed alpha and the track would vanish with the layer.
   if (isLayerAnimated(upper) || isLayerAnimated(below)) return "animated";
+  // ...and the OWNING GROUP's tracks, which `isLayerAnimated` cannot see — it reads the layer's own
+  // bag. Only across a group BOUNDARY: merging inside one group composes identically before and
+  // after, but a merge that crosses one silently changes which group contribution the pixels carry.
+  // The upper layer LOSES its group's (its pixels move into the lower layer's group), and, when the
+  // upper is ungrouped or in a different group, GAINS the lower's. Baking cannot stand in for
+  // either once the contribution varies per frame, which is the same argument the layer-level check
+  // above makes. Pre-existing in shape for a static group opacity; the group opacity TRACK is what
+  // made it reachable as silent animation loss.
+  const gUpper = groupOf(upper, groups);
+  const gBelow = groupOf(below, groups);
+  if ((gUpper?.id ?? null) !== (gBelow?.id ?? null)) {
+    if (gUpper && isGroupAnimated(gUpper)) return "animated";
+    if (gBelow && isGroupAnimated(gBelow)) return "animated";
+  }
   return null;
 }
 

@@ -864,6 +864,27 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       expect(whyNotMergeDown([below, { ...upper, tracks: { opacity } }], [], 2)).toBe("animated");
     });
 
+    // `isLayerAnimated` reads the LAYER's own bag, so a group opacity track was invisible to it —
+    // and a merge across a group boundary drops the upper layer's group contribution entirely.
+    it("refuses across a group boundary when the owning GROUP is animated", () => {
+      const opacity = { keys: [{ frame: 0, v: 100 }] };
+      const below = layer(1, [makeKey()]);
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([below, upper], [g({ tracks: { opacity } })], 2)).toBe("animated");
+      // ...and the other way: the upper layer's pixels would GAIN the lower's group animation.
+      const belowIn = { ...layer(1, [makeKey()]), groupId: 7 };
+      expect(
+        whyNotMergeDown([belowIn, layer(2, [makeKey()])], [g({ tracks: { opacity } })], 2),
+      ).toBe("animated");
+    });
+
+    it("allows a merge INSIDE an animated group — the contribution is unchanged either way", () => {
+      const opacity = { keys: [{ frame: 0, v: 100 }] };
+      const below = { ...layer(1, [makeKey()]), groupId: 7 };
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([below, upper], [g({ tracks: { opacity } })], 2)).toBeNull();
+    });
+
     it("reports the structural block before the read-only one", () => {
       // A locked BOTTOM layer has nothing below it either — the more fundamental reason wins.
       const layers = [layer(1, [makeKey()], { locked: true }), layer(2, [makeKey()])];

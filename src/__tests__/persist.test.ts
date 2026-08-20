@@ -709,6 +709,35 @@ describe("tracksCollapsed persistence", () => {
   });
 });
 
+describe("trim field sanitisation", () => {
+  it("round-trips a valid trim on a reference layer", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "video", name: "clip.mp4" }, "clip");
+    ref.trimInFrames = 4;
+    ref.trimLenFrames = 12;
+    project.layers.push(ref);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.trimInFrames).toBe(4);
+    expect(lref.kind === "ref" && lref.trimLenFrames).toBe(12);
+  });
+
+  // The two trim fields were the one new persisted pair read back verbatim, so a NaN from a
+  // hand-edited or truncated file survived into `videoClipLayout` as `min-width: NaNpx`. Absent
+  // already means untrimmed, so dropping the value is the right failure.
+  it("drops a non-integer or negative trim rather than carrying it into layout", async () => {
+    const project = createProject();
+    const ref = createReferenceLayer({ type: "missing", was: "video", name: "clip.mp4" }, "clip");
+    ref.trimInFrames = Number.NaN;
+    ref.trimLenFrames = -3;
+    project.layers.push(ref);
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    const lref = loaded.layers.find((l) => l.kind === "ref")!;
+    expect(lref.kind === "ref" && lref.trimInFrames).toBeUndefined();
+    expect(lref.kind === "ref" && lref.trimLenFrames).toBeUndefined();
+  });
+});
+
 describe("track box sanitisation", () => {
   const trackWith = (box: unknown) => ({
     transform: {

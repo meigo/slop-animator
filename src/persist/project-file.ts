@@ -434,6 +434,14 @@ interface LegacyTransformTrackJson {
   box?: TransformTrack["box"];
 }
 
+/** A frame count read back from a file: a non-negative integer, else ABSENT. Every other persisted
+ *  numeric goes through a guard like this; the two trim fields were copied verbatim, so a NaN from a
+ *  hand-edited or truncated file survived into `videoClipLayout` and rendered as `min-width: NaNpx`.
+ *  Dropping the value is the right failure: absent already MEANS untrimmed. */
+function frameCountOrUndefined(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
+}
+
 function isTransformValue(v: unknown): boolean {
   if (!v || typeof v !== "object") return false;
   const t = v as RefTransform;
@@ -614,8 +622,8 @@ export async function loadProjectBlob(
       visible: rj.visible,
       opacity: rj.opacity,
       offsetFrames: rj.offsetFrames,
-      trimInFrames: rj.trimInFrames,
-      trimLenFrames: rj.trimLenFrames,
+      trimInFrames: frameCountOrUndefined(rj.trimInFrames),
+      trimLenFrames: frameCountOrUndefined(rj.trimLenFrames),
       speed: rj.speed ?? 1,
       audioEnabled: rj.audioEnabled ?? false,
       locked: rj.locked ?? false,
@@ -688,8 +696,8 @@ export async function loadProjectBlob(
         buffer,
         offsetFrames: aj.offsetFrames,
         muted: aj.muted,
-        trimInFrames: aj.trimInFrames,
-        trimLenFrames: aj.trimLenFrames,
+        trimInFrames: frameCountOrUndefined(aj.trimInFrames),
+        trimLenFrames: frameCountOrUndefined(aj.trimLenFrames),
       };
     } catch {
       // Unsupported/corrupt encoding (a desktop-Chrome m4a opened in WebKit is the common one).
@@ -702,8 +710,8 @@ export async function loadProjectBlob(
         bytes: audioBytes,
         offsetFrames: aj.offsetFrames,
         muted: aj.muted,
-        trimInFrames: aj.trimInFrames,
-        trimLenFrames: aj.trimLenFrames,
+        trimInFrames: frameCountOrUndefined(aj.trimInFrames),
+        trimLenFrames: frameCountOrUndefined(aj.trimLenFrames),
       };
     }
   }
