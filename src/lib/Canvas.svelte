@@ -529,7 +529,7 @@
       return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
     // `ensureDrawableKeyframe` is not just the ·→◆ marker on a hold — past the layer's end it
-    // APPENDS holds and a blank keyframe — so running it before the region is known would leave the
+    // APPENDS holds and a keyframe — so running it before the region is known would leave the
     // model changed (and `project.frameCount` stale) on the nothing-to-fill path, which returns
     // without a `bump()`. Null = nothing at or before the playhead, i.e. a blank cell to come.
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -544,7 +544,8 @@
     });
     if (area === 0) return nothing();
 
-    // Only now materialise the keyframe — on a hold it clones the very canvas just measured.
+    // Only now materialise the keyframe — on a hold (including one running past the layer's end)
+    // it clones the very canvas just measured.
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const layerId = layer.id;
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
