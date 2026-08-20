@@ -1,4 +1,10 @@
-import type { AudioTrack, Layer, LayerGroup } from "./document";
+import {
+  groupOf,
+  layerAcceptsPropertyTracks,
+  type AudioTrack,
+  type Layer,
+  type LayerGroup,
+} from "./document";
 
 export type ActiveRow =
   | { kind: "layer"; id: number }
@@ -118,10 +124,35 @@ export function resolveStaleTrackFocus(
   if (row.kind !== "track") return row;
   if (row.owner === "layer") {
     const l = doc.layers.find((x) => x.id === row.id);
-    if (l?.tracks?.[row.prop]) return row;
-    return { kind: "layer", id: activeLayerId };
+    if (!l?.tracks?.[row.prop]) return { kind: "layer", id: activeLayerId };
+    if (trackRowEmitted(l, doc.groups)) return row;
+    return ownerRow(l, doc.groups);
   }
   const g = doc.groups.find((x) => x.id === row.id);
-  if (row.prop === "opacity" ? g?.tracks?.opacity : g?.tracks?.transform) return row;
-  return { kind: "layer", id: activeLayerId };
+  if (!g) return { kind: "layer", id: activeLayerId };
+  if (!(row.prop === "opacity" ? g.tracks?.opacity : g.tracks?.transform))
+    return { kind: "layer", id: activeLayerId };
+  if (!g.collapsed && !g.tracksCollapsed) return row;
+  return { kind: "group", id: g.id };
+}
+
+/** Does the timeline still EMIT this layer's property rows? Mirrors `row-layout.pushLayer`, and
+ *  the two must agree: a row the timeline no longer draws is as stale as a track the document no
+ *  longer has. Folding one while it was focused left the animation bar driving an invisible row —
+ *  still offering Delete key / Ease / Step, and Stop then removed a track with nothing on screen
+ *  to have removed it from. Unfolding on focus was the alternative and is worse: the fold chevron
+ *  would be unusable for as long as one of its rows was selected. */
+function trackRowEmitted(layer: Layer, groups: LayerGroup[]): boolean {
+  if (!layerAcceptsPropertyTracks(layer)) return false;
+  if (layer.tracksCollapsed) return false;
+  return !groupOf(layer, groups)?.collapsed;
+}
+
+/** The visible row a folded-away track falls back to — its owner, not the remembered draw target,
+ *  because that is the row the artist is looking at. A collapsed GROUP hides the layer row too, so
+ *  the fallback walks one level further out. */
+function ownerRow(layer: Layer, groups: LayerGroup[]): ActiveRow {
+  const g = groupOf(layer, groups);
+  if (g?.collapsed) return { kind: "group", id: g.id };
+  return { kind: "layer", id: layer.id };
 }

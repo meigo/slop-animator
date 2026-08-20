@@ -84,4 +84,19 @@ describe("planCellPointer", () => {
   it("seeks past the layer's own end", () => {
     expect(planCellPointer([k()], 90, W, 4)).toEqual({ kind: "seek", frame: 3 });
   });
+
+  it("puts a TRAILING hold's resize hotspot at the document's end, not the track's", () => {
+    // One key, four document frames: the hold runs visually to frame 3, so the edge is at x = 96.
+    expect(planCellPointer([k()], 94, W, 4)).toEqual({ kind: "resize", keyIndex: 0 });
+    // ...and the old spot (the end of the stored track) is now just the key's own body.
+    expect(planCellPointer([k()], 22, W, 4)).toEqual({ kind: "move", keyIndex: 0 });
+  });
+
+  it("leaves an INTERIOR span's hotspot where the next key starts", () => {
+    // A later key stops the run, so the document's length is irrelevant here.
+    expect(planCellPointer([k(), h(), k(), h()], 47, W, 8)).toEqual({
+      kind: "resize",
+      keyIndex: 0,
+    });
+  });
 });

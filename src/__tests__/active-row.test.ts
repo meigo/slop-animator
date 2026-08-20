@@ -307,3 +307,56 @@ describe("resolveStaleTrackFocus", () => {
     });
   });
 });
+
+describe("resolveStaleTrackFocus — a row the timeline no longer EMITS", () => {
+  const track = { opacity: { keys: [{ frame: 0, v: 100 }] } };
+  const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "opacity" };
+  const doc = (l: Partial<Layer>, groups: unknown[] = []) =>
+    ({
+      layers: [{ ...layer(1), tracks: track, ...l }],
+      groups,
+    }) as Parameters<typeof resolveStaleTrackFocus>[1];
+
+  it("falls a folded layer track back to its OWNER row, not the draw target", () => {
+    expect(resolveStaleTrackFocus(row, doc({ tracksCollapsed: true }), 7)).toEqual({
+      kind: "layer",
+      id: 1,
+    });
+  });
+
+  it("walks out to the group row when the whole group is collapsed", () => {
+    const g = { id: 10, name: "G", collapsed: true, visible: true };
+    expect(resolveStaleTrackFocus(row, doc({ groupId: 10 }, [g]), 7)).toEqual({
+      kind: "group",
+      id: 10,
+    });
+  });
+
+  it("keeps the row while the fold is open", () => {
+    const g = { id: 10, name: "G", collapsed: false, visible: true };
+    expect(resolveStaleTrackFocus(row, doc({ groupId: 10 }, [g]), 7)).toEqual(row);
+  });
+
+  it("falls a REFERENCE's leftover track back — refs emit no property rows", () => {
+    expect(resolveStaleTrackFocus(row, doc({ kind: "ref" } as Partial<Layer>), 7)).toEqual({
+      kind: "layer",
+      id: 1,
+    });
+  });
+
+  it("falls a folded GROUP track back to the group header", () => {
+    const groups = [
+      {
+        id: 10,
+        name: "G",
+        collapsed: false,
+        tracksCollapsed: true,
+        visible: true,
+        tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } },
+      },
+    ];
+    const gRow: ActiveRow = { kind: "track", owner: "group", id: 10, prop: "opacity" };
+    const d = { layers: [], groups } as unknown as Parameters<typeof resolveStaleTrackFocus>[1];
+    expect(resolveStaleTrackFocus(gRow, d, 7)).toEqual({ kind: "group", id: 10 });
+  });
+});

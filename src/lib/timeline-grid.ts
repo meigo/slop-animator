@@ -25,7 +25,12 @@ export function planCellPointer(
   if (ki !== null) {
     let end = ki + 1; // exclusive end of this key's span
     while (end < cells.length && cells[end].kind !== "key") end++;
-    if (Math.abs(offsetX - end * cellW) <= EDGE_PX) return { kind: "resize", keyIndex: ki };
+    // A TRAILING hold (no later key) runs visually to the document's last frame, not to the end of
+    // the stored track — so on a layer shorter than the document the grab handle belongs where the
+    // dashes stop. Anchoring it at `cells.length` put it mid-run, with the span continuing past a
+    // hotspot that could no longer be reached from the visible edge.
+    const spanEnd = end >= cells.length ? Math.max(end, count) : end;
+    if (Math.abs(offsetX - spanEnd * cellW) <= EDGE_PX) return { kind: "resize", keyIndex: ki };
     if (frame === ki) return { kind: "move", keyIndex: ki };
   }
   return { kind: "seek", frame };

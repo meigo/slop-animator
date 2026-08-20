@@ -1342,6 +1342,7 @@ export function toggleTracksCollapsed(layerId: number) {
   const l = state.project.layers.find((x) => x.id === layerId);
   if (l) {
     l.tracksCollapsed = !l.tracksCollapsed;
+    refocusFoldedRow();
     bump();
   }
 }
@@ -1349,6 +1350,7 @@ export function toggleGroupTracksCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (g) {
     g.tracksCollapsed = !g.tracksCollapsed;
+    refocusFoldedRow();
     bump();
   }
 }
@@ -1356,8 +1358,15 @@ export function toggleGroupCollapsed(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (g) {
     g.collapsed = !g.collapsed;
+    refocusFoldedRow();
     bump();
   }
+}
+/** A fold can hide the SELECTED row, which no structural edit did — so the three view-prop toggles
+ *  need the same repair `commitStructural` runs. Without it the animation bar kept driving a row
+ *  that was no longer on screen, and Stop animating removed a track the artist could not see. */
+function refocusFoldedRow() {
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
 }
 /** Lock/unlock a whole group. DERIVED onto members (see isLayerLocked) — members' own `locked`
  *  flags are untouched, so unlocking restores each one's individual state with nothing stored. */
