@@ -3492,10 +3492,13 @@ this kind of half-finished separation.
 pre-eyedropper tool was the bucket and `brush.color` otherwise. Routing every pick to the brush would
 have made the eyedropper useless to the tool most likely to need it — you sample a flat precisely
 because you are about to fill with it.
-**Owed a browser pass:** brush and bucket hold different colours across a tool switch; the
-eyedropper under the bucket sets the FILL swatch and not the brush's; a translucent fill composites
-as expected (and `fillRegionBehind` still paints behind the ink); both survive a reload; and an
-old stored preference opens with the new defaults rather than undefined.
+**Browser-confirmed 2026-08-24:** the two colours are genuinely separate — brush and bucket hold
+their own across a tool switch — and the regrouped options row reads correctly.
+**Still owed, and NOT covered by that:** the eyedropper under the bucket setting the FILL swatch
+rather than the brush's (a different code path — `applyEyedropper` branches on the tool it returns
+to, and nothing about the swatches being separate exercises it); a translucent fill compositing as
+expected, with `fillRegionBehind` still painting behind the ink; both surviving a reload; and an old
+stored preference opening with the new defaults rather than `undefined`.
 
 **Browser-confirmed 2026-08-24 — the system-clipboard copy works: a copied selection pastes into
 another app.** That is the headline for the entry above and the whole point of the port, since it is
