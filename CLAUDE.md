@@ -3404,10 +3404,20 @@ lazy per layer (a test pins that thunks resolve exactly once AND not early — u
 only that one test fails, which is the demonstration that the call-count tests were blind to it). The
 canvas driver and the dialog stay build+review verified, per project convention.
 
-**NOTHING IN THIS FEATURE HAS BEEN OPENED IN PHOTOSHOP.** Every layer of it is unit-tested or
-review-verified, and the group encoding in particular is hand-derived from the format and then
-corroborated against ag-psd and psd-tools — but it has never been run through the actual application,
-which is the acceptance check. Do not describe PSD export as verified or working until it has.
+**VERIFIED IN PHOTOSHOP 2026-08-24 — it opens and reads correctly.** That is the acceptance check
+this feature was built against and could not settle itself: the group encoding is hand-derived from
+the format and was only corroborated against ag-psd and psd-tools, so until a real file had been
+opened in the actual application, none of the unit tests meant what they appeared to mean. In
+particular the **16-byte folder `lsct`** is now known good rather than merely better-precedented, and
+the diagnostic ladder below was never needed.
+**What that confirmation does and does not cover.** It establishes the headline: a real export opens,
+with its layers, and reads as intended. The enumerated edge cases below were NOT individually walked,
+so treat them as still owed rather than as covered by this — the same distinction the audio Phase 3
+entry draws. The ones most worth an eye if PSD export starts getting real use: a group split by an
+ungrouped layer (it emits **two folders with the same name**), a transparent-background project
+(the positive layer count makes the composite's fourth channel a spare alpha rather than
+transparency), an all-empty frame (`layerCount 0` inside a non-empty layer-and-mask section), and a
+PNG and a PSD of the same frame side by side, which must differ **only** by boil.
 **The first three checks are in DIAGNOSTIC order** — each says where to look, not merely what to see:
 (1) **folders vs flat** — if it opens flat the first suspect is the FOLDER's `lsct` length, not the
 ordering, which is byte-identical to ag-psd; (2) **a visible `</Layer group>` row** means the type-3
