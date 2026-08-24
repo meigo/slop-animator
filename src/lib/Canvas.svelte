@@ -456,6 +456,39 @@
     }
   }
 
+  /** Composite a fully-painted copy of the cell (`tmp`) back through an ALREADY-APPLIED selection
+   *  clip. Must be "copy", never the default source-over: inside the clip the destination is
+   *  pixel-identical to the source, so source-over blends every semi-transparent pixel with itself
+   *  (a' = 2a − a²; alpha 128 → 192 after one fill, 239 after two). Opaque and fully transparent
+   *  pixels are fixed points of that, which is why the bug hides on solid ink.
+   *  Possible cost at an anti-aliased LASSO edge, UNVERIFIED and engine-dependent: whether "copy"
+   *  hard-cuts partial clip coverage or blends against it is not pinned down by the spec, and both
+   *  Skia and WebKit are reported to apply coverage as lerp(dst, src, coverage) even for kSrc —
+   *  which would make it a correct blend and no seam at all. Worth an eyeball on a soft lasso edge;
+   *  either way it beats self-blending every fill, and rect marquees are pixel-exact regardless.
+   *  What makes "copy" SAFE here is containment: the draw rect covers the destination exactly, so
+   *  a clip that was ever missing or ignored degrades this to an unclipped fill — never a wipe.
+   *  Caller owns the save()/restore() pair (see the try/finally at each call site): "copy" strands
+   *  far worse than a clip does, since a leaked one makes later draws ERASE what they overlap. */
+  /** Did a paint pass actually change anything? Fills can now legitimately write NOTHING — a click
+   *  whose region misses the marquee, or an enclosed area the clip removes entirely — where before
+   *  the self-blend bug guaranteed every semi-transparent pixel inside the marquee moved, so the
+   *  question never arose. Pushing regardless costs a dead ⌘Z plus a `persistTick` bump that arms a
+   *  full PNG re-encode for a gesture that painted nothing. Early-exits on the first differing
+   *  byte, and is small beside the two getImageData calls this sits between. */
+  function sameImageData(a: ImageData, b: ImageData): boolean {
+    const x = a.data,
+      y = b.data;
+    if (x.length !== y.length) return false;
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+    return true;
+  }
+
+  function compositeClippedCopy(ctx: CanvasRenderingContext2D, tmp: HTMLCanvasElement) {
+    ctx.globalCompositeOperation = "copy";
+    ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+  }
+
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return;
@@ -486,10 +519,16 @@
         expand: appState.fill.expand,
       });
       ctx.save();
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection.applyClip(ctx);
-      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
-      ctx.restore();
+      try {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection.applyClip(ctx);
+        compositeClippedCopy(ctx, tmp);
+      } finally {
+        // strokeCtx/ctx outlive this call, so a throw between save() and restore() would strand
+        // both the clip AND the "copy" composite on the cell — every later draw would then be
+        // confined to an invisible region and ERASE whatever it overlapped.
+        ctx.restore();
+      }
     } else {
       floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
@@ -498,6 +537,19 @@
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    if (sameImageData(before, after)) {
+      // Nothing landed: the region is already this color, or a marquee clipped all of it away.
+      // Undo the keyframe this materialised too — a ·→◆ left behind by a gesture that pushes no
+      // undo entry can never be taken back. Immediate revert, so the layer object is provably live
+      // (only the DEFERRED closures above have to resolve by id).
+      if (materialized) restoreTrackById(layerId, materialized.before);
+      // Must not no-op in silence: this is pixel-identical to a fill that worked.
+      appState.statusHint =
+        selection?.state === "selected"
+          ? "Nothing filled — that area is outside the selection, or already this color"
+          : "Nothing filled — that area is already this color";
+      return;
+    }
     history.push(
       pixelCommand(
         () => {
@@ -561,15 +613,26 @@
       tctx.drawImage(canvas, 0, 0);
       fillRegionBehind(tctx, region, color);
       ctx.save();
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection.applyClip(ctx);
-      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
-      ctx.restore();
+      try {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection.applyClip(ctx);
+        compositeClippedCopy(ctx, tmp);
+      } finally {
+        ctx.restore();
+      }
     } else {
       fillRegionBehind(ctx, region, color);
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    if (sameImageData(before, after)) {
+      // `area > 0` was measured on the UNCLIPPED cell, so the selection can still remove all of it
+      // after the fact — which is why the earlier `nothing()` cannot cover this and the message
+      // names the real cause. Revert the materialised ◆ for the same reason as the click fill.
+      if (materialized) restoreTrackById(layerId, materialized.before);
+      appState.statusHint = "Nothing filled — the enclosed area is outside the selection";
+      return;
+    }
     history.push(
       pixelCommand(
         () => {
@@ -620,25 +683,37 @@
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
       strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+      // try/finally at all three: strokeCtx is LONG-LIVED (it is the cell's own context), so a
+      // throw between save() and restore() strands the clip and silently confines every later
+      // stroke to a region the artist cannot see.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawStroke(strokeCtx, curved, settings, done, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawStroke(strokeCtx, curved, settings, done, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     } else if (kind === "ink") {
       // Ink/marker: incremental quadratic line — no snapshot restore.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     } else {
       // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     }
     recomposite();
   }
@@ -1282,10 +1357,17 @@
       // map it into the cell. Identity compose is a no-op → today's blit. save/restore because the
       // cell ctx is SHARED and carries the plain dpr transform by convention.
       selCtx.save();
-      selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      applyInverseCompose(selCtx, liftComposeSteps);
-      selection.renderFloatingTo(selCtx);
-      selCtx.restore();
+      try {
+        selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        applyInverseCompose(selCtx, liftComposeSteps);
+        selection.renderFloatingTo(selCtx);
+      } finally {
+        // Same class as the fill/stroke pairs: selCtx is the CELL's context and outlives this call,
+        // so a throw in between (drawWarpedMesh on a degenerate warp grid is the candidate) would
+        // strand the composed transform on it. Milder than a stranded clip — later writers mostly
+        // setTransform or getImageData first — but "we hardened all of them" has to be true.
+        selCtx.restore();
+      }
       const ctx = selCtx;
       const before = selBefore;
       const layerId = selLayer?.id ?? null;
@@ -1440,14 +1522,23 @@
   // unless the working ROW is a layer AND that layer is an editable (unlocked, visible) drawing
   // layer. The row check is not redundant: `activeLayerId` is memory that survives selecting the
   // audio lane or a group row, so without it these writes land in a layer nothing on screen names.
+  /** The active layer, but only when it is a writable drawing target: a layer working row (not
+   *  audio / group / group track) carrying an unlocked, visible drawing layer. Split out of
+   *  `activeDrawableCtx` so the SAME question can be asked without the side effect below —
+   *  `ensureDrawableKeyframe` materialises a keyframe on a hold, so it must never run for a query. */
+  function drawableTarget(): DrawingLayer | null {
+    if (workingTarget(appState.activeRow).kind !== "layer") return null;
+    const layer = activeLayer();
+    return isLayerEditable(layer, appState.project.groups) ? layer : null;
+  }
+
   function activeDrawableCtx(): {
     ctx: CanvasRenderingContext2D;
     layer: DrawingLayer;
     materialized: CellTrackChange | null;
   } | null {
-    if (workingTarget(appState.activeRow).kind !== "layer") return null;
-    const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return null;
+    const layer = drawableTarget();
+    if (!layer) return null;
     const { canvas, materialized } = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -1895,6 +1986,16 @@
     selectionActions.cut = cutSelection;
     selectionActions.del = deleteSelection;
     selectionActions.paste = pasteSelection;
+    // The single owner of "would a pixel paste land?", so App's Cmd+V routing and ToolOptions'
+    // Paste enable-state cannot drift from `pasteSelection`'s own preconditions (three independent
+    // copies of this predicate was a review finding). It is exactly `pasteSelection` minus the
+    // `ensureDrawableKeyframe` step, which cannot fail for a `drawableTarget()`.
+    // `hasPixelClipboard` is the REACTIVE mirror of `selectionClipboard` (a plain Canvas local that
+    // a Svelte read cannot track), so both are read: the mirror to register the dependency for
+    // template/derived callers, the local for the truth — the two only disagree if Canvas remounts,
+    // and answering `true` there is precisely the "keystroke silently does nothing" case.
+    selectionActions.canPaste = () =>
+      appState.hasPixelClipboard && !!selectionClipboard && drawableTarget() !== null;
     // Escape's behavior exactly: cancel (revert a move), never commit. Tap-outside still commits.
     selectionActions.deselect = () => {
       if (selection?.active) selection.cancel();
@@ -1927,6 +2028,7 @@
       selectionActions.cut = null;
       selectionActions.del = null;
       selectionActions.paste = null;
+      selectionActions.canPaste = null;
       selectionActions.deselect = null;
       viewActions.fitView = null;
       fillActions.allEnclosed = null;

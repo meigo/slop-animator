@@ -1875,6 +1875,11 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // a live lift's captured cell canvas is about to be replaced
+  // Same hole `replaceProject` had, reachable from a documented menu action: selection geometry is
+  // DOCUMENT space, so a marquee near the bottom-right of a 1920x1080 project survives a resize to
+  // 640x480 entirely off the paper — invisible, and still clipping both fills and all three stroke
+  // engines. Same ordering rationale as there: after `discard`, which leaves a floatless outline.
+  selectionActions.deselect?.();
   const rect = placeContent(
     state.project.width * DPR,
     state.project.height * DPR,
@@ -1983,6 +1988,19 @@ export function replaceProject(project: Project) {
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
+  // ...and then the marquee itself, which `discard` deliberately leaves: its selection branch is
+  // `if (selection?.hasFloating) selection.cancel()`, i.e. an actual LIFT only, never a plain
+  // outline. Selection geometry is DOCUMENT space, so a marquee left over from the outgoing project
+  // can sit entirely off the incoming paper — invisible, while still CLIPPING all five paint sites
+  // (both fills and the three stroke engines). The symptom is "the brush is broken" with nothing on
+  // screen to explain it.
+  // Ordering: BELOW `discard` because `discard` is the BROADER teardown (pose mesh, open stroke,
+  // and the keyframes either materialised, each on its own independent branch), and this call then
+  // drops only what it leaves behind. `deselect` makes the very same `selection.cancel()` call, so
+  // running it first would not route anything differently — it would just do half of `discard`'s
+  // job early, out of order, for no gain. It must also stay ABOVE the settle/clear pair below,
+  // whose adjacency is itself load-bearing.
+  selectionActions.deselect?.();
   // Settle any in-flight transform/range/hold drag too. Without this its release would push
   // restoreStructure(before) — a snapshot of the OUTGOING document — into the incoming one's
   // history. MUST stay above history.clear(): settling commits, and clearing right after is what
@@ -2076,9 +2094,20 @@ export const selectionActions: {
   cut: (() => void) | null;
   del: (() => void) | null;
   paste: (() => boolean) | null;
+  /** Would `paste` actually land? The single owner of that predicate — App's Cmd+V routing and
+   *  ToolOptions' Paste enable-state both ask it rather than re-deriving it. Side-effect free. */
+  canPaste: (() => boolean) | null;
   /** Drop the selection, reverting an in-progress move — same as the Escape key (never commits). */
   deselect: (() => void) | null;
-} = { enterWarp: null, copy: null, cut: null, del: null, paste: null, deselect: null };
+} = {
+  enterWarp: null,
+  copy: null,
+  cut: null,
+  del: null,
+  paste: null,
+  canPaste: null,
+  deselect: null,
+};
 
 /** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
  *  menu) reaches zoom/pan through here. */

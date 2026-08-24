@@ -196,7 +196,12 @@
       activeLayer().kind === "draw" &&
       workingTarget(appState.activeRow).kind === "layer"}
     {@const canCut = appState.selectionActive && canPaint}
-    {@const canPaste = appState.hasPixelClipboard && canPaint}
+    <!-- Asked of Canvas (the owner of pasteSelection) rather than re-derived from
+         hasPixelClipboard + canPaint: three independent spellings of one predicate is how the
+         button's enable-state and the keyboard's Cmd+V routing drift apart. It reads appState
+         proxies internally, so it stays reactive here. `whyPaste` below still uses the local
+         paintBlock — that is MESSAGING, and only renders when this is already false. -->
+    {@const canPaste = selectionActions.canPaste?.() ?? false}
     {@const whyCopy = !appState.selectionActive
       ? " — select an area first"
       : workingTarget(appState.activeRow).kind !== "layer"

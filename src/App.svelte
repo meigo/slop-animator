@@ -34,10 +34,30 @@
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore, pruneMedia } from "./persist/media-store";
   import { referencedMediaIds } from "./persist/project-file";
+  import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
 
-  // Set when a Cmd+V is consumed as a cell paste, so the window `paste` event (onPaste) skips
-  // its image-file handling for the same keystroke. keydown fires before paste.
-  let cellPasteHandled = false;
+  /** Is this keystroke a Cmd/Ctrl+V? `e.key` is LAYOUT-dependent — a Cyrillic or Greek layout
+   *  reports "\u043c" for the physical V — so the physical `e.code` is matched too. That mattered
+   *  little when the fallthrough was the image handler, but a route decision must not silently
+   *  differ by layout. */
+  function isPasteKey(e: KeyboardEvent): boolean {
+    return e.key.toLowerCase() === "v" || e.code === "KeyV";
+  }
+
+  /** Which handler owns a paste RIGHT NOW, derived from clipboard + target state rather than
+   *  latched across events. `keydown` uses it to decide what to do; the window `paste` event uses
+   *  it to decide whether the keystroke it is following was already consumed. See
+   *  `paste-precedence.ts` for why the old `cellPasteHandled` flag could not be made correct. */
+  function currentPasteRoute(): PasteRoute {
+    return pasteRoute({
+      selectTool: state.tool === "select" || state.tool === "lasso",
+      // Asked of Canvas, which owns `pasteSelection` — never re-derived here. Spelling the
+      // predicate out a second time is how it drifts, and the failure is silent in both
+      // directions: too strict swallows an image paste, too loose makes Cmd+V do nothing at all.
+      pixelPasteReady: selectionActions.canPaste?.() ?? false,
+      hasCellClipboard: !!state.cellClipboard,
+    });
+  }
 
   function onKey(e: KeyboardEvent) {
     // An export renders every frame from the LIVE project, one awaited frame at a time. Undoing (or
@@ -46,9 +66,6 @@
     // ⌘Z, which is handled above the INPUT/TEXTAREA guard below.
     if (state.exportBusy) return;
     const meta = e.ctrlKey || e.metaKey;
-    // Never leave the cell-paste guard stuck true if a `paste` event didn't follow a prior Cmd+V
-    // (browser/platform variance) — reset it on any keydown that isn't itself a Cmd+V.
-    if (!(meta && e.key.toLowerCase() === "v")) cellPasteHandled = false;
     if (meta && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -60,7 +77,6 @@
     if (tag === "INPUT" || tag === "TEXTAREA") return;
 
     const selActive = !!selectionRef.current?.active && !selectionRef.current.hasFloating;
-    const selectTool = state.tool === "select" || state.tool === "lasso";
 
     if (e.key === "Delete" || e.key === "Backspace") {
       if (selActive) {
@@ -80,13 +96,28 @@
       selectionActions.cut?.();
       return;
     }
-    if (meta && e.key.toLowerCase() === "v" && selectTool) {
-      if (selectionActions.paste?.()) {
+    // ONE Cmd+V branch for all three routes (the pixel float, timeline cells, an OS image), so the
+    // precedence lives in exactly one place — `currentPasteRoute()` — that `onPaste` can ask again
+    // without anything being carried between the two events. Consuming the keystroke means
+    // preventDefault(), which suppresses the `paste` event that would otherwise follow.
+    if (meta && isPasteKey(e)) {
+      const route = currentPasteRoute();
+      // `canPaste` is `pasteSelection` minus a step that cannot fail, so a decline here means the
+      // two disagreed — state moved between the question and the answer. Fall through to the
+      // REMAINING routes rather than consuming the keystroke: with nothing below it, a declined
+      // pixel paste would make Cmd+V do nothing at all, silently.
+      const pasted = route === "pixels" && selectionActions.paste?.();
+      if (pasted) {
         e.preventDefault();
-        cellPasteHandled = true; // consume this Cmd+V so onPaste doesn't also image-paste
         return;
       }
-      // pixel clipboard empty → fall through to the timeline/image paste below
+      if (state.cellClipboard) {
+        e.preventDefault();
+        pasteCells(e.shiftKey);
+        return;
+      }
+      // → image: do NOT preventDefault. The browser's `paste` event follows and onPaste turns an
+      // image file on the clipboard into a reference layer.
     }
 
     if (meta && e.key.toLowerCase() === "c" && state.timelineSelection) {
@@ -97,12 +128,6 @@
     if (meta && e.key.toLowerCase() === "x" && state.timelineSelection) {
       e.preventDefault();
       cutTimelineSelection();
-      return;
-    }
-    if (meta && e.key.toLowerCase() === "v" && state.cellClipboard) {
-      e.preventDefault();
-      cellPasteHandled = true; // tell onPaste to skip this keystroke
-      pasteCells(e.shiftKey);
       return;
     }
     if ((e.key === "Delete" || e.key === "Backspace") && state.timelineSelection) {
@@ -178,10 +203,13 @@
   }
 
   function onPaste(e: ClipboardEvent) {
-    if (cellPasteHandled) {
-      cellPasteHandled = false;
-      return; // this Cmd+V was a cell paste; don't also handle it as an image paste
-    }
+    // Normally unreachable when an app paste happened: onKey called preventDefault() for those,
+    // which suppresses this event. The check is the defensive half — a browser that fires `paste`
+    // anyway would otherwise image-paste the same keystroke a second time. Asking
+    // `currentPasteRoute()` again (rather than reading a flag set during the keydown) is what fixes
+    // the old bug: the flag could never be cleared by the very event its own preventDefault
+    // suppressed, so it stayed armed and swallowed the NEXT Cmd+V.
+    if (currentPasteRoute() !== "image") return;
     const items = e.clipboardData?.items;
     if (!items) return;
     for (const it of items) {
