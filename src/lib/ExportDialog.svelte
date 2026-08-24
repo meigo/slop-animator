@@ -2,6 +2,7 @@
   import { state as appState, DPR, playbackController, liftGuard } from "../state/appState.svelte";
   import { exportPngSequence } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
+  import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
@@ -35,6 +36,14 @@
   const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
   const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
 
+  // PSD is the CURRENT frame (playhead), not the range — a "PSD sequence" isn't a thing this
+  // format needs. 1-based, per the brief: the same numbering the PNG sequence shows the artist
+  // elsewhere. Padded to the project's own frame-count width so the filename doesn't look out of
+  // step with frame_0007.png-style names the app already produces.
+  const psdFrame = $derived(appState.playhead + 1);
+  const psdPad = $derived(Math.max(4, String(appState.project.frameCount).length));
+  const psdFilename = $derived(`${stem}-f${String(psdFrame).padStart(psdPad, "0")}.psd`);
+
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
   // while `exportBusy` is set (so a stray shortcut cannot edit the project mid-render), which would
   // otherwise swallow this too. Bound only while a render is in flight.
@@ -47,7 +56,7 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function run(kind: "png" | VideoFormat) {
+  async function run(kind: "png" | "psd" | VideoFormat) {
     if (busy) return;
     busy = true;
     playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
@@ -74,6 +83,20 @@
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
         downloadBlob(blob, `${stem}.zip`);
+        status = "Done.";
+      } else if (kind === "psd") {
+        // One frame, CPU-only, no encoder handshake — the whole call is synchronous and typically
+        // sub-second even on a busy document, so there is nothing for a progress bar to show and
+        // nothing a Cancel button could interrupt before it would already be done. Because nothing
+        // here `await`s, Svelte never gets a chance to paint the `busy` progress panel in between —
+        // `exportBusy`/`liftGuard`/pause still run around it, matching the other two formats, since
+        // those guard against the SAME hazards (a live lift, playback fighting the render) that a
+        // single-frame render is just as exposed to.
+        const bytes = exportPsdFrame(appState.project, appState.playhead, DPR);
+        downloadBlob(
+          new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/vnd.adobe.photoshop" }),
+          psdFilename,
+        );
         status = "Done.";
       } else {
         const { blob, warning } = await exportVideo(appState.project, DPR, kind, range, {
@@ -164,6 +187,12 @@
           disabled={!videoOk}
           onclick={() => run("webm")}>WebM video — {stem}.webm</button
         >
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover"
+          onclick={() => run("psd")}
+        >
+          PSD (current frame) — {psdFilename}
+        </button>
       {/if}
       {#if partial}
         <span class="text-xs text-amber-500">
@@ -172,15 +201,25 @@
         </span>
       {/if}
       {#if refCount > 0}
-        <!-- Both exporters hardcode includeReference:false, so references are visible while you
-             work and silently absent from every output. Said here because this is the moment it
-             matters, and nothing else in the app says it. -->
+        <!-- All three exporters (video/PNG/PSD) hardcode includeReference:false, so references are
+             visible while you work and silently absent from every output. Said here because this is
+             the moment it matters, and nothing else in the app says it. -->
         <span class="text-xs text-text-secondary">
           {refCount === 1
             ? "1 reference layer is a guide"
             : `${refCount} reference layers are guides`}
           and will not appear in the export. To include an image reference, use “Rasterize to drawing
           layer” on its layer row first.
+        </span>
+      {/if}
+      {#if appState.project.boil.enabled}
+        <!-- The one place a PSD deliberately disagrees with a PNG of the same frame: boil is a
+             render-time wobble baked by compositing every drawing layer inside one GL surface and
+             reading it back once, with no per-layer equivalent to bake into a PSD's separate
+             layers — and the clean line is what paint-up wants anyway. Said only when boil is on,
+             since with it off there is nothing for the two to disagree about. -->
+        <span class="text-xs text-text-secondary">
+          Line boil is not applied to the PSD — it will look cleaner than a PNG of the same frame.
         </span>
       {/if}
       {#if !videoOk}
