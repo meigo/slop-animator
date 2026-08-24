@@ -8,18 +8,41 @@
  * only then write length-then-body. Every section in the PSD export goes through one of them.
  */
 export class Bytes {
-  private a: number[] = [];
+  // A GROWABLE Uint8Array, not a number[]. The difference is not stylistic at this feature's
+  // sizes: a PSD of a 1920x1080 frame runs to tens of megabytes, and a number[] holds every byte
+  // as a boxed element (~8x the memory) before `Uint8Array.from` copies the lot — hundreds of MB
+  // transient on the device the 1x document-scale work exists to protect. `bytes()` matters most:
+  // it is the path every packed channel row takes, and a bulk `set` replaces a push per byte.
+  private buf = new Uint8Array(1024);
+  private n = 0;
+
+  /** Ensure room for `need` more bytes, doubling so appends stay amortised O(1). */
+  private room(need: number) {
+    if (this.n + need <= this.buf.length) return;
+    let cap = this.buf.length * 2;
+    while (cap < this.n + need) cap *= 2;
+    const next = new Uint8Array(cap);
+    next.set(this.buf.subarray(0, this.n));
+    this.buf = next;
+  }
 
   u8(v: number) {
-    this.a.push(v & 0xff);
+    this.room(1);
+    this.buf[this.n++] = v & 0xff;
     return this;
   }
   u16(v: number) {
-    this.a.push((v >> 8) & 0xff, v & 0xff);
+    this.room(2);
+    this.buf[this.n++] = (v >> 8) & 0xff;
+    this.buf[this.n++] = v & 0xff;
     return this;
   }
   u32(v: number) {
-    this.a.push((v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
+    this.room(4);
+    this.buf[this.n++] = (v >>> 24) & 0xff;
+    this.buf[this.n++] = (v >>> 16) & 0xff;
+    this.buf[this.n++] = (v >>> 8) & 0xff;
+    this.buf[this.n++] = v & 0xff;
     return this;
   }
   i16(v: number) {
@@ -29,11 +52,14 @@ export class Bytes {
     return this.u32(v < 0 ? v + 0x100000000 : v);
   }
   ascii(s: string) {
-    for (const c of s) this.a.push(c.charCodeAt(0) & 0xff);
+    this.room(s.length);
+    for (let i = 0; i < s.length; i++) this.buf[this.n++] = s.charCodeAt(i) & 0xff;
     return this;
   }
   bytes(b: Uint8Array) {
-    for (let i = 0; i < b.length; i++) this.a.push(b[i]);
+    this.room(b.length);
+    this.buf.set(b, this.n);
+    this.n += b.length;
     return this;
   }
 
@@ -45,7 +71,7 @@ export class Bytes {
     const t = s.slice(0, 255);
     this.u8(t.length).ascii(t);
     const pad = (4 - ((1 + t.length) % 4)) % 4;
-    for (let i = 0; i < pad; i++) this.a.push(0);
+    for (let i = 0; i < pad; i++) this.u8(0);
     return this;
   }
 
@@ -84,8 +110,10 @@ export class Bytes {
     return this;
   }
 
+  /** A COPY, not a view: callers keep the result while this writer may keep growing (every
+   *  `len32` does exactly that), and a `subarray` would alias a buffer about to be reallocated. */
   build(): Uint8Array {
-    return Uint8Array.from(this.a);
+    return this.buf.slice(0, this.n);
   }
 }
 
