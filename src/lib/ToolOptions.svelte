@@ -183,7 +183,13 @@
         if (canPaint) fillActions.allEnclosed?.();
       }}>Fill enclosed</button
     >
-    <input type="color" bind:value={appState.brush.color} title="Fill color" />
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
+      >Opacity
+      <input type="range" min="1" max="100" class="w-16" bind:value={appState.fill.opacity} />
+    </label>
+    <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
+         `brush.color`, so the label is now true rather than aspirational. -->
+    <input type="color" bind:value={appState.fill.color} title="Fill color" />
   {:else if appState.tool === "select" || appState.tool === "lasso"}
     <!-- aria-disabled, NOT disabled: a disabled button dispatches no pointer events, so the status
          bar's delegated title= hint can never reach it — see CLAUDE.md's 2026-08-12 entry. Handlers

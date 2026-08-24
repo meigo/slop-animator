@@ -168,7 +168,11 @@ interface AnimState {
   transformScope: "frame" | "layer" | "group";
   brush: ToolSettings;
   eraser: ToolSettings;
-  fill: { tolerance: number; expand: number; gap: number };
+  /** The bucket's OWN colour and opacity. Separate from the brush on purpose — in a cel-painting
+   *  model outlines and flats are different colours by definition, so sharing one swatch meant
+   *  re-picking on every crossing between brush and bucket. Opacity separates with it: a brush
+   *  dropped to 30% for roughing would otherwise silently hand that 30% to every flat. */
+  fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
   /** Bumped whenever the display must recomposite (document edits AND view-only ticks). */
   version: number;
   /** Bumped only when the saved project would change. Autosave keys off this, not version. */
@@ -277,7 +281,7 @@ export const state: AnimState = $state({
     streamline: 50,
     brushType: "smooth",
   },
-  fill: { tolerance: 32, expand: 2, gap: 0 },
+  fill: { tolerance: 32, expand: 2, gap: 0, color: "#1a1a1a", opacity: 100 },
   version: 0,
   persistTick: 0,
   curveVersion: 0,
@@ -1926,10 +1930,16 @@ export function selectEyedropper() {
   toolBeforeEyedropper = state.tool;
   state.tool = "eyedropper";
 }
-/** Set the brush color from a sampled pixel, then return to the pre-eyedropper tool. */
+/**
+ * Set the sampled colour on whichever tool is about to become active again, then return to it.
+ * Picking a colour while filling has to change the FILL colour — routing every pick to the brush
+ * would make the eyedropper useless to the bucket, which is the tool most likely to need it.
+ */
 export function applyEyedropper(hex: string) {
-  state.brush.color = hex;
-  state.tool = toolBeforeEyedropper === "eyedropper" ? "brush" : toolBeforeEyedropper;
+  const back = toolBeforeEyedropper === "eyedropper" ? "brush" : toolBeforeEyedropper;
+  if (back === "fill") state.fill.color = hex;
+  else state.brush.color = hex;
+  state.tool = back;
 }
 
 /** Signal that the (imperative) pressure curve changed, so the preferences save effect re-runs. */

@@ -3471,3 +3471,34 @@ it is ever wanted.
 gesture rule is strictest; cut then paste externally; that an insecure-context load stays silent
 while the internal copy still works; and that a copy composited from a transformed or partly
 transparent layer arrives looking the way it does on screen.
+
+**The bucket has its own colour and opacity (2026-08-24).** Ported from `slop-spine`, which hit the
+same shared swatch this app had: both fill sites read `brush.color`/`brush.opacity`, so crossing
+between brush and bucket meant re-picking every time. In a cel-painting model — and this app has
+`fillRegionBehind`, so it is exactly that model — outlines and flats are different colours by
+definition. `state.fill` now carries `color` and `opacity` alongside `tolerance`/`expand`/`gap`, and
+rides the existing `gatherPreferences`/`applyPreferences` spread-merge for free, so an OLD stored
+preference simply leaves the new defaults in place.
+**Opacity separated WITH the colour, deliberately, and that is the half worth arguing.** Separating
+only the colour would have left a brush dropped to 30% for roughing silently handing that 30% to
+every flat — a surprise with nothing on screen to explain it. The alternative, forcing fills opaque,
+would have removed washes and tints, which are a real use. So the bucket gets its own opacity
+defaulting to 100, and the two tools are now fully independent rather than half-shared.
+**The ToolOptions swatch needed no new markup — it was already labelled "Fill color" while writing
+`brush.color`.** The label is now true rather than aspirational, which is worth noticing as a class:
+a control whose title already describes the behaviour someone intended is a good place to look for
+this kind of half-finished separation.
+**The eyedropper follows the tool it returns to.** `applyEyedropper` sets `fill.color` when the
+pre-eyedropper tool was the bucket and `brush.color` otherwise. Routing every pick to the brush would
+have made the eyedropper useless to the tool most likely to need it — you sample a flat precisely
+because you are about to fill with it.
+**Owed a browser pass:** brush and bucket hold different colours across a tool switch; the
+eyedropper under the bucket sets the FILL swatch and not the brush's; a translucent fill composites
+as expected (and `fillRegionBehind` still paints behind the ink); both survive a reload; and an
+old stored preference opens with the new defaults rather than undefined.
+
+**Browser-confirmed 2026-08-24 — the system-clipboard copy works: a copied selection pastes into
+another app.** That is the headline for the entry above and the whole point of the port, since it is
+what makes pixels flow both ways between the slop-\* apps. Not individually walked, so still owed:
+the same on iPad, where the gesture rule is strictest and a failure would be silent; cut rather than
+copy; and that an insecure-context load stays quiet while the internal copy still works.

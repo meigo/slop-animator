@@ -5,7 +5,7 @@ export interface Preferences {
   tool: Tool;
   brush: ToolSettings;
   eraser: ToolSettings;
-  fill: { tolerance: number; expand: number; gap: number };
+  fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
   theme: "dark" | "light";
   loop: boolean;
   timelineHeight?: number; // px height of the resizable timeline panel
