@@ -99,6 +99,25 @@ describe("Bytes.len32", () => {
     expect(str(out, 9, 3)).toBe("xyz");
   });
 
+  it("nests three deep, matching how later tasks actually nest sections (layer-and-mask -> layer info -> per-layer extra data)", () => {
+    const b = new Bytes();
+    b.len32((outer) => {
+      outer.u8(0x01);
+      outer.len32((mid) => {
+        mid.u8(0x02);
+        mid.len32((inner) => inner.ascii("nested")); // 4-byte prefix + 6 bytes = 10
+      });
+    });
+    const out = b.build();
+    // outer body = 1 (u8) + [4 (mid's own prefix) + mid body]
+    // mid body = 1 (u8) + 10 (inner len32 block) = 11
+    expect(u32(out, 0)).toBe(1 + 4 + 11); // outer prefix = 16
+    expect(u32(out, 5)).toBe(11); // mid prefix
+    expect(u32(out, 10)).toBe(6); // inner prefix
+    expect(str(out, 14, 6)).toBe("nested");
+    expect(out.length).toBe(4 + 16); // outer prefix + outer body
+  });
+
   it("writes a zero length prefix for an empty body, with no trailing bytes", () => {
     const b = new Bytes();
     b.len32(() => {});
@@ -183,15 +202,35 @@ describe("Bytes.pascal4", () => {
     expect(out[0]).toBe(0);
   });
 
-  it("two consecutive calls each pad independently, with no leaked state between them", () => {
+  it("three consecutive calls with DIFFERENT pad amounts (2, 1, 0 bytes) each pad independently — a carried-over pad counter would compound and misplace every field after the first", () => {
     const b = new Bytes();
-    b.pascal4("ab"); // -> 4 bytes
-    b.pascal4("abcde"); // -> 8 bytes
+    b.pascal4("a"); // 1 + 1 = 2 -> pad 2 -> 4 bytes
+    b.pascal4("ab"); // 1 + 2 = 3 -> pad 1 -> 4 bytes
+    b.pascal4("abc"); // 1 + 3 = 4 -> pad 0 -> 4 bytes
     const out = b.build();
     expect(out.length).toBe(12);
-    expect(out[0]).toBe(2);
-    expect(out[4]).toBe(5);
-    expect(str(out, 5, 5)).toBe("abcde");
+    expect(out[0]).toBe(1);
+    expect(str(out, 1, 1)).toBe("a");
+    expect(out[4]).toBe(2);
+    expect(str(out, 5, 2)).toBe("ab");
+    expect(out[8]).toBe(3);
+    expect(str(out, 9, 3)).toBe("abc");
+  });
+
+  it("truncates a name past 255 chars, and the field length stays a multiple of 4 at the boundary (never negative padding)", () => {
+    const b = new Bytes();
+    b.pascal4("x".repeat(300)); // truncated to 255; 1 + 255 = 256, already a multiple of 4
+    const out = b.build();
+    expect(out.length).toBe(256);
+    expect(out[0]).toBe(255); // length byte reflects the TRUNCATED length, not 300
+    expect(str(out, 1, 255)).toBe("x".repeat(255));
+
+    const b2 = new Bytes();
+    b2.pascal4("y".repeat(254)); // truncation not needed here, but 1 + 254 = 255 -> pad 1
+    const out2 = b2.build();
+    expect(out2.length).toBe(256);
+    expect(out2[0]).toBe(254);
+    expect(out2[255]).toBe(0); // the single pad byte
   });
 });
 
@@ -214,5 +253,28 @@ describe("Bytes.unicodeName", () => {
     // "8BIM" (4) + "luni" (4) + len32Even prefix (4) + body
     expect(u32(out, 8)).toBe(10);
     expect(out.length).toBe(8 + 4 + 10);
+  });
+
+  it("writes an astral character as a surrogate PAIR, not a single truncated halfword", () => {
+    // "hi\u{1F600}" is 4 UTF-16 code units (h, i, and a surrogate pair for the emoji) but
+    // only 3 code points. A `for...of` loop over the string iterates code points, dropping the
+    // low surrogate, while `s.length` (used for the declared count) still counts both halves.
+    // That mismatch is the bug: the count and the data must agree, and the surrogate pair must
+    // survive intact.
+    const s = "hi\u{1F600}";
+    expect(s.length).toBe(4); // 'h', 'i', high surrogate, low surrogate
+    const b = new Bytes();
+    b.unicodeName(s);
+    const out = b.build();
+    const count = u32(out, 12);
+    expect(count).toBe(4); // declared count matches code UNITS, not code points
+    expect(u16(out, 16)).toBe(0x0068); // 'h'
+    expect(u16(out, 18)).toBe(0x0069); // 'i'
+    expect(u16(out, 20)).toBe(0xd83d); // high surrogate
+    expect(u16(out, 22)).toBe(0xde00); // low surrogate
+    // The number of halfwords actually written after the count field matches the declared count.
+    // body = 4 (count) + count * 2 bytes; the len32Even prefix at offset 8 covers that whole body.
+    const bodyLen = u32(out, 8);
+    expect(bodyLen).toBe(4 + count * 2);
   });
 });

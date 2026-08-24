@@ -49,12 +49,18 @@ export class Bytes {
     return this;
   }
 
-  /** The 'luni' additional-info block: the real (UTF-16) layer name Photoshop shows. */
+  /**
+   * The 'luni' additional-info block: the real (UTF-16) layer name Photoshop shows.
+   * Iterates UTF-16 CODE UNITS (`s.length`/`charCodeAt`), not code points — `for...of` over a
+   * string yields code points, which would split an astral character's surrogate pair and write
+   * only its high half while the declared count (`s.length`) still counted both units, corrupting
+   * the block for any layer name containing one (e.g. an emoji, reachable from iPad's keyboard).
+   */
   unicodeName(s: string) {
     this.ascii("8BIM").ascii("luni");
     this.len32Even((w) => {
       w.u32(s.length);
-      for (const c of s) w.u16(c.charCodeAt(0));
+      for (let i = 0; i < s.length; i++) w.u16(s.charCodeAt(i));
     });
     return this;
   }
