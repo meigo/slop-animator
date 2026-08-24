@@ -173,6 +173,17 @@
       <input type="range" min="0" max={MAX_GAP} class="w-16" bind:value={appState.fill.gap} />
       <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
     </label>
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
+      >Opacity
+      <input type="range" min="1" max="100" class="w-16" bind:value={appState.fill.opacity} />
+    </label>
+    <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
+         `brush.color`, so the label is now true rather than aspirational. -->
+    <input type="color" bind:value={appState.fill.color} title="Fill color" />
+    <!-- PARAMETERS then the ACTION, split by the bar language's divider. "Fill enclosed" sat
+         mid-row before, which broke the params into two unrelated halves. The swatch stays LAST of
+         the params, matching the brush branch, which also ends on its colour. -->
+    <span class="mx-1 h-5 w-px bg-border"></span>
     <button
       class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs hover:bg-surface-hover hover:text-text aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
       title={paintBlock
@@ -183,13 +194,6 @@
         if (canPaint) fillActions.allEnclosed?.();
       }}>Fill enclosed</button
     >
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
-      >Opacity
-      <input type="range" min="1" max="100" class="w-16" bind:value={appState.fill.opacity} />
-    </label>
-    <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
-         `brush.color`, so the label is now true rather than aspirational. -->
-    <input type="color" bind:value={appState.fill.color} title="Fill color" />
   {:else if appState.tool === "select" || appState.tool === "lasso"}
     <!-- aria-disabled, NOT disabled: a disabled button dispatches no pointer events, so the status
          bar's delegated title= hint can never reach it — see CLAUDE.md's 2026-08-12 entry. Handlers

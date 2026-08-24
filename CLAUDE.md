@@ -3502,3 +3502,16 @@ another app.** That is the headline for the entry above and the whole point of t
 what makes pixels flow both ways between the slop-\* apps. Not individually walked, so still owed:
 the same on iPad, where the gesture rule is strictest and a failure would be silent; cut rather than
 copy; and that an insecure-context load stays quiet while the internal copy still works.
+
+**Fill options are PARAMETERS then the ACTION (2026-08-24).** Reported as "is the order optimal?"
+after the bucket got its own swatch — and it was not: `Fill enclosed` sat between Gap and Opacity, so
+an ACTION split the parameters into two unrelated halves and the row read as two groups that had
+nothing to do with each other. It now runs Tolerance, Expand, Gap, Opacity, swatch, then the bar
+language's `w-px h-5 bg-border mx-1` divider, then the button.
+**The swatch staying LAST of the parameters is deliberate, not leftover.** The brush branch ends on
+its colour too, so the two tool bars now finish the same way and a colour is always in the same
+place. Checking the sibling before moving anything is what stopped this becoming a fix that made the
+pair inconsistent — the swatch's position was never the problem.
+**The general rule: in a ToolOptions branch, an action goes at the END behind a divider, never
+between parameters.** Params are scanned and tweaked; an action is pressed. Interleaving them makes
+neither group readable, and it is how a destructive control ends up next to a slider.
