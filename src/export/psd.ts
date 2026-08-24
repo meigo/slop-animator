@@ -82,8 +82,11 @@ function layerChannelBlock(
   height: number,
   source: number,
 ): Uint8Array {
+  // An empty channel declares RAW (compression 0), which is what Photoshop and ag-psd write.
+  // A length-respecting reader accepts either, but "RLE with no row table" is a shape real
+  // files never contain, and this is the divider layers' only channel data.
+  if (width <= 0 || height <= 0) return new Bytes().u16(0).build();
   const b = new Bytes().u16(1); // RLE
-  if (width <= 0 || height <= 0) return b.build();
   const rows = packChannelRows(px, width, height, source);
   for (const r of rows) b.u16(r.length);
   for (const r of rows) b.bytes(r);
@@ -105,6 +108,16 @@ const LSCT_BOUNDING = 3;
 
 /** The name Photoshop itself writes on a bounding divider. Not shown in the layers panel. */
 const SECTION_END_NAME = "</Layer group>";
+
+/**
+ * Layer-record flags. Bit 1 (0x02) is hidden. Bit 3 (0x08) is "Photoshop 5.0 and later", which
+ * declares bit 4 to hold useful information, and real writers set it on EVERY layer. Bit 4
+ * (0x10) is "pixel data irrelevant to appearance", which they set on any layer carrying a
+ * section divider of a type other than 0 — both of ours qualify.
+ */
+const FLAG_HIDDEN = 0x02;
+const FLAG_PS5 = 0x08;
+const FLAG_PIXELS_IRRELEVANT = 0x10;
 
 const ZERO_RECT: PsdRect = { top: 0, left: 0, bottom: 0, right: 0 };
 const NO_PIXELS = () => new Uint8ClampedArray(0);
@@ -216,7 +229,11 @@ function encodeLayer(node: FlatLayer): EncodedLayer {
     .ascii("norm")
     .u8(node.opacity)
     .u8(0) // clipping
-    .u8(node.hidden ? 2 : 0) // flags; bit 1 (value 2) is hidden, and visible layers write 0
+    .u8(
+      FLAG_PS5 |
+        (node.hidden ? FLAG_HIDDEN : 0) |
+        (node.lsct === undefined ? 0 : FLAG_PIXELS_IRRELEVANT),
+    )
     .u8(0) // filler
     .len32((extra) => {
       extra.u32(0); // layer mask data
@@ -226,9 +243,22 @@ function encodeLayer(node: FlatLayer): EncodedLayer {
       const { lsct } = node;
       // Written only for the two divider layers. Emitting it on every layer would make each
       // one its own folder — structurally valid, and unopenable-looking in the panel.
+      //
+      // The payload length is what varies, and this is the one place the file could differ
+      // from what a real writer produces. Adobe's spec makes the tail optional ("only present
+      // if length >= 12"), and readers tolerate the 4-byte form on either kind — but ag-psd
+      // writes the short form ONLY on a bounding divider and always writes the long form on a
+      // folder. Since the acceptance check for this feature is literally "does Photoshop open
+      // it with folders", the folder matches ag-psd byte for byte: type, then the blend-mode
+      // key, then the sub type. 'norm' rather than 'pass' because the spec puts the group's
+      // opacity on the FOLDER, and only a Normal group composites that opacity as a unit —
+      // a Pass Through group would not match what the editor shows.
       if (lsct !== undefined) {
         extra.ascii("8BIM").ascii("lsct");
-        extra.len32Even((w) => w.u32(lsct));
+        extra.len32Even((w) => {
+          w.u32(lsct);
+          if (lsct !== LSCT_BOUNDING) w.ascii("8BIM").ascii("norm").u32(0); // blend key, sub type
+        });
       }
     });
 

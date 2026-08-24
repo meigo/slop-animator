@@ -59,6 +59,9 @@ interface ParsedLayer {
   name: string;
   /** The 'lsct' section-divider type, or null for an ordinary layer. */
   lsct: number | null;
+  /** The 'lsct' payload length in bytes — the part that varies between divider kinds. */
+  lsctLen: number | null;
+  lsctBody: Uint8Array | null;
   /** The additional-info block keys, in file order. */
   blockKeys: string[];
   channels: ParsedChannel[];
@@ -97,7 +100,11 @@ function parseExtra(extra: Uint8Array) {
   return {
     name,
     blockKeys: blocks.map((x) => x.key),
+    // Read from the block's own length, so the reader accepts the 4-, 12- and 16-byte forms
+    // the spec allows. Which one is actually written is pinned by an explicit assertion below.
     lsct: lsct ? dv(lsct.body).getUint32(0) : null,
+    lsctLen: lsct ? lsct.body.length : null,
+    lsctBody: lsct ? lsct.body : null,
   };
 }
 
@@ -149,7 +156,7 @@ function parse(b: Uint8Array) {
     o += 4;
     const extra = b.slice(o, o + extraLen);
     o += extraLen;
-    const { name, lsct, blockKeys } = parseExtra(extra);
+    const { name, lsct, lsctLen, lsctBody, blockKeys } = parseExtra(extra);
     layers.push({
       top,
       left,
@@ -161,6 +168,8 @@ function parse(b: Uint8Array) {
       blend,
       name,
       lsct,
+      lsctLen,
+      lsctBody,
       blockKeys,
       channels: decl.map((x) => ({ ...x, compression: 0, rowCounts: [], samples: [] })),
     });
@@ -259,7 +268,9 @@ describe("encodePsd — sections", () => {
       right: 2,
       opacity: 128,
       clipping: 0,
-      flags: 0,
+      // 0x08 is "Photoshop 5.0 and later", which real writers set on every layer. The divider
+      // bits (0x10) and hidden (0x02) must NOT appear on an ordinary layer.
+      flags: 0x08,
       blend: "norm",
       name: "Ink",
     });
@@ -464,7 +475,9 @@ describe("encodePsd — layers", () => {
     for (const ch of p.layers[0].channels) {
       expect(ch.declared).toBe(2); // just the compression id
       expect(ch.rowCounts).toEqual([]);
-      expect(ch.compression).toBe(1);
+      // RAW, not RLE: there is no row table to compress, and "RLE with no rows" is a shape
+      // real files never contain.
+      expect(ch.compression).toBe(0);
     }
   });
 
@@ -563,9 +576,11 @@ describe("encodePsd — groups as lsct section dividers", () => {
   it("hides the closing divider and gives the folder the group's opacity", () => {
     const p = parse(encodePsd(head()));
     // flags bit 1 (value 2) is hidden. The closer must never be visible; the folder must.
+    // 0x08 "Photoshop 5.0 and later" + 0x10 "pixel data irrelevant to appearance" on both
+    // dividers, and 0x02 hidden on the closer only.
     expect(p.layers[0]).toMatchObject({
       name: "</Layer group>",
-      flags: 2,
+      flags: 0x08 | 0x10 | 0x02,
       blend: "norm",
       top: 0,
       left: 0,
@@ -574,7 +589,7 @@ describe("encodePsd — groups as lsct section dividers", () => {
     });
     expect(p.layers[3]).toMatchObject({
       name: "Head",
-      flags: 0,
+      flags: 0x08 | 0x10,
       opacity: 200,
       blend: "norm",
       top: 0,
@@ -593,7 +608,7 @@ describe("encodePsd — groups as lsct section dividers", () => {
       for (const ch of p.layers[i].channels) {
         expect(ch.declared).toBe(2); // the compression id alone
         expect(ch.rowCounts).toEqual([]);
-        expect(ch.compression).toBe(1);
+        expect(ch.compression).toBe(0); // RAW — what real writers put on an empty channel
       }
     }
   });
@@ -606,6 +621,23 @@ describe("encodePsd — groups as lsct section dividers", () => {
       ["luni"],
       ["luni", "lsct"],
     ]);
+  });
+
+  it("writes the folder's lsct with a blend key and sub type, the bounding one bare", () => {
+    // The lengths are the ONE thing here no reader forced: the spec makes the tail optional
+    // ("only present if length >= 12") and both readers accept the short form on either kind.
+    // ag-psd writes short on a bounding divider and long on a folder, and matching it byte for
+    // byte is what removes the uncertainty from the Photoshop open. `parseExtra` reads the type
+    // off the block's own length, so without these the form itself would go unasserted.
+    const p = parse(encodePsd(head()));
+    expect(p.layers.map((l) => l.lsctLen)).toEqual([4, null, null, 16]);
+    // 4 type + 4 signature + 4 blend key + 4 sub type.
+    const folder = p.layers[3].lsctBody!;
+    expect(str(folder, 4, 4)).toBe("8BIM");
+    // 'norm', not 'pass': the group's opacity sits on the FOLDER, and only a Normal group
+    // composites that opacity as a unit the way the editor does.
+    expect(str(folder, 8, 4)).toBe("norm");
+    expect(u32(folder, 12)).toBe(0); // sub type: a normal group, not a scene group
   });
 
   it("nests a group inside a group", () => {
@@ -635,6 +667,7 @@ describe("encodePsd — groups as lsct section dividers", () => {
       "Outer",
     ]);
     expect(p.layers.map((l) => l.lsct)).toEqual([3, null, 3, null, 1, 1]);
+    expect(p.layers.map((l) => l.lsctLen)).toEqual([4, null, 4, null, 16, 16]);
     expect(p.layers[4].opacity).toBe(128);
   });
 
