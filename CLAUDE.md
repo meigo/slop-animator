@@ -3411,7 +3411,16 @@ opened in the actual application, none of the unit tests meant what they appeare
 particular the **16-byte folder `lsct`** is now known good rather than merely better-precedented, and
 the diagnostic ladder below was never needed.
 **What that confirmation does and does not cover.** It establishes the headline: a real export opens,
-with its layers, and reads as intended. The enumerated edge cases below were NOT individually walked,
+with its layers, and reads as intended — specifically **root layers and grouped layers both arriving
+as expected**, which settles the first two rungs of the ladder directly. Grouped layers landing
+inside folders means Photoshop consumed the type-3 bounding dividers, so the `lsct` encoding is right
+in both its forms; root layers sitting correctly alongside them means the bottom-up flatten
+interleaves grouped and ungrouped nodes in the right order. Those were the two most likely failures
+and they are closed.
+**Note what that specifically does NOT settle**, because it is one step away and easy to conflate: a
+group SPLIT by an ungrouped layer is a different case. `buildSegments` emits it as **two folders with
+the same name**, and a mix of root and grouped layers does not exercise it unless the project
+happened to contain one. The enumerated edge cases below were NOT individually walked,
 so treat them as still owed rather than as covered by this — the same distinction the audio Phase 3
 entry draws. The ones most worth an eye if PSD export starts getting real use: a group split by an
 ungrouped layer (it emits **two folders with the same name**), a transparent-background project
