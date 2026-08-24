@@ -42,11 +42,15 @@ describe("pasteRoute", () => {
     expect(pasteRoute(ctx({ pixelPasteReady: true, hasCellClipboard: true }))).toBe("cells");
   });
 
-  it("is a pure function of the context — the same input never changes its answer", () => {
-    // The whole point of the rewrite: the old flag was set by one event and read by another, so a
-    // suppressed `paste` left it armed for the NEXT keystroke. Asking twice must answer the same.
-    const c = ctx({ hasCellClipboard: true });
-    expect(pasteRoute(c)).toBe("cells");
-    expect(pasteRoute(c)).toBe("cells");
+  it("stays on the image route across the keydown -> paste pair once a keystroke is declined", () => {
+    // The pair `App.svelte` relies on, and the cell the table was missing. keydown asks first and
+    // declines (no in-app route); the window `paste` event that follows asks again, from the same
+    // state, and must still answer "image" — otherwise it swallows the image the user pasted.
+    // That is the shape the old `cellPasteHandled` flag got wrong: it was written by the first
+    // event and read by the second, and the preventDefault of a CONSUMED keystroke suppressed the
+    // very event that would have cleared it.
+    const atKeydown = ctx({ selectTool: true, pixelPasteReady: false, hasCellClipboard: false });
+    expect(pasteRoute(atKeydown)).toBe("image");
+    expect(pasteRoute({ ...atKeydown })).toBe("image"); // a fresh context, same state, same answer
   });
 });

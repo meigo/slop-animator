@@ -10,7 +10,6 @@
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import { onMount } from "svelte";
   import {
-    activeLayer,
     seekPlayhead,
     setActiveLayer,
     repaint,
@@ -36,8 +35,14 @@
   import { hydrateFromStore, pruneMedia } from "./persist/media-store";
   import { referencedMediaIds } from "./persist/project-file";
   import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
-  import { workingTarget } from "./anim/active-row";
-  import { isLayerEditable } from "./anim/document";
+
+  /** Is this keystroke a Cmd/Ctrl+V? `e.key` is LAYOUT-dependent — a Cyrillic or Greek layout
+   *  reports "\u043c" for the physical V — so the physical `e.code` is matched too. That mattered
+   *  little when the fallthrough was the image handler, but a route decision must not silently
+   *  differ by layout. */
+  function isPasteKey(e: KeyboardEvent): boolean {
+    return e.key.toLowerCase() === "v" || e.code === "KeyV";
+  }
 
   /** Which handler owns a paste RIGHT NOW, derived from clipboard + target state rather than
    *  latched across events. `keydown` uses it to decide what to do; the window `paste` event uses
@@ -46,12 +51,10 @@
   function currentPasteRoute(): PasteRoute {
     return pasteRoute({
       selectTool: state.tool === "select" || state.tool === "lasso",
-      // Mirrors `Canvas.activeDrawableCtx()`'s preconditions exactly, so a "pixels" answer is one
-      // `pasteSelection()` will honour. `hasPixelClipboard` tracks Canvas's `selectionClipboard`.
-      pixelPasteReady:
-        state.hasPixelClipboard &&
-        workingTarget(state.activeRow).kind === "layer" &&
-        isLayerEditable(activeLayer(), state.project.groups),
+      // Asked of Canvas, which owns `pasteSelection` — never re-derived here. Spelling the
+      // predicate out a second time is how it drifts, and the failure is silent in both
+      // directions: too strict swallows an image paste, too loose makes Cmd+V do nothing at all.
+      pixelPasteReady: selectionActions.canPaste?.() ?? false,
       hasCellClipboard: !!state.cellClipboard,
     });
   }
@@ -97,22 +100,24 @@
     // precedence lives in exactly one place — `currentPasteRoute()` — that `onPaste` can ask again
     // without anything being carried between the two events. Consuming the keystroke means
     // preventDefault(), which suppresses the `paste` event that would otherwise follow.
-    if (meta && e.key.toLowerCase() === "v") {
+    if (meta && isPasteKey(e)) {
       const route = currentPasteRoute();
-      if (route === "pixels") {
-        // The predicate mirrors pasteSelection()'s own preconditions, so this is expected to be
-        // true; on a false (state moved under us) fall through rather than eating the keystroke.
-        if (selectionActions.paste?.()) {
-          e.preventDefault();
-          return;
-        }
-      } else if (route === "cells") {
+      // `canPaste` is `pasteSelection` minus a step that cannot fail, so a decline here means the
+      // two disagreed — state moved between the question and the answer. Fall through to the
+      // REMAINING routes rather than consuming the keystroke: with nothing below it, a declined
+      // pixel paste would make Cmd+V do nothing at all, silently.
+      const pasted = route === "pixels" && selectionActions.paste?.();
+      if (pasted) {
+        e.preventDefault();
+        return;
+      }
+      if (state.cellClipboard) {
         e.preventDefault();
         pasteCells(e.shiftKey);
         return;
       }
-      // route === "image" → do NOT preventDefault: the browser's `paste` event follows and onPaste
-      // turns an image file on the clipboard into a reference layer.
+      // → image: do NOT preventDefault. The browser's `paste` event follows and onPaste turns an
+      // image file on the clipboard into a reference layer.
     }
 
     if (meta && e.key.toLowerCase() === "c" && state.timelineSelection) {
