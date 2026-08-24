@@ -13,47 +13,23 @@
  * stroke, so it is rendered into the pixels; opacity is a byte in the layer record, which is what
  * lets the colourist keep re-tuning it.
  */
-import {
-  cellTransform,
-  groupOf,
-  groupTransformAt,
-  isIdentityTransform,
-  resolvedKeyCell,
-  transformAt,
-  type DrawingLayer,
-  type Project,
-} from "../anim/document";
-import { drawCellComposed, renderFrame } from "../anim/render";
-import { contentBounds, groupBoxLogical } from "../lib/cell-ink";
+import { resolvedKeyCell, type DrawingLayer, type Project } from "../anim/document";
+import { drawLayerCell, renderFrame } from "../anim/render";
+import { boundsOfPixels } from "../lib/cell-ink";
 import { planPsdFrame } from "./psd-plan";
 import { encodePsd, type PsdNode, type PsdRect } from "./psd";
 
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-const scaleRect = (r: Rect, k: number): Rect => ({
-  x: r.x * k,
-  y: r.y * k,
-  w: r.w * k,
-  h: r.h * k,
-});
-
 /**
- * Paint ONE layer's resolved key cell onto `ctx`, through its whole compose chain, at full alpha.
+ * Paint ONE layer's resolved key cell onto `ctx` at full alpha, with nothing else on the surface.
  *
- * Deliberately a transcription of the drawing branch of `compositeFrameLayers` (including its
- * `groupComposeArgs`, which `render.ts` keeps private) rather than a call into it: that function
- * paints every visible layer at its drawlist opacity, which is exactly the two things a PSD layer
- * must not be — one bitmap, and opacity baked in. The two must stay in step; a divergence shows up
- * as a layer whose pixels sit somewhere other than the editor draws them.
+ * The compose itself is `render.ts`'s `drawLayerCell`, the same call the editor's own composite
+ * makes — a second copy of that geometry would be invisible to `tsc` and unreachable by any test.
+ * The two differences a PSD layer needs are both here rather than there: the surface is cleared
+ * first, and `globalAlpha` stays at 1 because the opacity travels as a byte in the layer record.
  *
  * `version` is 0 for the same reason the PNG exporter's `renderFrame` call leaves it at the
- * default: an exporter has no document version to thread, and the bounds cache it feeds is keyed
- * by version, so a wrong one costs a recompute and never a wrong answer.
+ * default: an exporter has no document version to thread, and the caches it feeds are keyed by
+ * version, so a wrong one costs a recompute and never a wrong answer.
  */
 function drawLayerAlone(
   ctx: CanvasRenderingContext2D,
@@ -67,45 +43,9 @@ function drawLayerAlone(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.clearRect(0, 0, wDev, hDev);
-
   const resolved = resolvedKeyCell(layer, frame);
   if (!resolved) return; // no key at or before this frame — nothing to draw, and no ink to find
-  const { cell } = resolved;
-
-  const cellT = cellTransform(cell);
-  const layerT = transformAt(layer, frame);
-  const group = groupOf(layer, project.groups);
-  const groupT = groupTransformAt(group, frame);
-  const fullDocDev: Rect = { x: 0, y: 0, w: wDev, h: hDev };
-
-  if (isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT)) {
-    ctx.drawImage(cell.canvas, 0, 0); // the crisp path: no resample at all
-    return;
-  }
-  // The pivot box only matters when there is a rotation/scale to pivot ABOUT, so the identity
-  // branch keeps the full doc. `transformBox` is written alongside every `transform` the app
-  // produces; falling back to the full doc rather than asserting it keeps a hand-edited file from
-  // throwing part way through an export.
-  const cellBoxDev =
-    isIdentityTransform(cellT) || !cell.transformBox
-      ? fullDocDev
-      : scaleRect(cell.transformBox, dpr);
-  const groupBoxDev =
-    !group || isIdentityTransform(groupT)
-      ? fullDocDev
-      : scaleRect(groupBoxLogical(group, project, frame, dpr, 0), dpr);
-  drawCellComposed(
-    ctx,
-    cell.canvas,
-    wDev,
-    hDev,
-    layerT,
-    cellT,
-    cellBoxDev,
-    dpr,
-    groupT,
-    groupBoxDev,
-  );
+  drawLayerCell(ctx, project, layer, resolved.cell, frame, dpr, 0);
 }
 
 /**
@@ -129,14 +69,11 @@ export function exportPsdFrame(project: Project, frame: number, dpr: number): Ui
   // the composite.
   const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
 
-  // `contentBounds` memoises per CANVAS by version, and every layer here measures the same scratch
-  // canvas — so a fixed version would hand layer 2 layer 1's bounds. A counter guarantees a miss.
-  // The entry it leaves behind dies with the scratch canvas (the cache is a WeakMap).
-  let probe = 0;
-
   const nodes = planPsdFrame(project, frame, (layer, opacity): PsdNode | null => {
     drawLayerAlone(ctx, project, layer, frame, dpr, wDev, hDev);
-    const b = contentBounds(scratch, ++probe);
+    // `boundsOfPixels`, never `contentBounds`: that one memoises by CANVAS identity, and every
+    // layer here measures the same scratch — so it would hand layer 2 layer 1's rect.
+    const b = boundsOfPixels(ctx.getImageData(0, 0, wDev, hDev).data, wDev, hDev);
     if (!b) return null; // no ink at this frame — the plan drops it, and its folder if it empties
     const rect: PsdRect = { top: b.y, left: b.x, bottom: b.y + b.h, right: b.x + b.w };
     return {

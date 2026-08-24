@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contentBounds, groupContentBoxLogical } from "../lib/cell-ink";
+import { boundsOfPixels, contentBounds, groupContentBoxLogical } from "../lib/cell-ink";
 import type { Project, LayerGroup, DrawingLayer } from "../anim/document";
 
 // Minimal canvas stub: getContext→ctx with no-op draw + getImageData returning a known buffer.
@@ -121,5 +121,54 @@ describe("groupContentBoxLogical", () => {
   it("converts device px to logical via /dpr", () => {
     const p = makeProject([drawLayerWith(1, 7, { x: 4, y: 6, w: 8, h: 4 })], [g]);
     expect(groupContentBoxLogical(g, p, 0, 2, 1)).toEqual({ x: 2, y: 3, w: 4, h: 2 });
+  });
+});
+
+/** An RGBA buffer from rows of "." (transparent) and "#" (opaque). */
+function pixels(rows: string[]) {
+  const height = rows.length;
+  const width = rows[0].length;
+  const data = new Uint8ClampedArray(width * height * 4);
+  rows.forEach((row, y) =>
+    [...row].forEach((c, x) => {
+      if (c === "#") data[(y * width + x) * 4 + 3] = 255;
+    }),
+  );
+  return { data, width, height };
+}
+const bounds = (rows: string[]) => {
+  const { data, width, height } = pixels(rows);
+  return boundsOfPixels(data, width, height);
+};
+
+// The tight rect every PSD layer's channel data is sized from, and the reason a full-frame rect
+// per layer (~8 MB before compression at 1920x1080) is not what ships. Never testable through
+// `contentBounds`, which needs a canvas.
+describe("boundsOfPixels", () => {
+  it("is null when every pixel is transparent", () => {
+    expect(bounds(["....", "....", "...."])).toBeNull();
+  });
+
+  it("wraps a single pixel in a 1x1 rect", () => {
+    expect(bounds(["....", "..#.", "...."])).toEqual({ x: 2, y: 1, w: 1, h: 1 });
+  });
+
+  it("returns the whole buffer for full bleed", () => {
+    expect(bounds(["####", "####"])).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+  });
+
+  it("keeps a one-pixel-tall row one pixel tall", () => {
+    expect(bounds([".....", ".###.", "....."])).toEqual({ x: 1, y: 1, w: 3, h: 1 });
+  });
+
+  it("does not transpose x and y on a non-square buffer", () => {
+    // The ink sits at an x that is not a valid y, so an index swap cannot produce this answer.
+    expect(bounds(["......", "....#.", "......"])).toEqual({ x: 4, y: 1, w: 1, h: 1 });
+  });
+
+  it("reads ALPHA only — an opaque-coloured but transparent pixel is not ink", () => {
+    const { data, width, height } = pixels(["..", ".."]);
+    data[0] = 255; // red, alpha still 0
+    expect(boundsOfPixels(data, width, height)).toBeNull();
   });
 });

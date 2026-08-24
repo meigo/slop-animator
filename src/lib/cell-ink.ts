@@ -51,7 +51,39 @@ const boundsCache = new WeakMap<
   { version: number; bounds: { x: number; y: number; w: number; h: number } | null }
 >();
 
-/** Tight non-transparent bounds in DEVICE px, or null if empty. Memoized by document version. */
+/**
+ * Tight non-transparent bounds within an RGBA buffer, or null when every pixel is transparent.
+ *
+ * The unmemoised core of `contentBounds`, split out for the callers memoising would be WRONG for:
+ * anything measuring a reused SCRATCH canvas, where the cache is keyed by canvas identity and
+ * every measurement would collide with the last (the PSD export renders each layer through the
+ * same scratch, so it would have read layer 1's rect for every layer). Being pure also makes the
+ * tight-rect behaviour node-testable, which it never was through the canvas wrapper.
+ */
+export function boundsOfPixels(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): { x: number; y: number; w: number; h: number } | null {
+  let minX = width,
+    minY = height,
+    maxX = -1,
+    maxY = -1;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (data[(y * width + x) * 4 + 3] !== 0) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+  if (maxX < minX) return null;
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+/** Tight non-transparent bounds in DEVICE px, or null if empty. Memoized by document version —
+ *  so it is only safe on a canvas whose identity means one thing over time (a CELL canvas). A
+ *  reused scratch canvas wants `boundsOfPixels` above. */
 export function contentBounds(
   canvas: HTMLCanvasElement,
   version: number,
@@ -62,19 +94,7 @@ export function contentBounds(
   if (canvas.width > 0 && canvas.height > 0) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let minX = width,
-      minY = height,
-      maxX = -1,
-      maxY = -1;
-    for (let y = 0; y < height; y++)
-      for (let x = 0; x < width; x++)
-        if (data[(y * width + x) * 4 + 3] !== 0) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-    if (maxX >= minX) bounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    bounds = boundsOfPixels(data, width, height);
   }
   boundsCache.set(canvas, { version, bounds });
   return bounds;
