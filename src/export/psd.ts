@@ -96,12 +96,92 @@ interface EncodedLayer {
 }
 
 /**
+ * `lsct` section-divider types. A PSD group is not a container: it is a run of ordinary layer
+ * records bracketed by two marker layers, which differ from any other layer ONLY by carrying
+ * this block.
+ */
+const LSCT_OPEN_FOLDER = 1;
+const LSCT_BOUNDING = 3;
+
+/** The name Photoshop itself writes on a bounding divider. Not shown in the layers panel. */
+const SECTION_END_NAME = "</Layer group>";
+
+const ZERO_RECT: PsdRect = { top: 0, left: 0, bottom: 0, right: 0 };
+const NO_PIXELS = () => new Uint8ClampedArray(0);
+
+/**
+ * A node flattened into the one shape the file actually has: a layer record. Divider layers are
+ * ordinary layers here too — only `lsct` and `hidden` set them apart, which is exactly the
+ * relationship the format has.
+ */
+interface FlatLayer {
+  name: string;
+  opacity: number;
+  rect: PsdRect;
+  /** Layer-record flags bit 1 (value 2). */
+  hidden: boolean;
+  pixels: () => Uint8ClampedArray;
+  /** `undefined` on an ordinary layer; no `lsct` block is written for it. */
+  lsct?: number;
+}
+
+/**
+ * Flattens the node tree into file order, which is BOTTOM-UP: a group becomes its closing
+ * bounding divider FIRST, then its children, then the named open-folder layer.
+ *
+ * Recursive even though `LayerGroup` in this app has no parent field, so only one level can
+ * currently occur. A flatten that handled one level would look correct forever and then lose an
+ * inner folder silently the day nesting lands — the cost of recursion here is one line.
+ */
+function flattenNodes(nodes: PsdNode[]): FlatLayer[] {
+  const out: FlatLayer[] = [];
+  for (const node of nodes) {
+    if (node.kind === "layer") {
+      out.push({
+        name: node.name,
+        opacity: node.opacity,
+        rect: node.rect,
+        hidden: false,
+        pixels: node.pixels,
+      });
+      continue;
+    }
+    if (node.kind === "group") {
+      out.push({
+        name: SECTION_END_NAME,
+        opacity: 255,
+        rect: ZERO_RECT,
+        hidden: true,
+        pixels: NO_PIXELS,
+        lsct: LSCT_BOUNDING,
+      });
+      out.push(...flattenNodes(node.children));
+      out.push({
+        name: node.name,
+        opacity: node.opacity,
+        rect: ZERO_RECT,
+        hidden: false,
+        pixels: NO_PIXELS,
+        lsct: LSCT_OPEN_FOLDER,
+      });
+      continue;
+    }
+    // Unreachable through the public type, and deliberately LOUD rather than skipped: a dropped
+    // node produces a valid psd that is merely missing layers, which nothing downstream catches.
+    // That is the same reasoning the group throw carried before this task replaced it.
+    const unhandled: never = node;
+    throw new Error(`encodePsd: unsupported node kind ${JSON.stringify(unhandled)}`);
+  }
+  return out;
+}
+
+/**
  * Records for every layer precede channel data for every layer, so the compressed channels have
  * to be held until the records are written. Holding the COMPRESSED bytes rather than the raw
  * bitmaps is what keeps that affordable, and it is also what lets each record quote a measured
  * length instead of a predicted one.
  */
-function encodeLayer(node: Extract<PsdNode, { kind: "layer" }>): EncodedLayer {
+function encodeLayer(node: FlatLayer): EncodedLayer {
   const { rect } = node;
   const width = Math.max(0, rect.right - rect.left);
   const height = Math.max(0, rect.bottom - rect.top);
@@ -136,14 +216,20 @@ function encodeLayer(node: Extract<PsdNode, { kind: "layer" }>): EncodedLayer {
     .ascii("norm")
     .u8(node.opacity)
     .u8(0) // clipping
-    .u8(0) // flags; bit 1 (value 2) would mean hidden, and visible layers write 0
+    .u8(node.hidden ? 2 : 0) // flags; bit 1 (value 2) is hidden, and visible layers write 0
     .u8(0) // filler
     .len32((extra) => {
       extra.u32(0); // layer mask data
       extra.u32(0); // layer blending ranges
       extra.pascal4(node.name);
       extra.unicodeName(node.name);
-      // Task 4 adds the lsct section-divider block here.
+      const { lsct } = node;
+      // Written only for the two divider layers. Emitting it on every layer would make each
+      // one its own folder — structurally valid, and unopenable-looking in the panel.
+      if (lsct !== undefined) {
+        extra.ascii("8BIM").ascii("lsct");
+        extra.len32Even((w) => w.u32(lsct));
+      }
     });
 
   return { record: record.build(), channels };
@@ -170,15 +256,10 @@ export function encodePsd(doc: PsdDoc): Uint8Array {
     );
   }
 
-  const layers = doc.nodes.map((node) => {
-    if (node.kind === "group") {
-      // Deliberately loud. A silently dropped group would produce a VALID psd that is merely
-      // missing layers — nothing downstream flags that, and it would only surface as a
-      // miscount in Photoshop. Task 4 replaces this with the lsct divider trio.
-      throw new Error("encodePsd: group nodes are not implemented");
-    }
-    return encodeLayer(node);
-  });
+  // Groups become divider layers HERE rather than in the caller: the driver builds the tree from
+  // canvas state and must not be in the business of emitting marker layers — and keeping the
+  // flatten inside the pure encoder is what makes the ordering testable at all.
+  const layers = flattenNodes(doc.nodes).map((layer) => encodeLayer(layer));
 
   const out = new Bytes();
   out.bytes(psdHeader(doc.width, doc.height));
@@ -192,6 +273,7 @@ export function encodePsd(doc: PsdDoc): Uint8Array {
       // one leaves it a spare channel Photoshop surfaces as "Alpha 1". A transparent-background
       // project is therefore the input where this could disagree with the PNG export, which is
       // why it sits on the spec's owed-Photoshop-pass list.
+      // Counts DIVIDERS too — a group of two layers contributes four records.
       info.i16(layers.length);
       for (const l of layers) info.bytes(l.record);
       for (const l of layers) for (const c of l.channels) info.bytes(c);

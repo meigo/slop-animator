@@ -57,7 +57,48 @@ interface ParsedLayer {
   flags: number;
   blend: string;
   name: string;
+  /** The 'lsct' section-divider type, or null for an ordinary layer. */
+  lsct: number | null;
+  /** The additional-info block keys, in file order. */
+  blockKeys: string[];
   channels: ParsedChannel[];
+}
+
+/**
+ * Walks a layer record's additional-information area by its OWN length fields: mask data,
+ * blending ranges, the Pascal name (padded so 1 + chars + pad is a multiple of 4), then a run of
+ * '8BIM'-signed blocks. Nothing is skipped by a hardcoded offset, so a mis-measured 'luni' or
+ * 'lsct' prefix desynchronises the walk and trips the closing `expect` instead of passing.
+ */
+function parseExtra(extra: Uint8Array) {
+  const d = dv(extra);
+  let o = 0;
+  const maskLen = d.getUint32(o);
+  o += 4 + maskLen;
+  const rangesLen = d.getUint32(o);
+  o += 4 + rangesLen;
+  const nameLen = extra[o];
+  const name = str(extra, o + 1, nameLen);
+  o += 1 + nameLen;
+  o += (4 - ((1 + nameLen) % 4)) % 4;
+
+  const blocks: { key: string; body: Uint8Array }[] = [];
+  while (o + 12 <= extra.length) {
+    expect(str(extra, o, 4)).toBe("8BIM");
+    const key = str(extra, o + 4, 4);
+    const len = d.getUint32(o + 8);
+    o += 12;
+    blocks.push({ key, body: extra.slice(o, o + len) });
+    o += len; // len32Even counts its own pad byte in the prefix
+  }
+  expect(o).toBe(extra.length); // the record's extra length covers exactly these fields
+
+  const lsct = blocks.find((x) => x.key === "lsct");
+  return {
+    name,
+    blockKeys: blocks.map((x) => x.key),
+    lsct: lsct ? dv(lsct.body).getUint32(0) : null,
+  };
 }
 
 /**
@@ -108,9 +149,7 @@ function parse(b: Uint8Array) {
     o += 4;
     const extra = b.slice(o, o + extraLen);
     o += extraLen;
-    // extra: u32 mask len, u32 blending-ranges len, then the Pascal name.
-    const nameLen = extra[8];
-    const name = str(extra, 9, nameLen);
+    const { name, lsct, blockKeys } = parseExtra(extra);
     layers.push({
       top,
       left,
@@ -121,6 +160,8 @@ function parse(b: Uint8Array) {
       flags,
       blend,
       name,
+      lsct,
+      blockKeys,
       channels: decl.map((x) => ({ ...x, compression: 0, rowCounts: [], samples: [] })),
     });
   }
@@ -494,19 +535,145 @@ describe("encodePsd — loud failures", () => {
   });
 });
 
-describe("encodePsd — the Task 4 seam", () => {
-  it("throws on a group node rather than silently dropping it", () => {
-    const group: PsdNode = { kind: "group", name: "Chars", opacity: 255, children: [] };
-    expect(() => encodePsd({ ...doc, nodes: [group] })).toThrow(/group/i);
+describe("encodePsd — groups as lsct section dividers", () => {
+  // A 1x1 opaque dot, so a group's children carry real channel data and the dividers' empty
+  // records sit between blocks that actually have bytes in them.
+  const dot = () => Uint8ClampedArray.from([9, 9, 9, 255]);
+  const unit = (name: string): PsdNode => ({
+    kind: "layer",
+    name,
+    opacity: 255,
+    rect: { top: 0, left: 0, bottom: 1, right: 1 },
+    pixels: dot,
+  });
+  const tiny = (nodes: PsdNode[]): PsdDoc => ({ width: 1, height: 1, nodes, composite: dot });
+  const head = (): PsdDoc =>
+    tiny([{ kind: "group", name: "Head", opacity: 200, children: [unit("A"), unit("B")] }]);
+
+  it("brackets a group's children with divider layers, bottom-first", () => {
+    const b = encodePsd(head());
+    expect(u16(b, 42)).toBe(4); // 2 real layers + 2 dividers
+    const p = parse(b);
+    // The whole risk of this feature is the ORDER, so it is pinned as a sequence, not a set.
+    expect(p.layers.map((l) => l.name)).toEqual(["</Layer group>", "A", "B", "Head"]);
+    expect(p.layers.map((l) => l.lsct)).toEqual([3, null, null, 1]);
+    expect(p.layers.map((l) => l.lsct).filter((t) => t !== null)).toEqual([3, 1]);
   });
 
-  it("throws even when the group sits among ordinary layers", () => {
-    const group: PsdNode = {
-      kind: "group",
-      name: "Chars",
-      opacity: 255,
-      children: [doc.nodes[0]],
-    };
-    expect(() => encodePsd({ ...doc, nodes: [doc.nodes[0], group] })).toThrow(/not implemented/i);
+  it("hides the closing divider and gives the folder the group's opacity", () => {
+    const p = parse(encodePsd(head()));
+    // flags bit 1 (value 2) is hidden. The closer must never be visible; the folder must.
+    expect(p.layers[0]).toMatchObject({
+      name: "</Layer group>",
+      flags: 2,
+      blend: "norm",
+      top: 0,
+      left: 0,
+      bottom: 0,
+      right: 0,
+    });
+    expect(p.layers[3]).toMatchObject({
+      name: "Head",
+      flags: 0,
+      opacity: 200,
+      blend: "norm",
+      top: 0,
+      left: 0,
+      bottom: 0,
+      right: 0,
+    });
+    // and the members keep their own opacity — the group's must not leak onto them.
+    expect(p.layers.slice(1, 3).map((l) => l.opacity)).toEqual([255, 255]);
+  });
+
+  it("gives each divider a full layer record with four empty channels", () => {
+    const p = parse(encodePsd(head()));
+    for (const i of [0, 3]) {
+      expect(p.layers[i].channels.map((c) => c.id)).toEqual([-1, 0, 1, 2]);
+      for (const ch of p.layers[i].channels) {
+        expect(ch.declared).toBe(2); // the compression id alone
+        expect(ch.rowCounts).toEqual([]);
+        expect(ch.compression).toBe(1);
+      }
+    }
+  });
+
+  it("attaches lsct only to dividers, after the luni name", () => {
+    const p = parse(encodePsd(head()));
+    expect(p.layers.map((l) => l.blockKeys)).toEqual([
+      ["luni", "lsct"],
+      ["luni"],
+      ["luni"],
+      ["luni", "lsct"],
+    ]);
+  });
+
+  it("nests a group inside a group", () => {
+    // Single-level is all this app can currently produce, but a flatten that only handles one
+    // level is a silent trap: it would emit 3/1 here and lose the inner folder entirely.
+    const b = encodePsd(
+      tiny([
+        {
+          kind: "group",
+          name: "Outer",
+          opacity: 255,
+          children: [
+            unit("A"),
+            { kind: "group", name: "Inner", opacity: 128, children: [unit("B")] },
+          ],
+        },
+      ]),
+    );
+    expect(u16(b, 42)).toBe(6);
+    const p = parse(b);
+    expect(p.layers.map((l) => l.name)).toEqual([
+      "</Layer group>",
+      "A",
+      "</Layer group>",
+      "B",
+      "Inner",
+      "Outer",
+    ]);
+    expect(p.layers.map((l) => l.lsct)).toEqual([3, null, 3, null, 1, 1]);
+    expect(p.layers[4].opacity).toBe(128);
+  });
+
+  it("keeps ordinary layers around a group in their given bottom-first order", () => {
+    const b = encodePsd(
+      tiny([
+        unit("below"),
+        { kind: "group", name: "G", opacity: 255, children: [unit("in")] },
+        unit("above"),
+      ]),
+    );
+    const p = parse(b);
+    expect(p.layerCount).toBe(5);
+    expect(p.layers.map((l) => l.name)).toEqual(["below", "</Layer group>", "in", "G", "above"]);
+    expect(p.layers.map((l) => l.lsct)).toEqual([null, 3, null, 1, null]);
+  });
+
+  it("emits an empty group as its two dividers and nothing else", () => {
+    const b = encodePsd(tiny([{ kind: "group", name: "Empty", opacity: 255, children: [] }]));
+    expect(u16(b, 42)).toBe(2);
+    const p = parse(b);
+    expect(p.layers.map((l) => l.name)).toEqual(["</Layer group>", "Empty"]);
+    expect(p.layers.map((l) => l.lsct)).toEqual([3, 1]);
+  });
+
+  it("keeps every section length intact with dividers present", () => {
+    // parse() already asserts each declared channel length; these pin the outer sections, which
+    // is where a divider record of the wrong size would surface.
+    const b = encodePsd(head());
+    const p = parse(b);
+    expect(p.lamStart + p.lamLen).toBe(p.merged);
+    expect(u32(b, p.layerInfoStart + p.layerInfoLen)).toBe(0); // global layer mask info
+    expect(parseMerged(b, p.merged, 1, 1).end).toBe(b.length);
+  });
+
+  it("throws on an unrecognised node kind rather than dropping it", () => {
+    // A silently skipped node produces a VALID psd that is merely missing layers — nothing
+    // downstream catches that, which is why the group throw existed in the first place.
+    const bogus = { kind: "sublayer", name: "?", opacity: 255, children: [] } as unknown as PsdNode;
+    expect(() => encodePsd({ ...doc, nodes: [bogus] })).toThrow(/node kind/i);
   });
 });
