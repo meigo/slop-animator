@@ -1,7 +1,14 @@
+/** Digit width to zero-pad a 1-based counter up to `total`, floored at 4 so a short run (e.g. a
+ *  single-frame PSD) still reads as `frame_0001` rather than `frame_1`. Shared by the PNG sequence's
+ *  own filenames and, since it is the exact same "1-based, padded to the project's frame count"
+ *  rule, by the Export dialog's PSD filename. */
+export function framePad(total: number): number {
+  return Math.max(4, String(total).length);
+}
+
 /** Zero-padded, 1-based PNG filename for frame `i` of `total`. */
 export function frameFileName(i: number, total: number): string {
-  const pad = Math.max(4, String(total).length);
-  return `frame_${String(i + 1).padStart(pad, "0")}.png`;
+  return `frame_${String(i + 1).padStart(framePad(total), "0")}.png`;
 }
 
 /**

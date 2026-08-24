@@ -6,7 +6,8 @@
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
-  import { isAbort } from "../export/progress";
+  import { isAbort, yieldToEventLoop } from "../export/progress";
+  import { framePad } from "../export/frames";
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -20,8 +21,12 @@
   // Held only while a render is in flight. Cancel is refused once finalising starts, so the button
   // reads its own availability from `finalising` rather than from the controller being non-null.
   let controller: AbortController | null = null;
+  // Which format is running, so the busy panel (and Cancel) can special-case PSD: it is one
+  // synchronous encode with a single yield to let this paint, not a per-frame loop, so there is no
+  // progress to report and nothing an abort could reach mid-encode.
+  let activeKind: "png" | "psd" | VideoFormat | null = $state(null);
   function cancel() {
-    if (!busy || finalising) return;
+    if (!busy || finalising || activeKind === "psd") return;
     controller?.abort();
     status = "Cancelling…"; // the loop stops at its next frame boundary
   }
@@ -41,8 +46,9 @@
   // elsewhere. Padded to the project's own frame-count width so the filename doesn't look out of
   // step with frame_0007.png-style names the app already produces.
   const psdFrame = $derived(appState.playhead + 1);
-  const psdPad = $derived(Math.max(4, String(appState.project.frameCount).length));
-  const psdFilename = $derived(`${stem}-f${String(psdFrame).padStart(psdPad, "0")}.psd`);
+  const psdFilename = $derived(
+    `${stem}-f${String(psdFrame).padStart(framePad(appState.project.frameCount), "0")}.psd`,
+  );
 
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
   // while `exportBusy` is set (so a stray shortcut cannot edit the project mid-render), which would
@@ -59,6 +65,7 @@
   async function run(kind: "png" | "psd" | VideoFormat) {
     if (busy) return;
     busy = true;
+    activeKind = kind;
     playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
     // A live lift (selection float / deform / pose) has CLEARED its region from the cell canvas —
     // the pixels exist only on the overlay, which renderFrame never composites. Exporting through
@@ -85,13 +92,17 @@
         downloadBlob(blob, `${stem}.zip`);
         status = "Done.";
       } else if (kind === "psd") {
-        // One frame, CPU-only, no encoder handshake — the whole call is synchronous and typically
-        // sub-second even on a busy document, so there is nothing for a progress bar to show and
-        // nothing a Cancel button could interrupt before it would already be done. Because nothing
-        // here `await`s, Svelte never gets a chance to paint the `busy` progress panel in between —
-        // `exportBusy`/`liftGuard`/pause still run around it, matching the other two formats, since
-        // those guard against the SAME hazards (a live lift, playback fighting the render) that a
-        // single-frame render is just as exposed to.
+        // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
+        // its ink bounds, once to crop it) plus a full-frame read for the merged composite, all
+        // before a single PackBits byte is written — on a busy document at 4K this is low seconds,
+        // worse on iPad Safari's full-frame readback. That is long enough to freeze the tab with no
+        // visual change, so it still needs ONE yield to paint the "Writing…" line below before the
+        // synchronous encode blocks the thread. There is no second phase to report progress for, and
+        // nothing mid-encode an abort could reach, so that one yield is the whole difference from
+        // PNG/video — `exportBusy`/`liftGuard`/pause around it are unchanged, matching those two,
+        // since a live lift and playback fighting the render are hazards this path is equally
+        // exposed to.
+        await yieldToEventLoop();
         const bytes = exportPsdFrame(appState.project, appState.playhead, DPR);
         downloadBlob(
           new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/vnd.adobe.photoshop" }),
@@ -113,6 +124,7 @@
       busy = false;
       finalising = false;
       controller = null;
+      activeKind = null;
       appState.exportBusy = false;
     }
   }
@@ -138,9 +150,11 @@
              this codebase avoids. Once finalising, `cancel()` no-ops and the title says why. -->
         <button
           title={busy
-            ? finalising
-              ? "Finalising — the file is being assembled and can no longer be stopped"
-              : "Stop the export (Esc). No file is written."
+            ? activeKind === "psd"
+              ? "Writing — finishes on its own in a moment, nothing to stop"
+              : finalising
+                ? "Finalising — the file is being assembled and can no longer be stopped"
+                : "Stop the export (Esc). No file is written."
             : "Close"}
           onclick={() => {
             if (busy) cancel();
@@ -148,7 +162,14 @@
           }}>✕</button
         >
       </div>
-      {#if busy}
+      {#if busy && activeKind === "psd"}
+        <!-- No bar, no Cancel: there is exactly one yield (to paint this line) before the whole
+             encode runs synchronously, so there is no per-frame count to show and nothing an abort
+             could interrupt mid-encode — a Cancel button here would set "Cancelling…" only to be
+             overwritten by "Done." the instant the encode finishes, which is the same misleading
+             flash this line exists to avoid. -->
+        <span class="text-xs text-text-secondary">Writing PSD…</span>
+      {:else if busy}
         <!-- The formats are replaced rather than disabled: while a render is running the only
              decision left is whether to let it finish. -->
         <div class="flex flex-col gap-2">
