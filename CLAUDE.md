@@ -894,9 +894,16 @@ browser that supports it, and the one raster fallback stays legible everywhere r
 a theme. (3) **The generator grew absolute cubics.** The mark is exported with uppercase `C`, so
 `flattenPath` gained a `C` branch beside `c` — the "widen it if the art ever needs more" case above,
 arriving. Both branches stay: converting art to one convention by hand is how a coordinate gets
-mistyped. `icon.svg` is UNCHANGED, so the PWA / Home Screen icons are still the logotype and the
-`icon-*.png` files regenerate byte-identical — which is the quick check that a favicon change stayed
-scoped.
+mistyped. (4) **Same day: the mark went EVERYWHERE**, tab and Home Screen alike, so the slop-\* apps
+look like one family at every size. There is now effectively ONE source — `make-icons.mjs` sets
+`logotype = favicon` — which retires the "two sources on purpose, and they must stay in sync" rule
+above along with its drift hazard. `public/icon.svg` still holds the hand-lettered logotype and is
+untouched: it is the way back, and the generator says so at the assignment
+(`load("icon.svg")` restores it for the PWA / apple-touch sizes). Keeping the art rather than
+deleting it is the point — the logotype reads well at 180px+ and only blurs around 32px, which is
+why the tab never used it. Verified by rendering: the mark fills the 0.86 fit cleanly and still sits
+inside Android's tighter 0.55 maskable safe zone. **Owed:** the installed Home Screen icon, which iOS
+snapshots at install time — seeing it needs a remove-and-re-add, not a reload.
 
 **The selection marquee is screen-constant (2026-08-14):** asked as "the marquee scales with zoom —
 is that intended?" It wasn't; it was half-done. `Selection.screenScale` was maintained on every

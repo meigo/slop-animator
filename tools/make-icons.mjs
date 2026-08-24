@@ -242,8 +242,12 @@ function load(file) {
 // 180px and up, and turns to mush at 32. The tab icon therefore gets the star alone — the same
 // glyph, simplified — so favicon.svg (which modern browsers render at ANY size) and its PNG
 // fallback agree. Keep them in sync if the art changes.
-const favicon = load("favicon.svg"); // star alone
-const logotype = load("icon.svg"); // full "slop" mark
+const favicon = load("favicon.svg"); // the shared slop mark
+// EVERY output is the mark for now, tab and Home Screen alike, so the slop-* apps look like one
+// family at every size. `public/icon.svg` still holds the hand-lettered "slop" logotype and is the
+// way back: `const logotype = load("icon.svg")` restores it for the PWA / apple-touch sizes, where
+// it reads well (it only turns to a blob around 32px, which is why the tab never used it).
+const logotype = favicon;
 
 for (const [name, size, fill, polys] of [
   ["favicon-32.png", 32, 0.86, favicon], // tab fallback for browsers without SVG favicon support
