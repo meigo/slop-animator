@@ -1983,6 +1983,19 @@ export function replaceProject(project: Project) {
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
   liftGuard.discard?.(); // clear any in-progress lift before the old document is thrown away
+  // ...and then the marquee itself, which `discard` does NOT touch (it cancels only an actual
+  // lift). Selection geometry is DOCUMENT space, so a marquee left over from the outgoing project
+  // can sit entirely off the incoming paper — invisible, while still CLIPPING all five paint sites
+  // (both fills and the three stroke engines). The symptom is "the brush is broken" with nothing on
+  // screen to explain it.
+  // Ordering: BELOW `discard`, never above. `deselect` carries Escape semantics — on a float it
+  // reverts through Selection's own onCancel — but `discard` is the path that also rolls back a
+  // pose mesh, an open stroke and any keyframe those materialised. Deselecting first would clear
+  // `hasFloating` and make `discard`'s own cancel a no-op, so the lift teardown would run through
+  // the narrower route. By the time we get here the float is already gone and this only drops the
+  // leftover outline. It must also stay ABOVE the settle/clear pair below, whose adjacency is
+  // itself load-bearing.
+  selectionActions.deselect?.();
   // Settle any in-flight transform/range/hold drag too. Without this its release would push
   // restoreStructure(before) — a snapshot of the OUTGOING document — into the incoming one's
   // history. MUST stay above history.clear(): settling commits, and clearing right after is what
