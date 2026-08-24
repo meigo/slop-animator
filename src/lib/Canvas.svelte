@@ -506,7 +506,7 @@
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const color = hexToRgba(appState.brush.color, appState.brush.opacity);
+    const color = hexToRgba(appState.fill.color, appState.fill.opacity);
     if (selection && selection.state === "selected") {
       // Flood on a temp copy, then composite back through the selection clip.
       const tmp = document.createElement("canvas");
@@ -603,7 +603,7 @@
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const color = hexToRgba(appState.brush.color, appState.brush.opacity);
+    const color = hexToRgba(appState.fill.color, appState.fill.opacity);
     if (selection && selection.state === "selected") {
       // Same shape as the click fill: paint a temp copy, composite back through the clip.
       const tmp = document.createElement("canvas");
