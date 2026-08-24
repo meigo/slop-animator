@@ -3443,3 +3443,31 @@ names** (the app permits them); a **transparent-background project** — a POSIT
 the composite's fourth channel is a spare alpha ("Alpha 1") rather than transparency, so this is the
 input that could disagree; an **all-empty frame** (`layerCount 0`, composite only); and **a PNG and a
 PSD of the same frame side by side — they must differ ONLY by boil.**
+
+**Selection copy also writes a PNG to the SYSTEM clipboard (2026-08-24).** Ported from `slop-spine`,
+which took the selection machinery from here and noticed the asymmetry: this app has always ACCEPTED
+an image paste (`pasteImageReference`) but never produced one, so pixels flowed into the slop-\* apps
+and never back out. ⌘C and the Copy button now fill the internal pixel clipboard exactly as before —
+lossless, rect preserved, still what the internal paste uses — and additionally write `image/png`.
+Cut inherits it for free, since `cutSelection` is `copySelection` + `deleteSelection`.
+**The Safari constraint dictates the shape, and the natural way to write this is the broken way.**
+`ClipboardItem` must be constructed SYNCHRONOUSLY inside the user gesture, carrying the blob's
+PROMISE — `new ClipboardItem({ "image/png": canvasToBlobPromise })`. Awaiting the blob first and
+passing the resolved value reads better and is exactly what Safari rejects, because by then the
+gesture is over. So the `toBlob` promise is built un-awaited and handed straight in.
+**It is best-effort, and deliberately quiet about it.** The internal copy runs first and is
+synchronous, so a clipboard permission failure can never cost the artist the copy they asked for. No
+`navigator.clipboard.write` (an insecure context — the LAN dev server over plain http on iPad) is
+silent, because the copy DID work and only a bonus is missing. A genuine rejection sets a status hint
+rather than an `alert`: the sibling `pasteImage()` in `Toolbar` does use `alert`, and that is right
+there — a paste that finds nothing has to explain why the user's request did nothing — but here a
+modal would interrupt a working action to report an extra that failed. Same reasoning, opposite
+answer, which is why both live in the log.
+**Deliberately NOT included: copying the whole frame when nothing is selected.** ⌘C with no marquee
+currently does nothing under the select tools, and silently widening an established key to grab the
+entire frame is a bigger change than it looks. A separate explicit action is the way to add that if
+it is ever wanted.
+**Owed a browser pass:** copy a selection and paste it into another app; the same on iPad, where the
+gesture rule is strictest; cut then paste externally; that an insecure-context load stays silent
+while the internal copy still works; and that a copy composited from a transformed or partly
+transparent layer arrives looking the way it does on screen.

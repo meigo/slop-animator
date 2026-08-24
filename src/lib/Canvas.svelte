@@ -1545,12 +1545,38 @@
     return { ctx, layer, materialized };
   }
 
+  /**
+   * Also put the selection on the SYSTEM clipboard as a PNG, so pixels flow both ways between the
+   * slop-* apps (this one already receives an image paste). Best-effort by design: the internal
+   * copy above has already succeeded, so nothing here may throw, and a browser that cannot do it is
+   * not a failure worth interrupting a working action for.
+   *
+   * `ClipboardItem` MUST be constructed synchronously inside the gesture, with the blob's PROMISE
+   * rather than an awaited blob — Safari rejects a write whose item was built after an await, so
+   * the obvious `const blob = await …` first line is exactly what breaks it.
+   */
+  function copyToSystemClipboard(canvas: HTMLCanvasElement) {
+    // Undefined outside a secure context — e.g. the LAN dev server over plain http on iPad. Silent:
+    // the copy worked, and only the bonus is unavailable.
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return;
+    const png = new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
+    );
+    void navigator.clipboard.write([new ClipboardItem({ "image/png": png })]).catch(() => {
+      // A real rejection (permission denied, or a browser that advertises write but refuses PNG).
+      // A hint rather than an alert: a modal would interrupt a copy that DID work to report that an
+      // extra did not.
+      appState.statusHint = "Copied — but this browser would not put it on the system clipboard";
+    });
+  }
+
   function copySelection() {
     if (!selection || selection.state !== "selected" || !selection.rect) return;
     const float = cropComposedSelection();
     if (float) {
       selectionClipboard = { canvas: float, rect: { ...selection.rect } };
       appState.hasPixelClipboard = true;
+      copyToSystemClipboard(float);
     }
   }
 
