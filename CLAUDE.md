@@ -897,9 +897,14 @@ arriving. Both branches stay: converting art to one convention by hand is how a 
 mistyped. (4) **Same day: the mark went EVERYWHERE**, tab and Home Screen alike, so the slop-\* apps
 look like one family at every size. There is now effectively ONE source — `make-icons.mjs` sets
 `logotype = favicon` — which retires the "two sources on purpose, and they must stay in sync" rule
-above along with its drift hazard. `public/icon.svg` still holds the hand-lettered logotype and is
-untouched: it is the way back, and the generator says so at the assignment
-(`load("icon.svg")` restores it for the PWA / apple-touch sizes). Keeping the art rather than
+above along with its drift hazard. The hand-lettered logotype moved to **`tools/icon.svg`** — out of
+`public/`, because dormant art should not deploy and a file sitting in `public/` reads as a live
+source. `load(file, dir)` grew a directory argument for it, and the generator names the way back at
+the assignment: `load("icon.svg", artDir)` restores the logotype for the PWA / apple-touch sizes.
+**That escape hatch is tested, not assumed** — flipping the line regenerates `icon-180.png` at
+exactly its former 4620 bytes. Worth knowing the star favicon that preceded all this was literally
+this file's FINAL SUB-PATH, extracted (the two path strings hash identically), which is why the
+wordmark is the thing to keep: it contains the star, not the other way round. Keeping the art rather than
 deleting it is the point — the logotype reads well at 180px+ and only blurs around 32px, which is
 why the tab never used it. Verified by rendering: the mark fills the 0.86 fit cleanly and still sits
 inside Android's tighter 0.55 maskable safe zone. **Owed:** the installed Home Screen icon, which iOS

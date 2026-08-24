@@ -230,11 +230,14 @@ function render(polys, size, fill) {
 const outDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 mkdirSync(outDir, { recursive: true });
 
-/** Read one SVG's path data and flatten it. */
-function load(file) {
-  const svg = readFileSync(join(outDir, file), "utf8");
+/** Dormant source art: parseable by this script, but NOT in `public/`, so it is never deployed. */
+const artDir = dirname(fileURLToPath(import.meta.url));
+
+/** Read one SVG's path data and flatten it. `dir` picks live art (`public/`) or dormant (`tools/`). */
+function load(file, dir = outDir) {
+  const svg = readFileSync(join(dir, file), "utf8");
   const d = svg.match(/\sd="([^"]+)"/)?.[1];
-  if (!d) throw new Error(`no path data found in public/${file}`);
+  if (!d) throw new Error(`no path data found in ${join(dir, file)}`);
   return flattenPath(d);
 }
 
@@ -244,9 +247,11 @@ function load(file) {
 // fallback agree. Keep them in sync if the art changes.
 const favicon = load("favicon.svg"); // the shared slop mark
 // EVERY output is the mark for now, tab and Home Screen alike, so the slop-* apps look like one
-// family at every size. `public/icon.svg` still holds the hand-lettered "slop" logotype and is the
-// way back: `const logotype = load("icon.svg")` restores it for the PWA / apple-touch sizes, where
-// it reads well (it only turns to a blob around 32px, which is why the tab never used it).
+// family at every size. `tools/icon.svg` still holds the hand-lettered "slop" logotype and is the
+// way back: `const logotype = load("icon.svg", artDir)` restores it for the PWA / apple-touch sizes,
+// where it reads well (it only blurs around 32px, which is why the tab never used it). It lives in
+// `tools/` rather than `public/` precisely because it is dormant — art nothing generates from should
+// not be deployed, and a file sitting in `public/` looks like a live source.
 const logotype = favicon;
 
 for (const [name, size, fill, polys] of [
