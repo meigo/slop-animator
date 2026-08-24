@@ -456,6 +456,21 @@
     }
   }
 
+  /** Composite a fully-painted copy of the cell (`tmp`) back through an ALREADY-APPLIED selection
+   *  clip. Must be "copy", never the default source-over: inside the clip the destination is
+   *  pixel-identical to the source, so source-over blends every semi-transparent pixel with itself
+   *  (a' = 2a − a²; alpha 128 → 192 after one fill, 239 after two). Opaque and fully transparent
+   *  pixels are fixed points of that, which is why the bug hides on solid ink.
+   *  Known cost, deliberate: "copy" does not blend at the clip boundary, so an anti-aliased LASSO
+   *  edge gets a hairline seam. Rect marquees are pixel-exact and unaffected — a one-pixel seam on
+   *  a soft edge is a better trade than self-blending every fill.
+   *  Caller owns the save()/restore() pair (see the try/finally at each call site): "copy" strands
+   *  far worse than a clip does, since a leaked one makes later draws ERASE what they overlap. */
+  function compositeClippedCopy(ctx: CanvasRenderingContext2D, tmp: HTMLCanvasElement) {
+    ctx.globalCompositeOperation = "copy";
+    ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+  }
+
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
     if (!isLayerEditable(layer, appState.project.groups)) return;
@@ -486,10 +501,16 @@
         expand: appState.fill.expand,
       });
       ctx.save();
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection.applyClip(ctx);
-      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
-      ctx.restore();
+      try {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection.applyClip(ctx);
+        compositeClippedCopy(ctx, tmp);
+      } finally {
+        // strokeCtx/ctx outlive this call, so a throw between save() and restore() would strand
+        // both the clip AND the "copy" composite on the cell — every later draw would then be
+        // confined to an invisible region and ERASE whatever it overlapped.
+        ctx.restore();
+      }
     } else {
       floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
@@ -561,10 +582,13 @@
       tctx.drawImage(canvas, 0, 0);
       fillRegionBehind(tctx, region, color);
       ctx.save();
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection.applyClip(ctx);
-      ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
-      ctx.restore();
+      try {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection.applyClip(ctx);
+        compositeClippedCopy(ctx, tmp);
+      } finally {
+        ctx.restore();
+      }
     } else {
       fillRegionBehind(ctx, region, color);
     }
@@ -620,25 +644,37 @@
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
       strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+      // try/finally at all three: strokeCtx is LONG-LIVED (it is the cell's own context), so a
+      // throw between save() and restore() strands the clip and silently confines every later
+      // stroke to a region the artist cannot see.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawStroke(strokeCtx, curved, settings, done, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawStroke(strokeCtx, curved, settings, done, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     } else if (kind === "ink") {
       // Ink/marker: incremental quadratic line — no snapshot restore.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     } else {
       // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
       strokeCtx.save();
-      strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      selection?.applyClip(strokeCtx);
-      drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, sr);
-      strokeCtx.restore();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawStampStrokeIncremental(strokeCtx, curved, { ...settings, brushType: kind }, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     }
     recomposite();
   }
