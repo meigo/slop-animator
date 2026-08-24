@@ -10,13 +10,15 @@ import {
   groupTransform,
   groupTransformAt,
   transformAt,
+  type Cell,
+  type DrawingLayer,
   type Project,
   type BoilConfig,
   type ReferenceLayer,
   type RefTransform,
 } from "./document";
 import { boilBegin, boilLayer, boilBlit, boilWeightJitter } from "../core/boil-gl";
-import { groupBoxLogical } from "../lib/cell-ink";
+import { contentBoxLogical, groupBoxLogical } from "../lib/cell-ink";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -184,6 +186,72 @@ function transformedCell(
 }
 
 /**
+ * Draw ONE drawing layer's key cell through its full `group ∘ layer ∘ cell` compose. DEVICE px,
+ * `ctx` assumed at the identity transform.
+ *
+ * Extracted so the PSD export can reach the same geometry. It is the single most-revised
+ * expression in this codebase — per-cell, then per-layer, then per-group, then animated via
+ * `transformAt`/`groupTransformAt`, each revision landing right here — and a second copy of it
+ * elsewhere would be invisible to `tsc` (two independently-valid call sites) and unreachable by
+ * any test. The symptom of a drift is a layer drawn somewhere the editor never showed it.
+ *
+ * Does NOT touch `globalAlpha`: the caller owns it. The render path sets the drawlist opacity;
+ * the PSD export leaves it at 1, because a PSD layer carries its opacity as a byte instead.
+ *
+ * The BOIL path deliberately keeps its own copy — it composes into a GL surface via
+ * `transformedCell` rather than onto `ctx`, so it shares the arguments but not the call.
+ */
+export function drawLayerCell(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  layer: DrawingLayer,
+  cell: Extract<Cell, { kind: "key" }>,
+  frame: number,
+  dpr: number,
+  version = 0,
+): void {
+  const wDev = project.width * dpr,
+    hDev = project.height * dpr;
+  const cellT = cellTransform(cell);
+  const layerT = transformAt(layer, frame);
+  const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
+  if (isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT)) {
+    ctx.drawImage(cell.canvas, 0, 0); // the crisp path: no resample at all
+    return;
+  }
+  // The pivot box only matters when there is a rotation/scale to pivot ABOUT, so the identity
+  // branch keeps the full doc. Otherwise `contentBoxLogical` answers it — the app's own ladder
+  // (frozen box, else live content bounds, else full doc), and the box the gizmo pivots about, so
+  // a cell carrying a `transform` with no `transformBox` (which the save format permits) composes
+  // where the gizmo would put it instead of throwing part way through a render or an export.
+  const cellBoxDev = isIdentityTransform(cellT)
+    ? { x: 0, y: 0, w: wDev, h: hDev }
+    : scaleRect(
+        contentBoxLogical(
+          cell.canvas,
+          cell.transformBox,
+          project.width,
+          project.height,
+          dpr,
+          version,
+        ),
+        dpr,
+      );
+  drawCellComposed(
+    ctx,
+    cell.canvas,
+    wDev,
+    hDev,
+    layerT,
+    cellT,
+    cellBoxDev,
+    dpr,
+    groupT,
+    groupBoxDev,
+  );
+}
+
+/**
  * Draw the visible layers for `frame` onto `ctx`, bottom→top, each at its layer opacity.
  * Drawing layers blit their resolved keyframe; reference layers draw their media with a
  * "contain" fit. Reference layers are omitted when `includeReference` is false.
@@ -259,30 +327,7 @@ export function compositeFrameLayers(
     if (op.kind === "draw" && layer.kind === "draw") {
       const cell = layer.cells[op.keyframeIndex];
       if (cell.kind !== "key") continue;
-      const cellT = cellTransform(cell);
-      const layerT = transformAt(layer, frame);
-      const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
-      const layerId = isIdentityTransform(layerT),
-        cellId = isIdentityTransform(cellT),
-        groupId = isIdentityTransform(groupT);
-      if (layerId && cellId && groupId) ctx.drawImage(cell.canvas, 0, 0);
-      else {
-        const boxDev = cellId
-          ? { x: 0, y: 0, w: project.width * dpr, h: project.height * dpr }
-          : scaleRect(cell.transformBox!, dpr);
-        drawCellComposed(
-          ctx,
-          cell.canvas,
-          project.width * dpr,
-          project.height * dpr,
-          layerT,
-          cellT,
-          boxDev,
-          dpr,
-          groupT,
-          groupBoxDev,
-        );
-      }
+      drawLayerCell(ctx, project, layer, cell, frame, dpr, version);
     } else if (op.kind === "ref" && layer.kind === "ref") {
       ctx.globalAlpha = op.opacity / 100;
       drawReferenceMedia(ctx, layer, project.width, project.height, dpr, project, frame, version);

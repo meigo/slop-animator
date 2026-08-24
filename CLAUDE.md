@@ -3316,3 +3316,111 @@ the change looks deliberate: three commits converging on one answer, with a mess
 intent ("Drop the tab. 8px hit along the top border, 4px hover tint"), is a decision — not drift for
 a reviewer to correct. Ask before reverting anything this file merely fails to mention, and update
 the entry instead of the code when the code wins.
+
+**PSD export of the current frame (2026-08-24).** A fourth Export button writes the CURRENT frame as
+a layered `.psd` for paint-up in Photoshop: visible drawing layers with their names and **live**
+opacity, transforms **baked**, this project's groups as **real folders** via `lsct` dividers, hidden
+and reference layers dropped, RLE-compressed on tight per-layer bounds, plus the merged composite
+every non-layer-aware reader expects. Six modules — `packbits.ts`, `psd-bytes.ts`, `psd.ts` (the pure
+writer), `psd-plan.ts`, `psd-frame.ts` (the canvas driver) and the `ExportDialog` wiring. Spec:
+`docs/superpowers/specs/2026-08-24-psd-export-design.md`.
+
+**Opacity stays live and transforms bake, and the asymmetry is the format's rather than a shortcut.**
+PSD stores opacity as a per-layer byte — precisely the dial a colourist re-tunes all afternoon — so
+fusing it into the pixels would take that away in exchange for nothing. There is no PSD equivalent of
+`group ∘ layer ∘ cell`: no per-layer affine survives a paint stroke, so a transform has nowhere to
+live but the pixels, and each layer is rendered through its full compose chain before it is read.
+
+**The trap that the "real folders" decision created, and it is invisible when you fall into it.**
+`buildFrameDrawList` PRE-MULTIPLIES group opacity into each layer's number (`opacityAt(layer, frame) *
+groupOpacityAt(g, frame) / 100`) — exactly right for a flat export, and silently DOUBLE-APPLIED the
+moment the group is also a real folder carrying its own opacity. Nothing fails: the file opens, every
+layer is present, every name is right, and everything inside a group is merely darker than the editor
+shows. So the driver reads `opacityAt` and `groupOpacityAt` DIRECTLY and never touches the drawlist's
+number. Any future consumer wanting per-layer values rather than a flat composite needs the same
+warning.
+
+**A PSD group is three layers, not a container.** In file order — which is bottom-up — a hidden
+`</Layer group>` layer with `lsct` type **3**, the bounding divider that CLOSES the folder and is
+therefore written FIRST; then the members; then a type-**1** open-folder layer carrying the group's
+name and opacity. **The folder's `lsct` payload is 16 bytes** (`type` + `'8BIM'` + `'norm'` + `u32 0`)
+while **the bounding divider's is 4**, matching ag-psd (a Photoshop-proven writer) on both. Adobe
+permits the short form anywhere ("the following is only present if length >= 12") and both readers
+checked tolerate it, but a 4-byte `lsct` on a type-1 folder was the ONE byte sequence in our file that
+no known writer emits — and since the acceptance test here is literally "does Photoshop show folders",
+12 bytes to delete the only untested-by-anyone sequence was not a trade worth a second thought. **One
+deliberate divergence from ag-psd, recorded so nobody "fixes" it toward it later:** our bounding
+divider sets the hidden flag where ag-psd leaves it visible. Both readers key on the `lsct` type
+alone, so it is not load-bearing; it is the safer fallback for a reader that ignores `lsct` entirely
+and would otherwise surface a stray empty layer. It is also not the culprit if Photoshop opens flat.
+Groups are single-level because the MODEL is (`LayerGroup` has no parent; layers carry a `groupId`),
+so this is a flat walk — nested groups would make this the code that has to learn recursion.
+
+**Boil is excluded, and it is the one place a PSD and a PNG of the same frame differ.** Boil
+composites every drawing layer inside ONE GL surface and reads it back exactly once (iOS Safari cannot
+do that per layer, so a per-layer boil means N readbacks); with the layers separate there is nothing
+to bake it into, and the clean line is what paint-up wants anyway. Which is why the dialog SAYS so,
+and only when boil is on — the silent difference is the defect, not the difference. Hidden layers,
+layers with no ink at this frame, groups left with no surviving members, and reference layers drop out
+too; visibility reads through `isLayerVisible(layer, groups)`, never the raw flag.
+
+**Measure a length, never predict it.** `len32`/`len32Even` build a body, measure it, then write
+length-then-body, and the same rule extends down to the per-channel byte lengths in each layer record
+— those are the SAME OBJECTS later written, so declared and written agree by construction rather than
+by arithmetic. Not fastidiousness: Photoshop answers an off-by-N anywhere with "could not complete
+your request" and no indication of which section is wrong, so an analytically-computed length is a bug
+you find by bisecting a binary file.
+
+**`Bytes` writes into a growable `Uint8Array`, and the cost of not doing so was worse than it looked.**
+The first version accumulated into a `number[]` and did `Uint8Array.from` in `build()`. Because
+`len32` NESTS, every channel byte passed through four push-loops and four copies on the way out:
+616 MB → **265 MB** peak RSS and 428 ms → **161 ms** on ten full-frame layers, with byte-identical
+output against a deliberately awkward document. On the device the 1× document-scale work exists to
+protect, the transient boxed array was the whole problem.
+
+**A bonus fix, worth its own sentence.** Sharing `drawLayerCell` between the editor's compositor and
+the PSD driver means `compositeFrameLayers` inherited the no-throw path for a cell with a `transform`
+but a null `transformBox`. That input is named in this file's own data-loss audit (item 11) as "a
+concrete reachable one" — the audit could only make the failure LEGIBLE (catch per frame, name the
+frame); this closes it. Behaviour is bit-identical wherever `transformBox` is set, which is every file
+the app writes.
+**Why the compose chain is SHARED rather than copied**, in one line: it is the most-revised geometry
+in this codebase, `tsc` would see two independently-valid call sites, no test reaches either, and the
+symptom of drift would be a PSD layer sitting where the editor never showed it — found by a colourist,
+not by CI.
+
+**Two corrections the build made to its own plan, both the kind that get re-broken.** (1) The opacity
+byte is **`* 255 / 100`, not `Math.round(x * 2.55)`** — `50 * 2.55` is `127.4999…` → 127, while
+`* 255 / 100` gives 128, which is the mapping Photoshop's own UI uses, so 50% round-trips as 50%.
+(2) A single reused scratch canvas collided with `contentBounds`' per-canvas memoisation (every layer
+measuring the same canvas would have taken layer 1's rect), which is why **`boundsOfPixels(data, w, h)`
+exists as an unmemoised pure core** with `contentBounds` as the memoising wrapper — and why the
+tight-rect behaviour is node-testable for the first time.
+
+**Testing is unusually good here, because the writer is pure — bytes in, bytes out, no canvas.** The
+psd suite walks the output with a reader that trusts ONLY the file's own declared length fields, so a
+mis-measured prefix desynchronises it into a failure rather than passing unnoticed, and the encoder is
+lazy per layer (a test pins that thunks resolve exactly once AND not early — under an eager mutation
+only that one test fails, which is the demonstration that the call-count tests were blind to it). The
+canvas driver and the dialog stay build+review verified, per project convention.
+
+**NOTHING IN THIS FEATURE HAS BEEN OPENED IN PHOTOSHOP.** Every layer of it is unit-tested or
+review-verified, and the group encoding in particular is hand-derived from the format and then
+corroborated against ag-psd and psd-tools — but it has never been run through the actual application,
+which is the acceptance check. Do not describe PSD export as verified or working until it has.
+**The first three checks are in DIAGNOSTIC order** — each says where to look, not merely what to see:
+(1) **folders vs flat** — if it opens flat the first suspect is the FOLDER's `lsct` length, not the
+ordering, which is byte-identical to ag-psd; (2) **a visible `</Layer group>` row** means the type-3
+divider was not consumed — again `lsct`, not ordering; (3) **opacity on the folder, not the members**
+— "Pass Through" showing in Photoshop means the blend key defaulted, and that is the case where group
+opacity may not composite as the editor does.
+Then the rest: a group with a **non-identity GROUP transform** (the one path a transcription error
+could reach that nothing else exercises); a group **split by an ungrouped layer** → two folders with
+the SAME name, both nested correctly rather than merged or renamed; a layer whose **ink extends past
+the paper edge** (the scratch is doc-sized so the PSD layer is cropped at the canvas — correct,
+though a PSD layer may legally extend beyond it); **50% reading as 50%**, not 49 or 51; an **animated
+group opacity at a NON-KEY frame** (the folder carries it, the members do not); **duplicate layer
+names** (the app permits them); a **transparent-background project** — a POSITIVE layer count means
+the composite's fourth channel is a spare alpha ("Alpha 1") rather than transparency, so this is the
+input that could disagree; an **all-empty frame** (`layerCount 0`, composite only); and **a PNG and a
+PSD of the same frame side by side — they must differ ONLY by boil.**

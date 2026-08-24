@@ -2,10 +2,12 @@
   import { state as appState, DPR, playbackController, liftGuard } from "../state/appState.svelte";
   import { exportPngSequence } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
+  import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
-  import { isAbort } from "../export/progress";
+  import { isAbort, yieldToEventLoop } from "../export/progress";
+  import { framePad } from "../export/frames";
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -19,8 +21,12 @@
   // Held only while a render is in flight. Cancel is refused once finalising starts, so the button
   // reads its own availability from `finalising` rather than from the controller being non-null.
   let controller: AbortController | null = null;
+  // Which format is running, so the busy panel (and Cancel) can special-case PSD: it is one
+  // synchronous encode with a single yield to let this paint, not a per-frame loop, so there is no
+  // progress to report and nothing an abort could reach mid-encode.
+  let activeKind: "png" | "psd" | VideoFormat | null = $state(null);
   function cancel() {
-    if (!busy || finalising) return;
+    if (!busy || finalising || activeKind === "psd") return;
     controller?.abort();
     status = "Cancelling…"; // the loop stops at its next frame boundary
   }
@@ -35,6 +41,15 @@
   const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
   const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
 
+  // PSD is the CURRENT frame (playhead), not the range — a "PSD sequence" isn't a thing this
+  // format needs. 1-based, per the brief: the same numbering the PNG sequence shows the artist
+  // elsewhere. Padded to the project's own frame-count width so the filename doesn't look out of
+  // step with frame_0007.png-style names the app already produces.
+  const psdFrame = $derived(appState.playhead + 1);
+  const psdFilename = $derived(
+    `${stem}-f${String(psdFrame).padStart(framePad(appState.project.frameCount), "0")}.psd`,
+  );
+
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
   // while `exportBusy` is set (so a stray shortcut cannot edit the project mid-render), which would
   // otherwise swallow this too. Bound only while a render is in flight.
@@ -47,9 +62,10 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function run(kind: "png" | VideoFormat) {
+  async function run(kind: "png" | "psd" | VideoFormat) {
     if (busy) return;
     busy = true;
+    activeKind = kind;
     playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
     // A live lift (selection float / deform / pose) has CLEARED its region from the cell canvas —
     // the pixels exist only on the overlay, which renderFrame never composites. Exporting through
@@ -75,6 +91,24 @@
         const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
         downloadBlob(blob, `${stem}.zip`);
         status = "Done.";
+      } else if (kind === "psd") {
+        // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
+        // its ink bounds, once to crop it) plus a full-frame read for the merged composite, all
+        // before a single PackBits byte is written — on a busy document at 4K this is low seconds,
+        // worse on iPad Safari's full-frame readback. That is long enough to freeze the tab with no
+        // visual change, so it still needs ONE yield to paint the "Writing…" line below before the
+        // synchronous encode blocks the thread. There is no second phase to report progress for, and
+        // nothing mid-encode an abort could reach, so that one yield is the whole difference from
+        // PNG/video — `exportBusy`/`liftGuard`/pause around it are unchanged, matching those two,
+        // since a live lift and playback fighting the render are hazards this path is equally
+        // exposed to.
+        await yieldToEventLoop();
+        const bytes = exportPsdFrame(appState.project, appState.playhead, DPR);
+        downloadBlob(
+          new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/vnd.adobe.photoshop" }),
+          psdFilename,
+        );
+        status = "Done.";
       } else {
         const { blob, warning } = await exportVideo(appState.project, DPR, kind, range, {
           signal,
@@ -90,6 +124,7 @@
       busy = false;
       finalising = false;
       controller = null;
+      activeKind = null;
       appState.exportBusy = false;
     }
   }
@@ -115,9 +150,11 @@
              this codebase avoids. Once finalising, `cancel()` no-ops and the title says why. -->
         <button
           title={busy
-            ? finalising
-              ? "Finalising — the file is being assembled and can no longer be stopped"
-              : "Stop the export (Esc). No file is written."
+            ? activeKind === "psd"
+              ? "Writing — finishes on its own in a moment, nothing to stop"
+              : finalising
+                ? "Finalising — the file is being assembled and can no longer be stopped"
+                : "Stop the export (Esc). No file is written."
             : "Close"}
           onclick={() => {
             if (busy) cancel();
@@ -125,7 +162,14 @@
           }}>✕</button
         >
       </div>
-      {#if busy}
+      {#if busy && activeKind === "psd"}
+        <!-- No bar, no Cancel: there is exactly one yield (to paint this line) before the whole
+             encode runs synchronously, so there is no per-frame count to show and nothing an abort
+             could interrupt mid-encode — a Cancel button here would set "Cancelling…" only to be
+             overwritten by "Done." the instant the encode finishes, which is the same misleading
+             flash this line exists to avoid. -->
+        <span class="text-xs text-text-secondary">Writing PSD…</span>
+      {:else if busy}
         <!-- The formats are replaced rather than disabled: while a render is running the only
              decision left is whether to let it finish. -->
         <div class="flex flex-col gap-2">
@@ -164,6 +208,12 @@
           disabled={!videoOk}
           onclick={() => run("webm")}>WebM video — {stem}.webm</button
         >
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover"
+          onclick={() => run("psd")}
+        >
+          PSD (current frame) — {psdFilename}
+        </button>
       {/if}
       {#if partial}
         <span class="text-xs text-amber-500">
@@ -172,15 +222,25 @@
         </span>
       {/if}
       {#if refCount > 0}
-        <!-- Both exporters hardcode includeReference:false, so references are visible while you
-             work and silently absent from every output. Said here because this is the moment it
-             matters, and nothing else in the app says it. -->
+        <!-- All three exporters (video/PNG/PSD) hardcode includeReference:false, so references are
+             visible while you work and silently absent from every output. Said here because this is
+             the moment it matters, and nothing else in the app says it. -->
         <span class="text-xs text-text-secondary">
           {refCount === 1
             ? "1 reference layer is a guide"
             : `${refCount} reference layers are guides`}
           and will not appear in the export. To include an image reference, use “Rasterize to drawing
           layer” on its layer row first.
+        </span>
+      {/if}
+      {#if appState.project.boil.enabled}
+        <!-- The one place a PSD deliberately disagrees with a PNG of the same frame: boil is a
+             render-time wobble baked by compositing every drawing layer inside one GL surface and
+             reading it back once, with no per-layer equivalent to bake into a PSD's separate
+             layers — and the clean line is what paint-up wants anyway. Said only when boil is on,
+             since with it off there is nothing for the two to disagree about. -->
+        <span class="text-xs text-text-secondary">
+          Line boil is not applied to the PSD — it will look cleaner than a PNG of the same frame.
         </span>
       {/if}
       {#if !videoOk}
