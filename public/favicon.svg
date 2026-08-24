@@ -1,7 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
-  <title>slop</title>
-  <rect width="160" height="160" fill="#ffffff" />
-  <g transform="translate(-170.13 -278.21) scale(3.1266)">
-    <path fill="#000000" fill-rule="evenodd" d="M85.99 95.5c-4.23-4.3-5.76 10.92-7.49 12.4c-2.9 1.14-15.71 .74-17.15 2.6c-.34 5.78 10.02 3.06 12.74 6c-.98 4.68-7.34 9.48-7.37 14c3.65 4.15 9.67-8.16 12.78-10.25c2.35 1.53 10.63 18.14 14.31 13.25c.86-4.51-7.69-9.88-6.78-15c2.75-.69 11.92 3.86 11.62-2c-3.14-4.06-9.97-2.74-13.24-6c-2.08-5.25 1.47-10.08 .58-15z" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <!-- The slop mark, generated from "slop logo.svg". The path and the <g> transform (the source's
+       own squaring of the artwork inside its box) are copied verbatim; the only edits are that the
+       source's hard-coded fill:white moves to a class so the mark can follow the OS theme, and
+       fill-rule is declared on the path rather than inherited from the root style attribute.
+       fill-rule is load-bearing — the mark's inner counter fills in solid without it. -->
+  <style>
+    .icon { fill: #111; }
+
+    @media (prefers-color-scheme: dark) {
+      .icon { fill: #fff; }
+    }
+  </style>
+
+  <g transform="matrix(0.964375,0,0,1,7.289884,0.099012)">
+    <path class="icon" fill-rule="evenodd" clip-rule="evenodd" d="M64.68,152.643C73.871,125.601 -6.571,123.24 2.228,77.399C10.049,36.686 28.222,33.804 61.229,13.731C82.499,0.789 109.692,0.87 132.933,4.875C165.009,10.409 176.623,64.063 166.331,87.817C160.958,100.215 149.613,106.084 137.828,111.571C130.155,115.137 106.865,112.104 103.279,102.866C101.603,98.514 102.582,93.084 100.636,88.975C94.137,75.246 72.904,86.475 68.768,95.921C67.213,99.451 66.92,104.95 67.85,108.654C72.292,126.215 92.118,131.482 84.885,156.116C83.099,162.216 80.626,168.143 74.189,170.91C65.451,174.66 62.636,177.728 52.16,177.253C33.485,176.431 13.426,148.58 38.698,144.968C48.33,143.602 55.379,163.119 64.68,152.643ZM68.56,24.149C60.837,17.412 7.026,58.333 17.893,68.694C20.023,68.937 24.061,62.975 25.897,61.193C37.132,50.323 47.987,34.938 63.175,28.409C65.28,27.495 68.853,26.8 68.56,24.149ZM115.799,134.575C143.396,129.678 150.201,159.66 128.037,166.327C111.822,171.213 95.276,138.209 115.799,134.575ZM120.242,140.594C116.35,136.658 111.283,142.33 111.712,146.382C114.82,149.554 120.388,143.372 120.242,140.594Z"/>
   </g>
 </svg>

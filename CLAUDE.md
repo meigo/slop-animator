@@ -861,7 +861,9 @@ all — only a manifest and an apple-touch-icon — so every browser tab showed 
 the PWA icons were a placeholder squiggle drawn analytically. Both replaced with the real hand-drawn
 mark. **Two sources on purpose, and they must stay in sync:** `public/icon.svg` is the full "slop"
 logotype (four letters of hand lettering — reads beautifully at 180px+, turns to an indistinct blob
-at 32), and `public/favicon.svg` is the **star glyph alone**, which is what the browser tab gets.
+at 32), and `public/favicon.svg` is what the browser tab gets. (**Superseded 2026-08-24** — the
+favicon was the star glyph alone; it is now the shared slop mark, and is theme-following rather than
+a white plate. See the note at the end of this entry.)
 Declaring BOTH `rel="icon"` forms (SVG + a 32px PNG) means no browser ever falls back to requesting
 `/favicon.ico`, so no `.ico` is needed. White plate, black ink (`#fff`/`#000`) — chosen over the old
 dark-plate icons because a white square reads on any tab bar; note `manifest.webmanifest` still
@@ -869,8 +871,8 @@ declares a dark `background_color`/`theme_color`, which is right for the app's d
 the PWA splash is dark behind a white icon. `tools/make-icons.mjs` was rewritten to RASTERIZE those
 SVGs rather than draw its own mark: it stays dependency-free (the project installs no SVG
 rasterizer), parsing the path, flattening cubics, and scanline-filling with the **even-odd** rule at
-4× supersampling — even-odd matters, it is what keeps the counters of "o" and "p" hollow. Only `M`,
-`c` and `z` are supported, and an unknown command THROWS rather than silently dropping part of the
+4× supersampling — even-odd matters, it is what keeps the counters of "o" and "p" hollow. Only `M`, `L`,
+`c`, `C` and `z` are supported, and an unknown command THROWS rather than silently dropping part of the
 mark; widen it if the art ever needs more. The fit is computed from the flattened path's own ink
 bounds, so new artwork centres itself with no hand-tuned numbers (an earlier hand-guessed bounding
 box put the star wildly off-canvas — let the code measure it). Regenerate with
@@ -878,6 +880,23 @@ box put the star wildly off-canvas — let the code measure it). Regenerate with
 **Verified 2026-08-14:** the star shows in the browser tab. The installed Home Screen icon is NOT
 confirmed — iOS snapshots it at install time, so seeing the new logotype there needs a
 remove-and-re-add of the Home Screen app, not just a reload.
+
+**The tab icon is the shared slop mark, not the star (2026-08-24).** `public/favicon.svg` is now a
+verbatim copy of `slop-spine`'s, so the family of slop-\* apps carries one mark; keep it verbatim, or
+a later diff between the two projects stops being meaningful. Three consequences worth knowing.
+(1) **It is theme-following** — transparent ground, `.icon { fill: #111 }` with a
+`prefers-color-scheme: dark` override to `#fff` — where the star was a white plate with black ink.
+That supersedes the "white plate reads on any tab bar" reasoning above rather than contradicting it:
+the plate existed to beat the OLD dark-plate icons, and a mark that follows the tab bar beats both.
+(2) **The PNG fallback cannot follow a media query**, so `favicon-32.png` stays an opaque white plate
+with black ink (`BG`/`INK` in the generator). The split is deliberate: the SVG adapts for every
+browser that supports it, and the one raster fallback stays legible everywhere rather than betting on
+a theme. (3) **The generator grew absolute cubics.** The mark is exported with uppercase `C`, so
+`flattenPath` gained a `C` branch beside `c` — the "widen it if the art ever needs more" case above,
+arriving. Both branches stay: converting art to one convention by hand is how a coordinate gets
+mistyped. `icon.svg` is UNCHANGED, so the PWA / Home Screen icons are still the logotype and the
+`icon-*.png` files regenerate byte-identical — which is the quick check that a favicon change stayed
+scoped.
 
 **The selection marquee is screen-constant (2026-08-14):** asked as "the marquee scales with zoom —
 is that intended?" It wasn't; it was half-done. `Selection.screenScale` was maintained on every

@@ -116,6 +116,27 @@ function flattenPath(d, curveSteps = 24) {
       }
       x = x3;
       y = y3;
+    } else if (cmd === "C") {
+      // Absolute cubic. Same flattening as `c`, but the control points ARE the coordinates rather
+      // than deltas from the current point — added when the favicon became the shared slop mark,
+      // which Illustrator exported absolute. Keep both branches: converting art to one convention
+      // by hand is how a coordinate gets mistyped.
+      const x1 = num(),
+        y1 = num();
+      const x2 = num(),
+        y2 = num();
+      const x3 = num(),
+        y3 = num();
+      for (let s = 1; s <= curveSteps; s++) {
+        const t = s / curveSteps,
+          u = 1 - t;
+        poly.push({
+          x: u * u * u * x + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
+          y: u * u * u * y + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
+        });
+      }
+      x = x3;
+      y = y3;
     } else if (cmd === "z" || cmd === "Z") {
       poly = null;
       cmd = null;
