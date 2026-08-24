@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodePsd, type PsdDoc, type PsdNode } from "../export/psd";
+import { encodePsd, PSD_MAX_DIMENSION, type PsdDoc, type PsdNode } from "../export/psd";
 
 const str = (b: Uint8Array, o: number, n: number) =>
   String.fromCharCode(...Array.from(b.slice(o, o + n)));
@@ -349,6 +349,35 @@ describe("encodePsd — layers", () => {
     expect(calls).toBe(1);
   });
 
+  it("resolves each layer's pixels only when that layer is encoded, not up front", () => {
+    // Counting calls catches "twice" but never "too early", and EARLY is the failure the thunk
+    // API exists to prevent — an eager pass that resolves every thunk before encoding holds N
+    // full-size bitmaps at once, which is exactly what the spec's Memory section forbids and
+    // what a call count cannot see. So: two layers whose thunks fill and return the SAME
+    // buffer with different values. Encoded one at a time, each layer sees its own colour;
+    // resolved eagerly, the second fill overwrites the first and both layers come out
+    // identical. Nothing about the call count changes either way.
+    const shared = new Uint8ClampedArray(8);
+    const fill = (r: number) => () => {
+      shared.set([r, 0, 0, 255, r, 0, 0, 255]);
+      return shared;
+    };
+    const mk = (name: string, r: number): PsdNode => ({
+      kind: "layer",
+      name,
+      opacity: 255,
+      rect: { top: 0, left: 0, bottom: 1, right: 2 },
+      pixels: fill(r),
+    });
+    const b = encodePsd({ ...doc, nodes: [mk("first", 10), mk("second", 200)] });
+    const p = parse(b);
+    // Channel index 1 is red (order is alpha, R, G, B).
+    expect(p.layers.map((l) => l.channels[1].samples)).toEqual([
+      [10, 10],
+      [200, 200],
+    ]);
+  });
+
   it("renders the composite thunk exactly once", () => {
     let calls = 0;
     encodePsd({
@@ -426,6 +455,42 @@ describe("encodePsd — layers", () => {
     expect(p.layerCount).toBe(0);
     expect(p.layers).toEqual([]);
     expect(u16(b, p.merged)).toBe(1);
+  });
+});
+
+describe("encodePsd — loud failures", () => {
+  it("throws when a thunk returns fewer pixels than its rect declares", () => {
+    // Without the check the missing bytes read back as `undefined` -> 0, so the layer ships
+    // 99% transparent with no error anywhere. This is a Task 5 wiring mistake, not a user one.
+    const short: PsdNode = {
+      kind: "layer",
+      name: "Short",
+      opacity: 255,
+      rect: { top: 0, left: 0, bottom: 10, right: 10 },
+      pixels: () => new Uint8ClampedArray(4 * 4), // a 2x2 buffer for a 10x10 rect
+    };
+    expect(() => encodePsd({ ...doc, nodes: [short] })).toThrow(/Short.*10x10.*16 bytes/);
+  });
+
+  it("accepts a thunk buffer that is exactly the declared size", () => {
+    const exact: PsdNode = {
+      kind: "layer",
+      name: "Exact",
+      opacity: 255,
+      rect: { top: 0, left: 0, bottom: 3, right: 3 },
+      pixels: () => new Uint8ClampedArray(3 * 3 * 4),
+    };
+    expect(() => encodePsd({ ...doc, nodes: [exact] })).not.toThrow();
+  });
+
+  it("throws above the PSD dimension limit on either axis", () => {
+    const at = PSD_MAX_DIMENSION;
+    const bare = { nodes: [], composite: () => new Uint8ClampedArray(0) };
+    expect(() => encodePsd({ ...bare, width: at + 1, height: 1 })).toThrow(/exceeds/);
+    expect(() => encodePsd({ ...bare, width: 1, height: at + 1 })).toThrow(/exceeds/);
+    // The limit itself is legal, so the guard must not be off by one. (Encoding a 30000-row
+    // composite would be slow, so this asserts the guard alone via a zero-width document.)
+    expect(() => encodePsd({ ...bare, width: 0, height: at })).not.toThrow();
   });
 });
 

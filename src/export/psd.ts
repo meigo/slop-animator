@@ -31,6 +31,13 @@ export type PsdNode =
     }
   | { kind: "group"; name: string; opacity: number; children: PsdNode[] };
 
+/**
+ * PSD's hard ceiling on either axis. Past this the format is PSB, which is an explicit non-goal
+ * of the spec — and the failure is silent: the `u32` dimensions in the header still write fine,
+ * so what ships is a well-formed file Photoshop refuses to open.
+ */
+export const PSD_MAX_DIMENSION = 30000;
+
 export interface PsdDoc {
   width: number;
   height: number;
@@ -100,6 +107,16 @@ function encodeLayer(node: Extract<PsdNode, { kind: "layer" }>): EncodedLayer {
   const height = Math.max(0, rect.bottom - rect.top);
 
   const px = node.pixels();
+  // The rect is what the record declares and what the channel loops index against, so a thunk
+  // that returns a smaller buffer emits `undefined` — silently coerced to 0 — for every pixel
+  // past its end, i.e. a mostly-transparent layer with no error anywhere. Loud for the same
+  // reason the group node is: Task 5 is what pairs rects with real bitmaps.
+  if (px.length < width * height * 4) {
+    throw new Error(
+      `encodePsd: layer "${node.name}" is ${width}x${height} but its thunk returned ` +
+        `${px.length} bytes, not ${width * height * 4}`,
+    );
+  }
   const channels = LAYER_CHANNEL_SOURCE.map((source) =>
     layerChannelBlock(px, width, height, source),
   );
@@ -147,6 +164,12 @@ function writeMergedImage(out: Bytes, doc: PsdDoc) {
 }
 
 export function encodePsd(doc: PsdDoc): Uint8Array {
+  if (doc.width > PSD_MAX_DIMENSION || doc.height > PSD_MAX_DIMENSION) {
+    throw new Error(
+      `encodePsd: ${doc.width}x${doc.height} exceeds PSD's ${PSD_MAX_DIMENSION} px limit (PSB territory)`,
+    );
+  }
+
   const layers = doc.nodes.map((node) => {
     if (node.kind === "group") {
       // Deliberately loud. A silently dropped group would produce a VALID psd that is merely
@@ -164,8 +187,11 @@ export function encodePsd(doc: PsdDoc): Uint8Array {
 
   out.len32Even((lam) => {
     lam.len32Even((info) => {
-      // Positive count: Photoshop reads a negative count as "the first alpha channel is
-      // transparency", which the merged composite already carries in its own right.
+      // Positive count, per the brief. The sign is not cosmetic: a NEGATIVE count is what
+      // declares the merged composite's fourth channel to be transparency, where a positive
+      // one leaves it a spare channel Photoshop surfaces as "Alpha 1". A transparent-background
+      // project is therefore the input where this could disagree with the PNG export, which is
+      // why it sits on the spec's owed-Photoshop-pass list.
       info.i16(layers.length);
       for (const l of layers) info.bytes(l.record);
       for (const l of layers) for (const c of l.channels) info.bytes(c);
