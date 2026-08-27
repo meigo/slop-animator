@@ -13,7 +13,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Drawing**
 
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush — with pressure support, an adjustable pressure curve, and separate brush/eraser settings
-- Fill tool, eyedropper, lasso selection with float/transform
+- Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
+  so outlines and flats stay separate; eyedropper, lasso selection with float/transform
 - Fill every area an outline encloses in one press, behind the strokes — the animator's
   white-under-black-outline, without redrawing each region by hand
 - Transparent background support with checkerboard view and a paint-behind toggle
@@ -64,7 +65,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - A video reference is a **draggable clip** on the timeline (no filmstrip) — drag to place it in time; drag either edge to trim the source (the kept picture stays in sync); speed is set in the layer panel. Its clip is its (trimmed) footage span, so it no longer holds its last frame past the end of the video — those frames render empty
 - An image reference can be trimmed to a range of frames — drag either edge of its timeline clip to set when it appears; untrimmed, it stays visible for the whole project
 - Audio track: import, waveform, synced playback, **scrub-while-you-drag**, drag-to-offset, mute, trim either end of the clip from its lane handles, and muxed into the MP4/WebM export
-- Clipboard image paste + rasterize to a drawing layer
+- Clipboard image paste + rasterize to a drawing layer — and copying a selection now puts a PNG
+  on the system clipboard too, so pixels travel both ways between apps
 
 **Files & export**
 
