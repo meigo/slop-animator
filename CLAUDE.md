@@ -3522,7 +3522,8 @@ neither group readable, and it is how a destructive control ends up next to a sl
 **Brush engine analysis (2026-08-29) — ANALYSIS ONLY, nothing here is fixed.** Reported as three
 separate complaints; they are four defects across two engines plus one behaviour that turns out to be
 worth keeping. Recorded because each was measured, and because re-deriving any of it costs an
-afternoon. **The fixes are NOT applied — do not read this entry as a changelog.** Method, if it needs
+afternoon. **Two of the four candidate fixes have since LANDED — see the entry directly below; the
+smooth-brush decimation and the stamp banding are still open.** Method, if it needs
 redoing: drive `getStroke` with the app's own `input.ts` filter and `brush.ts` options in a node
 script, and measure canvas alpha in a throwaway page in Chrome (Vitest is node-only, so the raster
 half cannot live in the suite).
@@ -3626,3 +3627,39 @@ fix for the BUG reading of this code, and it would flatten the stroke to a dead 
 destroy the behaviour. Anyone reading `ink-brush.ts`, seeing N `ctx.stroke()` calls each applying
 `globalAlpha`, and recognising the classic double-compositing smell will be right about the mechanism
 and wrong about the remedy.
+
+**Stamp floor + dimming the two dead controls (2026-08-29).** The first two fixes out of the brush
+analysis above. Both are narrow on purpose: neither changes how an existing stroke that already
+renders looks.
+
+**`stampFootprint` (pure, unit-tested, 6 cases) replaces `Math.max(1, size)` at both stamp sites.**
+Below `MIN_STAMP_PX` (2) the stamp is drawn AT the floor with `globalAlpha` scaled by
+`width / MIN_STAMP_PX`, so the same ink is spread over the wider box: a thin stroke now FADES where
+it used to vanish outright. The floor is 2 because that is where the measurement stops reading zero
+(drawSize 1 → alpha 0.00 for every tip; drawSize 2 → charcoal 0.97, pencil 0.23, airbrush 0.05), and
+alpha composites linearly for a single stamp — the ga=1 and ga=0.5 tables in the entry above differ
+by exactly half — so a width-1 pencil now lands ~0.12 instead of nothing. **Widths at or above the
+floor are returned untouched with `alphaScale` 1**, which is what keeps every currently-visible
+stroke identical; a test pins that, and another pins continuity across the floor so pressure crossing
+it shows no step. Deliberately NOT changed: `stepSize` still derives from the ideal width, not the
+floored one — the spacing is the artistic intent, and the alpha scaling already compensates for the
+extra overlap. The eraser rides the same path, so a sub-floor eraser now erases proportionally less
+rather than nothing, which is the same trade in the other direction.
+
+**Smooth and Taper are `disabled` on the INPUT with the `title` on the LABEL.** This looks like it
+contradicts the 2026-08-12 "`aria-disabled`, never `disabled`" rule and does not: that rule exists so
+the status bar's delegated `closest("[title]")` listener can still read a refusal, and it is written
+for BUTTONS, where guarding the handler costs nothing. A range input has no handler to guard —
+`aria-disabled` alone would leave it fully draggable, promising an effect it cannot deliver. Putting
+the title on the wrapping label keeps the hint reachable (the label's own text still dispatches) while
+the input is genuinely inert. `aria-disabled` is set on the label too, for the dimming and for AT.
+**Stream is deliberately left live on every brush** — it is applied in `input.ts`, upstream of all
+three engines, so dimming it would be the false statement here.
+
+Pure logic is unit-tested; both stamp call sites and the ToolOptions markup are canvas/DOM and are
+build+review verified only, per project convention. **Owed a browser pass:** a size-2 pencil at light
+pressure now leaves a faint mark instead of nothing, and ramps continuously as you press rather than
+snapping on; the same for charcoal and airbrush; a size-40 stroke looks unchanged; a thin ERASER
+erases faintly rather than not at all; Smooth and Taper dim when you pick Ink/Pencil/Charcoal/Airbrush
+and come back for Smooth; tapping a dimmed one on iPad reads its reason in the status bar; Stream
+stays live throughout.

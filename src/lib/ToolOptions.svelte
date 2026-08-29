@@ -21,6 +21,14 @@
   const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
 
   const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
+  // Smooth and Taper are read ONLY by brush.ts (the perfect-freehand path). The ink and stamp
+  // engines receive them in `settings` and never look at them, so on those brushes the two
+  // controls are inert — dim them rather than letting them promise an effect. Stream is NOT
+  // one of these: it is applied in input.ts, upstream of every engine. See CLAUDE.md 2026-08-29.
+  const smoothOnly = $derived(stroke.brushType === "smooth");
+  const inertOn = $derived(
+    `${stroke.brushType[0].toUpperCase()}${stroke.brushType.slice(1)} — it is a Smooth-brush setting`,
+  );
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -122,16 +130,34 @@
       >Opacity
       <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
     </label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary"
+    <!-- disabled on the INPUT, title on the LABEL: a disabled control dispatches no pointer
+         events, so the status bar's delegated `closest("[title]")` hint reads the label text
+         instead — the 2026-08-12 rule's intent, applied to a control that has no button to
+         guard. -->
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary aria-disabled:opacity-40"
+      aria-disabled={!smoothOnly}
+      title={smoothOnly ? undefined : `Smooth has no effect on ${inertOn}`}
       >Smooth
-      <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
+      <input
+        type="range"
+        min="0"
+        max="100"
+        class="w-16"
+        bind:value={stroke.smoothing}
+        disabled={!smoothOnly}
+      />
     </label>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Stream
       <input type="range" min="0" max="100" class="w-16" bind:value={stroke.streamline} />
     </label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
-      <input type="checkbox" bind:checked={stroke.taper} /> Taper
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary aria-disabled:opacity-40"
+      aria-disabled={!smoothOnly}
+      title={smoothOnly ? "Taper stroke ends" : `Taper has no effect on ${inertOn}`}
+    >
+      <input type="checkbox" bind:checked={stroke.taper} disabled={!smoothOnly} /> Taper
     </label>
     {#if appState.tool !== "eraser"}
       <label
