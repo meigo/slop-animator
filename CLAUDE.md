@@ -3661,7 +3661,13 @@ the input is genuinely inert. `aria-disabled` is set on the label too, for the d
 three engines, so dimming it would be the false statement here.
 
 Pure logic is unit-tested; both stamp call sites and the ToolOptions markup are canvas/DOM and are
-build+review verified only, per project convention. **Owed a browser pass:** a size-2 pencil at light
+build+review verified only, per project convention.
+**VERIFIED IN THE BROWSER 2026-08-29 — the user tested all three shipped fixes and confirmed them
+good.** That settles the headline of each: the stamp floor, the two dimmed controls, and the
+decimation cap all behave as intended on the device, and in particular the cap does NOT visibly
+damage the Smooth brush at high Press — the one trade that could only be judged by eye and not by
+the sweep. The enumerated cases below were NOT individually walked, so treat them as still owed
+rather than as covered by that confirmation. **Owed a browser pass:** a size-2 pencil at light
 pressure now leaves a faint mark instead of nothing, and ramps continuously as you press rather than
 snapping on; the same for charcoal and airbrush; a size-40 stroke looks unchanged; a thin ERASER
 erases faintly rather than not at all; Smooth and Taper dim when you pick Ink/Pencil/Charcoal/Airbrush
@@ -3689,6 +3695,10 @@ where the spacing is 0 and nothing is dropped at all — so they cannot be decim
 self-intersecting outline cancelling under nonzero winding where the path doubles back on itself, and
 they are present in the current shipped code too. Do not tune `decimationSmoothing` trying to reach
 zero; it is already at the floor of what this lever can do.
+**Verified in the browser 2026-08-29** along with the other two shipped fixes (see the note in the
+stamp-floor entry above for exactly what that does and does not cover). Not individually checked:
+that a Press 1x and a constant-pressure stroke are unchanged, which is the property the cap is
+designed around and the one way it could silently bite where it should not.
 There is an end-to-end regression test beside the unit tests that reproduces the worst sweep case and
 walks the pen's centreline through the flattened quad path. **It asserts that the UNCAPPED value still
 gaps**, which is what stops the suite going green on a broken hole-detector — and note it must flatten
