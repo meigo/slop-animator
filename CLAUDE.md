@@ -3522,8 +3522,8 @@ neither group readable, and it is how a destructive control ends up next to a sl
 **Brush engine analysis (2026-08-29) — ANALYSIS ONLY, nothing here is fixed.** Reported as three
 separate complaints; they are four defects across two engines plus one behaviour that turns out to be
 worth keeping. Recorded because each was measured, and because re-deriving any of it costs an
-afternoon. **Two of the four candidate fixes have since LANDED — see the entry directly below; the
-smooth-brush decimation and the stamp banding are still open.** Method, if it needs
+afternoon. **All four candidates are now resolved: three LANDED and the fourth was tried and REJECTED on
+measurement — see the two entries below.** Method, if it needs
 redoing: drive `getStroke` with the app's own `input.ts` filter and `brush.ts` options in a node
 script, and measure canvas alpha in a throwaway page in Chrome (Vitest is node-only, so the raster
 half cannot live in the suite).
@@ -3602,7 +3602,11 @@ repeatedly with no per-stamp rotation, scatter or jitter, so an identical grain 
 a fixed step beats against itself. It gets WORSE with size because at small sizes the same downscale
 averaging that causes the density loss above also blurs the grain into a smooth blob and hides it.
 Pencil is the worst of the three (one gradient with 300 holes punched in it) and charcoal the best
-(20 overlapping opaque circles, which survives the beat). Candidate fix is per-stamp rotation jitter.
+(20 overlapping opaque circles, which survives the beat).
+
+> **SUPERSEDED 2026-08-29 — rotation jitter was tried and MADE IT WORSE, and the banding turned
+> out not to be the reported symptom at all. See `The stamp banding is the grain` below before
+> acting on this paragraph.**
 
 **Two brush controls are DEAD on four of the five brushes.** `settings.smoothing` and `settings.taper`
 are read in exactly one file, `brush.ts` — ink and the stamp engine receive them and never look at
@@ -3663,3 +3667,57 @@ snapping on; the same for charcoal and airbrush; a size-40 stroke looks unchange
 erases faintly rather than not at all; Smooth and Taper dim when you pick Ink/Pencil/Charcoal/Airbrush
 and come back for Smooth; tapping a dimmed one on iPad reads its reason in the status bar; Stream
 stays live throughout.
+
+**The outline decimation is capped at the stroke's own thinnest width (2026-08-29).** The third of
+the four candidates, and the one that fixes the measured dashing on the SMOOTH brush.
+`decimationSmoothing` (pure, unit-tested) hands perfect-freehand
+`min(userSmoothing, minStrokeWidth / pfSize)` instead of the raw slider value, so the outline spacing
+can never exceed the thinnest width the stroke actually reaches — which is exactly the condition that
+let both walls bridge a thin section with a chord and cancel the fill to a hole.
+**Measured against the 2,880-combination sweep the analysis entry left as the acceptance test: gap
+combinations 185 → 21, worst gap 7.3% → 0.7%, and the longest unshaped chord (the lag symptom) 208 →
+97 px as a side effect.** The coefficient was chosen on evidence, not taste: capping at 0.5× or 0.25×
+of the thin width fixes exactly the same 21 combinations while removing 33% and 42% of the artist's
+Smooth setting respectively, against 25% for 1.0×. Same benefit, more damage — so 1.0×.
+**Measuring the stroke's OWN minimum rather than `widthRange`'s theoretical `min` is what stops it
+over-correcting**: a stroke that never presses lightly is never capped at all, so a constant-pressure
+stroke and every Press 1× stroke are bit-identical to before. The cap is also monotonic — it can only
+tighten as a stroke reaches thinner widths — so the live full redraw converges toward more fidelity
+and cannot oscillate.
+**The residual 21 are a DIFFERENT defect and are not chaseable here.** Five of them occur at Smooth 0,
+where the spacing is 0 and nothing is dropped at all — so they cannot be decimation. They are a
+self-intersecting outline cancelling under nonzero winding where the path doubles back on itself, and
+they are present in the current shipped code too. Do not tune `decimationSmoothing` trying to reach
+zero; it is already at the floor of what this lever can do.
+There is an end-to-end regression test beside the unit tests that reproduces the worst sweep case and
+walks the pen's centreline through the flattened quad path. **It asserts that the UNCAPPED value still
+gaps**, which is what stops the suite going green on a broken hole-detector — and note it must flatten
+`getSvgPathFromStroke`'s quadratics, because the raw pf polygon shows 0% dropout and misses the bug
+entirely.
+
+**The stamp banding is the GRAIN, and the reported stamp dashing was the drawSize cliff (2026-08-29
+— fix REJECTED, and the rejection is the useful part).** Three mechanisms were tried against the
+pencil/charcoal banding and all three are dead ends; recording them so nobody spends the afternoon
+again.
+
+1. **Per-stamp rotation jitter made it WORSE** — 10 of 12 measured cases up, some by +55% and +68%.
+   Obvious in hindsight: the beat is a COHERENT repeated pattern whose overlaps partially self-cancel,
+   and randomising each stamp's orientation replaces that with independent noise, which sums to
+   HIGHER variance. Randomising a periodic artefact is not the same as removing it.
+2. **Tighter stamp spacing removes the banding by destroying the brush.** Variation falls 15% → 3% at
+   spacing 0.05 and → 1% at 0.03 — but mean density goes 0.859 → 0.992 (pencil) and 0.904 → 0.997
+   (charcoal). It works by saturating the stroke to solid black, i.e. by deleting the texture that
+   makes a pencil a pencil rather than the ink brush.
+3. **Which reframes it: the variation IS the grain.** No pixel anywhere in the banding measurements
+   drops below 8% alpha — there are no gaps to fix. A textured brush is supposed to vary along its
+   length; that is the whole difference between it and `ctx.stroke()`.
+   **What the artist was actually seeing was the drawSize cliff**, and it is already fixed. On a
+   pressure-varying stroke under the old `Math.max(1, size)`, measured dead runs (alpha under 3% on the
+   pen's own path): pencil size 1 → 35% of the stroke dead in 3 dashes up to 40 px long, size 4 → 10%,
+   **size 8 → none**; charcoal the same. With the 2 px floor: **zero at every size.** That "small brushes
+   dash, big ones don't" signature is exactly the report, and it is the same root cause as "the smaller
+   the brush the harder you have to press" — one defect presenting as two symptoms.
+   **So there is nothing left to fix here, and `spacing` is deliberately still 0.15.** If pencil grain is
+   ever judged too coarse, the lever is the TIP TEXTURE (finer, denser grain baked at `TIP_SIZE`), not
+   the spacing and not rotation — changing spacing trades texture for saturation on a fixed curve, and
+   the numbers above are that curve.
