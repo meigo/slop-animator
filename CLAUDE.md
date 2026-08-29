@@ -3518,3 +3518,111 @@ pair inconsistent — the swatch's position was never the problem.
 **The general rule: in a ToolOptions branch, an action goes at the END behind a divider, never
 between parameters.** Params are scanned and tweaked; an action is pressed. Interleaving them makes
 neither group readable, and it is how a destructive control ends up next to a slider.
+
+**Brush engine analysis (2026-08-29) — ANALYSIS ONLY, nothing here is fixed.** Reported as three
+separate complaints; they are four defects across two engines plus one behaviour that turns out to be
+worth keeping. Recorded because each was measured, and because re-deriving any of it costs an
+afternoon. **The fixes are NOT applied — do not read this entry as a changelog.** Method, if it needs
+redoing: drive `getStroke` with the app's own `input.ts` filter and `brush.ts` options in a node
+script, and measure canvas alpha in a throwaway page in Chrome (Vitest is node-only, so the raster
+half cannot live in the suite).
+
+**ONE number is behind BOTH smooth-brush symptoms, and it is not where the labels point.**
+perfect-freehand's `smoothing` is not a curve-smoothing parameter at all — it is a DECIMATION
+DISTANCE. An outline point is discarded unless it is farther than `size × smoothing` from the last
+kept one (`R=(r*a)**2` in the minified lib, read only by the two `y(G,q)>R` tests; `a` is redeclared
+inside the loop, so that is genuinely its only use). And `brush.ts:55` passes `size: maxSize/2`, where
+`maxSize = brush.size × sizeRange`. So the governing quantity is
+
+    minDistance = (size × Press) / 2 × (Smooth / 100)
+
+which grows with brush size, with **Press**, and with **Smooth** — and Stream does not enter it.
+
+1. **The "big tip lags behind" symptom is that decimation, not throughput.** Up to `minDistance` of
+   stroke behind the pen is drawn as a straight chord that snaps into shape only when the next point
+   qualifies. Measured longest unshaped chord at the default Smooth 50: size 8 / Press 1× → 6 px;
+   size 40 / Press 4× → 52 px; size 150 / Press 4× → **196 px**. There is a second size-dependent one
+   in `getStrokePoints`: points are dropped until running length ≥ `size`, so at size 150 / Press 4×
+   the **first 300 px of travel collapse to a single point**.
+2. **The dashing is that same number exceeding the stroke's own width.** `minDistance` is computed
+   from the MAXIMUM radius but applied uniformly, while the actual radius varies by `Press²` along the
+   stroke. Worst reproduced case (size 40, Press 8×, Smooth 90, Stream 0): minDistance 144 px across a
+   section only 21 px wide — 7× narrower than the spacing. No outline points are emitted there, both
+   walls bridge it with a chord, the chords cross where the path curves, winding goes to 0, and the
+   fill has a hole. **The identical path at Press 1× has zero gaps** (minDistance 144 → 18).
+   A 2,880-combination sweep, gaps by parameter: Smooth `0→5 30→8 60→24 90→74 100→74`;
+   Stream `0→110 30→64 60→11 90→0`; Press `1→0 2→10 4→81 8→94`.
+
+**Stream's role is real but indirect, and two obvious explanations for it are WRONG — do not
+re-investigate them.** It does not change `minDistance`, and it does not inflate the point count
+(964 → 936 across its whole range, 3%). It changes whether the straight bridge is a GOOD FIT: a
+jittery raw path deviates further from the chord, so the same chord both snaps more visibly and
+crosses more often. Also ruled out by measurement: throughput is not the issue anywhere near desktop
+— geometry JS is 0.44 ms at 3,874 points, and a full `paintStroke` frame including the 1920×1080
+`putImageData` peaks at 2.6 ms of a 16.7 ms budget. It gets **cheaper** with a bigger brush
+(2.6 → 0.7 ms), because a bigger brush decimates more outline points away. One further dead end: the
+gaps do NOT show up if you test the raw pf polygon (0% dropout) — they only appear once you flatten
+the quadratic path `getSvgPathFromStroke` actually builds. Test what is rasterised.
+
+**The design problem worth naming:** "Smooth" is scaled by brush size, so the same slider value means
+minDistance 1 px at size 4 and 150 px at size 150, and Press silently multiplies it while ALSO
+creating the thin sections that turn it into holes. Meanwhile `input.ts` already streamlines the input
+and `brush.ts:57` additionally hardcodes pf's own `streamline: 0.3` — two smoothing stages stacked,
+one of them on a slider. The candidate fix is to decouple the decimation from the pressure envelope
+(derive pf's `size` from the NOMINAL width, or clamp so `minDistance` cannot exceed the stroke's own
+minimum width), which is why the sweep above is worth keeping as the acceptance test.
+
+**Ink is clean because it has no decimation at all** — `ctx.stroke()` with round caps.
+
+**Stamp engine (pencil/charcoal/airbrush): a hard cliff at drawSize 1, not a curve.**
+`drawSize = Math.max(1, size)`, and a 64×64 tip drawn into a 1×1 box measures **alpha 0.00 for EVERY
+tip, the hard round one included** — Chrome's downscale samples a couple of texels and lands in the
+transparent corner. Peak alpha of one stamp at Opacity 100 / full press, by drawSize:
+
+    drawSize |  smooth  pencil  charcoal  airbrush
+           1 |    0.00    0.00      0.00      0.00   <- draws literally nothing
+           2 |    1.00    0.23      0.97      0.05
+           4 |    1.00    0.51      1.00      0.14
+          40 |    1.00    0.67      1.00      0.28
+
+So at size 4 / Press 4× the minimum width is 1 px and the whole lower pressure range renders NOTHING
+— that is the "the smaller the brush, the harder you have to press" report, and it is a threshold
+rather than a fade. A second, gentler effect stacks on it: pencil and airbrush lose ~half their
+density between drawSize 40 and 4, because the grain and falloff are baked at `TIP_SIZE` 64 and
+downsampling averages the peaks away (airbrush 0.05 at drawSize 2 vs 0.29 at 80, nearly 6×). Candidate
+fix is a `MIN_STAMP_PX` floor of ~2 px, with `globalAlpha` scaled down when the ideal width falls
+below it so thin strokes FADE instead of vanishing.
+
+**The stamp "dashing" is a beat pattern, and there are no actual gaps.** Alpha along the centreline of
+a straight stroke (Press 4×, Opacity 100): pencil at size 40 swings 0.34..0.76 (13% variation), size
+12 → 8%, size 4 → 2%; charcoal 5%; airbrush 7%; smooth 0%. No pixel anywhere drops below 8% alpha, so
+it is periodic BANDING — a >2× density swing — not holes. Cause: the tip is generated ONCE and stamped
+repeatedly with no per-stamp rotation, scatter or jitter, so an identical grain pattern translated by
+a fixed step beats against itself. It gets WORSE with size because at small sizes the same downscale
+averaging that causes the density loss above also blurs the grain into a smooth blob and hides it.
+Pencil is the worst of the three (one gradient with 300 holes punched in it) and charcoal the best
+(20 overlapping opaque circles, which survives the beat). Candidate fix is per-stamp rotation jitter.
+
+**Two brush controls are DEAD on four of the five brushes.** `settings.smoothing` and `settings.taper`
+are read in exactly one file, `brush.ts` — ink and the stamp engine receive them and never look at
+them. **Stream is NOT one of them**: it is applied in `input.ts`, upstream of every engine, so it is
+live everywhere. Size, Press, Opacity, colour and the pressure curve are live everywhere too. If
+Smooth and Taper get dimmed for ink/pencil/charcoal/airbrush they want `aria-disabled` with the reason
+in the `title`, per the 2026-08-12 rule — a `disabled` button dispatches no pointer events, so the
+status bar could never read it out on an iPad tap.
+
+**Ink at very low opacity reads as a felt tip, and that is DELIBERATE — do NOT "fix" it.**
+`drawInkStrokeIncremental` strokes each segment separately at `globalAlpha = opacity/100` with round
+caps, so a pixel covered N times accumulates `1-(1-a)^N` and the joins come out darker than the
+mid-segments. Above ~60% opacity the accumulation SATURATES and the two are mathematically identical
+(100% → 0.000 absolute difference, 60% → 0.022); relative contrast then climbs monotonically as
+opacity falls (25% → 17%, 10% → 27%, 3% → 31%), and below ~10% the stroke is light enough that the
+variation reads as GRAIN rather than as mottling on a dark line. The user judged this a good felt-tip
+texture and it is being kept. The mechanism is genuinely the same one a marker has — overlapping wet
+dabs building up at the joins — so this is not a defect that happens to look tolerable.
+**The specific thing to guard against:** the textbook fix for per-segment compositing is to render the
+stroke to an offscreen buffer at alpha 1 and blit it once at the target opacity. That is the correct
+fix for the BUG reading of this code, and it would flatten the stroke to a dead uniform line and
+destroy the behaviour. Anyone reading `ink-brush.ts`, seeing N `ctx.stroke()` calls each applying
+`globalAlpha`, and recognising the classic double-compositing smell will be right about the mechanism
+and wrong about the remedy.
