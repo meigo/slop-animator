@@ -23,8 +23,13 @@ function getCachedTip(
 }
 
 /** The calligraphic nib never gets flatter than this — 1.0 would collapse its short axis to
- *  zero, which either draws nothing or divides by zero downstream. */
-export const MAX_NIB_FLATNESS = 0.9;
+ *  zero, which either draws nothing or divides by zero downstream. Also caps how thin the
+ *  short axis can get relative to the stamp spacing: `stepSize` is derived from the nib's
+ *  full (long-axis) width, so above ~0.82 the short axis's opaque core is narrower than the
+ *  gap between stamps and a dragged stroke goes visibly dashed (found in a whole-branch
+ *  review, confirmed by measurement — see the 2026-09-03 CHANGELOG entry). 0.8 is inside the
+ *  confirmed-safe range. */
+export const MAX_NIB_FLATNESS = 0.8;
 
 export function clampNibFlatness(flatness: number): number {
   return Math.max(0, Math.min(MAX_NIB_FLATNESS, flatness));

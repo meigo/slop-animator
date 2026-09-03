@@ -32,7 +32,7 @@ describe("nibSemiAxes", () => {
 
   it("the short axis shrinks as flatness rises, but never reaches zero", () => {
     expect(nibSemiAxes(10, 0.5).b).toBeCloseTo(5, 6);
-    expect(nibSemiAxes(10, MAX_NIB_FLATNESS).b).toBeCloseTo(1, 6);
+    expect(nibSemiAxes(10, MAX_NIB_FLATNESS).b).toBeCloseTo(10 * (1 - MAX_NIB_FLATNESS), 6);
     expect(nibSemiAxes(10, 0.9).b).toBeGreaterThan(0);
   });
 
