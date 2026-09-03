@@ -3577,3 +3577,43 @@ stroke drawn as a real gesture (the single-fill uniformity claim); interaction w
 and iPad, including whether the full-redraw cost per frame is acceptable there on a long stroke — the
 stamped version was incremental, this one redraws the whole ribbon each frame like the smooth brush
 already does.
+
+**A flat nib amplifies input jitter, and that is a defect class of its own (2026-09-03).** Reported
+from a real Pencil stroke as "the nib seems to rotate randomly": the swept ribbon was continuous, but
+spikes the length of the nib crossed it at intervals, worst along the hairline sections. The nib angle
+is fixed and never rotates — what jitters is the TRAVEL DIRECTION, and because the swept half-width is
+the nib's support along the segment's perpendicular, a sample deviating sideways by a fraction of a
+pixel swings the width between `b` and `a`. At flatness 0.95 that is a 20× jump, painted as a spike
+across a hairline. **A round brush shows none of this** — its sweep is direction-independent — so this
+is a hazard that only exists once a brush's footprint is anisotropic, and no amount of care in the
+sweep geometry addresses it: the geometry was exactly right, and the INPUT was noisy.
+
+Reproduced synthetically before fixing, which is what made the cause certain rather than plausible:
+zero jitter renders perfectly clean, **0.4px of sample jitter already furs the edges, and 1.2px
+reproduces the reported spikes**. Two dampers, both in `calligraphy-brush.ts`:
+
+- **The normal is taken over a distance BASELINE, not from the adjacent segment** (`normals`).
+  Measured in distance rather than samples on purpose — sample density swings with drawing speed, so
+  a fixed sample count over-smooths a fast stroke and barely touches a slow one. The baseline scales
+  with the nib's long semi-axis because that is what sets the error: an angular error of σ/L becomes a
+  width error of about a·σ/L, so a baseline near `a` keeps a pixel of jitter to about a pixel of
+  width. This is the load-bearing half.
+- **Light centred smoothing of the sample positions** (`smoothPositions`), which removes the residual
+  ~1px edge roughness the first stage leaves behind. Centred costs no lag here, because this engine
+  redraws the whole stroke each frame and therefore has the later samples in hand — an incremental
+  engine could not do this without trailing the pen.
+
+**Direction smoothing does far more per unit of smoothing than position smoothing, and that is the
+part worth remembering.** Position smoothing strong enough to kill the spikes (a ±4-sample window)
+starts rounding real corners; stabilising the direction fixes the same spikes while leaving the path
+exactly where the pen put it. Verified against a hard zigzag: corners stay crisp, with the calligraphic
+thick/thin still reading correctly across them.
+
+`normals` is exported solely so the damping is testable, and the regression tests include a **contrast
+case** asserting that a narrow baseline still tilts more than 30° where a wide one stays under 12° —
+without it, the test would pass against the broken implementation too, which is the trap the
+2026-08-18 fixture lesson already recorded. Also covered: a fully coincident run (a held pen) and a
+single-point path, both of which reach the divide-by-zero fallback.
+
+**Still owed the same browser pass as the sweep itself** — this was verified by rendering the module
+against synthetic jitter, not by drawing with a Pencil through the app.

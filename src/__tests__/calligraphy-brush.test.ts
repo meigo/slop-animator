@@ -3,6 +3,7 @@ import {
   nibSemiAxes,
   clampNibFlatness,
   nibSupport,
+  normals,
   MAX_NIB_FLATNESS,
 } from "../core/calligraphy-brush";
 
@@ -102,5 +103,54 @@ describe("nibSupport", () => {
   it("never returns zero at the flatness ceiling — the thinnest stroke still renders", () => {
     const { a: ca, b: cb } = nibSemiAxes(10, MAX_NIB_FLATNESS);
     expect(nibSupport(ca, cb, 0, 0, 1)).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Regression guard for the defect that shipped twice: a flat nib turns tiny input jitter into
+ * spikes the length of the nib, because the swept half-width is read off the travel direction.
+ * The damper is the normal being taken over a DISTANCE baseline rather than from the adjacent
+ * segment. These tests fail against a per-segment normal, which is the point of them.
+ */
+describe("normals (jitter damping)", () => {
+  // a straight horizontal path with sub-pixel sample noise, the shape a Pencil actually delivers
+  const jittery = (jit: number) => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5) * 2;
+    return Array.from({ length: 200 }, (_, i) => ({ x: i * 2 + rnd() * jit, y: 50 + rnd() * jit }));
+  };
+  // worst angular deviation from the true perpendicular of a horizontal path, which is (0, ±1)
+  const worstTiltDeg = (ns: { nx: number; ny: number }[]) =>
+    Math.max(...ns.map((n) => Math.abs((Math.atan2(n.nx, Math.abs(n.ny)) * 180) / Math.PI)));
+
+  it("holds the normal steady through jitter when the baseline is wide", () => {
+    expect(worstTiltDeg(normals(jittery(1.2), 17))).toBeLessThan(12);
+  });
+
+  it("degrades as the baseline shrinks — this is what the old per-segment normal did", () => {
+    // reach 0 clamps to the 2px floor, i.e. roughly one sample: the failure mode, kept as the
+    // contrast that proves the assertion above is measuring something real.
+    expect(worstTiltDeg(normals(jittery(1.2), 0))).toBeGreaterThan(30);
+  });
+
+  it("is the exact perpendicular for a clean straight path", () => {
+    const straight = Array.from({ length: 50 }, (_, i) => ({ x: i * 3, y: 20 }));
+    for (const n of normals(straight, 17)) {
+      expect(Math.abs(n.nx)).toBeCloseTo(0, 6);
+      expect(Math.abs(n.ny)).toBeCloseTo(1, 6);
+    }
+  });
+
+  it("returns unit vectors everywhere, including a fully coincident run", () => {
+    const held = [
+      ...Array.from({ length: 30 }, () => ({ x: 10, y: 10 })),
+      ...Array.from({ length: 30 }, (_, i) => ({ x: 10 + i * 4, y: 10 })),
+    ];
+    for (const n of normals(held, 17)) expect(Math.hypot(n.nx, n.ny)).toBeCloseTo(1, 6);
+  });
+
+  it("survives a path of one single point", () => {
+    expect(normals([{ x: 5, y: 5 }], 17)).toHaveLength(1);
+    expect(Math.hypot(...Object.values(normals([{ x: 5, y: 5 }], 17)[0]))).toBeCloseTo(1, 6);
   });
 });
