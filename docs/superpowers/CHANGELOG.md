@@ -3617,3 +3617,46 @@ single-point path, both of which reach the divide-by-zero fallback.
 
 **Still owed the same browser pass as the sweep itself** — this was verified by rendering the module
 against synthetic jitter, not by drawing with a Pencil through the app.
+
+**The calligraphy sweep was quadratic, and the join ellipses were the reason (2026-09-03).**
+Reported as "slow, especially on large sizes and the longer the stroke gets" — an accurate
+description of a full-redraw engine whose per-frame cost was itself O(N²). Measured before touching
+anything: a single redraw took 5ms at 200 points, 92ms at 1500, **373ms at 3000, and 1663ms at
+6000**. Doubling the points quadrupled the time, and that is per FRAME, so a long stroke degraded
+cubically over its own lifetime.
+
+**The cause was a nib footprint emitted at EVERY sample.** Those ellipses are large — up to `2a`
+across — so at any realistic sample spacing each one overlapped dozens of neighbours, and a single
+`fill()` had to resolve the winding of N mutually-overlapping subpaths. **They were never needed.**
+Consecutive quads share their end edge *exactly* (same point, same normal, same offset), so the
+chain TILES the ribbon with no gaps and no overlap; only the two stroke ends need a footprint, for
+the angled entry/exit a flat cap would square off. Deleting the interior ones plus decimating to 3px
+takes the 6000-point redraw from **1663ms to ~22ms**, and — the part that answers the actual report
+— makes cost roughly FLAT in stroke length (600 pts 14ms, 3000 pts 21ms, 6000 pts 22ms) instead of
+exploding.
+
+**Decimation is free here in a way it would not be for a stamp engine.** The sweep is geometrically
+exact at ANY spacing, because the quads connect consecutive nib positions exactly — decimation
+coarsens the PATH, never the ribbon around it. Measured at 3px: 0.27% of the stroke's ink pixels
+differ from the undecimated render, i.e. antialiasing noise. Spacing is capped at 3px and floored
+relative to the nib so a small brush is not coarsened, and smoothing runs BEFORE decimation so the
+dropped samples still inform the survivors.
+
+**A single outline polygon was tried and rejected, and the reason generalises.** Walking the +offset
+side forward and the −offset side back gives one subpath instead of N and is faster still — but a
+self-intersecting ring CANCELS under nonzero fill, and it rendered white gashes through every sharp
+corner, the caps, and the middle of a spiral. A union of consistently-wound convex pieces has no
+such failure. **Speed came from removing overlap, not from merging subpaths.**
+
+**Winding is now COMPUTED, never derived.** `addRing` measures each ring's signed area and reverses
+it when negative, so mixed winding is structurally impossible. Reasoning about the sign by hand was
+wrong twice in this file — first as a comb through every join, then as slivers at the caps only,
+each time silently — so nothing here may emit a subpath by another route. The nib footprint is a
+20-gon rather than `ctx.ellipse` purely so it goes through the same normalisation.
+
+**Known residual, not chased:** a stroke that reverses through a full 180° leaves a speck of a
+notch at the fold, where the sweep is genuinely degenerate. Still owed the same real-Pencil pass as
+the rest of this engine — every number above is a synthetic benchmark, and the remaining per-frame
+cost is dominated by fill AREA (22ms at size 60 vs 13ms at size 20 on a 6000-point stroke), so a
+large brush on iPad is the case to watch. Going further means incremental rendering, which would
+trade away the single-fill uniform alpha wherever a translucent stroke crosses itself.

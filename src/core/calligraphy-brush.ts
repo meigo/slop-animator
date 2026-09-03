@@ -130,31 +130,83 @@ export function normals(
   });
 }
 
-/** Start a fresh subpath on the ellipse's own first point, so the ellipse does not get joined
- *  to the previous subpath by a stray connecting line. */
-function addNib(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  a: number,
-  b: number,
-  angleRad: number,
-) {
-  ctx.moveTo(cx + a * Math.cos(angleRad), cy + a * Math.sin(angleRad));
-  // The default (clockwise) sweep matches the winding of the quads below, and that agreement is
-  // load-bearing: the ellipses and quads overlap by design, and under nonzero fill two opposite
-  // windings CANCEL. Getting this backwards does not fail loudly — it renders the stroke as a
-  // fine comb, holes punched at exactly the joins these ellipses exist to fill. Verified by
-  // rendering both windings side by side, not by reasoning about the sign.
-  ctx.ellipse(cx, cy, a, b, angleRad, 0, Math.PI * 2);
+/**
+ * Drop samples closer together than `minDist`. A 120Hz Pencil delivers far more points than the
+ * geometry needs, and every one of them costs a subpath in the fill — measured at 6000 points,
+ * decimating to 3px took a redraw from 1663ms to 13ms while changing 0.27% of the stroke's ink
+ * pixels (i.e. antialiasing noise). The sweep stays geometrically exact at ANY spacing, because
+ * the quads below connect consecutive nib positions exactly; decimation only coarsens the PATH,
+ * never the ribbon around it. Endpoints are always kept so the stroke still ends where the pen
+ * did.
+ */
+function decimate(points: InputPoint[], minDist: number): InputPoint[] {
+  if (points.length < 3) return points;
+  const out = [points[0]];
+  let last = points[0];
+  for (let i = 1; i < points.length - 1; i++) {
+    if (Math.hypot(points[i].x - last.x, points[i].y - last.y) >= minDist) {
+      out.push(points[i]);
+      last = points[i];
+    }
+  }
+  out.push(points[points.length - 1]);
+  return out;
 }
 
 /**
- * Draw the whole stroke. Like the smooth (perfect-freehand) engine and unlike the ink/stamp
- * ones, this is a FULL REDRAW from the pre-stroke snapshot rather than an incremental append:
- * the entire ribbon goes into one path and is filled ONCE, so a translucent stroke has uniform
- * alpha instead of darkening everywhere two pieces overlap. The caller restores the snapshot
- * first (see `Canvas.svelte`'s calligraphy branch).
+ * Add one convex ring to the current path, forced to a consistent (positive-area) winding.
+ *
+ * THIS NORMALISATION IS LOAD-BEARING, and it fails silently when it is missing. The pieces below
+ * overlap wherever a stroke crosses itself or reverses, and under nonzero fill two opposite
+ * windings CANCEL — punching white slivers through the caps and gashes across the joins. Deriving
+ * the sign by hand got it wrong twice here (once as a comb through every join, once as slivers at
+ * the caps only), so the winding is now computed rather than reasoned about, and nothing in this
+ * file may emit a subpath by any other route.
+ */
+function addRing(ctx: CanvasRenderingContext2D, ring: number[][]) {
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  const r = area < 0 ? ring.slice().reverse() : ring;
+  ctx.moveTo(r[0][0], r[0][1]);
+  for (let i = 1; i < r.length; i++) ctx.lineTo(r[i][0], r[i][1]);
+  ctx.closePath();
+}
+
+/** The nib's own footprint as a polygon rather than `ctx.ellipse`, so it goes through the same
+ *  winding normalisation as everything else. Only the two stroke ENDS need one: consecutive quads
+ *  share their end edge exactly (same point, same normal, same offset), so they tile the ribbon
+ *  with no gaps — an interior cap per sample was the original performance bug, N big ellipses all
+ *  overlapping each other in one fill. */
+const NIB_SEGMENTS = 20;
+function nibRing(cx: number, cy: number, a: number, b: number, angleRad: number): number[][] {
+  const ca = Math.cos(angleRad);
+  const sa = Math.sin(angleRad);
+  const ring: number[][] = [];
+  for (let k = 0; k < NIB_SEGMENTS; k++) {
+    const t = (k / NIB_SEGMENTS) * Math.PI * 2;
+    const px = a * Math.cos(t);
+    const py = b * Math.sin(t);
+    ring.push([cx + px * ca - py * sa, cy + px * sa + py * ca]);
+  }
+  return ring;
+}
+
+/**
+ * Draw the whole stroke. Like the smooth (perfect-freehand) engine and unlike the ink/stamp ones,
+ * this is a FULL REDRAW from the pre-stroke snapshot rather than an incremental append: the whole
+ * ribbon goes into one path and is filled ONCE, so a translucent stroke has uniform alpha instead
+ * of darkening wherever two pieces meet. The caller restores the snapshot first (see
+ * `Canvas.svelte`'s calligraphy branch).
+ *
+ * The ribbon is a chain of quads, one per segment, and they TILE rather than overlap: quad i ends
+ * on exactly the edge quad i+1 starts from (same point, same normal, same offset). That is why
+ * only the two ends carry a nib footprint. Emitting one per sample — which the first version did —
+ * put N big overlapping ellipses into a single fill and made a long stroke quadratic: 1663ms for a
+ * 6000-point redraw, against 13ms for this.
  */
 export function drawCalligraphyStroke(
   ctx: CanvasRenderingContext2D,
@@ -167,11 +219,14 @@ export function drawCalligraphyStroke(
   const { min: minW, max: maxW } = widthRange(settings.size, sizeRange);
   const angle = ((settings.nibAngle ?? 0) * Math.PI) / 180;
   const flat = clampNibFlatness(settings.nibFlatness ?? 0);
-  const pts = smoothPositions(points);
+  // Smooth BEFORE decimating, so the dropped samples still inform the ones that survive; the
+  // spacing is capped at 3px (measured harmless) and floored so a small nib is not coarsened.
+  const pts = decimate(smoothPositions(points), Math.min(3, Math.max(0.75, maxW / 16)));
   const nib = pts.map((p) => nibSemiAxes((minW + p.pressure * (maxW - minW)) / 2, flat));
   // Reach scales with the widest nib the stroke reaches, so the damping matches the worst case
   // rather than whatever width happens to be under the pointer at one sample.
   const nrm = normals(pts, maxW / 2);
+  const offset = (i: number) => nibSupport(nib[i].a, nib[i].b, angle, nrm[i].nx, nrm[i].ny);
 
   ctx.save();
   if (settings.isEraser) {
@@ -186,29 +241,24 @@ export function drawCalligraphyStroke(
   ctx.fillStyle = settings.color;
 
   ctx.beginPath();
-  addNib(ctx, pts[0].x, pts[0].y, nib[0].a, nib[0].b, angle);
-
+  // The nib's angled footprint at each end — the entry and exit shape a broad-edge pen leaves,
+  // which a flat cap across the ribbon would square off.
+  for (const i of [0, pts.length - 1]) {
+    addRing(ctx, nibRing(pts[i].x, pts[i].y, nib[i].a, nib[i].b, angle));
+  }
   for (let i = 1; i < pts.length; i++) {
     const p1 = pts[i - 1];
     const p2 = pts[i];
-    // Each end offsets along its OWN stabilised normal (see `normals`) rather than along the
-    // raw segment's perpendicular. The nib's reach there depends on how the travel direction
-    // meets the nib's fixed angle — that is where thick and thin come from, and it is exactly
-    // what makes a noisy direction so destructive.
     const n1 = nrm[i - 1];
     const n2 = nrm[i];
-    const o1 = nibSupport(nib[i - 1].a, nib[i - 1].b, angle, n1.nx, n1.ny);
-    const o2 = nibSupport(nib[i].a, nib[i].b, angle, n2.nx, n2.ny);
-    // Wound to match addNib's ellipses (see the note there). The ordering is orientation-stable
-    // whichever way the stroke runs: it is built in the (travel, left-normal) frame, which is a
-    // rotation of canvas space, and rotations preserve winding — so a stroke that doubles back
-    // on itself still unions with its own earlier segments instead of erasing them.
-    ctx.moveTo(p1.x + n1.nx * o1, p1.y + n1.ny * o1);
-    ctx.lineTo(p1.x - n1.nx * o1, p1.y - n1.ny * o1);
-    ctx.lineTo(p2.x - n2.nx * o2, p2.y - n2.ny * o2);
-    ctx.lineTo(p2.x + n2.nx * o2, p2.y + n2.ny * o2);
-    ctx.closePath();
-    addNib(ctx, p2.x, p2.y, nib[i].a, nib[i].b, angle);
+    const o1 = offset(i - 1);
+    const o2 = offset(i);
+    addRing(ctx, [
+      [p1.x + n1.nx * o1, p1.y + n1.ny * o1],
+      [p1.x - n1.nx * o1, p1.y - n1.ny * o1],
+      [p2.x - n2.nx * o2, p2.y - n2.ny * o2],
+      [p2.x + n2.nx * o2, p2.y + n2.ny * o2],
+    ]);
   }
 
   ctx.fill();
