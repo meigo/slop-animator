@@ -22,6 +22,25 @@ function getCachedTip(
   return cvs;
 }
 
+/** The calligraphic nib never gets flatter than this — 1.0 would collapse its short axis to
+ *  zero, which either draws nothing or divides by zero downstream. */
+export const MAX_NIB_FLATNESS = 0.9;
+
+export function clampNibFlatness(flatness: number): number {
+  return Math.max(0, Math.min(MAX_NIB_FLATNESS, flatness));
+}
+
+/** Semi-axes of the calligraphy nib for a tip of the given radius. The long axis (`a`) is
+ *  always the tip's full radius — so flatness 0 is pixel-identical to the round tip, and a
+ *  rotated ellipse never exceeds the tip's own bounding square. The short axis (`b`) shrinks
+ *  toward (but never reaches) 0 as flatness approaches 1. Shared by the tip generator (bakes
+ *  the ellipse) and BrushCursor (previews it), so the two can never disagree about the nib's
+ *  shape. */
+export function nibSemiAxes(radius: number, flatness: number): { a: number; b: number } {
+  const f = clampNibFlatness(flatness);
+  return { a: radius, b: radius * (1 - f) };
+}
+
 /** Hard round brush — clean circle with slight antialiased edge */
 function hardRoundTip(): HTMLCanvasElement {
   return getCachedTip("hard", (ctx, s) => {
