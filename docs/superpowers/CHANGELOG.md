@@ -3503,6 +3503,12 @@ again.
    the spacing and not rotation — changing spacing trades texture for saturation on a fixed curve, and
    the numbers above are that curve.
 
+> **SUPERSEDED the same day — the stamp implementation this entry describes was REPLACED by a
+> swept ribbon; see "Calligraphy is swept, not stamped" at the end of this file. The nib model
+> (non-uniform scale + fixed rotation, `nibSemiAxes`, long axis = full radius) survived the
+> rewrite unchanged; the STAMP delivery of it, the tinted-tip flatness cache, and the
+> `MAX_NIB_FLATNESS = 0.8` ceiling below did not.**
+
 **Calligraphic brush (2026-09-03):** a 6th `BrushType`, `"calligraphy"` — a non-uniformly-scaled, fixed-rotation extension of the stamp engine (pencil/charcoal/airbrush), not a new tool or new engine. `nibSemiAxes(radius, flatness)` (`brush-textures.ts`, pure + unit-tested) is the ONE shared shape source for both the tip generator and the on-canvas cursor, so a mid-range flatness can never render one shape and preview another — a stronger form of the "gate at the shared accessor" lesson already logged elsewhere in this file. The long axis (`a`) always equals the tip's full radius regardless of flatness, which is what lets the rotated ellipse stay inside the existing `TIP_SIZE` square with no new bitmap geometry: flatness is baked into a cached tinted-tip bitmap (keyed on flatness, same cache `getTintedTip` already had for color/type); angle is NEVER baked — it is a live per-stamp `ctx.rotate()` in `stampAt`, so an Angle-slider drag costs nothing extra and only Flatness triggers a rebake.
 
 **Two corrections made during design/implementation, worth keeping the record of.** (1) The design's first draft baked BOTH flatness and angle into the cached bitmap, drawn into a square `(drawSize, drawSize)` destination — caught in spec self-review as introducing shear (a rotated, non-uniformly-scaled source drawn into a differently-scaled destination is not the same shape), and corrected to angle-as-live-rotation before any code was written. (2) The brush cursor's CSS `transform:` order was shipped as an explicit unproven guess in the plan (`translate(x,y) rotate(deg) translate(-50%,-50%)`) with instructions to verify it in the browser; it orbits instead of spinning in place. Shipped order is `translate(x,y) translate(-50%,-50%) rotate(deg)` — a whole-branch review independently re-derived the affine composition and confirmed the box's own center is angle-invariant under this order (and is NOT under the original), so the fix is proven, not just observed.
@@ -3514,3 +3520,60 @@ again.
 **Owed a browser pass:** a painted stroke at the (now unreachable-by-slider, still worth confirming stays clean) 0.8 ceiling; small brush size (near `MIN_STAMP_PX`) at high flatness — the short axis has no alpha-fade floor of its own, so it likely washes out gracefully rather than vanishing, but this hasn't been eyeballed; the calligraphic ERASER under `destination-out` compositing (no task drew with it — the spec asked implementers to flag if it looked wrong, and none did, but none confirmed it looked right either); iPad density/reachability of the two new Angle/Flatness sliders alongside the rest of the already-dense brush ToolOptions row.
 
 Spec/plan: `docs/superpowers/{specs,plans}/2026-09-03-calligraphic-brush*.md`.
+
+**Calligraphy is swept, not stamped (2026-09-03, same day) — the stamped version shipped and it
+beaded.** Reported with a screenshot: strokes came out as discrete elliptical blobs with visible gaps,
+nothing like the continuous line Ink and Smooth produce. The whole-branch review had caught the
+mechanism hours earlier and the fix chosen then (lower `MAX_NIB_FLATNESS` to 0.8) was calibrated to the
+wrong threshold — the review computed where alpha reaches exactly ZERO between stamps, but visible
+beading starts much earlier, wherever consecutive stamps' opaque cores stop overlapping generously. The
+deeper problem is that no ceiling fixes this: **a stamp engine spaces its dabs by the tip's nominal
+width, and a chisel nib's extent along the direction of travel COLLAPSES as it flattens — which is the
+entire point of a chisel nib.** So the flatness values that make it look like calligraphy are exactly
+the ones that break it, and the safe default (0.35) is barely calligraphic at all. Tightening the
+spacing only trades beading for saturation (the 2026-08-29 analysis already measured that trade).
+
+**The fix is the approach the design considered and rejected.** `src/core/calligraphy-brush.ts` sweeps
+the nib instead of stamping it: per segment, fill the convex hull of the nib ellipse at both endpoints
+— a quad along the perpendicular offset, plus the ellipse at each vertex, which is exactly the correct
+round join for a Minkowski sweep. Continuous by construction at every flatness, the same way
+`ink-brush.ts`'s stroked curve and `brush.ts`'s filled outline are. The rejection reasoning in the spec
+("a whole new engine for a result approach A already produces correctly") was simply wrong on its
+premise — approach A did not produce it correctly. `MAX_NIB_FLATNESS` is back up to **0.95**, and the
+ceiling is now only about keeping the thinnest stroke renderable, not about spacing.
+`nibSupport(a, b, angle, ux, uy)` — the ellipse's support function — is what produces the thick/thin:
+sweeping across the nib's face returns ~`a`, along its edge returns ~`b`, every direction between
+interpolates. Pure and unit-tested (14 cases incl. rotation, direction-reversal symmetry, and the
+degenerate circle).
+
+**The stamp engine is untouched again.** `brush-textures.ts` and `stamp-brush.ts` were reverted to
+byte-identical copies of their pre-feature state (verified by diff, not by eye): no `"calligraphy"` in
+`BrushType`, no `calligraphyTip`, no flatness cache key, no `stampAt`. Calligraphy is its own
+`BrushKind` member beside `"ink"`, and `Canvas.svelte` gives it a full-redraw branch like smooth's
+rather than an incremental one — **the whole ribbon must be ONE path filled ONCE**, or every overlap
+between segments double-composites and a translucent stroke comes out blotchy at the joins.
+
+**The subtle part, and it fails silently: every subpath must wind the SAME WAY.** The quads and the
+join ellipses overlap by design, and under nonzero fill two opposite windings CANCEL. Getting it
+backwards does not error or look obviously broken — it renders the stroke as a fine COMB, holes punched
+at exactly the joins the ellipses exist to fill. The first implementation had it backwards (an
+armchair shoelace-sign derivation, confidently wrong), and it was settled by rendering both windings
+side by side rather than by more reasoning. The quad ordering is orientation-stable whichever way the
+stroke runs — it is built in the (travel, left-normal) frame, which is a rotation of canvas space, and
+rotations preserve winding — so a stroke that doubles back on itself unions with its own earlier
+segments instead of erasing them (verified with a deliberately doubling-back path).
+
+**Verified by rendering the real module** (imported through Vite, drawn onto a test canvas, output
+measured rather than eyeballed): solid at flatness 0.95 where the stamped version dashed past 0.82; a
+tight self-overlapping spiral, a doubling-back stroke, a pressure ramp and a 35%-opacity loop all
+clean; and the residual edge "hairiness" visible in screenshots measured as **max 0.8–1.2px, mean
+0.14–0.33px** deviation — ordinary antialiasing on a moving edge, plus JPEG artifact, not a defect.
+
+**Owed a browser pass** — none of the below was reached, and the app-level wiring specifically was NOT
+exercised end to end (synthetic pointer events never reached `setupInput`'s handler, confirmed by the
+undo stack staying empty, so the `Canvas.svelte` branch is build- and review-verified only): an actual
+Pencil stroke through the real pipeline; the calligraphic ERASER (`destination-out`); a translucent
+stroke drawn as a real gesture (the single-fill uniformity claim); interaction with a selection clip;
+and iPad, including whether the full-redraw cost per frame is acceptable there on a long stroke — the
+stamped version was incremental, this one redraws the whole ribbon each frame like the smooth brush
+already does.

@@ -105,8 +105,9 @@ import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
 import { PressureCurve } from "../core/pressure-curve";
 
-/** Brush selection: smooth (perfect-freehand), ink (incremental marker), or a textured stamp type. */
-export type BrushKind = "smooth" | "ink" | BrushType;
+/** Brush selection: smooth (perfect-freehand), ink (incremental marker), calligraphy (swept
+ *  broad-edge nib), or a textured stamp type. */
+export type BrushKind = "smooth" | "ink" | "calligraphy" | BrushType;
 
 /** Per-tool stroke settings (brush and eraser each hold one). `isEraser` is NOT stored — it's
  *  derived from the active tool at draw time. */

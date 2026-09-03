@@ -3,7 +3,7 @@
   import type { Viewport } from "../core/viewport";
   import { state as appState, activeStroke, activeLayer } from "../state/appState.svelte";
   import { isLayerEditable } from "../anim/document";
-  import { nibSemiAxes } from "../core/brush-textures";
+  import { nibSemiAxes } from "../core/calligraphy-brush";
 
   let {
     getViewport,

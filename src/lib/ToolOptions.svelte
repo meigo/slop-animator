@@ -15,7 +15,7 @@
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
-  import { MAX_NIB_FLATNESS } from "../core/brush-textures";
+  import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
