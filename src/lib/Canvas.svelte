@@ -677,6 +677,8 @@
       drawBehind: stroke.drawBehind,
       alphaLock: stroke.alphaLock,
       taper: stroke.taper,
+      nibAngle: stroke.nibAngle,
+      nibFlatness: stroke.nibFlatness,
       isEraser: appState.tool === "eraser",
     };
     const kind = stroke.brushType; // local so TS narrows it across the branches

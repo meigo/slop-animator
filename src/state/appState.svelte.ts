@@ -268,6 +268,8 @@ export const state: AnimState = $state({
     sizeRange: 3.0, // full pen pressure → 3× the base width (light pressure → base)
     streamline: 50,
     brushType: "smooth",
+    nibAngle: 45,
+    nibFlatness: 0.35,
   },
   eraser: {
     size: 8,
@@ -280,6 +282,8 @@ export const state: AnimState = $state({
     sizeRange: 3.0,
     streamline: 50,
     brushType: "smooth",
+    nibAngle: 45,
+    nibFlatness: 0.35,
   },
   fill: { tolerance: 32, expand: 2, gap: 0, color: "#1a1a1a", opacity: 100 },
   version: 0,
