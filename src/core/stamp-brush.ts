@@ -36,16 +36,24 @@ let lastStampCount = 0;
 let tintedTip: HTMLCanvasElement | null = null;
 let tintedColor = "";
 let tintedType: BrushType | null = null;
+let tintedFlatness = 0;
 
 export function resetStampState() {
   lastStampCount = 0;
   tintedTip = null;
 }
 
-function getTintedTip(type: BrushType, color: string): HTMLCanvasElement {
-  if (tintedTip && tintedColor === color && tintedType === type) return tintedTip;
+function getTintedTip(type: BrushType, color: string, flatness: number): HTMLCanvasElement {
+  if (
+    tintedTip &&
+    tintedColor === color &&
+    tintedType === type &&
+    (type !== "calligraphy" || tintedFlatness === flatness)
+  ) {
+    return tintedTip;
+  }
 
-  const tip = getTip(type);
+  const tip = getTip(type, flatness);
   const cvs = document.createElement("canvas");
   cvs.width = tip.width;
   cvs.height = tip.height;
@@ -58,7 +66,32 @@ function getTintedTip(type: BrushType, color: string): HTMLCanvasElement {
   tintedTip = cvs;
   tintedColor = color;
   tintedType = type;
+  tintedFlatness = flatness;
   return cvs;
+}
+
+/** Draws one stamp. Every brush type draws it axis-aligned; calligraphy additionally rotates it
+ *  by the nib's FIXED angle — never derived from stroke direction (see the design spec) — so the
+ *  elongated tip holds a constant orientation while the stroke direction varies around it. That
+ *  is the entire calligraphic effect: no other code path needs to know about it. */
+function stampAt(
+  ctx: CanvasRenderingContext2D,
+  tip: HTMLCanvasElement,
+  x: number,
+  y: number,
+  drawSize: number,
+  brushType: BrushType,
+  nibAngle: number,
+) {
+  if (brushType !== "calligraphy") {
+    ctx.drawImage(tip, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((nibAngle * Math.PI) / 180);
+  ctx.drawImage(tip, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+  ctx.restore();
 }
 
 /**
@@ -76,7 +109,7 @@ export function drawStampStrokeIncremental(
 
   // Model 2 range (see widthRange in brush.ts): pressure thins below / widens above nominal.
   const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
-  const tip = getTintedTip(settings.brushType, settings.color);
+  const tip = getTintedTip(settings.brushType, settings.color, settings.nibFlatness ?? 0);
 
   ctx.save();
   if (settings.isEraser) {
@@ -103,7 +136,7 @@ export function drawStampStrokeIncremental(
     const p = newPoints[0];
     const { drawSize, alphaScale } = stampFootprint(minSize + p.pressure * (maxSize - minSize));
     ctx.globalAlpha = (settings.opacity / 100) * (0.5 + p.pressure * 0.5) * alphaScale;
-    ctx.drawImage(tip, p.x - drawSize / 2, p.y - drawSize / 2, drawSize, drawSize);
+    stampAt(ctx, tip, p.x, p.y, drawSize, settings.brushType, settings.nibAngle ?? 0);
   }
 
   // Stamp along new segments
@@ -129,7 +162,7 @@ export function drawStampStrokeIncremental(
         const { drawSize, alphaScale } = stampFootprint(minSize + p * (maxSize - minSize));
 
         ctx.globalAlpha = (settings.opacity / 100) * (0.5 + p * 0.5) * alphaScale;
-        ctx.drawImage(tip, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+        stampAt(ctx, tip, x, y, drawSize, settings.brushType, settings.nibAngle ?? 0);
       }
       pos += stepSize;
     }

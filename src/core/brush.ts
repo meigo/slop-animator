@@ -53,6 +53,10 @@ export interface BrushSettings {
   drawBehind: boolean;
   alphaLock: boolean;
   taper?: boolean;
+  /** Calligraphy nib only — read by stamp-brush.ts's stamp draw call, ignored by every other
+   *  engine (same relationship `taper` already has to the ink/stamp engines). */
+  nibAngle?: number;
+  nibFlatness?: number;
 }
 
 /**

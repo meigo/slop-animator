@@ -15,6 +15,7 @@
   import { clickOutside } from "./click-outside";
   import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
+  import { MAX_NIB_FLATNESS } from "../core/brush-textures";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
@@ -26,6 +27,7 @@
   // controls are inert — dim them rather than letting them promise an effect. Stream is NOT
   // one of these: it is applied in input.ts, upstream of every engine. See CLAUDE.md 2026-08-29.
   const smoothOnly = $derived(stroke.brushType === "smooth");
+  const isCalligraphy = $derived(stroke.brushType === "calligraphy");
   const inertOn = $derived(
     `${stroke.brushType[0].toUpperCase()}${stroke.brushType.slice(1)} — it is a Smooth-brush setting`,
   );
@@ -125,7 +127,32 @@
       <option value="pencil">Pencil</option>
       <option value="charcoal">Charcoal</option>
       <option value="airbrush">Airbrush</option>
+      <option value="calligraphy">Calligraphy</option>
     </select>
+    {#if isCalligraphy}
+      <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fixed nib angle">
+        Angle
+        <input type="range" min="0" max="180" step="1" class="w-16" bind:value={stroke.nibAngle} />
+        <span class="text-xs text-text-secondary w-8 tabular-nums">{stroke.nibAngle}°</span>
+      </label>
+      <label
+        class="flex items-center gap-1 text-xs text-text-secondary"
+        title="How elongated the nib is — 0% is a round tip"
+      >
+        Flatness
+        <input
+          type="range"
+          min="0"
+          max={MAX_NIB_FLATNESS}
+          step="0.01"
+          class="w-16"
+          bind:value={stroke.nibFlatness}
+        />
+        <span class="text-xs text-text-secondary w-8 tabular-nums"
+          >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
+        >
+      </label>
+    {/if}
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Opacity
       <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />

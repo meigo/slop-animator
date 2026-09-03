@@ -22,6 +22,30 @@ function getCachedTip(
   return cvs;
 }
 
+/** The calligraphic nib never gets flatter than this — 1.0 would collapse its short axis to
+ *  zero, which either draws nothing or divides by zero downstream. Also caps how thin the
+ *  short axis can get relative to the stamp spacing: `stepSize` is derived from the nib's
+ *  full (long-axis) width, so above ~0.82 the short axis's opaque core is narrower than the
+ *  gap between stamps and a dragged stroke goes visibly dashed (found in a whole-branch
+ *  review, confirmed by measurement — see the 2026-09-03 CHANGELOG entry). 0.8 is inside the
+ *  confirmed-safe range. */
+export const MAX_NIB_FLATNESS = 0.8;
+
+export function clampNibFlatness(flatness: number): number {
+  return Math.max(0, Math.min(MAX_NIB_FLATNESS, flatness));
+}
+
+/** Semi-axes of the calligraphy nib for a tip of the given radius. The long axis (`a`) is
+ *  always the tip's full radius — so flatness 0 is pixel-identical to the round tip, and a
+ *  rotated ellipse never exceeds the tip's own bounding square. The short axis (`b`) shrinks
+ *  toward (but never reaches) 0 as flatness approaches 1. Shared by the tip generator (bakes
+ *  the ellipse) and BrushCursor (previews it), so the two can never disagree about the nib's
+ *  shape. */
+export function nibSemiAxes(radius: number, flatness: number): { a: number; b: number } {
+  const f = clampNibFlatness(flatness);
+  return { a: radius, b: radius * (1 - f) };
+}
+
 /** Hard round brush — clean circle with slight antialiased edge */
 function hardRoundTip(): HTMLCanvasElement {
   return getCachedTip("hard", (ctx, s) => {
@@ -126,9 +150,32 @@ function airbrushTip(): HTMLCanvasElement {
   });
 }
 
-export type BrushType = "smooth" | "pencil" | "charcoal" | "airbrush";
+/** Calligraphy nib — a crisp (non-textured) ellipse, unrotated. Reuses hardRoundTip's
+ *  gradient-based antialiased edge by drawing that same circle through a vertical `ctx.scale`
+ *  — so at flatness 0 this is pixel-identical to hardRoundTip. Rotation is deliberately NOT
+ *  baked here: it is applied per stamp in stamp-brush.ts, so this bitmap only ever varies by
+ *  flatness (see the design spec and this file's `nibSemiAxes`). */
+function calligraphyTip(flatness: number): HTMLCanvasElement {
+  const f = clampNibFlatness(flatness);
+  return getCachedTip(`calligraphy:${f}`, (ctx, s) => {
+    const r = s / 2;
+    const { a, b } = nibSemiAxes(r, f);
+    ctx.save();
+    ctx.translate(r, r);
+    ctx.scale(1, b / a);
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    grad.addColorStop(0, "rgba(0,0,0,1)");
+    grad.addColorStop(0.85, "rgba(0,0,0,1)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(-r, -r, s, s);
+    ctx.restore();
+  });
+}
 
-export function getTip(type: BrushType): HTMLCanvasElement {
+export type BrushType = "smooth" | "pencil" | "charcoal" | "airbrush" | "calligraphy";
+
+export function getTip(type: BrushType, flatness: number = 0): HTMLCanvasElement {
   switch (type) {
     case "smooth":
       return hardRoundTip();
@@ -138,6 +185,8 @@ export function getTip(type: BrushType): HTMLCanvasElement {
       return charcoalTip();
     case "airbrush":
       return airbrushTip();
+    case "calligraphy":
+      return calligraphyTip(flatness);
     default:
       return softRoundTip();
   }
