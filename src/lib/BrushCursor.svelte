@@ -3,6 +3,7 @@
   import type { Viewport } from "../core/viewport";
   import { state as appState, activeStroke, activeLayer } from "../state/appState.svelte";
   import { isLayerEditable } from "../anim/document";
+  import { nibSemiAxes } from "../core/brush-textures";
 
   let {
     getViewport,
@@ -18,6 +19,8 @@
   let x = $state(0);
   let y = $state(0);
   let diameter = $state(0);
+  let cursorHeight = $state(0);
+  let cursorRotationDeg = $state(0);
   let dashed = $state(false);
   let swatch = $state<string | null>(null);
   let raf = 0;
@@ -62,8 +65,21 @@
 
   // Keep size synced to the active tool's size AND zoom, even without a pointer move.
   function tick() {
-    diameter = activeStroke().size * (getViewport()?.zoom ?? 1);
+    const stroke = activeStroke();
+    diameter = stroke.size * (getViewport()?.zoom ?? 1);
     dashed = appState.tool === "eraser";
+    if (stroke.brushType === "calligraphy") {
+      const { b } = nibSemiAxes(diameter / 2, stroke.nibFlatness ?? 0);
+      cursorHeight = b * 2;
+      // Screen-space rotation must include the canvas's own twist (Viewport.rotation, radians)
+      // on top of the nib's fixed angle, or the cursor would lie about paint direction whenever
+      // the canvas is rotated — the actual painted stroke is computed in document space and is
+      // unaffected by the view transform.
+      cursorRotationDeg = (stroke.nibAngle ?? 0) + ((getViewport()?.rotation ?? 0) * 180) / Math.PI;
+    } else {
+      cursorHeight = diameter;
+      cursorRotationDeg = 0;
+    }
     // Attach pointer listeners once the parent's container exists. It's `bind:this` set in the
     // PARENT's onMount, which runs AFTER this child mounts — so getContainer() is null at our
     // onMount. Bind lazily here (the container is stable, so this runs once).
@@ -88,7 +104,7 @@
   <div
     class="brush-cursor"
     class:dashed
-    style="transform: translate({x}px, {y}px) translate(-50%, -50%); width: {diameter}px; height: {diameter}px;"
+    style="transform: translate({x}px, {y}px) translate(-50%, -50%) rotate({cursorRotationDeg}deg); width: {diameter}px; height: {cursorHeight}px;"
   ></div>
 {/if}
 {#if visible && appState.tool === "eyedropper" && swatch}
