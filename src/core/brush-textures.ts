@@ -145,9 +145,32 @@ function airbrushTip(): HTMLCanvasElement {
   });
 }
 
-export type BrushType = "smooth" | "pencil" | "charcoal" | "airbrush";
+/** Calligraphy nib — a crisp (non-textured) ellipse, unrotated. Reuses hardRoundTip's
+ *  gradient-based antialiased edge by drawing that same circle through a vertical `ctx.scale`
+ *  — so at flatness 0 this is pixel-identical to hardRoundTip. Rotation is deliberately NOT
+ *  baked here: it is applied per stamp in stamp-brush.ts, so this bitmap only ever varies by
+ *  flatness (see the design spec and this file's `nibSemiAxes`). */
+function calligraphyTip(flatness: number): HTMLCanvasElement {
+  const f = clampNibFlatness(flatness);
+  return getCachedTip(`calligraphy:${f}`, (ctx, s) => {
+    const r = s / 2;
+    const { a, b } = nibSemiAxes(r, f);
+    ctx.save();
+    ctx.translate(r, r);
+    ctx.scale(1, b / a);
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    grad.addColorStop(0, "rgba(0,0,0,1)");
+    grad.addColorStop(0.85, "rgba(0,0,0,1)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(-r, -r, s, s);
+    ctx.restore();
+  });
+}
 
-export function getTip(type: BrushType): HTMLCanvasElement {
+export type BrushType = "smooth" | "pencil" | "charcoal" | "airbrush" | "calligraphy";
+
+export function getTip(type: BrushType, flatness: number = 0): HTMLCanvasElement {
   switch (type) {
     case "smooth":
       return hardRoundTip();
@@ -157,6 +180,8 @@ export function getTip(type: BrushType): HTMLCanvasElement {
       return charcoalTip();
     case "airbrush":
       return airbrushTip();
+    case "calligraphy":
+      return calligraphyTip(flatness);
     default:
       return softRoundTip();
   }
