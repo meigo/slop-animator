@@ -2126,7 +2126,10 @@ export const selectionActions: {
 
 /** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
  *  menu) reaches zoom/pan through here. */
-export const viewActions: { fitView: (() => void) | null } = { fitView: null };
+export const viewActions: {
+  fitView: (() => void) | null;
+  actualSize: (() => void) | null;
+} = { fitView: null, actualSize: null };
 
 /** Canvas-owned fill actions. `ToolOptions` reaches the active cell's pixels through here — the
  *  canvas owns the keyframe, the undo bracket and the selection clip. */

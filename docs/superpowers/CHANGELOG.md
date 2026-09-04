@@ -3702,3 +3702,20 @@ never arrived at `setupInput` (confirmed by the undo stack staying empty), so ev
 Pencil, do not arrive at 120Hz, and do not carry real pressure — which is precisely where three of
 the four defects lived. **For canvas work in this app, a green suite plus a measured render is not
 evidence the brush works; it is evidence the function works.** Say which of the two you have.
+
+**Actual size / 100% zoom (2026-09-04).** Asked as "is there any way to reset canvas scale to 100%" —
+there was not. `Fit to view` (`0`) scales to the window, which is only 100% by coincidence. Added
+`viewActions.actualSize` beside `fitView` (same register-on-mount / null-on-teardown pattern, since
+the `Viewport` is Canvas-local), a **View → Actual size (1)** item, and the `1` key. The digit pairing
+matches Photoshop, where fit and 100% sit on adjacent digits.
+
+**It calls `setZoom(1)`, deliberately NOT the Viewport's own `resetView()`.** `resetView` exists and
+sets zoom to 1 — but it also zeroes pan and rotation, which throws the canvas to the top-left corner;
+"reset the scale" should leave you looking at what you were looking at. `setZoom` zooms about the
+viewport centre and does exactly that. `resetView` remains uncalled dead code, left alone rather than
+deleted, and flagged here so the next reader does not wire it up by mistake.
+
+Verified in the browser, all three paths: the `1` key restores exactly 1.0 from a fitted 0.525 and
+re-centres; the menu item does the same and closes the menu; and typing "1" into a number field does
+NOT zoom — the handler's existing INPUT/TEXTAREA guard covers it, which is the thing worth checking
+before putting any bare digit on a global shortcut.

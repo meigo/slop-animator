@@ -273,7 +273,8 @@
     }
   }
 
-  // Space holds a grab-to-pan mode; `0` fits the canvas to the view. Skipped while typing in a field;
+  // Space holds a grab-to-pan mode; `0` fits the canvas to the view and `1` restores 100%. Skipped
+  // while typing in a field (or `1` would zoom whenever a size or fps field is being typed into);
   // space is left alone when a BUTTON is focused so it can still activate it.
   function onViewKeyDown(e: KeyboardEvent) {
     // These are the app's OTHER window-level key handlers, so they need the export gate `App.svelte`
@@ -295,6 +296,9 @@
     } else if (e.key === "0") {
       e.preventDefault();
       viewport?.fitView(appState.project.width, appState.project.height);
+    } else if (e.key === "1") {
+      e.preventDefault();
+      viewport?.setZoom(1);
     }
   }
   function onViewKeyUp(e: KeyboardEvent) {
@@ -2047,6 +2051,10 @@
     // Same as the `0` key. Exposed because iPad has no keyboard: without a UI route, a canvas
     // flung off-screen by a stray two-finger drag can only be recovered by reloading the page.
     viewActions.fitView = () => viewport?.fitView(appState.project.width, appState.project.height);
+    // `setZoom` rather than the Viewport's own `resetView`: this restores 100% while keeping the
+    // view centred on whatever you were looking at, where resetView would also zero the pan and
+    // rotation and throw the canvas to the top-left corner.
+    viewActions.actualSize = () => viewport?.setZoom(1);
     fillActions.allEnclosed = fillAllEnclosedOnCell;
 
     return () => {
@@ -2075,6 +2083,7 @@
       selectionActions.canPaste = null;
       selectionActions.deselect = null;
       viewActions.fitView = null;
+      viewActions.actualSize = null;
       fillActions.allEnclosed = null;
       appState.selectionActive = false;
       appState.selectionFloating = false;

@@ -79,6 +79,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - `Space` tap = play/pause, `Space` hold = pan the canvas · `←/→` step a frame (`Shift` = 10) ·
   `Home`/`End` first/last · `↑/↓` change layer · `0` fit view
+- `1` — actual size (100%)
 - `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `[`/`]` brush size · `o` onion ·
   `⌘Z`/`⌘⇧Z` undo/redo
 

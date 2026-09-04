@@ -340,6 +340,14 @@
         >
         <button
           class={menuItem}
+          title="Show the canvas at 100% — one canvas pixel per screen pixel"
+          onclick={() => {
+            viewActions.actualSize?.();
+            close();
+          }}>Actual size (1)</button
+        >
+        <button
+          class={menuItem}
           onclick={() => {
             toggleTheme();
             close();
