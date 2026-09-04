@@ -3660,3 +3660,26 @@ the rest of this engine — every number above is a synthetic benchmark, and the
 cost is dominated by fill AREA (22ms at size 60 vs 13ms at size 20 on a 6000-point stroke), so a
 large brush on iPad is the case to watch. Going further means incremental rendering, which would
 trade away the single-fill uniform alpha wherever a translucent stroke crosses itself.
+
+**Calligraphy strokes end flush, not with the nib's footprint (2026-09-04).** Reported as "stroke
+starts and ends with misrotated brush tip stamp": a thin whisker protruding from both ends of every
+stroke, lying at the nib angle regardless of which way the stroke ran. It was not misrotated and it
+was not a stamp — it was the nib's own footprint at the endpoint, which the true swept region
+genuinely contains (a real broad-edge pen set down and lifted leaves exactly that shape). At any
+useful flatness that footprint is a long thin sliver, so wherever it protrudes past the ribbon's end
+it reads as a stray hair rather than as the stroke ending.
+
+**Correct-but-wrong, so it goes.** The end footprint is dropped; a stroke now ends flush. This costs
+nothing of the chisel look, because the ribbon's end cut already lands at the nib's own angle
+wherever the geometry calls for it — rendered both ways in a 12-direction fan before choosing, and
+the flush version is the one that reads as calligraphy. Recorded as a deliberate departure from the
+exact Minkowski sweep so nobody "fixes" the geometry back.
+
+**The dab is the one case that keeps the footprint, and the obvious guard for it is wrong.** A tap
+with no travel has no ribbon at all, so its mark IS the nib footprint. Guarding that with an epsilon
+(`extent < 1e-3`, i.e. testing for exact coincidence) looks right and fails on every real tap: a
+Pencil jitters half a pixel or so while held, which clears the epsilon and then paints quads of
+essentially zero area — **a deliberate tap left no mark whatsoever**. Found by testing a jittery dab
+specifically, not an exact one. The threshold is now a real distance (`DAB_TRAVEL_PX = 2`), and the
+pixel counts are pinned across exact dab / jittery dab / 1px drift / 5px / 20px / long stroke, all of
+which must lay down ink.

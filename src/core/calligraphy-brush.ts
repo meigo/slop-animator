@@ -181,6 +181,18 @@ function addRing(ctx: CanvasRenderingContext2D, ring: number[][]) {
  *  share their end edge exactly (same point, same normal, same offset), so they tile the ribbon
  *  with no gaps — an interior cap per sample was the original performance bug, N big ellipses all
  *  overlapping each other in one fill. */
+/** Below this much total travel the mark is a tap, not a stroke, and gets the nib's footprint. */
+const DAB_TRAVEL_PX = 2;
+
+/** Total travel along the sampled path — used only to tell a dab from a stroke. */
+function strokeExtent(points: { x: number; y: number }[]): number {
+  let d = 0;
+  for (let i = 1; i < points.length; i++) {
+    d += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return d;
+}
+
 const NIB_SEGMENTS = 20;
 function nibRing(cx: number, cy: number, a: number, b: number, angleRad: number): number[][] {
   const ca = Math.cos(angleRad);
@@ -241,11 +253,21 @@ export function drawCalligraphyStroke(
   ctx.fillStyle = settings.color;
 
   ctx.beginPath();
-  // The nib's angled footprint at each end — the entry and exit shape a broad-edge pen leaves,
-  // which a flat cap across the ribbon would square off.
-  for (const i of [0, pts.length - 1]) {
-    addRing(ctx, nibRing(pts[i].x, pts[i].y, nib[i].a, nib[i].b, angle));
+  // A dab — pen down without travelling — is the one case whose mark IS the nib's footprint, so it
+  // is the one case that still gets one. The threshold is a real distance rather than an epsilon:
+  // a tap with a Pencil still jitters half a pixel or so, which clears any epsilon and then paints
+  // quads of essentially zero area, i.e. NOTHING for a deliberate tap. Caught by testing a jittery
+  // dab specifically; an exact-coincidence check looks correct and fails on every real tap.
+  if (pts.length < 2 || strokeExtent(pts) < DAB_TRAVEL_PX) {
+    addRing(ctx, nibRing(pts[0].x, pts[0].y, nib[0].a, nib[0].b, angle));
   }
+  // NOTE: no footprint at the ends of a stroke that travelled. The true swept region does include
+  // it — a real broad-edge pen set down and lifted leaves the nib's full shape — but at any real
+  // flatness that shape is a long thin sliver lying at the nib angle, and where it protrudes past
+  // the ribbon's end it reads as a stray whisker rather than as the stroke ending (reported from a
+  // Pencil stroke as "misrotated brush tip stamp"). Ending flush is the deliberate choice: the end
+  // cut still lands at the nib's own angle wherever the geometry calls for it, which is the chisel
+  // entry/exit that actually reads as calligraphy. Compared side by side before choosing.
   for (let i = 1; i < pts.length; i++) {
     const p1 = pts[i - 1];
     const p2 = pts[i];
