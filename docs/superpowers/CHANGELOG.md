@@ -3769,4 +3769,5 @@ unused; left in place rather than deleted, and noted here.
 
 **Deliberate trade:** on portrait the bar is two rows, so it costs ~29px of canvas height. That is
 the same trade the timeline bar already made, and it buys every control being reachable without a
-swipe. Owed a device pass: the gear panel's reachability and tap targets on a real iPad.
+swipe. **VERIFIED on iPad 2026-09-04** — confirmed by the user on the deployed build: the bar is
+comfortable to reach and the gear panel works on device. Nothing owed on this one.
