@@ -19,18 +19,21 @@
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
-  const SIZE_PRESETS = [0.5, 1, 2, 4, 8, 16, 32, 60];
+  // Four, not eight: on iPad the brush row runs off the right edge and the far controls become
+  // uncomfortable to reach. These span the range and include the default (4); the slider and the
+  // number field beside them cover everything in between.
+  const SIZE_PRESETS = [1, 4, 16, 60];
 
   const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
   // Smooth and Taper are read ONLY by brush.ts (the perfect-freehand path). The ink and stamp
-  // engines receive them in `settings` and never look at them, so on those brushes the two
-  // controls are inert — dim them rather than letting them promise an effect. Stream is NOT
-  // one of these: it is applied in input.ts, upstream of every engine. See CLAUDE.md 2026-08-29.
+  // engines receive them in `settings` and never look at them, so on those brushes the two controls
+  // are inert. They used to be DIMMED with a title explaining why; they are now HIDDEN, because on
+  // iPad ~175px spent explaining that a control does nothing pushed the controls that DO something
+  // off the right edge. It also makes the bar self-consistent: Angle/Flatness already hide when they
+  // do not apply. Stream is NOT one of these — it is applied in input.ts, upstream of every engine,
+  // so it stays live on every brush. See CLAUDE.md 2026-08-29.
   const smoothOnly = $derived(stroke.brushType === "smooth");
   const isCalligraphy = $derived(stroke.brushType === "calligraphy");
-  const inertOn = $derived(
-    `${stroke.brushType[0].toUpperCase()}${stroke.brushType.slice(1)} — it is a Smooth-brush setting`,
-  );
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -157,35 +160,21 @@
       >Opacity
       <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
     </label>
-    <!-- disabled on the INPUT, title on the LABEL: a disabled control dispatches no pointer
-         events, so the status bar's delegated `closest("[title]")` hint reads the label text
-         instead — the 2026-08-12 rule's intent, applied to a control that has no button to
-         guard. -->
-    <label
-      class="flex items-center gap-1 text-xs text-text-secondary aria-disabled:opacity-40"
-      aria-disabled={!smoothOnly}
-      title={smoothOnly ? undefined : `Smooth has no effect on ${inertOn}`}
-      >Smooth
-      <input
-        type="range"
-        min="0"
-        max="100"
-        class="w-16"
-        bind:value={stroke.smoothing}
-        disabled={!smoothOnly}
-      />
-    </label>
+    {#if smoothOnly}
+      <label class="flex items-center gap-1 text-xs text-text-secondary"
+        >Smooth
+        <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
+      </label>
+    {/if}
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Stream
       <input type="range" min="0" max="100" class="w-16" bind:value={stroke.streamline} />
     </label>
-    <label
-      class="flex items-center gap-1 text-xs text-text-secondary aria-disabled:opacity-40"
-      aria-disabled={!smoothOnly}
-      title={smoothOnly ? "Taper stroke ends" : `Taper has no effect on ${inertOn}`}
-    >
-      <input type="checkbox" bind:checked={stroke.taper} disabled={!smoothOnly} /> Taper
-    </label>
+    {#if smoothOnly}
+      <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
+        <input type="checkbox" bind:checked={stroke.taper} /> Taper
+      </label>
+    {/if}
     {#if appState.tool !== "eraser"}
       <label
         class="flex items-center gap-1 text-xs text-text-secondary"

@@ -3719,3 +3719,28 @@ Verified in the browser, all three paths: the `1` key restores exactly 1.0 from 
 re-centres; the menu item does the same and closes the menu; and typing "1" into a number field does
 NOT zoom — the handler's existing INPUT/TEXTAREA guard covers it, which is the thing worth checking
 before putting any bare digit on a global shortcut.
+
+**Brush ToolOptions: inert controls are hidden, not dimmed (2026-09-04).** Reported from an iPad
+screenshot — the brush row runs off the right edge and the far controls are uncomfortable to reach,
+worst on Calligraphy, which added two sliders to an already-dense row (a density risk logged as owed
+when those sliders shipped, now collected).
+
+`Smooth` and `Taper` are read only by the perfect-freehand engine, so on Ink/Pencil/Charcoal/
+Airbrush/Calligraphy they are inert. They were DIMMED with a title explaining why — about 160px spent
+saying a control does nothing, pushing controls that do something off-screen. They are now HIDDEN.
+That also makes the bar self-consistent: Angle/Flatness already hide when inapplicable, so the file
+was applying two different rules to the same situation. **This is a deliberate narrowing of the
+2026-08-12 `aria-disabled` rule, not a violation of it:** that rule governs a control that is
+unavailable *right now for a reason the artist can act on* (locked layer, nothing copied yet) and
+must therefore be able to explain itself. A setting that simply does not exist for the selected
+engine has no such reason — absence is the clearer statement, and the dimmed control could never
+become usable without changing brush anyway. Size presets also went 8 → 4 (`1 4 16 60`, spanning the
+range and keeping the default); the slider and number field beside them cover everything between.
+
+**Measured, because the point was reach and not tidiness:** the Calligraphy bar went ~1582px → 1327px
+(-16%), Smooth 1200px, the stamp brushes 1024px. **It is not enough.** iPad Pro landscape is 1194px,
+so Calligraphy still overflows by ~130px and portrait (834px) is far off. The bar remains
+`overflow-x-auto`, which this log already records as wrong for a bar that hosts a popover — the
+pressure-curve popup needed `position: fixed` to escape the clip. Parking the set-and-forget params
+(Stream, Behind, Taper, curve) behind a gear, the pattern onion/boil/playback already use, is the
+next step and would bring landscape inside budget; portrait needs more than that.
