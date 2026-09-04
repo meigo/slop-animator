@@ -3683,3 +3683,22 @@ essentially zero area — **a deliberate tap left no mark whatsoever**. Found by
 specifically, not an exact one. The threshold is now a real distance (`DAB_TRAVEL_PX = 2`), and the
 pixel counts are pinned across exact dab / jittery dab / 1px drift / 5px / 20px / long stroke, all of
 which must lay down ink.
+
+**Calligraphy brush — VERIFIED on device 2026-09-04, and the browser-pass debt for it is closed.**
+Confirmed by the user drawing with an Apple Pencil against the deployed build: strokes are continuous
+with the calligraphic thick/thin reading correctly, the ends are clean, it is **fast to draw** (the
+point of the perf work — cost is flat in stroke length rather than compounding, so a long stroke
+stays as responsive as a short one), the **eraser** works, and **drawing inside a selection clip**
+works. That covers every item this engine was owed, including the two — eraser under
+`destination-out`, and the selection clip — that no synthetic test had ever exercised.
+
+**The process lesson is worth more than the feature.** Every defect this brush shipped with was found
+by the user drawing, never by my checks, and there were four: beading (stamped delivery), spikes from
+jitter, quadratic slowness, and the end footprint. Each time the automated evidence was green —
+1065 unit tests, a clean `svelte-check`, and rendering measured off the real module with pixel
+counts. What that evidence could not reach was the app's own input path: synthetic pointer events
+never arrived at `setupInput` (confirmed by the undo stack staying empty), so every check drove
+`drawCalligraphyStroke` directly with synthetic point arrays. Synthetic points do not jitter like a
+Pencil, do not arrive at 120Hz, and do not carry real pressure — which is precisely where three of
+the four defects lived. **For canvas work in this app, a green suite plus a measured render is not
+evidence the brush works; it is evidence the function works.** Say which of the two you have.
