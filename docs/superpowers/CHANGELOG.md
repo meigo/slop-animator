@@ -3744,3 +3744,29 @@ so Calligraphy still overflows by ~130px and portrait (834px) is far off. The ba
 pressure-curve popup needed `position: fixed` to escape the clip. Parking the set-and-forget params
 (Stream, Behind, Taper, curve) behind a gear, the pattern onion/boil/playback already use, is the
 next step and would bring landscape inside budget; portrait needs more than that.
+
+**Brush bar: set-and-forget params behind a gear, and the bar WRAPS (2026-09-04).** Second half of
+the iPad reach fix. `Stream`, `Taper`, `Behind` and the pressure curve moved into one gear popover —
+the pattern onion/boil/playback already use, and the split follows this log's own rule: *what you
+adjust mid-stroke stays on the bar, what you calibrate once does not.* Size, Press, brush type,
+Angle/Flatness, Opacity and the colour swatch stay out where the hand is.
+
+Measured across the whole fix (hiding inert controls, 8→4 presets, then this): the **Calligraphy bar
+went 1582px → 1147px, ‑27%**; Smooth 963px, the stamp brushes 844px. Verified at three real iPad
+widths — landscape (1194) is one row for every brush, portrait (834) and split-view (744) wrap to
+two, and **no control ever sits off the right edge at any width**, which is the thing that was
+actually being reported.
+
+**The container is `flex-wrap` now, not `overflow-x-auto`, and that is a correctness fix, not
+styling.** Per CSS Overflow 3 an `overflow-x: auto` computes `overflow-y` from `visible` to `auto`,
+so the bar was a ~40px scroll box and anything anchored to it was clipped — which is why
+`.curve-popup` was made `position: fixed` back in 2026-07-12 to escape it. Adding a second popover to
+a scroll container would have meant a second workaround; the container was fixed instead. The gear
+panel now opens 326px below the bar, unclipped, with a plain `absolute` position and no clamping
+helper (`positionPopup` is gone with it). Scrolling never made those controls reachable anyway — it
+hid them behind a swipe, which is what the report was about. `.curve-popup`'s CSS in `app.css` is now
+unused; left in place rather than deleted, and noted here.
+
+**Deliberate trade:** on portrait the bar is two rows, so it costs ~29px of canvas height. That is
+the same trade the timeline bar already made, and it buys every control being reachable without a
+swipe. Owed a device pass: the gear panel's reachability and tap targets on a real iPad.

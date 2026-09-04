@@ -13,7 +13,14 @@
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
-  import { Spline, Copy, Scissors, ClipboardPaste, Trash2, MousePointerBan } from "@lucide/svelte";
+  import {
+    Settings,
+    Copy,
+    Scissors,
+    ClipboardPaste,
+    Trash2,
+    MousePointerBan,
+  } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
   import { whyNotEditable } from "../anim/document";
@@ -44,7 +51,7 @@
   );
   const canPaint = $derived(paintBlock === null);
 
-  let curveOpen = $state(false);
+  let brushSettingsOpen = $state(false);
   let curvePopupEl: HTMLDivElement = $state()!;
   let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
 
@@ -52,42 +59,24 @@
     curveEditor = createCurveEditor(pressureCurve, bumpCurve);
   });
 
-  // Re-attach the curve editor whenever the popup div is (re)created — it lives inside the brush/eraser
-  // {#if} branch, so it's torn down/recreated on tool switches. appendChild moves the single node into
-  // the current div.
+  // Re-attach the curve editor whenever the panel's host div is (re)created — the editor is a single
+  // imperative canvas made once in onMount, and appendChild MOVES it, so opening the panel adopts it
+  // and closing simply detaches it. Redraw on the same pass, so it reflects a restored curve.
   $effect(() => {
-    if (curvePopupEl && curveEditor) curvePopupEl.appendChild(curveEditor);
-  });
-
-  // Keep the popup within the viewport: it's left-anchored to its trigger, but the toolbar
-  // wraps, so the trigger can sit near the right (or left) edge. Shift it back into view.
-  // The popup is position:fixed (so it escapes the ToolOptions bar's overflow-x-auto clip). Anchor it
-  // just below its trigger wrapper in viewport coords, then clamp horizontally into view.
-  function positionPopup() {
-    if (!curvePopupEl) return;
-    const margin = 8;
-    const anchor = curvePopupEl.parentElement?.getBoundingClientRect();
-    if (!anchor) return;
-    curvePopupEl.style.top = `${anchor.bottom + 4}px`;
-    curvePopupEl.style.left = `${anchor.left}px`;
-    const rect = curvePopupEl.getBoundingClientRect();
-    const overflowRight = rect.right - (window.innerWidth - margin);
-    if (overflowRight > 0) curvePopupEl.style.left = `${anchor.left - overflowRight}px`;
-    else if (anchor.left < margin) curvePopupEl.style.left = `${margin}px`;
-  }
-
-  // Redraw the editor whenever its popup opens, so it reflects the current (e.g. restored) curve,
-  // then reposition once it's laid out (next frame) so it can't open off-screen.
-  $effect(() => {
-    if (curveOpen) {
-      curveEditor?.redraw();
-      requestAnimationFrame(positionPopup);
+    if (brushSettingsOpen && curvePopupEl && curveEditor) {
+      curvePopupEl.appendChild(curveEditor);
+      curveEditor.redraw();
     }
   });
 </script>
 
+<!-- WRAPS, never scrolls — same rule as the timeline bar. `overflow-x-auto` computes `overflow-y`
+     from visible to auto (CSS Overflow 3), turning this into a ~40px scroll box that clips any
+     popover anchored to it; the pressure curve needed `position: fixed` to escape it. Wrapping also
+     keeps every control REACHABLE on a portrait iPad, where the brush row overruns the viewport —
+     which scrolling never did, it just hid them behind a swipe. -->
 <div
-  class="flex items-center gap-2 px-2 h-10 border-b border-border bg-surface text-text overflow-x-auto *:shrink-0"
+  class="flex min-h-10 flex-wrap items-center gap-2 border-b border-border bg-surface px-2 text-text *:shrink-0"
 >
   {#if appState.tool === "brush" || appState.tool === "eraser"}
     {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
@@ -166,33 +155,44 @@
         <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
       </label>
     {/if}
-    <label class="flex items-center gap-1 text-xs text-text-secondary"
-      >Stream
-      <input type="range" min="0" max="100" class="w-16" bind:value={stroke.streamline} />
-    </label>
-    {#if smoothOnly}
-      <label class="flex items-center gap-1 text-xs text-text-secondary" title="Taper stroke ends">
-        <input type="checkbox" bind:checked={stroke.taper} /> Taper
-      </label>
-    {/if}
-    {#if appState.tool !== "eraser"}
-      <label
-        class="flex items-center gap-1 text-xs text-text-secondary"
-        title="Paint behind existing pixels (e.g. white fill under a black outline)"
-      >
-        <input type="checkbox" bind:checked={stroke.drawBehind} /> Behind
-      </label>
-    {/if}
-    <div class="relative" use:clickOutside={() => (curveOpen = false)}>
+    <!-- Set-and-forget params live behind the gear, the pattern onion/boil/playback already use:
+         what you adjust mid-stroke stays on the bar, what you calibrate once does not. On iPad the
+         brush row was overrunning the viewport and the far controls were out of comfortable reach. -->
+    <div class="relative" use:clickOutside={() => (brushSettingsOpen = false)}>
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-        class:bg-surface-active={curveOpen}
-        title="Pressure curve"
-        onclick={() => (curveOpen = !curveOpen)}
+        class:bg-surface-active={brushSettingsOpen}
+        title="Brush settings — streamline, taper, paint behind, pressure curve"
+        onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
-        <Spline size={18} />
+        <Settings size={18} />
       </button>
-      <div class="curve-popup" class:open={curveOpen} bind:this={curvePopupEl}></div>
+      {#if brushSettingsOpen}
+        <div
+          class="absolute right-0 top-full z-30 mt-2 flex w-56 flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-xs shadow-md"
+        >
+          <label class="flex items-center gap-2" title="Smooth the incoming pointer path"
+            ><span class="w-14 text-text-secondary">Stream</span>
+            <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.streamline} />
+            <span class="w-8 text-right text-text-muted tabular-nums">{stroke.streamline}</span>
+          </label>
+          {#if smoothOnly}
+            <label class="flex items-center gap-2" title="Taper stroke ends">
+              <input type="checkbox" bind:checked={stroke.taper} /> Taper
+            </label>
+          {/if}
+          {#if appState.tool !== "eraser"}
+            <label
+              class="flex items-center gap-2"
+              title="Paint behind existing pixels (e.g. white fill under a black outline)"
+            >
+              <input type="checkbox" bind:checked={stroke.drawBehind} /> Behind
+            </label>
+          {/if}
+          <span class="text-text-secondary">Pressure curve</span>
+          <div class="flex justify-center" bind:this={curvePopupEl}></div>
+        </div>
+      {/if}
     </div>
     {#if appState.tool !== "eraser"}<input type="color" bind:value={appState.brush.color} />{/if}
   {:else if appState.tool === "fill"}
