@@ -3902,6 +3902,9 @@ marker, where a raw px/ms threshold would pool a fat brush constantly and a thin
 40ms nothing pools; at 200ms+ the swell is full; `pool` (0-100) scales it, reaching 1.75× width at
 100. All four constants are first guesses, tunable after a browser pass.
 
+> **SUPERSEDED 2026-09-07 (same day) — the contact-time measure was WRONG, and this paragraph's
+> confident "scale-free on purpose" is the error. See `Dwell pooling triggers on pen speed` below.**
+
 **Speed is averaged over a window measured in MILLISECONDS, not in neighbouring samples**, and that
 is the load-bearing choice rather than an implementation detail. A neighbour-count window narrows as
 the Pencil samples faster, so the same stroke drawn at the same speed would pool differently at
@@ -3934,3 +3937,39 @@ self-crossing detector would have cost and the 5.1ms a naive O(n²) one would.
 Six pure tests, written first and watched fail. **Owed a browser pass, and it is the whole point of
 the feature:** whether this looks good at all is the open question, and `pool` 0 remains a real
 answer.
+
+**Dwell pooling triggers on pen speed, not contact time (2026-09-07).** First iPad pass on the
+feature above came back as *"feels too subtle — actually I can't tell if it's on all the time or not
+at all."* Those are two halves of one root cause, and neither is a tuning problem, so bumping the
+swell (which is what was asked for) would have fixed nothing.
+
+**The measurement that found it.** Mapping the shipped model's response across realistic pen speeds
+(0.03-3 px/ms) and brush widths: at **size 4, the default, every realistic drawing speed gives dwell
+0.00** — you have to creep at 0.03 px/ms before anything fires. At **size 60, dwell is already 1.00
+at normal drawing speed**, so the whole stroke swells uniformly and reads as nothing but a fatter
+brush. Never-on and always-on, in the same feature, decided by the size slider.
+
+**Root cause: `tCross = width / speed` makes the trigger speed PROPORTIONAL TO BRUSH WIDTH.** It
+ranges from 0.02 px/ms on a hairline to 4.5 px/ms on a size-60 brush — a 225× spread — against real
+drawing speeds of roughly 0.1-3 px/ms. For thin brushes the trigger sits below that entire range;
+for fat brushes, above it. **There is no brush size at which the effect discriminates.**
+
+The original reasoning ("contact time is scale-free, a raw px/ms threshold would pool a fat brush
+constantly and a thin one never") had it exactly backwards, and the inversion is worth keeping:
+contact time IS the right physics — a wide nib really does rest on a given spot longer — but it is
+the wrong CONTROL, because it makes the effect answer to which brush you picked rather than to how
+you moved. A tool control has to be learnable before it has to be physical.
+
+**Fix: trigger on absolute pen speed** (document px/ms), unnormalised. Nothing pools above 0.3 px/ms,
+full swell at or below 0.03 — chosen against measured speeds (ordinary stroke ~0.6, quick ~1.5,
+deliberate ~0.25, creep ~0.03), so an ordinary stroke is untouched at any brush size and a deliberate
+slowdown pools at every brush size. The swell MAGNITUDE stays proportional to width (a hairline
+gaining 8px would be absurd); only the trigger is absolute. `MAX_DWELL_SWELL` also went 0.75 → 1.0
+(2× at pool 100) since the effect was reported as too weak, but that was the lesser half of the fix.
+
+**The old tests all passed under both models** — they used speeds of 2 px/ms against 0.005, so
+extreme that width normalisation never showed. Three new tests pin the actual property: the swell
+factor is the same at width 2 and width 40 for the same motion; an ordinary 0.6 px/ms stroke is
+untouched at every size; and a 0.1 px/ms slowdown pools at the DEFAULT size, which is the case that
+was silently dead. Watched all three fail first, with the predicted numbers (1.00× vs 1.75×; a
+size-40 brush swelling to 45 at ordinary speed; a size-4 brush flat at 4.0 through a slowdown).

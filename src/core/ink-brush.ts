@@ -110,10 +110,17 @@ export function inkRuns(widths: number[], quantum: number = INK_WIDTH_QUANTUM): 
  * modulating the per-segment width before `inkRuns` ever sees it. No extra pass, no extra
  * composite; the existing pipeline draws the result.
  *
- * The measure is CONTACT TIME: how many milliseconds the nib takes to travel its own width
- * (`width / speed`). That is the scale-free quantity — 40ms of contact means the same thing for
- * a 2px hairline and a 24px marker, where a raw px/ms threshold would pool a fat brush
- * constantly and a thin one never.
+ * The measure is PEN SPEED, in document px per millisecond, and it is deliberately NOT
+ * normalised by the brush width. The first version keyed off contact time (`width / speed`) on
+ * the reasoning that a wide nib genuinely does rest on a given spot for longer. That is the right
+ * physics and the wrong control: it makes the trigger speed proportional to brush width, which
+ * measured out at 0.02 px/ms for a hairline against 4.5 px/ms for a size-60 brush — a 225x spread,
+ * against real drawing speeds of roughly 0.1-3 px/ms. So a thin brush never pooled at any speed a
+ * hand actually produces and a fat one pooled constantly, and it was reported exactly that way:
+ * "I can't tell if it's on all the time or not at all". Keying off speed alone means the effect
+ * answers to how you moved and nothing else, which is the only version of it that can be learned.
+ * The SIZE of the swell stays proportional to the width — a hairline gaining 8px would be absurd —
+ * it is only the TRIGGER that is absolute. Three tests pin this.
  *
  * Speed is averaged over a window measured in MILLISECONDS, not in neighbouring samples. This is
  * the load-bearing choice and it is deliberate: a neighbour-count window narrows as the Pencil
@@ -126,11 +133,13 @@ export function inkRuns(widths: number[], quantum: number = INK_WIDTH_QUANTUM): 
  * not a feature.
  */
 const DWELL_WINDOW_MS = 16;
-/** Contact time below which nothing pools, and at which pooling is full. */
-const DWELL_MIN_MS = 40;
-const DWELL_FULL_MS = 200;
-/** Widest the stroke can get: 1.75x at pool 100. */
-export const MAX_DWELL_SWELL = 0.75;
+/** Pen speed (document px/ms) at which pooling starts, and at which it is full. Chosen against
+ *  measured drawing speeds: an ordinary stroke runs ~0.6 px/ms and a quick one ~1.5, so nothing
+ *  pools while you are simply drawing; a deliberate slowdown is ~0.25 and a creep ~0.03. */
+const POOL_START_SPEED = 0.3;
+const POOL_FULL_SPEED = 0.03;
+/** Widest the stroke can get: 2x at pool 100. */
+export const MAX_DWELL_SWELL = 1.0;
 
 export function dwellSwell(points: InputPoint[], widths: number[], pool: number): number[] {
   if (!(pool > 0) || widths.length === 0) return widths;
@@ -157,11 +166,11 @@ export function dwellSwell(points: InputPoint[], widths: number[], pool: number)
     // so the segment is left alone.
     if (!(elapsed > 0)) return w;
 
-    // dist 0 (a truly stationary pen) gives Infinity, which clamps to full dwell — correct.
-    const tCross = (w * elapsed) / dist;
+    // dist 0 (a truly stationary pen) gives speed 0, which clamps to full dwell — correct.
+    const speed = dist / elapsed;
     const dwell = Math.max(
       0,
-      Math.min(1, (tCross - DWELL_MIN_MS) / (DWELL_FULL_MS - DWELL_MIN_MS)),
+      Math.min(1, (POOL_START_SPEED - speed) / (POOL_START_SPEED - POOL_FULL_SPEED)),
     );
     return w * (1 + strength * dwell);
   });

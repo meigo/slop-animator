@@ -207,3 +207,32 @@ describe("dwellSwell", () => {
     }
   });
 });
+
+/**
+ * The trigger must depend on HOW YOU MOVED, not on which brush you picked. The first model
+ * keyed off contact time (`width / speed`), which is the right physics and the wrong control:
+ * it made the trigger speed proportional to brush width, so it ranged from 0.02 px/ms on a
+ * hairline to 4.5 px/ms on a size-60 brush against real drawing speeds of ~0.1-3 px/ms. Thin
+ * brushes never pooled and fat ones always did, which is exactly how it was reported — "I can't
+ * tell if it's on all the time or not at all". These three pin the property that was missing.
+ */
+describe("dwellSwell trigger", () => {
+  it("triggers at the same pen speed whatever the brush size", () => {
+    const pts = stroke([{ dx: 0.4, dt: 4, n: 40 }]); // 0.1 px/ms — a slow, deliberate stroke
+    const thin = dwellSwell(pts, flat(pts, 2), 100);
+    const fat = dwellSwell(pts, flat(pts, 40), 100);
+    expect(thin[10] / 2).toBeCloseTo(fat[10] / 40, 2);
+  });
+
+  it("leaves a normally paced stroke alone at every brush size", () => {
+    const pts = stroke([{ dx: 2.4, dt: 4, n: 40 }]); // 0.6 px/ms — ordinary drawing
+    for (const w of [2, 8, 40]) {
+      expect(Math.max(...dwellSwell(pts, flat(pts, w), 100))).toBeCloseTo(w, 6);
+    }
+  });
+
+  it("pools on a deliberate slowdown at the default brush size", () => {
+    const pts = stroke([{ dx: 0.4, dt: 4, n: 40 }]); // 0.1 px/ms at a ~4px nib
+    expect(dwellSwell(pts, flat(pts, 4), 100)[10]).toBeGreaterThan(4 * 1.3);
+  });
+});
