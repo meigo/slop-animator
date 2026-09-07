@@ -3771,3 +3771,49 @@ unused; left in place rather than deleted, and noted here.
 the same trade the timeline bar already made, and it buys every control being reachable without a
 swipe. **VERIFIED on iPad 2026-09-04** — confirmed by the user on the deployed build: the bar is
 comfortable to reach and the gear panel works on device. Nothing owed on this one.
+
+**Ink brush: the edges were pixelated because each pixel was composited hundreds of times
+(2026-09-07).** Reported as "the ink brush feels to have more pixelated edges than other brushes."
+It did, and the geometry was never the problem — the curve it draws is unchanged by this fix.
+
+`drawInkStrokeIncremental` issued one `beginPath()`/`stroke()` per input point. Input points arrive
+far closer together than the stroke is wide (`input.ts` caps the gap at 4px, coalesced Pencil events
+usually land 1-2px apart, against a typical brush width of 4-30px), so consecutive round-capped
+segments overlapped their neighbours many times over. **Every separate `stroke()` composites
+`source-over` onto the antialiased fringe the previous one left, and partial coverage compounds as
+`1-(1-a)^n`** — so the soft edge pixels were driven to fully opaque. The antialiasing was computed
+correctly and then destroyed after the fact, leaving a hard binary edge.
+
+**Measured** (560px arc, 1.4px point spacing, soft edge px per crossing vs the same geometry stroked
+once): 7% lost at width 1.5, 16% at 3, 28% at 6, 30% at 12, **36% at 24**. It scales with
+width ÷ point spacing, which is exactly why it read as *fine hairline, crunchy when drawn fat*.
+
+**The fix needs two things, and neither works alone.** (1) Full redraw from the pre-stroke snapshot,
+like smooth and calligraphy — an incremental engine must flush on every pointermove or the stroke
+visibly lags the pen, so it can never batch beyond the 1-3 points one event delivers (measured: a
+per-call flush recovers only 44% of the gap at 2 points/call, 73% at 4). (2) Batching by width — a
+full redraw alone changes *nothing*, because width varies per segment and `lineWidth` is fixed per
+`stroke()`, so a naive redraw still emits one stroke per segment. Contiguous segments whose width
+quantizes to the same 0.25px step are collected into one `Path2D` (`inkRuns`, pure and unit-tested,
+since the run count *is* the composite count). Verified against the real shipped module in the
+browser: 400 stroke calls → 167, soft edge px/crossing 4.92 → 6.71 (+36%), and an **identical ink
+footprint of 17070px** — the stroke covers the same pixels, only the edge changed.
+
+**This is the third engine to learn the same lesson**, after `brush.ts` (one `ctx.fill()` for the
+whole outline) and `calligraphy-brush.ts` (built as a swept ribbon for exactly this reason). Ink was
+the one that never got the treatment. Residual: consecutive runs share their joint point and overlap
+there once — 7.69 measured against 8.0 for a single constant-width path, not worth chasing.
+
+**Perf is a non-issue, measured rather than assumed:** the new ink full redraw costs 1.9-3.7ms at
+1500-3000 points on a 1920×1080 cell, **2.8-5.6× CHEAPER than the smooth brush's full redraw**
+(6.4-10.5ms) that already ships and is used on iPad daily, plus the ~1.3-2ms `putImageData` both
+share. Mac-measured; **owed an iPad pass.**
+
+**Found while measuring, NOT fixed, because it changes how the brush looks:** the ink **opacity
+slider is effectively inert**. With hundreds of overlapping composites at `globalAlpha 0.5` the
+interior saturates immediately — a 50% ink stroke rendered at alpha **253.6/255, i.e. 99.5%
+opaque**. Batching improves it to 216 as a side effect of this fix (strictly closer to correct, but
+translucent ink now renders slightly lighter than it did). A real fix means drawing the stroke
+opaque into a scratch canvas and compositing it once at the requested alpha, which yields exactly
+128 — deferred as an artistic call, not a bug call. Ink also ignores `alphaLock` and `drawBehind`,
+which `brush.ts` honours; noted, not touched.
