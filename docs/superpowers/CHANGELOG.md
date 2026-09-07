@@ -3387,6 +3387,10 @@ Smooth and Taper get dimmed for ink/pencil/charcoal/airbrush they want `aria-dis
 in the `title`, per the 2026-08-12 rule — a `disabled` button dispatches no pointer events, so the
 status bar could never read it out on an iPad tap.
 
+> **SUPERSEDED 2026-09-07 — the texture this paragraph protects no longer exists, and the fix it
+> warns against is now the shipped one. See `Ink: uniform translucent density, noise-proof batching,
+> and Behind` at the end of this file before acting on it.**
+
 **Ink at very low opacity reads as a felt tip, and that is DELIBERATE — do NOT "fix" it.**
 `drawInkStrokeIncremental` strokes each segment separately at `globalAlpha = opacity/100` with round
 caps, so a pixel covered N times accumulates `1-(1-a)^N` and the joins come out darker than the
@@ -3817,3 +3821,65 @@ translucent ink now renders slightly lighter than it did). A real fix means draw
 opaque into a scratch canvas and compositing it once at the requested alpha, which yields exactly
 128 — deferred as an artistic call, not a bug call. Ink also ignores `alphaLock` and `drawBehind`,
 which `brush.ts` honours; noted, not touched.
+
+> **SUPERSEDED 2026-09-07 (same day, next commit) — all three of these are now fixed. The deferral
+> held for one commit: a code review showed the batching had made the translucent case WORSE, not
+> merely lighter. See the entry directly below.**
+
+
+**Ink: uniform translucent density, noise-proof batching, and Behind (2026-09-07).** Three findings
+from a high-effort code review of the commit directly above, all in `ink-brush.ts`. The build stays
+0 errors / 0 warnings and the suite goes 1074 → 1075.
+
+**1. Translucent ink was blotchy, and it is a different problem from the edge.** The deferral in the
+entry above ("renders slightly lighter") understated it: the density is no longer *uniform*. Runs are
+short along the path (~5px of arc) but the brush is 9-22px WIDE, so consecutive runs overlap over an
+area about the width of the brush — not just at the antialiased fringe the batching fixed. How many
+runs cover a given pixel therefore depends on **how fast the pressure is changing**: at opacity 50, a
+stretch drawn at steady pressure is a single run and lands at α≈128, while a stretch where pressure
+varies is covered by ~3 runs and lands at 1-(1-0.5)³ ≈ 224. Same brush, same slider, ~75% density
+difference *inside one stroke*, and a mouse stroke (`sizeRange` collapses to 1, so the whole stroke is
+one run) is lighter than a Pencil one. That is new — the old engine saturated everything to ~253
+uniformly.
+
+So the scratch-canvas fix is now the shipped one: when `globalAlpha < 1`, the stroke is painted opaque
+onto a reused module-level canvas under the caller's transform and that canvas is composited onto the
+target exactly once. Opacity 50 renders at exactly 128, everywhere. **This deliberately supersedes the
+2026-08-29 "ink at low opacity is a felt tip, do NOT fix it" note**, whose reasoning no longer applies:
+that texture came from the *incremental* engine's uniform per-join accumulation, which the previous
+commit had already destroyed. What is left without this fix is not felt-tip grain, it is
+pressure-correlated mottling. If a felt-tip ink is wanted later it should be an explicit brush
+parameter, not an emergent property of the compositing.
+
+Cost, since this is on the pointermove path: one canvas the size of the target, allocated on the first
+translucent ink stroke and reused after. **The opaque case — the common one — never touches it and is
+byte-for-byte the code that shipped yesterday.** Compositing happens at identity transform, which maps
+scratch device pixels 1:1; the caller's selection clip is stored in device space and survives the
+transform change, so it still applies.
+
+**2. `inkRuns` batching collapsed under real Pencil noise — the fix was quietly undoing itself.**
+Merging by "quantize each segment and compare" splits a run every time the width crosses a bucket
+boundary, and real pressure jitters across a boundary constantly. Simulated on the measured stroke
+(400 segments, size 8, size range 3) with ±0.02 of pressure noise: **219 runs, against 119 for the
+same profile with no noise** — i.e. under realistic input it decays back toward one composite per
+segment, which is precisely what the previous commit set out to stop. The smooth `Math.sin` profile
+the tests used cannot show this.
+
+The merge test is now HYSTERESIS: stay in the open run while the width is within one quantum of what
+that run is *already stroking*. The run's own width is the anchor, so it cannot drift. Same input:
+**101 runs**, and it is now insensitive to the noise rather than proportional to it. The price is that
+a segment can be stroked up to a full quantum off its requested width instead of half of one — 0.25px
+of width, 0.125px of edge, still under a device pixel at dpr 1, and exactly the bound
+`INK_WIDTH_QUANTUM` was documented for. A noisy-profile test now pins this; the half-quantum tolerance
+test became a one-quantum test.
+
+**3. "Behind" was a silent no-op for Ink alone.** `drawInkStroke` hardcoded
+`source-over`/`destination-out` and never read `settings.drawBehind` or `settings.alphaLock`, while
+`brush.ts`, `calligraphy-brush.ts` and `stamp-brush.ts` all honour them and `ToolOptions.svelte` shows
+the checkbox for every non-eraser brush. Ticking Behind with the Ink brush painted *over* the artwork.
+Now the same composite-op ladder as the other three. (`alphaLock` has no UI today and is always
+`false`, but it is one branch of the same ladder and was wired at the same time.)
+
+**Owed a browser pass**, on top of the iPad pass the previous commit already owes: translucent ink at
+a few opacities (the scratch path is the one that is new), Behind + Ink over existing artwork, and
+Behind + translucent Ink together.

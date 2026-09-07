@@ -55,13 +55,38 @@ describe("inkRuns", () => {
     ]);
   });
 
-  it("keeps widths within half a quantum of the requested width", () => {
+  it("keeps widths within one quantum of the requested width", () => {
+    // One quantum, not half of one: the merge test is hysteresis against the run's own width
+    // (see inkRuns), which buys noise immunity at the cost of doubling this bound. 0.25px of
+    // width is 0.125px of edge — still under a device pixel at dpr 1.
     const widths = Array.from({ length: 100 }, (_, i) => 0.5 + i * 0.137);
     for (const run of inkRuns(widths)) {
       for (let s = run.from; s < run.to; s++) {
-        expect(Math.abs(run.width - widths[s])).toBeLessThanOrEqual(INK_WIDTH_QUANTUM / 2 + 1e-9);
+        expect(Math.abs(run.width - widths[s])).toBeLessThanOrEqual(INK_WIDTH_QUANTUM + 1e-9);
       }
     }
+  });
+
+  it("does not fall apart on a noisy pressure profile", () => {
+    // The failure mode hysteresis exists to prevent, and the one a smooth Math.sin profile
+    // cannot show. Widths are built exactly as drawInkStroke builds them — size 8, size range
+    // 3, so widthRange gives 2.67..24 — over a pressure ramp carrying +/-0.02 of noise, which
+    // is ordinary for a Pencil at streamline 0. Quantizing each segment independently gives
+    // 219 runs here (vs 119 for the same profile without noise); merging by hysteresis gives
+    // 101, i.e. the batching survives real input rather than collapsing back toward one
+    // stroke() per segment.
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+    const n = 400;
+    const min = 8 / 3;
+    const max = 8 * 3;
+    const pressures = Array.from({ length: n }, (_, i) =>
+      Math.max(0, Math.min(1, 0.15 + 0.7 * Math.sin((i / n) * Math.PI) + (rnd() * 2 - 1) * 0.02)),
+    );
+    const widths = pressures
+      .slice(1)
+      .map((p, i) => (min + pressures[i] * (max - min) + (min + p * (max - min))) / 2);
+    expect(inkRuns(widths).length).toBeLessThan(130);
   });
 
   it("never quantizes a hairline down to zero width", () => {
