@@ -4002,6 +4002,9 @@ plausible mechanism that explains the symptom is not the same as a verified one.
 have been traced from the UI to the engine BEFORE the model was touched; one grep of the call site
 would have found it in seconds. Both changes are keepers, but they were made in the wrong order.
 
+> **RESOLVED 2026-09-07 (later the same day) — verified in Chrome, see the next entry, which also
+> records the harness recipe that made the scripted-input attempt below work.**
+
 **Still owed a browser pass, and this time it has never had one that could have succeeded.** An
 attempt to verify on the dev server with synthetic `PointerEvent`s failed: `setupInput` binds to the
 stage and calls `setPointerCapture(e.pointerId)`, which throws `NotFoundError` for a synthetic
@@ -4009,3 +4012,43 @@ pointer id and aborts the handler before drawing begins, so nothing is painted. 
 page got past it but the run then timed out twice, and the attempt was abandoned rather than
 rabbit-holed. Noting the mechanism because it will defeat the next attempt to script this app's input
 the same way.
+
+**Ink dwell pooling VERIFIED in the browser (2026-09-07).** After the wiring fix above, the feature was
+driven end to end on the dev server in Chrome — through `setupInput`, `Canvas.svelte`, the engine and
+the composite — with pen-type pointer input at controlled speeds, and measured on the paper canvas.
+Size 12, pressure 0.5, size range 2.5 (nib 17.4px):
+
+| stroke | Pool | measured thickness | engine factor |
+|---|---|---|---|
+| slow, 0.05-0.1 px/ms, streamline 0 | 100 | **32-36 px** | 1.92-2.00 |
+| fast, 0.9-2.0 px/ms, streamline 0 | 100 | 18 px | 1.00 |
+| slow, 0.05-0.1 px/ms, streamline 0 | 0 | 18 px | 1.00 |
+| slow, 0.1 px/ms, **streamline 50** | 100 | **30-32 px** | 1.95 |
+| fast, 2.0 px/ms, streamline 50 | 100 | 18 px | 1.00 |
+
+Exactly 2× on a slow stroke, untouched on a fast one, off at Pool 0, and the default streamline (50)
+does not dampen it. Real mouse strokes drawn by hand in the same tab during the run showed the same
+thing unprompted: a vertical stroke with a blob at each end (pen-down and lift are slow) and a thin
+middle. **The code on `main` since `fac43c7` works.** Anyone still seeing no effect is running a
+build from before that commit — the iPad PWA / Safari caches `index.html`; fully close the app or
+clear the site's data and reopen — or is drawing on a layer that cannot show it (this project's
+autosave had Layer 1 active inside Group 1 whose opacity track sits at 0 on frame 1, which hides
+EVERY stroke, not just pooling).
+
+**Harness recipe, because the first scripted attempt failed and the second nearly did:**
+1. `Element.prototype.setPointerCapture = () => {}` (and `releasePointerCapture`) in the page —
+   `setupInput` captures on the stage and a synthetic `pointerId` throws `NotFoundError` before
+   `isDrawing` is set. Patch the page, never the app.
+2. **Pace events with a busy-wait, not `setTimeout`.** Chrome throttles background-tab timers to
+   ~1/s, so a 40-step stroke at 16ms took 40+ seconds and blew the CDP 45s budget — that was the
+   "renderer frozen" timeout, twice. `while (performance.now() < until) {}` is immune.
+3. Dispatch `PointerEvent`s with `pointerType: 'pen'`, `pressure`, `isPrimary`, `bubbles` on the
+   paper canvas (they bubble to the stage). `e.timeStamp` is browser-assigned at construction, so
+   real pacing yields real speeds.
+4. `recomposite` rides `requestAnimationFrame`, which does not fire in a background tab: take a
+   screenshot (foregrounds the tab) before reading pixels, or nothing appears to have been drawn.
+5. `await import('/src/state/appState.svelte.ts')` in the page returns the app's own module
+   instance under Vite dev — read `state.brush` and set `state.activeLayerId` directly rather than
+   scripting the layer panel. Check the active layer is drawable AND visible at the playhead.
+6. Measure thickness on `canvas.touch-none` (the paper, 2D) by colour distance from the corner
+   pixel, not by alpha — the paper is opaque.
