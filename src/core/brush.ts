@@ -57,6 +57,9 @@ export interface BrushSettings {
    *  engine (same relationship `taper` already has to the ink/stamp engines). */
   nibAngle?: number;
   nibFlatness?: number;
+  /** Ink only — 0-100, 0 is off. How much the mark swells where the nib lingers; see
+   *  `dwellSwell` in ink-brush.ts. Same engine-specific relationship as the nib fields. */
+  dwellPool?: number;
 }
 
 /**
