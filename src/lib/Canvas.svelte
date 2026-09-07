@@ -44,7 +44,7 @@
     playbackController,
   } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
-  import { drawInkStrokeIncremental, resetInkState } from "../core/ink-brush";
+  import { drawInkStroke } from "../core/ink-brush";
   import { drawCalligraphyStroke } from "../core/calligraphy-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection, type SelectionRect } from "../core/selection";
@@ -658,8 +658,8 @@
     recomposite();
   }
 
-  // Render the current stroke onto the cell ctx then recomposite. Smooth = full redraw
-  // from the pre-stroke snapshot; stamp = incremental. Both clip to the active selection.
+  // Render the current stroke onto the cell ctx then recomposite. Smooth/calligraphy/ink =
+  // full redraw from the pre-stroke snapshot; stamp = incremental. All clip to the selection.
   function paintStroke(pts: InputPoint[], done: boolean) {
     if (!strokeCtx) return;
     let inPts = pts;
@@ -715,12 +715,15 @@
         strokeCtx.restore();
       }
     } else if (kind === "ink") {
-      // Ink/marker: incremental quadratic line — no snapshot restore.
+      // Ink/marker: full redraw like smooth, NOT incremental — a per-segment stroke
+      // re-composites the antialiased fringe at every overlap and hardens the edge into
+      // jaggies (see the header of ink-brush.ts for the measurements).
+      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
       strokeCtx.save();
       try {
         strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
         selection?.applyClip(strokeCtx);
-        drawInkStrokeIncremental(strokeCtx, curved, settings, sr);
+        drawInkStroke(strokeCtx, curved, settings, sr);
       } finally {
         strokeCtx.restore();
       }
@@ -1324,9 +1327,8 @@
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
       strokeSteps = cellComposeSteps(layer);
       const bt = activeStroke().brushType;
-      if (bt === "ink") resetInkState();
-      // calligraphy and smooth are stateless full-redraw engines; the rest are stamps.
-      else if (bt !== "smooth" && bt !== "calligraphy") resetStampState();
+      // smooth, calligraphy and ink are stateless full-redraw engines; the rest are stamps.
+      if (bt !== "smooth" && bt !== "calligraphy" && bt !== "ink") resetStampState();
       bump();
     }
 
