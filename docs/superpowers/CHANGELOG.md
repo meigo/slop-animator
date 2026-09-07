@@ -3973,3 +3973,39 @@ factor is the same at width 2 and width 40 for the same motion; an ordinary 0.6 
 untouched at every size; and a 0.1 px/ms slowdown pools at the DEFAULT size, which is the case that
 was silently dead. Watched all three fail first, with the predicted numbers (1.00× vs 1.75×; a
 size-40 brush swelling to 45 at ordinary speed; a size-4 brush flat at 4.0 through a slowdown).
+
+**Ink dwell pooling had never once run — `Canvas.svelte` dropped the field (2026-09-07).** Reported
+twice as "can't feel any difference", through two rounds of tuning. Both rounds were spent adjusting
+a code path that was never reached.
+
+`Canvas.svelte:677` built the engine-facing `settings` object by **hand-listing every
+`BrushSettings` key**. `dwellPool` was added to `BrushSettings`, to the state defaults and to the UI,
+and not to that list — so `settings.dwellPool` was `undefined` on every stroke, `?? 0` turned it into
+0, and `dwellSwell` early-returned every time. The feature shipped, merged, deployed and got tuned
+twice while being dead code.
+
+**Nothing catches this.** `ToolSettings` is a superset of `BrushSettings`, so the object type-checked
+with the key missing; `svelte-check`/`tsc` were clean; `dwellSwell` was unit-tested in isolation and
+passed; and the defect site is a `.svelte` component, which this project cannot node-test at all.
+The only detector was the user's eyes, twice.
+
+**Fix: spread, never hand-list** — `{ ...stroke, isEraser: ... }`. It cannot drop a field again, it
+is shorter than what it replaced, and the extra `ToolSettings` keys (`brushType`, `sizeRange`,
+`streamline`) are ignored by every engine except the stamp path, which already re-specifies
+`brushType` itself. **Any future brush parameter is now wired by construction.** This was the ONLY
+site in the codebase that built a `BrushSettings` (checked), so there is no second one to fix.
+
+**The debugging lesson, which cost two deploys:** the pen-speed rewrite in the entry above diagnosed
+a real defect — the brush-size coupling is genuinely broken and the measurements proving it stand —
+but it was NOT the cause of the reported symptom, because the model it fixed was never invoked. A
+plausible mechanism that explains the symptom is not the same as a verified one. The value should
+have been traced from the UI to the engine BEFORE the model was touched; one grep of the call site
+would have found it in seconds. Both changes are keepers, but they were made in the wrong order.
+
+**Still owed a browser pass, and this time it has never had one that could have succeeded.** An
+attempt to verify on the dev server with synthetic `PointerEvent`s failed: `setupInput` binds to the
+stage and calls `setPointerCapture(e.pointerId)`, which throws `NotFoundError` for a synthetic
+pointer id and aborts the handler before drawing begins, so nothing is painted. Patching that in the
+page got past it but the run then timed out twice, and the attempt was abandoned rather than
+rabbit-holed. Noting the mechanism because it will defeat the next attempt to script this app's input
+the same way.

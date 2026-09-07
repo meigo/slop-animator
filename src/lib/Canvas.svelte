@@ -674,18 +674,13 @@
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
     const stroke = activeStroke();
     const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
-    const settings = {
-      size: stroke.size,
-      color: stroke.color,
-      opacity: stroke.opacity,
-      smoothing: stroke.smoothing,
-      drawBehind: stroke.drawBehind,
-      alphaLock: stroke.alphaLock,
-      taper: stroke.taper,
-      nibAngle: stroke.nibAngle,
-      nibFlatness: stroke.nibFlatness,
-      isEraser: appState.tool === "eraser",
-    };
+    // SPREAD, never field by field. This was a hand-written list of every BrushSettings key, and
+    // when `dwellPool` was added it was not added here — so the ink pooling feature shipped, was
+    // tuned twice against user reports, and had never once run: the engine read `undefined` on
+    // every stroke. A list that has to be extended in a second file every time a brush parameter
+    // is added will eventually not be, and nothing in the type system or the tests catches it,
+    // because ToolSettings is a superset of BrushSettings and the extra keys are ignored.
+    const settings = { ...stroke, isEraser: appState.tool === "eraser" };
     const kind = stroke.brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
