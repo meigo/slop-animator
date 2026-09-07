@@ -3883,3 +3883,54 @@ Now the same composite-op ladder as the other three. (`alphaLock` has no UI toda
 **Owed a browser pass**, on top of the iPad pass the previous commit already owes: translucent ink at
 a few opacities (the scratch path is the one that is new), Behind + Ink over existing artwork, and
 Behind + translucent Ink together.
+
+**Ink dwell pooling — the mark swells where the nib lingers (2026-09-07).** Grew out of the review
+entry above: with translucent ink now flat by construction, the question was whether ink should get
+back some of the organic variation the flattening removed, deliberately and under a control, rather
+than as a compositing accident.
+
+**The fork that decided the design:** density pooling (darker where the pen lingers) is INVISIBLE at
+opacity 100, which is the default and the app's whole monochrome-ink-outline premise — it would only
+ever show on translucent strokes, and it needs an extra composite pass and a silhouette clip to
+avoid a halo. Width pooling (the mark gets *wider*) shows at every opacity, is closer to what ink
+soaking into paper actually does, and is nearly free: it edits `widths[]` before `inkRuns` sees them,
+so there is no new pass, no scratch and no composite. Width won on both counts.
+
+**The measure is CONTACT TIME**, `width / speed` — the milliseconds the nib takes to travel its own
+width. Scale-free on purpose: 40ms of contact means the same thing for a 2px hairline and a 24px
+marker, where a raw px/ms threshold would pool a fat brush constantly and a thin one never. Below
+40ms nothing pools; at 200ms+ the swell is full; `pool` (0-100) scales it, reaching 1.75× width at
+100. All four constants are first guesses, tunable after a browser pass.
+
+**Speed is averaged over a window measured in MILLISECONDS, not in neighbouring samples**, and that
+is the load-bearing choice rather than an implementation detail. A neighbour-count window narrows as
+the Pencil samples faster, so the same stroke drawn at the same speed would pool differently at
+120Hz and 240Hz — the exact sample-rate dependence `inkRuns` has now been fixed for twice. A test
+pins it: the same path sampled twice as finely must produce the same widths. Interpolated points
+(`input.ts` fills spatial gaps over 4px) carry interpolated timestamps, so they change the point
+density without touching the time density and the measure is unaffected.
+
+**Deliberately capped at 1.75×.** Real ink keeps spreading for as long as the nib rests; this stops.
+An unbounded blob growing under a hand that paused to think is a footgun, not a feature — this is
+the one place the effect chooses against realism on purpose.
+
+**Default 0, so nothing changes until the slider moves** — every existing stroke renders identically,
+and at 0 the function is a single comparison and an early return. The control is a 0-100 slider in
+the brush gear panel, shown only for the ink engine (the `40899f0` convention: controls that are
+inert for the selected engine are hidden, not dimmed). Calibrate-once params live behind the gear
+rather than on the bar, per `bbd227d` — the iPad brush row has no spare width. `dwellPool` is
+optional on `BrushSettings` beside `nibAngle`/`nibFlatness`, so it persists for free via
+`Preferences`' whole-`ToolSettings` store and older stored prefs keep the default under
+`applyPreferences`' spread merge. Brush settings are not part of the project file, so the save format
+is untouched. It applies to an ink ERASER too, which has its own independent value — pooling is a
+width effect and nothing about it is ink-specific once the engine is.
+
+Cost is not literally zero and should not be described as such: the swell adds width variation, so
+`inkRuns` emits a few more runs on a slow stroke. That is bounded by the same hysteresis that
+handles pressure variation. The detector itself is O(n) with a window of ~4-8 points (bounded by the
+clock, not by how slowly the pen moves) — measured at 0.024ms for 3000 points, against the ~0.33ms a
+self-crossing detector would have cost and the 5.1ms a naive O(n²) one would.
+
+Six pure tests, written first and watched fail. **Owed a browser pass, and it is the whole point of
+the feature:** whether this looks good at all is the open question, and `pool` 0 remains a real
+answer.

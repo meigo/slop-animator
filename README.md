@@ -12,7 +12,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 **Drawing**
 
-- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, an adjustable pressure curve, and separate brush/eraser settings
+- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, an adjustable pressure curve, optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
   so outlines and flats stay separate; eyedropper, lasso selection with float/transform
 - Fill every area an outline encloses in one press, behind the strokes — the animator's
@@ -95,7 +95,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1075); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1081); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

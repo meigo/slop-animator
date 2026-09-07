@@ -41,6 +41,7 @@
   // so it stays live on every brush. See CLAUDE.md 2026-08-29.
   const smoothOnly = $derived(stroke.brushType === "smooth");
   const isCalligraphy = $derived(stroke.brushType === "calligraphy");
+  const isInk = $derived(stroke.brushType === "ink");
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -162,7 +163,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:bg-surface-active={brushSettingsOpen}
-        title="Brush settings — streamline, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, pooling, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -176,6 +177,17 @@
             <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.streamline} />
             <span class="w-8 text-right text-text-muted tabular-nums">{stroke.streamline}</span>
           </label>
+          {#if isInk}
+            <label
+              class="flex items-center gap-2"
+              title="Swell the mark where the pen lingers, the way ink soaks in — 0 is off"
+              ><span class="w-14 text-text-secondary">Pool</span>
+              <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.dwellPool} />
+              <span class="w-8 text-right text-text-muted tabular-nums"
+                >{stroke.dwellPool ?? 0}</span
+              >
+            </label>
+          {/if}
           {#if smoothOnly}
             <label class="flex items-center gap-2" title="Taper stroke ends">
               <input type="checkbox" bind:checked={stroke.taper} /> Taper

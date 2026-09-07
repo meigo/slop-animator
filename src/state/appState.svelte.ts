@@ -271,6 +271,7 @@ export const state: AnimState = $state({
     brushType: "smooth",
     nibAngle: 45,
     nibFlatness: 0.35,
+    dwellPool: 0,
   },
   eraser: {
     size: 8,
@@ -285,6 +286,7 @@ export const state: AnimState = $state({
     brushType: "smooth",
     nibAngle: 45,
     nibFlatness: 0.35,
+    dwellPool: 0,
   },
   fill: { tolerance: 32, expand: 2, gap: 0, color: "#1a1a1a", opacity: 100 },
   version: 0,

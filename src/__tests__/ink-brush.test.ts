@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { inkRuns, INK_WIDTH_QUANTUM, type InkRun } from "../core/ink-brush";
+import {
+  inkRuns,
+  dwellSwell,
+  INK_WIDTH_QUANTUM,
+  MAX_DWELL_SWELL,
+  type InkRun,
+} from "../core/ink-brush";
+import type { InputPoint } from "../core/input";
 
 /**
  * The run count IS the fix: it is the number of stroke() calls, and therefore the number of
@@ -98,5 +105,105 @@ describe("inkRuns", () => {
   it("does not merge across a width change that a coarser quantum would swallow", () => {
     expect(inkRuns([4, 4.5], 0.25)).toHaveLength(2);
     expect(inkRuns([4, 4.5], 2)).toHaveLength(1);
+  });
+});
+
+/**
+ * Dwell pooling: a real pen leaves a fatter mark where the nib lingers, because the ink has
+ * longer to soak in. The measure is CONTACT TIME — how long the nib takes to travel its own
+ * width — so it means the same thing for a hairline and a marker, and it is computed over a
+ * time window rather than a neighbour count so it cannot become sample-rate dependent (the
+ * failure mode `inkRuns` already had once).
+ */
+
+/** A stroke as (position, time) with constant pressure — the two things dwell reads. */
+function stroke(steps: { dx: number; dt: number; n: number }[]): InputPoint[] {
+  const pts: InputPoint[] = [{ x: 0, y: 0, pressure: 0.5, hasPressure: true, timestamp: 0 }];
+  for (const leg of steps) {
+    for (let i = 0; i < leg.n; i++) {
+      const last = pts[pts.length - 1];
+      pts.push({
+        x: last.x + leg.dx,
+        y: 0,
+        pressure: 0.5,
+        hasPressure: true,
+        timestamp: last.timestamp + leg.dt,
+      });
+    }
+  }
+  return pts;
+}
+
+const flat = (pts: InputPoint[], w: number) => new Array(pts.length - 1).fill(w);
+
+describe("dwellSwell", () => {
+  it("leaves the widths untouched at pool 0", () => {
+    const pts = stroke([{ dx: 0.01, dt: 8, n: 40 }]); // barely moving — maximum provocation
+    const widths = flat(pts, 8);
+    expect(dwellSwell(pts, widths, 0)).toEqual(widths);
+  });
+
+  it("adds no variation to a constant-speed stroke", () => {
+    // Slow enough to pool everywhere, so the swell is uniform rather than absent — the point
+    // is that a steady hand gets a steady line, not that nothing happened.
+    const pts = stroke([{ dx: 0.05, dt: 8, n: 60 }]);
+    const out = dwellSwell(pts, flat(pts, 8), 100);
+    for (const w of out) expect(w).toBeCloseTo(out[0], 6);
+  });
+
+  it("swells where the pen pauses and not where it moves", () => {
+    const fast = { dx: 8, dt: 4, n: 25 }; // 2 px/ms — 4ms to cross an 8px nib
+    const pts = stroke([fast, { dx: 0.02, dt: 4, n: 25 }, fast]);
+    const out = dwellSwell(pts, flat(pts, 8), 100);
+    const mid = out[Math.floor(out.length / 2)];
+    expect(out[0]).toBeCloseTo(8, 6);
+    expect(out[out.length - 1]).toBeCloseTo(8, 6);
+    expect(mid).toBeGreaterThan(8 * 1.5);
+  });
+
+  it("caps the swell no matter how long the pen rests", () => {
+    const brief = stroke([{ dx: 0, dt: 8, n: 20 }]);
+    const forever = stroke([{ dx: 0, dt: 8, n: 2000 }]);
+    const capped = 8 * (1 + MAX_DWELL_SWELL);
+    for (const out of [
+      dwellSwell(brief, flat(brief, 8), 100),
+      dwellSwell(forever, flat(forever, 8), 100),
+    ]) {
+      for (const w of out) expect(w).toBeLessThanOrEqual(capped + 1e-9);
+    }
+    expect(Math.max(...dwellSwell(forever, flat(forever, 8), 100))).toBeCloseTo(capped, 6);
+  });
+
+  it("scales the swell with the pool amount", () => {
+    const pts = stroke([{ dx: 0, dt: 8, n: 20 }]);
+    const half = Math.max(...dwellSwell(pts, flat(pts, 8), 50));
+    const full = Math.max(...dwellSwell(pts, flat(pts, 8), 100));
+    expect(half - 8).toBeCloseTo((full - 8) / 2, 6);
+  });
+
+  it("gives the same widths however finely the same stroke is sampled", () => {
+    // THE load-bearing property, and the reason the window is measured in milliseconds. A
+    // neighbour-count window would narrow as the Pencil sampled faster and change the result;
+    // the same path drawn at the same speed must render the same at any event rate.
+    const coarse = stroke([
+      { dx: 8, dt: 4, n: 20 },
+      { dx: 0.04, dt: 4, n: 20 },
+      { dx: 8, dt: 4, n: 20 },
+    ]);
+    const fine = stroke([
+      { dx: 4, dt: 2, n: 40 },
+      { dx: 0.02, dt: 2, n: 40 },
+      { dx: 4, dt: 2, n: 40 },
+    ]);
+    const c = dwellSwell(coarse, flat(coarse, 8), 100);
+    const f = dwellSwell(fine, flat(fine, 8), 100);
+    expect(Math.max(...f)).toBeCloseTo(Math.max(...c), 1);
+    expect(Math.min(...f)).toBeCloseTo(Math.min(...c), 1);
+    // and at matched points along the path, not just at the extremes
+    for (const frac of [0.25, 0.5, 0.75]) {
+      const ci = Math.floor(c.length * frac);
+      const fi = Math.floor(f.length * frac);
+      expect(f[fi]).toBeCloseTo(c[ci], 1);
+    }
   });
 });
