@@ -4,6 +4,7 @@ import {
   dwellSwell,
   INK_WIDTH_QUANTUM,
   MAX_DWELL_SWELL,
+  POOL_REF_WIDTH,
   type InkRun,
 } from "../core/ink-brush";
 import type { InputPoint } from "../core/input";
@@ -164,7 +165,7 @@ describe("dwellSwell", () => {
   it("caps the swell no matter how long the pen rests", () => {
     const brief = stroke([{ dx: 0, dt: 8, n: 20 }]);
     const forever = stroke([{ dx: 0, dt: 8, n: 2000 }]);
-    const capped = 8 * (1 + MAX_DWELL_SWELL);
+    const capped = 8 + MAX_DWELL_SWELL * Math.sqrt(8 * POOL_REF_WIDTH);
     for (const out of [
       dwellSwell(brief, flat(brief, 8), 100),
       dwellSwell(forever, flat(forever, 8), 100),
@@ -218,10 +219,32 @@ describe("dwellSwell", () => {
  */
 describe("dwellSwell trigger", () => {
   it("triggers at the same pen speed whatever the brush size", () => {
+    // Same motion, two nibs: both must pool (the trigger is speed, not size), and the added ink
+    // must follow the same law — normalised by sqrt(width) it is the same number for both.
     const pts = stroke([{ dx: 0.4, dt: 4, n: 40 }]); // 0.1 px/ms — a slow, deliberate stroke
     const thin = dwellSwell(pts, flat(pts, 2), 100);
     const fat = dwellSwell(pts, flat(pts, 40), 100);
-    expect(thin[10] / 2).toBeCloseTo(fat[10] / 40, 2);
+    expect(thin[10]).toBeGreaterThan(2);
+    expect(fat[10]).toBeGreaterThan(40);
+    expect((thin[10] - 2) / Math.sqrt(2)).toBeCloseTo((fat[10] - 40) / Math.sqrt(40), 6);
+  });
+
+  it("adds ink as the square root of the nib width, not in proportion to it", () => {
+    // A fixed extra volume of ink spreads into a disc, and a disc's radius goes as the square
+    // root of its area; the nib delivers ink in proportion to its width, so the extra radius
+    // goes as sqrt(width). Reported from the iPad: a linear swell was invisible at size 1 and
+    // a bulb past size 10, and looked right only around 3-5. A 16px nib gains exactly twice
+    // what a 4px nib gains — a linear law would give four times.
+    const pts = stroke([{ dx: 0, dt: 8, n: 20 }]); // resting: full dwell everywhere
+    const gain = (w: number) => Math.max(...dwellSwell(pts, flat(pts, w), 100)) - w;
+    expect(gain(16)).toBeCloseTo(2 * gain(4), 6);
+    expect(gain(1)).toBeCloseTo(gain(4) / 2, 6);
+  });
+
+  it("exactly doubles a nib at the reference width", () => {
+    const pts = stroke([{ dx: 0, dt: 8, n: 20 }]);
+    const w = POOL_REF_WIDTH;
+    expect(Math.max(...dwellSwell(pts, flat(pts, w), 100))).toBeCloseTo(2 * w, 6);
   });
 
   it("leaves a normally paced stroke alone at every brush size", () => {

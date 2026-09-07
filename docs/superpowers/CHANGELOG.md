@@ -3967,6 +3967,9 @@ slowdown pools at every brush size. The swell MAGNITUDE stays proportional to wi
 gaining 8px would be absurd); only the trigger is absolute. `MAX_DWELL_SWELL` also went 0.75 → 1.0
 (2× at pool 100) since the effect was reported as too weak, but that was the lesser half of the fix.
 
+> **SUPERSEDED 2026-09-07 — the swell is no longer a multiplier. See `Dwell pooling swells as the
+> square root of the nib width` below; 2× now holds only at the 4px reference width.**
+
 **The old tests all passed under both models** — they used speeds of 2 px/ms against 0.005, so
 extreme that width normalisation never showed. Three new tests pin the actual property: the swell
 factor is the same at width 2 and width 40 for the same motion; an ordinary 0.6 px/ms stroke is
@@ -4052,3 +4055,29 @@ EVERY stroke, not just pooling).
    scripting the layer panel. Check the active layer is drawable AND visible at the playhead.
 6. Measure thickness on `canvas.touch-none` (the paper, 2D) by colour distance from the corner
    pixel, not by alpha — the paper is opaque.
+
+**Dwell pooling swells as the square root of the nib width (2026-09-07).** First real iPad pass of
+the working feature: *"looks ok around brush size 3-5, too little with size 1 and too much after 10
+or so."* That is a precise description of a multiplier — the swell was `w × (1 + strength·dwell)`,
+so the added ink was LINEAR in width: +1px on a 1px hairline (invisible) and +20px on a 20px brush
+(a bulb).
+
+**The fix is the physical law, not a fudge.** Pooled ink is a fixed extra VOLUME spreading into a
+disc; a disc's radius goes as the square root of its area; the nib delivers ink in proportion to its
+width — so the extra radius goes as **sqrt(width)**. Now `pooled = w + strength·dwell·sqrt(w·4)`,
+anchored at `POOL_REF_WIDTH = 4` so a 4px nib still exactly doubles (the size the user said looked
+right). A 1px nib triples, 8px gains 1.7×, 16px 1.5×, 40px 1.3× — thin brushes get a visible blob,
+fat ones a swell instead of a bulb. **The anchor is the single tuning knob**; the curve handles the
+rest. Rejected: a log curve (compresses fat brushes harder still, no physical story) and `a + b·w`
+(two constants, the same tuning problem in two places).
+
+Trigger (pen speed), cap, Pool slider, cost: all unchanged — one `Math.sqrt` in the existing loop.
+The verification table in the entry above was measured under the multiplier (17.4px nib → 32-36px);
+under the sqrt law the same stroke should measure ~25.7px (1.48×). Tests: the cap expectation
+became `w + sqrt(4w)`; the size-independence test now pins the actual spec (same TRIGGER at every
+width, added ink normalised by sqrt(w) identical); two new tests pin the law itself (a 16px nib
+gains exactly twice a 4px nib, a 1px nib exactly half) and the anchor (2× at the reference width).
+Watched all four fail first — the linear law gave the 16px nib 4× the 4px nib's gain.
+
+**Owed an iPad pass** — this is a tuning change and the anchor may want to move; the user's eye
+decides, and 4px is a first guess informed by "3-5 looks right" at Press 2.5×.
