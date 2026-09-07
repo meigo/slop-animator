@@ -128,9 +128,18 @@ export function inkRuns(widths: number[], quantum: number = INK_WIDTH_QUANTUM): 
  * 240Hz. That is exactly the sample-rate dependence `inkRuns` was fixed for twice, and a test
  * pins it here.
  *
- * DELIBERATELY CAPPED at `MAX_DWELL_SWELL`. Real ink keeps spreading for as long as the nib
- * rests; this stops. An unbounded blob growing under a hand that paused to think is a footgun,
- * not a feature.
+ * The SIZE of the swell follows a SQUARE ROOT of the nib width, not a multiple of it. The first
+ * version was a multiplier, so the added ink was linear in width: +1px on a 1px hairline
+ * (invisible) and +20px on a 20px brush (a bulb). Reported from the iPad as looking right only
+ * around size 3-5. The square root is the physical law, not a fudge: pooled ink is a fixed extra
+ * VOLUME spreading into a disc, a disc's radius goes as the square root of its area, and the nib
+ * delivers ink in proportion to its width — so the extra radius goes as sqrt(width). Anchored at
+ * `POOL_REF_WIDTH` so a 4px nib still exactly doubles; a 1px nib triples, a 16px nib gains 1.7x, a
+ * 40px nib 1.3x. That anchor is the ONE tuning knob: move it if the whole effect reads a notch
+ * strong or weak — the curve handles the rest.
+ *
+ * DELIBERATELY CAPPED at full dwell. Real ink keeps spreading for as long as the nib rests; this
+ * stops. An unbounded blob growing under a hand that paused to think is a footgun, not a feature.
  */
 const DWELL_WINDOW_MS = 16;
 /** Pen speed (document px/ms) at which pooling starts, and at which it is full. Chosen against
@@ -138,7 +147,9 @@ const DWELL_WINDOW_MS = 16;
  *  pools while you are simply drawing; a deliberate slowdown is ~0.25 and a creep ~0.03. */
 const POOL_START_SPEED = 0.3;
 const POOL_FULL_SPEED = 0.03;
-/** Widest the stroke can get: 2x at pool 100. */
+/** Nib width (px) at which full pooling exactly doubles the stroke. The single tuning knob. */
+export const POOL_REF_WIDTH = 4;
+/** Swell strength at pool 100, as a fraction of the reference width's own size (1 = doubles). */
 export const MAX_DWELL_SWELL = 1.0;
 
 export function dwellSwell(points: InputPoint[], widths: number[], pool: number): number[] {
@@ -172,7 +183,9 @@ export function dwellSwell(points: InputPoint[], widths: number[], pool: number)
       0,
       Math.min(1, (POOL_START_SPEED - speed) / (POOL_START_SPEED - POOL_FULL_SPEED)),
     );
-    return w * (1 + strength * dwell);
+    // sqrt(w * ref) equals `ref` at the reference width, so full strength adds exactly one
+    // width there and proportionally less above it.
+    return w + strength * dwell * Math.sqrt(w * POOL_REF_WIDTH);
   });
 }
 
