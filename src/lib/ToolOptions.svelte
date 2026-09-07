@@ -26,10 +26,11 @@
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
-  // Four, not eight: on iPad the brush row runs off the right edge and the far controls become
-  // uncomfortable to reach. These span the range and include the default (4); the slider and the
-  // number field beside them cover everything in between.
-  const SIZE_PRESETS = [1, 4, 16, 60];
+  // Nine. This was four (1/4/16/60) because the brush row overran the iPad's right edge; the gear
+  // panel (bbd272d) took Stream/Taper/Behind/curve off the bar and bought the room back. Dense
+  // where a step is visible — 1→2 is a 100% change, 16→24 is not worth a button — with the default
+  // (4) present and the fat end left to the slider and the number field beside them.
+  const SIZE_PRESETS = [1, 2, 3, 4, 6, 8, 12, 16, 60];
 
   const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
   // Smooth and Taper are read ONLY by brush.ts (the perfect-freehand path). The ink and stamp
