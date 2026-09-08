@@ -166,11 +166,6 @@
       appState.persistAlert = `Save failed: ${errText(e)} — the project was NOT written to a file.`;
     }
   }
-
-  function toggleTheme() {
-    appState.theme = appState.theme === "dark" ? "light" : "dark";
-    document.documentElement.classList.toggle("dark", appState.theme === "dark");
-  }
 </script>
 
 <div
@@ -345,13 +340,6 @@
             viewActions.actualSize?.();
             close();
           }}>Actual size (1)</button
-        >
-        <button
-          class={menuItem}
-          onclick={() => {
-            toggleTheme();
-            close();
-          }}>{appState.theme === "dark" ? "Light theme" : "Dark theme"}</button
         >
         <button
           class={menuItem}

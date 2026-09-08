@@ -4281,3 +4281,46 @@ rather than `bind:value`. All three were finished by hand. Caught by the build, 
 **an HTML-tag regex cannot be trusted on markup containing arrow functions.**
 
 **Owed an iPad pass** — the accent's loudness, and whether the fainter dividers still read on device.
+
+**The light theme is gone; the app is dark-only (2026-09-08).** Removed at the user's call — *"I'm
+starting to doubt on needing a light theme. I don't use it personally"* — and it was the single
+biggest source of friction in the whole alignment, not merely an unused feature.
+
+**What it was costing.** Every token was TWO decisions and two contrast checks against two different
+grounds. `warn` genuinely needed two values (amber-700 is 3.32:1 on dark; amber-500 is 2.15:1 on
+white), which is the entire reason that token was fiddly. `SLOP-TIMELINE-UI.md` had to carry a
+carve-out naming this app as light-first and telling adopters to map roles onto "its existing light
+and dark scales" — a special case in a document meant to be copied. And the light scale was pure
+NEUTRAL while the new dark ramp is tinted, so keeping both would have meant hand-tuning a second
+tinted ramp with no family reference to copy from. Dark-only makes this an ordinary family member:
+the roles are the family's roles and the values are its hexes.
+
+**The artwork is untouched.** The paper is `project.bgColor`, painted in `render.ts`, entirely
+independent of the UI theme — a white page stays white on dark chrome, which is what every drawing
+app does anyway.
+
+Removed: the whole `.dark` block (its values merged into `@theme`, which is now the one palette),
+`color-scheme: light` → `dark`, `state.theme` and its default, the theme entries in
+gather/applyPreferences, `toggleTheme()` and the View-menu item in `Toolbar.svelte`, and the
+`classList.toggle("dark", …)` calls in `App.svelte` and the toolbar.
+
+**Two migration details that would have bitten.** `Preferences.theme` is KEPT on the type as ignored
+legacy rather than deleted: a stored `"light"` from an older version still parses, and because
+nothing reads it the user simply gets the one theme instead of being stranded in a light UI with the
+toggle that would have escaped it now removed. And `AudioLane`'s waveform action took a `theme`
+parameter it never read, purely to re-run the draw on a toggle — its colours come from CSS tokens via
+`getComputedStyle`, which nothing else invalidated. With one palette those tokens cannot change under
+it, so the parameter is gone and `audioVersion` is the only real dependency.
+
+A side effect worth noting: the hard-coded hexes in `AudioLane.svelte` (`#2b3240`, `#24272f`,
+`#3d4759`, `#999999`), flagged out of scope earlier, were dark values all along — so they were
+subtly WRONG in the light theme and are simply correct now. They remain candidates for tokens.
+
+One leftover the greps did not reach: `index.html` hard-coded `class="dark"` on `<html>`, put there
+to avoid a flash of light chrome before JS ran. With one palette and no `.dark` rules it was dead,
+and it was found only by checking the rendered page rather than the source — a browser check earning
+its keep on a change whose whole risk surface is "did the tokens actually merge".
+
+**VERIFIED in Chrome:** renders dark with no `.dark` class anywhere, panel `rgb(30,30,34)`, accent
+`#5b8cff`, text `#f4f4f5`, no theme item in the View menu, sliders filled. Owed the usual iPad
+eyeball, but the risk is low — a failure here would be unmissable rather than subtle.

@@ -246,9 +246,10 @@
   const MAX_CANVAS_W = 16384;
 
   // Draw the waveform onto the canvas; redraws when params change (Svelte action).
-  // `theme` is unread inside, but it is what re-runs the draw on a theme toggle: the colors come
-  // from CSS tokens via getComputedStyle, which nothing else invalidates.
-  function waveform(node: HTMLCanvasElement, _p: { audioVersion: number; theme: string }) {
+  // Took a `theme` param until 2026-09-08 purely to re-run on a theme toggle — the colors come from
+  // CSS tokens via getComputedStyle and nothing else invalidated them. The app is dark-only now, so
+  // the tokens cannot change under it and `audioVersion` is the only real dependency.
+  function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
     const draw = () => {
       const audio = state.project.audio;
       const ctx = node.getContext("2d");
@@ -392,7 +393,7 @@
       <canvas
         class="h-7 cursor-grab"
         style="touch-action: none"
-        use:waveform={{ audioVersion: state.version, theme: state.theme }}
+        use:waveform={{ audioVersion: state.version }}
         onpointerdown={laneDown}
         onpointermove={laneMove}
         onpointerup={laneUp}

@@ -2281,8 +2281,9 @@
         ></div>
         {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = playRange}
-          <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
-               text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
+          <!-- Ruler ticks: border and surface-active are near-identical (1.02:1 apart on the
+               family ramp), so ticks use text-muted — minors dimmed, every 5th (the label
+               cadence) at full strength. -->
           <div
             class="box-border h-6 border-r text-xs/6 text-center text-text-secondary {(f + 1) %
               5 ===

@@ -188,7 +188,6 @@ interface AnimState {
   exportBusy: boolean;
   settingsOpen: boolean;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
-  theme: "dark" | "light";
   onion: OnionConfig;
   /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
   pose: { fillHoles: boolean; gap: number };
@@ -296,7 +295,6 @@ export const state: AnimState = $state({
   exportBusy: false,
   settingsOpen: false,
   sizeDialog: { open: false, mode: "new" },
-  theme: "dark",
   onion: {
     enabled: false,
     prev: 1,
@@ -1962,7 +1960,6 @@ export function gatherPreferences(): Preferences {
     brush: { ...state.brush },
     eraser: { ...state.eraser },
     fill: { ...state.fill },
-    theme: state.theme,
     loop: state.playback.loop,
     timelineHeight: state.timelineHeight,
     layerPanelWidth: state.layerPanelWidth,
@@ -1981,7 +1978,6 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (typeof p.sizeRange === "number") state.brush.sizeRange = p.sizeRange;
   if (typeof p.streamline === "number") state.brush.streamline = p.streamline;
   if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
-  if (p.theme === "dark" || p.theme === "light") state.theme = p.theme;
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
   if (typeof p.timelineHeight === "number")
     state.timelineHeight = clampTimelineHeight(p.timelineHeight, window.innerHeight);

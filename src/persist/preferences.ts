@@ -6,12 +6,15 @@ export interface Preferences {
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
-  theme: "dark" | "light";
   loop: boolean;
   timelineHeight?: number; // px height of the resizable timeline panel
   layerPanelWidth?: number; // px width of the resizable layer panel
   timelineLabelWidth?: number; // px width of the timeline gutter's name column
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
+  /** Ignored since 2026-09-08 — the app is dark-only. Kept on the type so a stored pref from an
+   *  older version still parses; nothing reads it, so a user who last saved "light" simply gets
+   *  the one theme rather than being stranded in a light UI with no toggle to leave it. */
+  theme?: "dark" | "light";
   // Legacy (read-only back-compat; older versions wrote these at the top level).
   brushType?: BrushKind;
   sizeRange?: number;
