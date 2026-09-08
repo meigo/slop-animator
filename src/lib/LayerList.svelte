@@ -518,18 +518,15 @@
       dropHandled = false;
     });
 
+    // Every layer row in document order, each taking its group from whatever encloses it. Flat on
+    // purpose: the previous two-level walk read a group block's members as `data-layer-id`, so any
+    // element that was not a layer row yielded Number(undefined) = NaN, byId.get(NaN) = undefined,
+    // and those layers were dropped from the rebuilt array — SILENT DATA LOSS. The `put` guard on
+    // membersSortable should make that unreachable; this makes it impossible.
     const order: { id: number; groupId: number | null }[] = [];
-    for (const child of listEl.children) {
-      const el = child as HTMLElement;
-      if (el.dataset && el.dataset.groupId != null) {
-        const gid = Number(el.dataset.groupId);
-        const members = el.querySelector(".group-members");
-        if (members)
-          for (const row of members.children)
-            order.push({ id: Number((row as HTMLElement).dataset.layerId), groupId: gid });
-      } else if (el.dataset && el.dataset.layerId != null) {
-        order.push({ id: Number(el.dataset.layerId), groupId: null });
-      }
+    for (const row of listEl.querySelectorAll<HTMLElement>("[data-layer-id]")) {
+      const gid = row.closest<HTMLElement>("[data-group-id]")?.dataset.groupId;
+      order.push({ id: Number(row.dataset.layerId), groupId: gid == null ? null : Number(gid) });
     }
     reorderLayersWithGroups(order.reverse());
 
@@ -545,7 +542,10 @@
   // so rows can drag between groups and the root list. Created/destroyed per render.
   function membersSortable(node: HTMLElement) {
     const s = Sortable.create(node, {
-      group: "layers",
+      // Root and members share the "layers" group so rows cross between them — but a GROUP header
+      // is also a root item now, and `layer.groupId` is a single id with no representation for a
+      // group inside a group. Refuse that one drop; everything else is unchanged.
+      group: { name: "layers", put: (_to, _from, el) => el.dataset.groupId == null },
       handle: ".layer-drag-handle",
       animation: 150,
       onEnd: rebuild,
@@ -916,6 +916,14 @@
               class:bg-surface-active={groupLit}
               role="presentation"
             >
+              <!-- Same class the layer rows use, so the ROOT Sortable (handle: .layer-drag-handle)
+                   can grab the whole .group-block. It lives on the header, not inside
+                   .group-members, so the inner Sortable never sees it and the two cannot fight over
+                   the gesture. A collapsed group drags as one unit for free — its members stay in
+                   the DOM under `hidden`, so `rebuild` still walks them. -->
+              <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
+                ><GripVertical size={14} /></span
+              >
               <button
                 class="text-text-secondary hover:text-text"
                 title="Collapse group"
