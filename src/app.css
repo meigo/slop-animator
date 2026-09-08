@@ -26,6 +26,14 @@
   --color-media-clip: #d6d6d6;
   --color-media-clip-dim: #f6f6f6;
   --color-media-clip-border: #b8b8b8;
+  /* The caution colour: "here is why what you are about to do will not land" — a hidden or locked
+     layer, an edit that will be refused, eraser mode, a failed autosave. It was `text-amber-500`
+     hard-coded in 9 files, which is 2.15:1 on white — WORSE than the #999 rejected as unreadable
+     above (2.85:1), and this app is light-first so that was the default experience. Themed here:
+     amber-700 is 5.02:1 on white, amber-500 is 7.76:1 on #1e1e1e, both in line with the
+     text-muted steps. The name comes from SLOP-TIMELINE-UI.md; the MEANING deliberately does not
+     — see the note there. */
+  --color-warn: #b45309; /* amber-700 — 5.02:1 on white */
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
@@ -53,6 +61,7 @@
   --color-media-clip: #474747;
   --color-media-clip-dim: #242424;
   --color-media-clip-border: #5c5c5c;
+  --color-warn: #f59e0b; /* amber-500 — 7.76:1 on #1e1e1e; amber-700 would be 3.32:1 here */
 }
 
 html,

@@ -88,7 +88,7 @@
     <!-- Amber, per the read-only/state-signalling convention: this is a condition to act on, not a
          momentary error. It keeps its own slot rather than replacing the hint, so hovering a control
          still explains that control while the warning stays put. -->
-    <span class="truncate text-amber-500 shrink-2" title={appState.persistAlert}
+    <span class="truncate text-warn shrink-2" title={appState.persistAlert}
       >⚠ {appState.persistAlert}</span
     >
   {/if}

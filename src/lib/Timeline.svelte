@@ -2402,7 +2402,7 @@
             </button>
           {/if}
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 bg-surface border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px"
             title={g.locked ? "Group locked — edits refused" : !g.visible ? "Group hidden" : ""}
@@ -2486,7 +2486,7 @@
                  row was the one place that refused an edit while showing no reason, directly under a
                  row displaying the amber padlock. -->
             <span
-              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-amber-500 border-r border-text-muted"
+              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-warn border-r border-text-muted"
               role="presentation"
               style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
               onpointerdown={(e) => {
@@ -2699,7 +2699,7 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
             class:bg-surface-active={isRowSelected(layer.id)}
             role="presentation"

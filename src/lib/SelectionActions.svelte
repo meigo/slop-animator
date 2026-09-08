@@ -219,6 +219,6 @@
     {/if}
   </div>
   {#if liftBlocked}
-    <p class="text-xs text-amber-500 px-1 pb-0.5 text-center max-w-56">{liftBlockLabel}</p>
+    <p class="text-xs text-warn px-1 pb-0.5 text-center max-w-56">{liftBlockLabel}</p>
   {/if}
 </div>

@@ -152,7 +152,7 @@
            prompt is never a surprise. Amber, not red: red is reserved but unused in this codebase and
            would need its own contrast pass; the native confirm is the actual gate. -->
       {#if appState.sizeDialog.mode === "new"}
-        <p class="text-xs/snug text-amber-500">
+        <p class="text-xs/snug text-warn">
           Replaces the current project and clears its autosave. Save it first if you want to keep
           it.
         </p>

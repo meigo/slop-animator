@@ -216,7 +216,7 @@
         </button>
       {/if}
       {#if partial}
-        <span class="text-xs text-amber-500">
+        <span class="text-xs text-warn">
           In/Out range is set — exporting frames {range.start + 1}–{range.end + 1} of
           {appState.project.frameCount}. Clear it on the playbar to export everything.
         </span>

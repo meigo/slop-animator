@@ -4146,3 +4146,41 @@ SortableJS's pointer fallback, a different path again. **VERIFIED on iPad 2026-0
 user on the deployed build: the grab works and groups reorder. This was the one part the Chrome run
 could not reach, so the user's confirmation is the only evidence that path has ever had. Nothing
 owed.
+
+**A `warn` role, and the amber was unreadable in the default theme (2026-09-08).** First step of
+aligning the slop apps on `/Users/meigo/Projects/slop/SLOP-TIMELINE-UI.md` — the shared visual
+language that `slop-audio-editor` and `slop-video-compositor` already follow. That document names
+this app as a deliberate divergence (light-first, `.dark` class, `@theme --color-*`), so what is
+shared is the ROLE NAMES, never the hex values.
+
+**Only one role was earned.** The document defines `danger`, `warn`, `ok` and `disabled`; a survey
+found consumers for exactly one. There is no red and no green anywhere in the components, and
+`disabled` is not a colour here — it is `aria-disabled` (110 uses) plus `opacity-40` (31). Adding
+the other three would have put dead tokens in the theme. They can arrive when something needs them.
+
+**The real find was an accessibility bug, not a naming gap.** `text-amber-500` was hard-coded in 9
+files (15 uses) and is **2.15:1 on white** — WORSE than the `#999` that `app.css`'s own comment
+rejects as unreadable at 2.85:1 — and this app is light-first, so that was the DEFAULT experience.
+Every other token in that file carries a measured contrast note; this one escaped the check purely
+by never having been a token. Now themed: `#b45309` (amber-700, 5.02:1 on white) in light,
+`#f59e0b` (amber-500, 7.76:1 on `#1e1e1e`) in dark, both in line with the `text-muted` steps. The
+reverse does not work — amber-700 is only 3.32:1 on the dark panel — so this is genuinely one role
+with two values, not a single colour that was picked badly.
+
+**The meaning deliberately does NOT match the family's**, and the divergence is recorded in the
+shared document rather than papered over. There, `warn` is the secondary accent for session-only
+monitoring state that never reaches an export (solo, in/out markers). Here it means *"why what you
+are about to do will not land"*: hidden/locked layers (7 uses), blocked-edit explanations (7),
+eraser mode and the persist alert (2). Hidden layers genuinely do not render, so this is saved state
+that changes output. Per that document's §8 the app wins and the document gets the note.
+
+Verified in the built CSS rather than assumed — `svelte-check` cannot see a Tailwind class that was
+never generated: `.text-warn{color:var(--color-warn)}` is emitted and both values appear in the
+output. **Owed an eyeball in both themes** at the amber spots: a hidden or locked layer row, a
+blocked-edit message, the eraser label.
+
+**Flagged, not touched** (out of the chosen scope): colours Tailwind utilities cannot reach because
+they are drawn on canvas — `AudioLane.svelte` (`#2b3240`, `#24272f`, `#3d4759`, `#999999`),
+`RefTransformGizmo.svelte` (`#3b82f6`), `Canvas.svelte` (`#0080ff`). All are fixed dark-ish values
+regardless of theme. §8 of the shared document tolerates `var(--color-*)` inside scoped CSS for
+exactly this kind of furniture, so they could become roles later; it is a larger job than this one.

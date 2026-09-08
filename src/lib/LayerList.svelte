@@ -583,7 +583,7 @@
         ><GripVertical size={14} /></span
       >
       <button
-        class={layer.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+        class={layer.visible ? "text-text-muted hover:text-text" : "text-warn"}
         title={layer.visible ? "Visible — click to hide" : "Hidden — edits refused; click to show"}
         onclick={(e) => {
           e.stopPropagation();
@@ -595,7 +595,7 @@
       </button>
       <button
         class={isLayerLocked(layer, appState.project.groups)
-          ? "text-amber-500"
+          ? "text-warn"
           : "text-text-muted hover:text-text"}
         onclick={(e) => {
           e.stopPropagation();
@@ -934,7 +934,7 @@
                   />{/if}
               </button>
               <button
-                class={seg.group.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+                class={seg.group.visible ? "text-text-muted hover:text-text" : "text-warn"}
                 title={seg.group.visible
                   ? "Group visible — click to hide"
                   : "Group hidden — members' edits refused; click to show"}
@@ -943,7 +943,7 @@
                 {#if seg.group.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
               </button>
               <button
-                class={seg.group.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
+                class={seg.group.locked ? "text-warn" : "text-text-muted hover:text-text"}
                 title={seg.group.locked
                   ? "Group locked — click to unlock (members keep their own locks)"
                   : "Unlocked — click to lock every layer in this group"}

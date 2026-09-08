@@ -2300,7 +2300,7 @@
   <canvas bind:this={overlay} class="pointer-events-none absolute inset-0 z-10"></canvas>
   {#if editBlockCaption}
     <div
-      class="pointer-events-none absolute top-2 left-2 z-10 rounded px-1.5 py-0.5 text-xs text-amber-500 bg-surface/70"
+      class="pointer-events-none absolute top-2 left-2 z-10 rounded px-1.5 py-0.5 text-xs text-warn bg-surface/70"
     >
       {editBlockCaption}
     </div>
@@ -2427,7 +2427,7 @@
         <!-- Row 2. Kept in THIS panel rather than the status bar: statusHint carries the hovered
              control's title= and is overwritten by the very pointerdown that builds the mesh, and
              the remedy (Gap) is one row above. -->
-        <span class="text-xs/snug text-amber-500">{appState.poseFillWarning}</span>
+        <span class="text-xs/snug text-warn">{appState.poseFillWarning}</span>
       {/if}
     </div>
   {/if}

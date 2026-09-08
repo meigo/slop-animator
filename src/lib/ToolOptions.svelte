@@ -81,7 +81,7 @@
   class="flex min-h-10 flex-wrap items-center gap-2 border-b border-border bg-surface px-2 text-text *:shrink-0"
 >
   {#if appState.tool === "brush" || appState.tool === "eraser"}
-    {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
+    {#if appState.tool === "eraser"}<span class="text-xs text-warn">Eraser</span>{/if}
     <label class="flex items-center gap-1 text-sm text-text-secondary"
       >Size
       <input type="range" min="0.5" max="60" step="0.5" class="w-24" bind:value={stroke.size} />
@@ -404,7 +404,7 @@
     </div>
   {:else if appState.tool === "deform" || appState.tool === "pose"}
     {#if paintBlock}
-      <span class="text-xs text-amber-500">{editBlockLabel(paintBlock)}</span>
+      <span class="text-xs text-warn">{editBlockLabel(paintBlock)}</span>
     {:else if appState.tool === "deform"}
       <span class="text-xs text-text-muted"
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
