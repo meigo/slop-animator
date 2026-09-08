@@ -84,7 +84,7 @@
     {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
     <label class="flex items-center gap-1 text-sm text-text-secondary"
       >Size
-      <input type="range" min="0.5" max="60" step="0.5" bind:value={stroke.size} />
+      <input type="range" min="0.5" max="60" step="0.5" class="w-24" bind:value={stroke.size} />
       <input
         class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
         type="number"
@@ -95,10 +95,10 @@
         title="Brush size"
       />
     </label>
-    <div class="flex items-center gap-0.5" title="Size presets">
+    <div class="flex items-center gap-px" title="Size presets">
       {#each SIZE_PRESETS as preset (preset)}
         <button
-          class="px-1 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+          class="px-0.5 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
           class:bg-surface-active={stroke.size === preset}
           onclick={() => (stroke.size = preset)}>{preset}</button
         >
@@ -108,7 +108,7 @@
       class="flex items-center gap-1 text-sm text-text-secondary"
       title="How much pen pressure widens the stroke"
       >Press
-      <input type="range" min="1" max="8" step="0.5" bind:value={stroke.sizeRange} />
+      <input type="range" min="1" max="8" step="0.5" class="w-24" bind:value={stroke.sizeRange} />
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
     <select
@@ -123,30 +123,6 @@
       <option value="airbrush">Airbrush</option>
       <option value="calligraphy">Calligraphy</option>
     </select>
-    {#if isCalligraphy}
-      <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fixed nib angle">
-        Angle
-        <input type="range" min="0" max="180" step="1" class="w-16" bind:value={stroke.nibAngle} />
-        <span class="text-xs text-text-secondary w-8 tabular-nums">{stroke.nibAngle}°</span>
-      </label>
-      <label
-        class="flex items-center gap-1 text-xs text-text-secondary"
-        title="How elongated the nib is — 0% is a round tip"
-      >
-        Flatness
-        <input
-          type="range"
-          min="0"
-          max={MAX_NIB_FLATNESS}
-          step="0.01"
-          class="w-16"
-          bind:value={stroke.nibFlatness}
-        />
-        <span class="text-xs text-text-secondary w-8 tabular-nums"
-          >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
-        >
-      </label>
-    {/if}
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Opacity
       <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
@@ -164,7 +140,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:bg-surface-active={brushSettingsOpen}
-        title="Brush settings — streamline, pooling, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, pooling, nib angle and flatness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -186,6 +162,40 @@
               <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.dwellPool} />
               <span class="w-8 text-right text-text-muted tabular-nums"
                 >{stroke.dwellPool ?? 0}</span
+              >
+            </label>
+          {/if}
+          <!-- Nib angle/flatness are set per nib, not per stroke, so they follow the gear's rule.
+               Measured on the deployed build: with them on the bar, Calligraphy ends at 1234px
+               against a 12.9" iPad's 1024px portrait viewport and three controls wrap; in here it
+               ends at ~835. -->
+          {#if isCalligraphy}
+            <label class="flex items-center gap-2" title="Fixed nib angle"
+              ><span class="w-14 text-text-secondary">Angle</span>
+              <input
+                type="range"
+                min="0"
+                max="180"
+                step="1"
+                class="flex-1"
+                bind:value={stroke.nibAngle}
+              />
+              <span class="w-8 text-right text-text-muted tabular-nums">{stroke.nibAngle}°</span>
+            </label>
+            <label
+              class="flex items-center gap-2"
+              title="How elongated the nib is — 0% is a round tip"
+              ><span class="w-14 text-text-secondary">Flatness</span>
+              <input
+                type="range"
+                min="0"
+                max={MAX_NIB_FLATNESS}
+                step="0.01"
+                class="flex-1"
+                bind:value={stroke.nibFlatness}
+              />
+              <span class="w-8 text-right text-text-muted tabular-nums"
+                >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
               >
             </label>
           {/if}

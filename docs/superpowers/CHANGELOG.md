@@ -4081,3 +4081,25 @@ Watched all four fail first — the linear law gave the 16px nib 4× the 4px nib
 
 **Owed an iPad pass** — this is a tuning change and the anchor may want to move; the user's eye
 decides, and 4px is a first guess informed by "3-5 looks right" at Press 2.5×.
+
+**Brush bar fits a 12.9" iPad in portrait again (2026-09-08).** The nine size presets (2026-09-07)
+pushed the bar past the 1024px portrait viewport: Smooth wrapped its colour swatch and Calligraphy
+wrapped Opacity + gear + swatch. Measured on the deployed build rather than guessed — every
+component's width at desktop, summed: Smooth ended at **1051px**, Calligraphy at **1234px**, against
+1024. (Calligraphy had already been wrapping before the presets, at ~1134; the presets made Smooth
+wrap too.) The fat was two BROWSER-DEFAULT sliders: Size and Press were 129px each — not a design
+choice, just `<input type=range>`'s default — while every other slider on the bar is a deliberate
+64px.
+
+Three changes, all measured: (1) Size and Press sliders get `w-24` (96px), −66px, consistent with
+the rest of the bar and still comfortable under a Pencil; (2) preset spacing `gap-0.5`→`gap-px`
+and `px-1`→`px-0.5`, −30px, buttons still ~18px wide on a 28px row; (3) **nib Angle and Flatness
+move into the gear panel**, calligraphy-only, exactly like Pool for ink — −287px, and the only
+change that makes Calligraphy fit at all (it would still end at ~1138 after 1 and 2). It follows the
+gear's own rule from `bbd272d`: what you adjust mid-stroke stays on the bar, what you set once does
+not, and a nib is set per nib. The user weighed the two extra taps and chose this.
+
+Result: Smooth ends at ~955, Ink ~935, Calligraphy ~835 — all inside 1024 with ≥70px spare. **Honest
+limit:** an 11" iPad in portrait is 834px and Smooth would still wrap there; this fixes the 12.9".
+Owed the usual iPad eyeball — the arithmetic is from measured widths, not from a portrait render,
+because the test window would not resize below the desktop.
