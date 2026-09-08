@@ -56,22 +56,46 @@
   accent-color: var(--color-selection);
 }
 
+/* The dark theme takes the shared family ramp VERBATIM (SLOP-TIMELINE-UI.md §1) — the same hexes
+   slop-audio-editor and slop-video-compositor use, so the three apps are one family in dark and
+   this app keeps its own light scale (that document's explicit carve-out).
+   The values are Tailwind zinc's faint cool cast, not neutral grey, and that is the point: over a
+   whole toolbar or timeline, neutral vs faintly tinted is easy to tell apart even at +4 blue over
+   red, which is why the family chose a cast at all rather than `neutral`.
+   Adopting `line` exactly does make DIVIDERS FAINTER than they were — 1.10:1 over the panel where
+   #383838 was 1.42:1. That is the family's deliberate "only slightly lighter than what it divides";
+   if it turns out to be too subtle here, lift `--color-border` alone rather than the whole ramp. */
 .dark {
   color-scheme: dark;
-  --color-surface: #1e1e1e;
-  --color-surface-hover: #282828;
-  --color-surface-active: #333333;
-  --color-border: #383838;
-  --color-border-light: #2a2a2a;
-  --color-text: #e0e0e0;
-  --color-text-secondary: #999999;
-  --color-text-muted: #8a8a8a; /* 4.7:1 on #1e1e1e — #666 was 2.8:1, unreadable */
-  --color-canvas-bg: #121212;
+  --color-surface: #1e1e22; /* family `panel` */
+  /* Both map to the family's single `raised`. Collapsing hover and active into one value only
+     became safe when active state moved to the accent — before that they had to differ. */
+  --color-surface-hover: #2d2d33;
+  --color-surface-active: #2d2d33;
+  --color-border: #2e2e35; /* family `line` */
+  /* No family equivalent: a subtler divider than `line`, so it sits between panel and line. */
+  --color-border-light: #26262b;
+  --color-text: #f4f4f5; /* zinc-100 */
+  --color-text-secondary: #a1a1aa; /* zinc-400 — family `muted` */
+  /* A THIRD text level the family does not have. Tinted to match, and held at the contrast the
+     old value had: 4.86:1 on the panel, against #8a8a8a's 4.83:1 on the old one. */
+  --color-text-muted: #8a8a93;
+  --color-canvas-bg: #101013; /* family `ground` */
   /* accent / accent-hover / accent-text are theme-INDEPENDENT (see the light block) and are
      therefore not redefined here. */
-  --color-media-clip: #474747;
-  --color-media-clip-dim: #242424;
-  --color-media-clip-border: #5c5c5c;
+  /* The family's clip: a dark indigo sharing the ACCENT's hue, found by its BORDER (2.20:1 on the
+     ground) rather than by its fill (1.17:1). This supersedes the neutral #474747 and the note
+     above it — that reasoning was written when this app had no accent in real use, so "clips must
+     not compete with the selection blue" was protecting against a blue that was never on screen.
+     The clip is now DARKER than it was (1.17:1 against the old 2.02:1), which serves the same
+     note's other goal: the waveform stays the loudest thing in the lane. */
+  --color-media-clip: #172036;
+  /* Trimmed head/tail and the tail past the last frame — it must read as OFF. The old value sat
+     five steps below a mid-grey clip; against a clip this dark there is no room below, so `dim`
+     goes to very nearly the ground instead: a trimmed region reads as empty lane, which is the
+     same message by the only route still available. */
+  --color-media-clip-dim: #13141a;
+  --color-media-clip-border: #384b75;
   --color-warn: #f59e0b; /* amber-500 — 7.76:1 on #1e1e1e; amber-700 would be 3.32:1 here */
 }
 
@@ -178,24 +202,27 @@ textarea,
   background: var(--color-surface-hover);
 }
 
-/* Range input — thin track, small round thumb */
+/* Range inputs — SLOP-TIMELINE-UI.md §6: a 4px track with a 12px round thumb, and the filled
+   portion rebuilt as a gradient because `appearance: none` (the only way to size the thumb, which
+   the browser draws) also loses the fill the browser drew for free. Two stops rather than one so a
+   bipolar control could fill outward from its centre; `sliderFill()` supplies the percentages.
+   The fill is the accent MIXED 50% into the track, not the accent itself: at full strength the bar
+   competes with the thumb, which is the thing you actually aim at. Mixed toward the track rather
+   than made translucent, so it does not depend on what sits behind the control.
+   Any slider without the vars still renders — it just shows an empty track. */
 input[type="range"] {
+  --slider-fill: color-mix(in srgb, var(--color-accent) 50%, var(--color-surface-hover));
   -webkit-appearance: none;
   appearance: none;
-  height: 18px;
-  background: transparent;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-surface-hover) 0 var(--fill-from, 0%),
+    var(--slider-fill) var(--fill-from, 0%) var(--fill-to, 0%),
+    var(--color-surface-hover) var(--fill-to, 0%) 100%
+  );
   cursor: pointer;
-}
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 1.5px;
-  background: var(--color-border);
-}
-input[type="range"]::-moz-range-track {
-  height: 3px;
-  border-radius: 1.5px;
-  background: var(--color-border);
-  border: none;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -203,17 +230,20 @@ input[type="range"]::-webkit-slider-thumb {
   height: 12px;
   border-radius: 50%;
   background: var(--color-accent);
-  border: 2px solid var(--color-surface);
-  margin-top: -4.5px;
-  box-shadow: 0 0 0 1px var(--color-border);
+  border: none;
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+  border: none;
 }
 input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--color-accent);
-  border: 2px solid var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-border);
+  border: none;
 }
 
 /* Pressure curve popup — position:fixed so it escapes the ToolOptions bar's overflow clip;

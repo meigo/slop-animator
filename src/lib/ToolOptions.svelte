@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import { onMount } from "svelte";
   import {
     state as appState,
@@ -84,7 +85,15 @@
     {#if appState.tool === "eraser"}<span class="text-xs text-warn">Eraser</span>{/if}
     <label class="flex items-center gap-1 text-sm text-text-secondary"
       >Size
-      <input type="range" min="0.5" max="60" step="0.5" class="w-24" bind:value={stroke.size} />
+      <input
+        type="range"
+        min="0.5"
+        max="60"
+        step="0.5"
+        class="w-24"
+        bind:value={stroke.size}
+        style={sliderFill(stroke.size, 0.5, 60)}
+      />
       <input
         class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
         type="number"
@@ -108,7 +117,15 @@
       class="flex items-center gap-1 text-sm text-text-secondary"
       title="How much pen pressure widens the stroke"
       >Press
-      <input type="range" min="1" max="8" step="0.5" class="w-24" bind:value={stroke.sizeRange} />
+      <input
+        type="range"
+        min="1"
+        max="8"
+        step="0.5"
+        class="w-24"
+        bind:value={stroke.sizeRange}
+        style={sliderFill(stroke.sizeRange, 1, 8)}
+      />
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
     <select
@@ -125,12 +142,26 @@
     </select>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Opacity
-      <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
+      <input
+        type="range"
+        min="1"
+        max="100"
+        class="w-16"
+        bind:value={stroke.opacity}
+        style={sliderFill(stroke.opacity, 1, 100)}
+      />
     </label>
     {#if smoothOnly}
       <label class="flex items-center gap-1 text-xs text-text-secondary"
         >Smooth
-        <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          class="w-16"
+          bind:value={stroke.smoothing}
+          style={sliderFill(stroke.smoothing, 0, 100)}
+        />
       </label>
     {/if}
     <!-- Set-and-forget params live behind the gear, the pattern onion/boil/playback already use:
@@ -151,7 +182,14 @@
         >
           <label class="flex items-center gap-2" title="Smooth the incoming pointer path"
             ><span class="w-14 text-text-secondary">Stream</span>
-            <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.streamline} />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              class="flex-1"
+              bind:value={stroke.streamline}
+              style={sliderFill(stroke.streamline, 0, 100)}
+            />
             <span class="w-8 text-right text-text-muted tabular-nums">{stroke.streamline}</span>
           </label>
           {#if isInk}
@@ -159,7 +197,14 @@
               class="flex items-center gap-2"
               title="Swell the mark where the pen lingers, the way ink soaks in — 0 is off"
               ><span class="w-14 text-text-secondary">Pool</span>
-              <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.dwellPool} />
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="flex-1"
+                bind:value={stroke.dwellPool}
+                style={sliderFill(stroke.dwellPool ?? 0, 0, 100)}
+              />
               <span class="w-8 text-right text-text-muted tabular-nums"
                 >{stroke.dwellPool ?? 0}</span
               >
@@ -179,6 +224,7 @@
                 step="1"
                 class="flex-1"
                 bind:value={stroke.nibAngle}
+                style={sliderFill(stroke.nibAngle ?? 0, 0, 180)}
               />
               <span class="w-8 text-right text-text-muted tabular-nums">{stroke.nibAngle}°</span>
             </label>
@@ -193,6 +239,7 @@
                 step="0.01"
                 class="flex-1"
                 bind:value={stroke.nibFlatness}
+                style={sliderFill(stroke.nibFlatness ?? 0, 0, MAX_NIB_FLATNESS)}
               />
               <span class="w-8 text-right text-text-muted tabular-nums"
                 >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
@@ -221,26 +268,54 @@
   {:else if appState.tool === "fill"}
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill color tolerance"
       >Tolerance
-      <input type="range" min="0" max="128" class="w-24" bind:value={appState.fill.tolerance} />
+      <input
+        type="range"
+        min="0"
+        max="128"
+        class="w-24"
+        bind:value={appState.fill.tolerance}
+        style={sliderFill(appState.fill.tolerance, 0, 128)}
+      />
       <span class="text-xs w-6 tabular-nums">{appState.fill.tolerance}</span>
     </label>
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
       title="Grow the filled region (px)"
       >Expand
-      <input type="range" min="0" max="8" class="w-16" bind:value={appState.fill.expand} />
+      <input
+        type="range"
+        min="0"
+        max="8"
+        class="w-16"
+        bind:value={appState.fill.expand}
+        style={sliderFill(appState.fill.expand, 0, 8)}
+      />
       <span class="text-xs w-4 tabular-nums">{appState.fill.expand}</span>
     </label>
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
       title="Bridge breaks in the outline before filling, up to about twice this many pixels"
       >Gap
-      <input type="range" min="0" max={MAX_GAP} class="w-16" bind:value={appState.fill.gap} />
+      <input
+        type="range"
+        min="0"
+        max={MAX_GAP}
+        class="w-16"
+        bind:value={appState.fill.gap}
+        style={sliderFill(appState.fill.gap, 0, MAX_GAP)}
+      />
       <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
     </label>
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
       >Opacity
-      <input type="range" min="1" max="100" class="w-16" bind:value={appState.fill.opacity} />
+      <input
+        type="range"
+        min="1"
+        max="100"
+        class="w-16"
+        bind:value={appState.fill.opacity}
+        style={sliderFill(appState.fill.opacity, 1, 100)}
+      />
     </label>
     <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
          `brush.color`, so the label is now true rather than aspirational. -->

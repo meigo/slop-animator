@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import {
     Plus,
     Diamond,
@@ -1979,6 +1980,7 @@
               max="3"
               bind:value={appState.onion.prev}
               onchange={repaint}
+              style={sliderFill(appState.onion.prev, 0, 3)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.prev}</span
             ></label
@@ -1992,6 +1994,7 @@
               max="3"
               bind:value={appState.onion.next}
               onchange={repaint}
+              style={sliderFill(appState.onion.next, 0, 3)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.next}</span
             ></label
@@ -2063,6 +2066,7 @@
               max="8"
               step="0.1"
               bind:value={appState.project.boil.amount}
+              style={sliderFill(appState.project.boil.amount, 0, 8)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.amount}</span
@@ -2077,6 +2081,7 @@
               max="40"
               step="1"
               bind:value={appState.project.boil.cols}
+              style={sliderFill(appState.project.boil.cols, 4, 40)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.cols}</span
@@ -2091,6 +2096,7 @@
               max="8"
               step="1"
               bind:value={appState.project.boil.rate}
+              style={sliderFill(appState.project.boil.rate, 1, 8)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.rate}</span
@@ -2105,6 +2111,7 @@
               max="1"
               step="0.05"
               bind:value={appState.project.boil.weight}
+              style={sliderFill(appState.project.boil.weight, 0, 1)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.weight}</span

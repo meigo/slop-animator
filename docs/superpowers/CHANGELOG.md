@@ -4233,3 +4233,51 @@ class.
 `.ui-selected` shows the tint with the inset left bar, over `#1e1e1e` dark and `#ffffff` light.
 Screenshots were compared against the compositor. **Owed an iPad pass** for how loud the accent
 reads on device.
+
+**The dark theme takes the family ramp verbatim, and the sliders with it (2026-09-08).** Third and
+largest step of the alignment. The user's correction is the reason it went this far: I had called the
+difference between animator's neutral greys and the family's faintly tinted ones "barely" visible,
+and that is wrong — *"grayscale vs slight tint is not barely, it's quite easily distinguishable"*.
+Over a whole toolbar or timeline it reads immediately, which is why the shared document has an entire
+table weighing zinc against slate against gray rather than just using `neutral`.
+
+**Every dark value is now the family's hex** — ground `#101013`, panel `#1e1e22`, raised `#2d2d33`,
+line `#2e2e35`, text `#f4f4f5`, muted `#a1a1aa`, clip `#172036` with border `#384b75`. Three tokens
+had no family equivalent and were chosen to match its cast and hold their old contrast:
+`border-light` `#26262b` (a subtler divider, between panel and line), `text-muted` `#8a8a93` (this
+app has a THIRD text level; 4.86:1 on the panel against the old value's 4.83:1), and
+`media-clip-dim` `#13141a`.
+
+Two consequences worth stating rather than discovering later. **Dividers are fainter** — `line` is
+1.10:1 over the panel where `#383838` was 1.42:1; that is the family's deliberate "only slightly
+lighter than what it divides", and if it proves too subtle the fix is to lift `--color-border` alone,
+not the ramp. And **`surface-hover` and `surface-active` collapsed into one value**, which was only
+safe because active state had already moved to the accent — before that commit they had to differ.
+
+**Blue clips supersede the neutral ones** and the note arguing for them. That note's reasoning was
+"neutral keeps clips from competing with the selection blue" — written when this app had no accent in
+real use, so it was guarding against a blue that never appeared on screen. The new clip is also
+DARKER than the old (1.17:1 on the ground against 2.02:1), which serves the same note's other goal:
+the waveform stays the loudest thing in the lane. The clip is found by its BORDER (2.20:1), not its
+fill.
+
+**Sliders adopt §6**: 4px track, 12px thumb, and the filled portion rebuilt as a gradient because
+`appearance: none` — the only way to size a thumb the browser draws — also loses the fill the browser
+drew for free. The fill is the accent mixed 50% into the track, so it does not compete with the thumb
+you are actually aiming at. All 21 range inputs are wired.
+
+`sliderFill(value, min, max)` is a PURE function with 5 tests, not a Svelte action: `bind:value`
+already re-renders the `style` attribute on every change, so the fill tracks values set from the
+store as well as by dragging — which an action listening for `input` events would miss. It always
+emits both stops so a bipolar control could be added without touching the stylesheet.
+
+**Deliberately NOT adopted: §3's 24px control height.** This app's controls are 28-32px because it
+is driven by a Pencil and fingers; the other two apps are desktop-only. Shrinking every control would
+undo exactly what `bbd272d` and the portrait-bar fix were tuning. §8 says the app wins.
+
+A scripted edit inserted the slider `style=` into 19 of the 21 inputs; the regex `<input[^>]*>` broke
+on one tag whose `onclick={(e) => …}` contains a `>`, and refused two more that use `value={…}`
+rather than `bind:value`. All three were finished by hand. Caught by the build, but worth recording:
+**an HTML-tag regex cannot be trusted on markup containing arrow functions.**
+
+**Owed an iPad pass** — the accent's loudness, and whether the fainter dividers still read on device.

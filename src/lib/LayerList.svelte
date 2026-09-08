@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import { buildSegments } from "../anim/row-layout";
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
@@ -670,6 +671,7 @@
         >
           <input
             use:settleOnUnmount={layer.id}
+            style={sliderFill(opacityNow, 0, 100)}
             class="w-12 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
@@ -732,6 +734,7 @@
             bind:value={layer.boilStrength}
             oninput={bump}
             onclick={(e) => e.stopPropagation()}
+            style={sliderFill(layer.boilStrength, 0, 1)}
             title="Line boil strength (this layer)"
           />
           <span class="text-xs tabular-nums w-6 text-text-muted"
@@ -1007,6 +1010,7 @@
                   <span class="text-xs text-text-muted">Group</span>
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
+                    style={sliderFill(gOpNow, 0, 100)}
                     class="w-12 aria-disabled:opacity-40"
                     class:pointer-events-none={gOpPinned}
                     aria-disabled={gOpPinned}
