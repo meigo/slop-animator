@@ -99,7 +99,7 @@
       {#each SIZE_PRESETS as preset (preset)}
         <button
           class="px-0.5 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
-          class:bg-surface-active={stroke.size === preset}
+          class:ui-on={stroke.size === preset}
           onclick={() => (stroke.size = preset)}>{preset}</button
         >
       {/each}
@@ -139,7 +139,7 @@
     <div class="relative" use:clickOutside={() => (brushSettingsOpen = false)}>
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-        class:bg-surface-active={brushSettingsOpen}
+        class:ui-on={brushSettingsOpen}
         title="Brush settings — streamline, pooling, nib angle and flatness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
@@ -373,7 +373,7 @@
     <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
       <button
         class="px-2 py-1 aria-disabled:opacity-40 aria-disabled:cursor-default"
-        class:bg-surface-active={_scopeShown === "frame"}
+        class:ui-on={_scopeShown === "frame"}
         aria-disabled={_onRef}
         title={_onRef ? "References have no per-frame transform" : "Transform this frame only"}
         onclick={() => {
@@ -382,13 +382,13 @@
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={_scopeShown === "layer"}
+        class:ui-on={_scopeShown === "layer"}
         title="Transform the whole layer"
         onclick={() => (appState.transformScope = "layer")}>Layer</button
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={_scopeShown === "group"}
+        class:ui-on={_scopeShown === "group"}
         class:opacity-40={!_groupedActive}
         class:cursor-not-allowed={!_groupedActive}
         aria-disabled={!_groupedActive}

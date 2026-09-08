@@ -170,12 +170,12 @@
       <div class="flex rounded border border-border overflow-hidden text-xs">
         <button
           class="px-2 py-1"
-          class:bg-surface-active={deformMode === "ffd"}
+          class:ui-on={deformMode === "ffd"}
           onpointerdown={tap(() => onSetDeformMode("ffd"))}>FFD</button
         >
         <button
           class="px-2 py-1"
-          class:bg-surface-active={deformMode === "rigid"}
+          class:ui-on={deformMode === "rigid"}
           onpointerdown={tap(() => onSetDeformMode("rigid"))}>Rigid</button
         >
       </div>

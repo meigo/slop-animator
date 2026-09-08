@@ -4184,3 +4184,52 @@ they are drawn on canvas — `AudioLane.svelte` (`#2b3240`, `#24272f`, `#3d4759`
 `RefTransformGizmo.svelte` (`#3b82f6`), `Canvas.svelte` (`#0080ff`). All are fixed dark-ish values
 regardless of theme. §8 of the shared document tolerates `var(--color-*)` inside scoped CSS for
 exactly this kind of furniture, so they could become roles later; it is a larger job than this one.
+
+**The accent, and why the app read as flat grey next to the other two (2026-09-08).** The `warn`
+role above was the right change and the wrong scope: it repaints small amber text, so the honest
+report was *"I can't see any difference."* Comparing the two apps side by side in the browser found
+the actual gap, and it is not the greys.
+
+**The greys were already the family's** — panel `#1e1e1e` against `#1e1e22`, ground `#121212`
+against `#101013`, differences no eye resolves. What differed is that **this app had no accent
+colour in use at all**:
+
+| | how "this is active" was shown | contrast vs the panel |
+| --- | --- | --- |
+| slop-video-compositor | filled `#5b8cff` | 5.27:1 |
+| slop-animator (before) | `surface-active`, a lighter grey | **1.32:1** |
+
+1.32:1 is a change you can measure and not one you can see, which is exactly why the interface read
+as flat monochrome beside the compositor's. The cause was the token collision noted when this
+alignment started and then not acted on: `--color-accent` here was `#e0e0e0`, a near-white INK
+colour — the opposite of the family's meaning — while the actual blue sat in `--color-selection`,
+used in FIVE places (the focus ring and `accent-color`) and never for state.
+
+**`--color-accent` is now `#5b8cff`**, theme-independent as in the family, with `accent-hover`
+`#7aa3ff`; `--color-selection` is kept as an alias so nothing naming it breaks. `--color-accent-text`
+(the label ON the fill) is `#121212`: white is only 3.16:1 on that blue, near-black is 5.92:1, and
+§6 of the shared document already says a filled toggle switches its label to `ground`. The 11
+existing `accent` uses — slider thumb, primary buttons — become blue as a consequence, which is what
+the compositor does with its own Export button and zoom slider.
+
+**The on-state is defined ONCE, in CSS, not spread across 37 markup edits.** Two classes, because
+they mark two different things: `.ui-on` fills a toggle or tool (28 sites), `.ui-selected` gives a
+row an 18% accent tint plus a 2px left edge drawn as `box-shadow: inset` (9 sites) — a whole layer
+row filled solid blue would shout, and §5 forbids state that changes an element's geometry. Three
+`bg-surface-active` uses are deliberately LEFT grey: the timeline gutter corner, the resize strip
+and the export progress track are structure, not state.
+
+**Why CSS rather than `class:bg-accent` + `class:text-accent-text`:** every shared button constant
+in this app already sets a text colour (`text-text-secondary` in Toolbar, Playbar and Timeline;
+`text-text` in TimelineSelectionBar), and a `class:` directive layering a second colour utility over
+it is decided by the order Tailwind EMITS them, not by the markup — the defect §6 of the shared
+document records as *"a loop button styled that way looked completely dead."* These rules sit
+OUTSIDE any `@layer`, and **unlayered declarations beat layered ones in the cascade whatever their
+order**, so the on-state cannot lose that race. A future toggle gets the behaviour by naming one
+class.
+
+**Verified in the browser in BOTH themes** rather than reported blind: `.ui-on` computes to
+`rgb(91,140,255)` with `rgb(18,18,18)` text — i.e. it does beat the base `text-text-secondary` — and
+`.ui-selected` shows the tint with the inset left bar, over `#1e1e1e` dark and `#ffffff` light.
+Screenshots were compared against the compositor. **Owed an iPad pass** for how loud the accent
+reads on device.

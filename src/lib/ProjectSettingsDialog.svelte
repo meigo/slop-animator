@@ -99,7 +99,7 @@
       </div>
 
       <div class="flex justify-end mt-1">
-        <button class="px-3 py-1 rounded bg-surface-active text-text" onclick={close}>Close</button>
+        <button class="px-3 py-1 rounded bg-accent text-accent-text" onclick={close}>Close</button>
       </div>
     </div>
   </div>

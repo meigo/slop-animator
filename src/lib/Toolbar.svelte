@@ -179,59 +179,59 @@
   <button
     class={toolBtn}
     class:opacity-40={toolsDimmed}
-    class:bg-surface-active={appState.tool === "brush"}
+    class:ui-on={appState.tool === "brush"}
     title={pixelTitle("Brush")}
     onclick={() => (appState.tool = "brush")}><Paintbrush size={18} /></button
   >
   <button
     class={toolBtn}
     class:opacity-40={toolsDimmed}
-    class:bg-surface-active={appState.tool === "eraser"}
+    class:ui-on={appState.tool === "eraser"}
     title={pixelTitle("Eraser")}
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
   >
   <button
     class={toolBtn}
     class:opacity-40={toolsDimmed}
-    class:bg-surface-active={appState.tool === "fill"}
+    class:ui-on={appState.tool === "fill"}
     title={pixelTitle("Fill")}
     onclick={() => (appState.tool = "fill")}><PaintBucket size={18} /></button
   >
   <button
     class={toolBtn}
-    class:bg-surface-active={appState.tool === "eyedropper"}
+    class:ui-on={appState.tool === "eyedropper"}
     title="Eyedropper (sample color)"
     onclick={selectEyedropper}><Pipette size={18} /></button
   >
   <button
     class={toolBtn}
-    class:bg-surface-active={appState.tool === "select"}
+    class:ui-on={appState.tool === "select"}
     title="Select"
     onclick={() => (appState.tool = "select")}><BoxSelect size={18} /></button
   >
   <button
     class={toolBtn}
-    class:bg-surface-active={appState.tool === "lasso"}
+    class:ui-on={appState.tool === "lasso"}
     title="Lasso"
     onclick={() => (appState.tool = "lasso")}><Lasso size={18} /></button
   >
   <button
     class={toolBtn}
-    class:bg-surface-active={appState.tool === "transform"}
+    class:ui-on={appState.tool === "transform"}
     title="Transform layer (move/scale/rotate)"
     onclick={() => (appState.tool = "transform")}><Move size={18} /></button
   >
   <button
     class={toolBtn}
     class:opacity-40={toolsDimmed}
-    class:bg-surface-active={appState.tool === "deform"}
+    class:ui-on={appState.tool === "deform"}
     title={pixelTitle("Deform (warp the drawing)")}
     onclick={() => (appState.tool = "deform")}><Workflow size={18} /></button
   >
   <button
     class={toolBtn}
     class:opacity-40={toolsDimmed}
-    class:bg-surface-active={appState.tool === "pose"}
+    class:ui-on={appState.tool === "pose"}
     title={pixelTitle("Pose (mesh deform)")}
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
   >

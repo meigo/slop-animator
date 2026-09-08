@@ -329,7 +329,7 @@
       class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 px-1 cursor-pointer"
       class:bg-surface={!isAudioRowSelected()}
       class:text-text-secondary={!isAudioRowSelected()}
-      class:bg-surface-active={isAudioRowSelected()}
+      class:ui-selected={isAudioRowSelected()}
       class:text-text={isAudioRowSelected()}
       role="presentation"
       style="width: {labelW}px; touch-action: none"

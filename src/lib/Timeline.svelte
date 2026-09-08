@@ -1950,7 +1950,7 @@
     <!-- onion skin (how you SEE the sheet — sits with boil and fps, not with Add/Delete) -->
     <button
       class={toolBtn}
-      class:bg-surface-active={appState.onion.enabled}
+      class:ui-on={appState.onion.enabled}
       title="Onion skin"
       onclick={() => {
         appState.onion.enabled = !appState.onion.enabled;
@@ -1962,7 +1962,7 @@
     <div class="relative" use:clickOutside={() => (onionSettingsOpen = false)}>
       <button
         class={toolBtn}
-        class:bg-surface-active={onionSettingsOpen}
+        class:ui-on={onionSettingsOpen}
         title="Onion skin settings"
         onclick={() => (onionSettingsOpen = !onionSettingsOpen)}><Settings size={16} /></button
       >
@@ -2036,7 +2036,7 @@
     <!-- line boil -->
     <button
       class={toolBtn}
-      class:bg-surface-active={appState.project.boil.enabled}
+      class:ui-on={appState.project.boil.enabled}
       title="Line boil (playback)"
       onclick={() => {
         appState.project.boil.enabled = !appState.project.boil.enabled;
@@ -2046,7 +2046,7 @@
     <div class="relative" use:clickOutside={() => (boilSettingsOpen = false)}>
       <button
         class={toolBtn}
-        class:bg-surface-active={boilSettingsOpen}
+        class:ui-on={boilSettingsOpen}
         title="Boil settings"
         onclick={() => (boilSettingsOpen = !boilSettingsOpen)}><Settings size={16} /></button
       >
@@ -2323,7 +2323,7 @@
           <div
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
-            class:bg-surface-active={groupLit}
+            class:ui-selected={groupLit}
             class:text-text={groupLit}
             class:text-text-secondary={!groupLit}
             style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
@@ -2449,7 +2449,7 @@
               class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
               class:pl-4={spec.indent}
               class:bg-surface={!spec.selected}
-              class:bg-surface-active={spec.selected}
+              class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
               class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
@@ -2614,7 +2614,7 @@
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:pl-4={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
-            class:bg-surface-active={isRowSelected(layer.id)}
+            class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
             class:text-text-secondary={!isRowSelected(layer.id)}
             style="width: {animated ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
@@ -2667,7 +2667,7 @@
             <button
               class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 text-text-secondary hover:text-text hover:bg-surface-hover"
               class:bg-surface={!isRowSelected(layer.id)}
-              class:bg-surface-active={isRowSelected(layer.id)}
+              class:ui-selected={isRowSelected(layer.id)}
               style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
               title={layer.tracksCollapsed
                 ? "Show this layer's animation rows"
@@ -2701,7 +2701,7 @@
           <span
             class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
-            class:bg-surface-active={isRowSelected(layer.id)}
+            class:ui-selected={isRowSelected(layer.id)}
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {

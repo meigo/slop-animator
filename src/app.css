@@ -10,9 +10,21 @@
   --color-text-secondary: #666666;
   --color-text-muted: #6b6b6b; /* 5.3:1 on white — #999 was 2.85:1, unreadable */
   --color-canvas-bg: #f5f5f5;
-  --color-accent: #222222;
-  --color-accent-text: #ffffff;
-  --color-selection: #6688cc;
+  /* THE accent — selection, active toggles, focus ring, filled primary buttons. One colour, both
+     themes, shared with slop-audio-editor and slop-video-compositor (SLOP-TIMELINE-UI.md §2).
+     Until 2026-09-08 `accent` was #222/#e0e0e0 — a near-black/near-white INK colour, the opposite
+     of the family's meaning — and the blue lived in a separate `selection` token used in 5 places,
+     never for active state. Active state was `surface-active`, a lighter grey at 1.32:1 against
+     the panel: technically a change, visually nothing, and it made the whole app read as flat grey
+     next to the other two. The blue is 5.27:1 on the dark panel.
+     `--color-selection` is kept as an alias so nothing that names it breaks; prefer `accent`. */
+  --color-accent: #5b8cff;
+  --color-accent-hover: #7aa3ff;
+  /* What goes ON the accent fill. White is only 3.16:1 on this blue; near-black is 5.92:1 — and
+     the family's §6 says a filled toggle switches its label to `ground`. Same in both themes,
+     because the fill it sits on is the same in both themes. */
+  --color-accent-text: #121212;
+  --color-selection: #5b8cff;
   /* Timeline media clips (audio waveform block, video-ref block). NEUTRAL, and separated from the
      chrome by VALUE rather than hue: the clip sits well below the ruler (surface-active) in light
      and well above it in dark, far enough that no tint is needed. An earlier version was blue-grey,
@@ -55,9 +67,8 @@
   --color-text-secondary: #999999;
   --color-text-muted: #8a8a8a; /* 4.7:1 on #1e1e1e — #666 was 2.8:1, unreadable */
   --color-canvas-bg: #121212;
-  --color-accent: #e0e0e0;
-  --color-accent-text: #1e1e1e;
-  --color-selection: #6688cc;
+  /* accent / accent-hover / accent-text are theme-INDEPENDENT (see the light block) and are
+     therefore not redefined here. */
   --color-media-clip: #474747;
   --color-media-clip-dim: #242424;
   --color-media-clip-border: #5c5c5c;
@@ -126,6 +137,36 @@ textarea,
 [contenteditable] {
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* THE on-state, defined ONCE — SLOP-TIMELINE-UI.md §6 ("one idiom per app, everywhere").
+   Two classes because they mark two different things: `.ui-on` is a TOGGLE or tool that is on;
+   `.ui-selected` is a ROW that is the current target. Filling a whole layer row with solid accent
+   would shout, and the family expresses selection on an object by its EDGE, not its fill.
+
+   Why plain CSS and not `class:bg-accent` + `class:text-accent-text` in the markup: every shared
+   button constant in this app already sets a text colour (`text-text-secondary` in Toolbar,
+   Playbar and Timeline; `text-text` in TimelineSelectionBar), and a `class:` directive layering a
+   second colour utility over it is decided by the order Tailwind EMITS them, not by the markup —
+   the exact defect §6 records as "a loop button styled that way looked completely dead". These
+   rules sit OUTSIDE any `@layer`, and unlayered declarations beat layered ones in the cascade
+   whatever their order, so the on-state cannot lose that race. It also means a future toggle gets
+   the behaviour by naming one class.
+
+   Before 2026-09-08 the on-state was `bg-surface-active` — #333 on a #1e1e1e panel, 1.32:1, so
+   "active" was technically a change and visually nothing. The accent is 5.27:1. */
+.ui-on {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+.ui-on:hover {
+  background-color: var(--color-accent-hover);
+}
+/* Tint plus a left edge. `box-shadow: inset` rather than a border so the row's geometry does not
+   change when it becomes selected (§5: state must not move the layout). */
+.ui-selected {
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 /* SortableJS drag states */

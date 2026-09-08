@@ -573,7 +573,7 @@
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
-    class:bg-surface-active={active}
+    class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
   >
@@ -913,7 +913,7 @@
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
               class="flex items-center gap-1 p-1 hover:bg-surface-hover"
-              class:bg-surface-active={groupLit}
+              class:ui-selected={groupLit}
               role="presentation"
             >
               <!-- Same class the layer rows use, so the ROOT Sortable (handle: .layer-drag-handle)
@@ -994,7 +994,7 @@
                 !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
               <div
                 class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
-                class:bg-surface-active={groupLit}
+                class:ui-selected={groupLit}
               >
                 <span
                   class="flex items-center gap-2"
