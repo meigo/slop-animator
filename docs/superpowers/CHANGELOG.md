@@ -4079,8 +4079,10 @@ width, added ink normalised by sqrt(w) identical); two new tests pin the law its
 gains exactly twice a 4px nib, a 1px nib exactly half) and the anchor (2× at the reference width).
 Watched all four fail first — the linear law gave the 16px nib 4× the 4px nib's gain.
 
-**Owed an iPad pass** — this is a tuning change and the anchor may want to move; the user's eye
-decides, and 4px is a first guess informed by "3-5 looks right" at Press 2.5×.
+**VERIFIED on iPad 2026-09-08** — confirmed by the user on the deployed build: the swell reads
+right across the size range, so `POOL_REF_WIDTH` 4 stands as shipped and the anchor did not need to
+move. That closes ink dwell pooling: trigger (pen speed), curve (sqrt of nib width), cap and control
+are all settled and eyeballed. Nothing owed.
 
 **Brush bar fits a 12.9" iPad in portrait again (2026-09-08).** The nine size presets (2026-09-07)
 pushed the bar past the 1024px portrait viewport: Smooth wrapped its colour swatch and Calligraphy
@@ -4101,8 +4103,11 @@ not, and a nib is set per nib. The user weighed the two extra taps and chose thi
 
 Result: Smooth ends at ~955, Ink ~935, Calligraphy ~835 — all inside 1024 with ≥70px spare. **Honest
 limit:** an 11" iPad in portrait is 834px and Smooth would still wrap there; this fixes the 12.9".
-Owed the usual iPad eyeball — the arithmetic is from measured widths, not from a portrait render,
-because the test window would not resize below the desktop.
+**VERIFIED on iPad 2026-09-08** — confirmed by the user on the deployed build: no wrapping in
+portrait for Smooth or Calligraphy, and Angle/Flatness are reachable in the gear. The arithmetic
+above was from measured widths rather than a portrait render (the test window would not resize below
+the desktop), so this confirmation is what actually closes it. The 11" limit noted above is untested
+and still stands as a prediction.
 
 **Groups drag-reorder in the layer panel (2026-09-08).** Asked for as "any chance to dnd order
 change?" — and the answer was that ONE element was missing, not a feature. The root SortableJS
@@ -4137,6 +4142,7 @@ reproduces the live model exactly against real markup (`walkMatchesModel: true`)
 own**. The order was restored afterwards. What could NOT be verified this way is SortableJS's own
 grab: on desktop it uses native HTML5 drag-and-drop, which CDP mouse events do not trigger — a
 `left_click_drag` on the grip left the order untouched and proves nothing either way. iPad uses
-SortableJS's pointer fallback, a different path again. **So the gesture itself is owed a real
-pointer test, mouse and Pencil:** group to top, group to bottom, and a group dropped onto another
-group (must refuse, per part 2).
+SortableJS's pointer fallback, a different path again. **VERIFIED on iPad 2026-09-08** — confirmed by the
+user on the deployed build: the grab works and groups reorder. This was the one part the Chrome run
+could not reach, so the user's confirmation is the only evidence that path has ever had. Nothing
+owed.
