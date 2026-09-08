@@ -104,10 +104,15 @@
         title="Brush size"
       />
     </label>
+    <!-- Fixed SQUARE, not padding: the presets are 1-2 digits, so padding alone makes each button
+         a different width and the on-state fill a different shape per preset ("12" a wide pill,
+         "4" a narrow one). SLOP-TIMELINE-UI.md §6 makes the same call for its flag rows — a fixed
+         square so the row does not reflow as the glyphs differ in width. 24px is §3's shared
+         control height, and it roughly doubles the touch target these had at text height. -->
     <div class="flex items-center gap-px" title="Size presets">
       {#each SIZE_PRESETS as preset (preset)}
         <button
-          class="px-0.5 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+          class="size-6 shrink-0 flex items-center justify-center text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
           class:ui-on={stroke.size === preset}
           onclick={() => (stroke.size = preset)}>{preset}</button
         >
@@ -151,19 +156,6 @@
         style={sliderFill(stroke.opacity, 1, 100)}
       />
     </label>
-    {#if smoothOnly}
-      <label class="flex items-center gap-1 text-xs text-text-secondary"
-        >Smooth
-        <input
-          type="range"
-          min="0"
-          max="100"
-          class="w-16"
-          bind:value={stroke.smoothing}
-          style={sliderFill(stroke.smoothing, 0, 100)}
-        />
-      </label>
-    {/if}
     <!-- Set-and-forget params live behind the gear, the pattern onion/boil/playback already use:
          what you adjust mid-stroke stays on the bar, what you calibrate once does not. On iPad the
          brush row was overrunning the viewport and the far controls were out of comfortable reach. -->
@@ -171,7 +163,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, pooling, nib angle and flatness, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -247,6 +239,22 @@
             </label>
           {/if}
           {#if smoothOnly}
+            <!-- Moved off the bar 2026-09-08 when the size presets became 24px squares: Smooth was
+                 the only control that pushed the row past a 12.9" iPad's portrait width. It belongs
+                 here anyway by the gear's own rule — you calibrate it once, like Stream, rather
+                 than riding it mid-stroke. -->
+            <label class="flex items-center gap-2" title="Smooth the perfect-freehand outline"
+              ><span class="w-14 text-text-secondary">Smooth</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="flex-1"
+                bind:value={stroke.smoothing}
+                style={sliderFill(stroke.smoothing, 0, 100)}
+              />
+              <span class="w-8 text-right text-text-muted tabular-nums">{stroke.smoothing}</span>
+            </label>
             <label class="flex items-center gap-2" title="Taper stroke ends">
               <input type="checkbox" bind:checked={stroke.taper} /> Taper
             </label>

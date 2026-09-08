@@ -4324,3 +4324,29 @@ its keep on a change whose whole risk surface is "did the tokens actually merge"
 **VERIFIED in Chrome:** renders dark with no `.dark` class anywhere, panel `rgb(30,30,34)`, accent
 `#5b8cff`, text `#f4f4f5`, no theme item in the View menu, sliders filled. Owed the usual iPad
 eyeball, but the risk is low — a failure here would be unmissable rather than subtle.
+
+**Size presets are fixed squares, and Smooth moved into the gear (2026-09-08).** Asked for from a
+screenshot: *"make brush size buttons higher and square."* They were text with `px-0.5`, so each
+button was a different width and the accent fill a different SHAPE per preset — "12" a wide pill,
+"4" a narrow one. Now `size-6`: a 24×24 square, which is §3's shared control height and roughly
+doubles a touch target that had been text-height. It is the same call
+`SLOP-TIMELINE-UI.md` §6 makes for its flag rows — a fixed square so a row does not reflow as its
+glyphs differ in width.
+
+**Measured before claiming it, and it had re-broken the portrait fit from earlier the same day.**
+The squares add 45px, and the Smooth brush had only 39px to give: its bar ended at **1030 against a
+12.9" iPad's 1024** and would have wrapped again. Smooth was the widest engine because it alone
+carried the "Smooth" slider (+120px).
+
+So that slider moved into the gear panel — which is where the gear's own rule (`bbd272d`) puts it
+anyway: you calibrate smoothing once, like Stream beside it, rather than riding it mid-stroke. It is
+smooth-only, so it was hidden for every other engine regardless.
+
+**Result: every brush now ends at exactly 910px, 114px spare in portrait** — and the bar is the same
+width for EVERY engine, which it never was before (Smooth 1030 / Ink 910 / Calligraphy 910 before
+this; the earlier portrait entry's ~955 estimate for Smooth is superseded). That uniformity is worth
+more than the 45px: there is now one width to check rather than one per brush.
+
+**VERIFIED in Chrome** across smooth / ink / calligraphy / pencil: all end at 910, all on a single
+row, Smooth reachable in the gear under Stream with its value readout. Owed the usual iPad eyeball
+for the touch feel of the 24px squares.
