@@ -4103,3 +4103,40 @@ Result: Smooth ends at ~955, Ink ~935, Calligraphy ~835 — all inside 1024 with
 limit:** an 11" iPad in portrait is 834px and Smooth would still wrap there; this fixes the 12.9".
 Owed the usual iPad eyeball — the arithmetic is from measured widths, not from a portrait render,
 because the test window would not resize below the desktop.
+
+**Groups drag-reorder in the layer panel (2026-09-08).** Asked for as "any chance to dnd order
+change?" — and the answer was that ONE element was missing, not a feature. The root SortableJS
+instance requires `handle: ".layer-drag-handle"` and the group header had none, so a `.group-block`
+was a valid Sortable item that could never be grabbed. The reorder plumbing was already group-aware:
+`rebuild` walked group blocks and emitted their members contiguously, and `reorderLayersWithGroups`
+takes `{id, groupId}[]`. **No data-model change was needed.**
+
+Three parts, `LayerList.svelte` only. (1) A `.layer-drag-handle` grip on the group header, in the
+same column as the layer grips. It sits on the header, NOT inside `.group-members`, so the inner
+Sortable never sees it and the two instances cannot fight over the gesture — the same nesting rule
+that already makes member rows work. A collapsed group drags as one unit for free, because its
+members stay in the DOM under `hidden` and `rebuild` still walks them. (2) `membersSortable` gets
+`group: { name: "layers", put: (_to, _from, el) => el.dataset.groupId == null }` — root and members
+share the "layers" group so rows cross between them, but a group header is a root item now and
+`layer.groupId` is a single id with no representation for a group inside a group. (3) `rebuild`'s
+two-level walk became a flat `querySelectorAll("[data-layer-id]")` + `closest("[data-group-id]")`.
+Shorter, and it closes a **silent data-loss** path that (1) would otherwise have made reachable: the
+old walk read a group block's members as `data-layer-id`, so any non-layer child yielded
+`Number(undefined)` = NaN, `byId.get(NaN)` = undefined, and those layers vanished from the rebuilt
+array. (2) should make it unreachable; (3) makes it impossible.
+
+**Free:** undo (`reorderLayersWithGroups` already brackets `beginStructuralEdit`/
+`commitStructuralEdit`), its no-op guard, `nonEmptyGroups` pruning, and the timeline gutter — it
+builds from the same `row-layout` module.
+
+**Verified in Chrome, except the grab gesture.** Both headers render a grip; the new flat walk
+reproduces the live model exactly against real markup (`walkMatchesModel: true`). Relocating a
+`.group-block` the way SortableJS does, then running `rebuild`'s exact walk through
+`reorderLayersWithGroups`, moved Group 2 above Group 1 with members intact (g44 [40,45], g46
+[42,41]), no layers lost, the re-rendered DOM matching, **and the timeline gutter following on its
+own**. The order was restored afterwards. What could NOT be verified this way is SortableJS's own
+grab: on desktop it uses native HTML5 drag-and-drop, which CDP mouse events do not trigger — a
+`left_click_drag` on the grip left the order untouched and proves nothing either way. iPad uses
+SortableJS's pointer fallback, a different path again. **So the gesture itself is owed a real
+pointer test, mouse and Pencil:** group to top, group to bottom, and a group dropped onto another
+group (must refuse, per part 2).
