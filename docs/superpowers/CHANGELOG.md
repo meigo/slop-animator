@@ -5123,3 +5123,31 @@ Measured after: every row in the group — header, its two track rows, four memb
 row — reports `0px 0px / 2px 100%` with its label at x=0, and only the selected row carries the 2px
 accent inset. The audio row, outside the group, has no rail. `groupDetailShown`'s import went with the
 snippet; it is no longer needed here.
+
+**One label column inside a group (2026-09-09).** Asked as *"align transform/opacity animation rows
+icon with group label left side. then align drawing layer labels with animation row labels."* Two
+chained alignments; both land exactly.
+
+**The glyph now starts at the padding edge, not centred in its slot.** A 12px icon centred in a 14px
+slot sat at 31 while the group's label sits at 30 — a 1px miss, which is worse than a deliberate offset
+because it reads as sloppiness. `justify-start` puts the ink at exactly 30 and makes the alignment
+independent of the icon's WIDTH, so changing the glyph cannot silently break it. The slot keeps `w-3.5`,
+which is what holds the label column steady.
+
+**Everything inside a group now shares one label column at 48** — a member layer's name and a property
+row's label alike. Measured after: group label 30, property glyph 30, and `Transform`, `Opacity`,
+`Layer 4`, `Layer 3`, `Layer 2`, the member's own `Opacity` and `Layer 1` all at 48. Audio and
+reference rows, outside the group, stay at 12/30.
+
+**The cost, stated plainly, because it half-reverses an earlier decision in this same file.** A member
+layer and a property row are now identically indented, so **the glyph is the only thing separating
+them** — and the 2026-09-09 entry "Property rows stop looking like layers" argued for both a glyph AND
+a distinct indent, on the grounds that "a glyph with flush indentation still reads as a sibling wearing
+a badge". Two things have changed since that was written: the group RAIL now carries the structure that
+indentation used to carry alone, and the glyph itself went from a diamond (one of four in this app) to
+`GitCommitHorizontal`, which nothing else uses. The indent half of that argument is superseded; the
+glyph half is what makes it safe.
+
+The same flattening applies to a member's OWN property row, which sits at the member's indent rather
+than inside it — ownership is read from adjacency, which is what the layer panel and After Effects both
+do.

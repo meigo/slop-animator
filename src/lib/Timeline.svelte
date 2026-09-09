@@ -2660,7 +2660,13 @@
                    so it would appear twice on one row meaning two things.
                    12px against the layer rows' 13px: near enough to sit in the same optical column,
                    small enough that this row still reads as subordinate to the one above it. -->
-              <span class="flex w-3.5 shrink-0 justify-center" role="presentation">
+              <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
+                   glyph has to line up with the GROUP LABEL's left edge, and centring a 12px icon in
+                   a 14px slot put its ink 1px right of it — close enough to read as a miss. Starting
+                   it at the padding edge makes the alignment exact and independent of the icon's
+                   width, so swapping the glyph cannot silently break it. The slot keeps its `w-3.5`,
+                   which is what holds the LABEL column steady. -->
+              <span class="flex w-3.5 shrink-0 justify-start" role="presentation">
                 <GitCommitHorizontal size={12} />
               </span>
               <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
@@ -2799,7 +2805,7 @@
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
             class:group-rail={layer.groupId != null}
-            class:pl-6={layer.groupId != null}
+            class:pl-[30px]={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
