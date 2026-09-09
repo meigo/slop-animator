@@ -13,14 +13,16 @@
   import { effectiveRange } from "../anim/playback";
   import { clickOutside } from "./click-outside";
   import {
-    SkipBack,
+    ArrowLeftToLine,
+    ArrowRightToLine,
     ChevronLeft,
-    Play,
-    Pause,
     ChevronRight,
-    SkipForward,
-    Settings,
+    Pause,
+    Play,
     Repeat,
+    Settings,
+    SkipBack,
+    SkipForward,
     X,
   } from "@lucide/svelte";
 
@@ -57,9 +59,6 @@
 
   const btn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
-  // Text buttons need horizontal padding instead of a fixed square ("Out" doesn't fit w-7).
-  const textBtn =
-    "h-7 px-2 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
   const divider = "mx-3 h-5 w-px shrink-0 bg-border";
 </script>
 
@@ -99,11 +98,22 @@
   <span class={divider}></span>
 
   <div class="flex items-center gap-1 text-text-secondary">
-    <button class={textBtn} title="Set range in-point to current frame" onclick={setPlayRangeIn}
-      >In</button
+    <!-- The SAME glyphs slop-video-compositor and slop-audio-editor use for in/out, in the same
+         order: left-to-line sets in, right-to-line sets out. They were text ("In"/"Out") here while
+         those two icons were spent on the reference-clip trim buttons — so one glyph meant "set the
+         in point" in two apps and "trim the end" in this one, mirrored as well as reused. Trim moved
+         to the chevrons; see Timeline.svelte. -->
+    <button
+      class={btn}
+      title="Set range in-point at the playhead"
+      aria-label="Set range in"
+      onclick={setPlayRangeIn}><ArrowLeftToLine size={16} /></button
     >
-    <button class={textBtn} title="Set range out-point to current frame" onclick={setPlayRangeOut}
-      >Out</button
+    <button
+      class={btn}
+      title="Set range out-point at the playhead"
+      aria-label="Set range out"
+      onclick={setPlayRangeOut}><ArrowRightToLine size={16} /></button
     >
     {#if appState.playback.range}
       {@const er = effectiveRange(appState.playback.range, appState.project.frameCount)}

@@ -6,8 +6,8 @@
     Trash2,
     Image,
     Film,
-    ArrowRightToLine,
-    ArrowLeftToLine,
+    ChevronsRight,
+    ChevronsLeft,
     Layers,
     Waves,
     Settings,
@@ -1972,6 +1972,11 @@
          read it — hiding the pair made the feature undiscoverable to anyone who had never happened
          to select the audio lane, a reference row, or a video clip. -->
     <span class="mx-3 h-5 w-px bg-border"></span>
+    <!-- Chevrons, NOT the arrow-to-line pair: those two glyphs mean "set play-in" and "set
+         play-out" in slop-video-compositor and slop-audio-editor, and this app had them on trim —
+         mirrored as well as reused, so the same icon said "in" there and "trim end" here. The
+         chevrons also read better for what these actually do: the clip's head is pushed RIGHT to
+         the playhead, its tail pushed LEFT. In/Out took the family glyphs; see Playbar.svelte. -->
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
       aria-disabled={!trimTarget}
@@ -1981,7 +1986,7 @@
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("start");
-      }}><ArrowRightToLine size={16} /></button
+      }}><ChevronsRight size={16} /></button
     >
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
@@ -1992,7 +1997,7 @@
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("end");
-      }}><ArrowLeftToLine size={16} /></button
+      }}><ChevronsLeft size={16} /></button
     >
 
     <span class="ml-auto"></span>
