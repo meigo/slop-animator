@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTimelineGlyphs } from "../lib/timeline-glyphs";
+import { computeTimelineGlyphs, resolveGlyphHolds } from "../lib/timeline-glyphs";
 import type { Cell } from "../anim/document";
 
 // A key cell carries a stub canvas tagged with whether it's "empty".
@@ -45,5 +45,47 @@ describe("computeTimelineGlyphs", () => {
     };
     computeTimelineGlyphs([key(), hold(), key(true), hold(), hold()], 5, probe);
     expect(calls).toBe(2); // two key cells, regardless of the holds
+  });
+});
+
+describe("resolveGlyphHolds", () => {
+  // The block-drag preview patches glyphs cell by cell (`displayGlyph` in Timeline.svelte): the
+  // moved range shows the glyph sliding into it, the vacated range is blanked. Blanking is wrong on
+  // its own — a vacated cell inside a hold run still HOLDS the inked key before it, which is exactly
+  // what `moveBlockFrames` produces on release (deleteBlock writes holds, and a hold after an inked
+  // key renders "—"). Re-resolving the patched array is what makes the preview match the result.
+  it("turns a stranded gap back into a hold when an inked key precedes it", () => {
+    // key at 0 holding to 3, blank key at 4, dragged +2: the gap at 4–5 must hold, not blank.
+    expect(resolveGlyphHolds(["◆", "—", "—", "—", "", "", "◇"])).toEqual([
+      "◆",
+      "—",
+      "—",
+      "—",
+      "—",
+      "—",
+      "◇",
+    ]);
+  });
+
+  it("keeps a gap blank when a BLANK key precedes it", () => {
+    expect(resolveGlyphHolds(["◇", "", "—", ""])).toEqual(["◇", "", "", ""]);
+  });
+
+  it("leaves nothing before the first key", () => {
+    expect(resolveGlyphHolds(["", "—", "◆", ""])).toEqual(["", "", "◆", "—"]);
+  });
+
+  it("is idempotent on well-formed glyphs", () => {
+    const g = ["◆", "—", "◇", "", "◆", "—"];
+    expect(resolveGlyphHolds(g)).toEqual(g);
+    expect(resolveGlyphHolds(resolveGlyphHolds(g))).toEqual(g);
+  });
+
+  it("agrees with computeTimelineGlyphs on the arrays it produces", () => {
+    // The invariant that makes this safe to apply unconditionally: re-resolving real glyph output
+    // must be a no-op, or the preview would differ from the un-dragged render.
+    const cells: Cell[] = [key(), hold(), key(true), hold(), key()];
+    const g = computeTimelineGlyphs(cells, 7, isEmpty);
+    expect(resolveGlyphHolds(g)).toEqual(g);
   });
 });

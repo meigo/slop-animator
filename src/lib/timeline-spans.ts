@@ -40,13 +40,15 @@ export function computeTimelineSpans(glyphs: string[]): TimelineSpan[] {
         out.push(run);
       }
     } else if (g === "—") {
-      // A hold only ever continues the key before it in `computeTimelineGlyphs` output. It does NOT
-      // in `Timeline.svelte`'s block-drag preview (`displayGlyph`), which blanks the vacated source
-      // range and strands the holds that followed the dragged key — dragging a key out of its own
-      // run yields ["", "—", "◆", "—"], whose f=1 is a hold with no key before it. This guard is
-      // therefore load-bearing, not belt-and-braces: without it that render throws mid-drag. It also
-      // keeps the `keyFrames` invariant below true, since a content span is only ever CREATED in the
-      // ◆ branch and so can never come back empty. Tested; do not remove.
+      // A hold only ever continues the key before it in `computeTimelineGlyphs` output, and — as of
+      // 2026-09-09 — in the block-drag preview too, which now runs `resolveGlyphHolds` before
+      // reaching here. Until then it did NOT: `displayGlyph` blanked the vacated source and stranded
+      // the holds that followed the dragged key, so dragging a key out of its own run yielded
+      // ["", "—", "◆", "—"], whose f=1 is a hold with no key before it — and without this guard that
+      // render threw mid-drag. Both callers are well-formed now, so the guard is defensive again
+      // rather than load-bearing, but it stays: this function takes a plain `string[]`, the throw it
+      // prevents happens inside a render, and it keeps the `keyFrames` invariant below true (a
+      // content span is only ever CREATED in the ◆ branch, so it can never come back empty). Tested.
       if (run) run.endFrame = f;
     } else {
       // "◇" or "": content stops. The blank key gets its own one-frame span; "" gets nothing.

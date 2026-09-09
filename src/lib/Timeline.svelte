@@ -142,7 +142,7 @@
     clampTimelineCellW,
   } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
-  import { computeTimelineGlyphs } from "./timeline-glyphs";
+  import { computeTimelineGlyphs, resolveGlyphHolds } from "./timeline-glyphs";
   import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
@@ -260,7 +260,11 @@
     const shown = Array.from({ length: appState.project.frameCount }, (_, f) =>
       displayGlyph(layer.id, glyphs, f),
     );
-    return computeTimelineSpans(shown);
+    // `displayGlyph` patches CELL BY CELL, so a vacated cell comes back blank even where the inked
+    // key before it keeps holding. Re-resolving turns those back into `—`, which is what the drop
+    // actually produces — without it, dragging a blank key RIGHT left a gap the span would not grow
+    // into until release, while dragging LEFT looked correct because shortening needs no re-resolve.
+    return computeTimelineSpans(resolveGlyphHolds(shown));
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -2272,9 +2276,11 @@
          group headers, and the property rows whose grid cells were deleted — showed nothing, so the
          guides broke into disconnected segments wherever such a row sat between two layers.
          A background here is continuous by construction, costs zero DOM nodes, and needs no row to
-         opt in. The line occupies [5·CELL_W − 1, 5·CELL_W), which is exactly where the ruler's
-         every-5 tick sits: that tick is a `border-r` on the cell whose (f+1)%5===0, i.e. its RIGHT
-         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
+         opt in. The line occupies [4·CELL_W − 1, 4·CELL_W) within each 5-cell period, which is
+         exactly where the ruler's major tick sits: that tick is drawn on the RIGHT edge of the cell
+         whose (f+2)%5===0, i.e. the LEFT edge of the labelled frame. The two are one boundary and
+         must move together — before 2026-09-09 both sat one cell later, on frame 5's right edge,
+         which put the line you count from one frame past the number naming it. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
          25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
          guides and the dividers read as one quiet lattice instead of one dominating the other. The
          floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
@@ -2282,9 +2288,9 @@
     <div
       class="pointer-events-none absolute inset-y-0 z-0"
       style="left: {GUTTER_W}px; width: {stripFrames *
-        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {5 * CELL_W -
-        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {5 * CELL_W - 1}px {5 *
-        CELL_W}px);"
+        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {4 * CELL_W -
+        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W - 1}px {4 *
+        CELL_W}px, transparent {4 * CELL_W}px {5 * CELL_W}px);"
     ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
@@ -2331,13 +2337,19 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <!-- z-35: the per-row gutter labels are sticky at z-20 and come LATER in DOM order, so at equal
+    <!-- `border-b`: the ruler is the only row in the grid that had no bottom divider, which also made
+         it 24px where every layer and track row is 25 (24 + its own border). One class gives it both
+         — the divider the rest of the grid has, and the same box height, so it stops reading a pixel
+         short of the tracks below it. The 24px CONTENT is untouched, which matters: the tick stubs
+         and the playhead badge are both sized against it. (The audio lane is 29px and stays that way
+         — `h-7` to fit a waveform, not a row height.)
+         z-35: the per-row gutter labels are sticky at z-20 and come LATER in DOM order, so at equal
          z they painted OVER this row — layer names leaked across the ruler as you scrolled the tracks
          vertically. The ruler is the thing rows scroll UNDER, so it has to outrank them. The playhead
          badge is a child of this row and rides along; the gutter resize grip sits above it again
          (z-40) so it stays grabbable at the ruler's level. -->
     <div
-      class="sticky top-0 z-35 flex w-max items-stretch bg-surface"
+      class="sticky top-0 z-35 flex w-max items-stretch border-b border-border bg-surface"
       style="min-width: {stripMinW}px"
     >
       <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
@@ -2392,7 +2404,7 @@
            diamonds and the row selection, so the one mark you track during playback blended into the
            marks it has to be read against. The family doc reserves red for exactly this. -->
       <div
-        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
@@ -2417,7 +2429,7 @@
           style="left: {GUTTER_W +
             appState.playhead * CELL_W +
             CELL_W /
-              2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+              2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
         ></div>
       {/if}
       <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
@@ -2466,20 +2478,54 @@
         ></div>
         {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = playRange}
-          <!-- Ruler ticks: border and surface-active are near-identical (1.02:1 apart on the
-               family ramp), so ticks use text-muted — minors dimmed, every 5th (the label
-               cadence) at full strength. -->
+          <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
+               number centred in the clear band between them. The two bands are disjoint, so a label
+               can never collide with a tick — at any zoom, at any digit count.
+               It was a full-height `border-r` with the label centred THROUGH it, which worked only
+               while a label fitted inside one column. Measured at `cellW` 12: a two-digit label is
+               13–15px in a 12px cell, so it overflowed ~1px each side onto BOTH neighbouring ticks,
+               and a three-digit one (this project reaches 300) is ~22px and crossed them outright.
+               Reported 2026-09-09 as "frame numbers overlapping with ruler bars on narrow scales".
+               4px major / 3px minor. The minor is NOT 2px (which "a couple shorter" would give it):
+               at `text-muted/35` a 2px stub is nearly invisible, so the pair separates by 1px of
+               height and mostly by brightness.
+               Heights are set by the TEXT, and by its INK rather than its em box — the difference
+               is the whole bug. Measured with `measureText` at this exact font (12px system-ui in a
+               24px line): baseline 16.5, `actualBoundingBoxAscent` 8.65, descent 0.2, so the digits
+               occupy **y 7.85 → 16.7**. The first attempt used 6px stubs, reasoning from the 12px em
+               box, which left 1.85px above and 1.3px below — reported as "still touching numbers",
+               and correctly. 4px (major) and 3px (minor) leave 3.3–4.9px at every edge.
+               That also caps how tall a major can be: majors are 1px taller than minors and, mainly,
+               BRIGHTER, because there is no room to distinguish them by height alone.
+               Two alternatives were weighed and rejected. Masking the ticks behind each label with an
+               opaque background works at any width too, but it would punch a hole in the play-range's
+               warn wash wherever a label sits inside the range. Labelling every 10 frames when narrow
+               only makes the collision rarer — the label still does not fit its own 12px column.
+               Ticks use `text-muted`, not `border`: those two are 1.02:1 apart on the family ramp, so
+               a `border`-coloured tick on this ground is invisible.
+               `(f + 2) % 5`, not `(f + 1) % 5` — the major marks where the labelled frame BEGINS.
+               A tick is drawn on its cell's RIGHT edge, so the major for "5" belongs on cell f=3
+               (frame 4's right edge = frame 5's left edge). It used to be `(f + 1)`, which put it on
+               frame 5's RIGHT edge — the boundary between 5 and 6 — so the tick you counted from sat
+               one frame late. Frame 1 has no major either way: its left edge is the strip's origin,
+               where there is no preceding cell to carry a border.
+               The 5-frame background guides moved with it and MUST stay in step; they are the same
+               boundary drawn behind the rows. -->
           <div
-            class="box-border h-6 border-r text-xs/6 text-center text-text-secondary {(f + 1) %
-              5 ===
-            0
-              ? 'border-text-muted'
-              : 'border-text-muted/35'}"
+            class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
               ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
               : ''}"
           >
             {rulerLabel(f)}
+            {#each ["top-0", "bottom-0"] as edge (edge)}
+              <span
+                class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
+                  ? 'h-1 bg-text-muted'
+                  : 'h-[3px] bg-text-muted/35'}"
+                role="presentation"
+              ></span>
+            {/each}
           </div>
         {/each}
       </div>
