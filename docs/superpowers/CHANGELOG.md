@@ -4641,3 +4641,43 @@ exactly like a broken renderer. Re-probed with `{ in: 5, out: 9 }` and the ruler
 correctly. **Second time on this project a console probe with an invalid shape has impersonated a bug**
 (the first was seeking the playhead past a 10-frame project's end, 2026-09-09); print what the function
 actually consumes before believing the picture.
+
+**A group spine marks which rows belong to a group (2026-09-09).** Asked as *"I'd like the range of
+group to be better readable. One option is to span that blue vertical line across all the child layers
+and nested animation tracks?"*
+
+**The blue line was the wrong carrier, and the reason matters more than the fix.** That bar is
+`.ui-selected` and means *this row is selected*. Extending it down the members gives accent two
+meanings — the same tangle removed earlier today when three elements per row each drew their own bar —
+and the family doc reserves accent for exactly one of them. Worse, it only appears while the GROUP row
+is selected, which is when the information is least needed: you just clicked the group. Select a
+MEMBER and the extent vanishes, though that is precisely when "which group am I inside?" is live.
+
+**So: a separate hairline, drawn always, accent only while the group is the one being worked on.** It
+sits at 8px in the gutter — left of the members' 16px indent, right of the header's 4px — so it reads
+as a bracket rather than as a second selection bar. Lit-ness reuses `groupDetailShown`, which already
+answers "the working target is this group, or one of its members is the selected row" and is already
+tested; a member's TRACK row counts too, since `layerRowSelected` resolves a layer-owned track to its
+owner. No new predicate, no hand-rolled `activeRow` conjunction (the thing `layerTrackSpec`'s comment
+warns has shipped a forgotten term twice).
+
+**Two surfaces, two mechanisms, one look.** The timeline's rows are a FLAT list, so the spine is a
+per-row absolutely-positioned span, `-bottom-px` to bleed over each row's own `border-b` — without
+that it breaks at every boundary. The layer panel genuinely nests members in `.group-members`, so
+there it is one `border-l` on that container. `TrackRowSpec` gained `groupId`, which is deliberately
+NOT the same question as its existing `indent`: a group's own track row is not indented (it is the
+group's, not a member's) but it IS inside the block, so the spine runs unbroken from under the header
+past the last member's last nested track.
+
+**`border` was the obvious neutral colour and it is invisible.** First pass used `bg-border`, and at
+1px on a `surface` row it could not be seen at all — the job undone. This file had already hit that
+wall and written it down for the ruler ticks: `border` and `surface-active` sit ~1.02:1 apart on the
+family ramp, which is why those ticks use `text-muted`. The spine now does the same, at 50%.
+
+**A third invalid console probe, for the record.** Seeding a member's opacity track as
+`{keys: [{frame, value}]}` made the panel's opacity readout show `NaN` — which looks like a bug in the
+opacity path. The keyframe's value field is `v`, not `value` (`document.ts:83`), named that way on
+purpose. Re-seeded correctly and the readout was fine. That is now three times in two days a probe
+with the wrong shape has impersonated a defect (playhead past a 10-frame project; `{start,end}` for
+`{in,out}`; and this). **Read the type, then write the probe** — the cost of not doing so is a false
+bug report, and twice now it was caught only by checking before speaking.

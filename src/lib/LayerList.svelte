@@ -1032,7 +1032,18 @@
                 </span>
               </div>
             {/if}
-            <div class="group-members pl-3" class:hidden={seg.group.collapsed} use:membersSortable>
+            <!-- The group spine, the panel's half of it. Nested rows mean one `border-l` here does
+                 what the timeline needs a per-row segment for; keep the two LOOKS in step, not the
+                 code. `accent` while this is the group being worked on (the same `groupDetail` the
+                 detail strip uses), a neutral hairline otherwise — never `.ui-selected`, which means
+                 "this ROW is selected" and would claim every member was. -->
+            <div
+              class="group-members pl-3 border-l {groupDetail
+                ? 'border-accent'
+                : 'border-text-muted/50'}"
+              class:hidden={seg.group.collapsed}
+              use:membersSortable
+            >
               {#each seg.layers as layer (layer.id)}
                 {@render layerRow(layer)}
               {/each}
