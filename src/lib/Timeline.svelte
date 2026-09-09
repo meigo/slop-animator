@@ -2141,12 +2141,16 @@
          A background here is continuous by construction, costs zero DOM nodes, and needs no row to
          opt in. The line occupies [5·CELL_W − 1, 5·CELL_W), which is exactly where the ruler's
          every-5 tick sits: that tick is a `border-r` on the cell whose (f+1)%5===0, i.e. its RIGHT
-         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35). -->
+         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
+         25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
+         guides and the dividers read as one quiet lattice instead of one dominating the other. The
+         floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
+         dividers prove 1.41 is not. -->
     <div
       class="pointer-events-none absolute inset-y-0 z-0"
       style="left: {GUTTER_W}px; width: {stripFrames *
         CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {5 * CELL_W -
-        1}px, color-mix(in oklab, var(--color-text-muted) 40%, transparent) {5 * CELL_W - 1}px {5 *
+        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {5 * CELL_W - 1}px {5 *
         CELL_W}px);"
     ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
