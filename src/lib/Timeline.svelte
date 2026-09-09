@@ -2321,8 +2321,18 @@
       class="sticky top-0 z-35 flex w-max items-stretch bg-surface"
       style="min-width: {stripMinW}px"
     >
+      <!-- `bg-surface`, matching the ruler strip this is part of — NOT `surface-active`, which it was
+           until 2026-09-09. That lighter tone made the ruler's gutter corner a filled block sitting
+           directly on top of the first row, and once the gutter went full-bleed and the corner
+           reached the panel edge it read as something CUTTING the row beneath: a selected audio lane
+           showed its tint and its accent bar starting abruptly under a paler band, as though clipped
+           from above. The corner is not a control and has nothing to say — it is the part of the
+           ruler that happens to sit over the names — so it takes the ruler's own ground. The
+           `border-r` still marks the gutter edge, which is the only thing this element has to do.
+           The family doc agrees: "Ruler: `panel` ground, ticks in `line`, labels in `muted`" — one
+           ground for the whole ruler, no second tone for its corner. -->
       <span
-        class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
+        class="shrink-0 sticky left-0 z-20 bg-surface border-r border-text-muted"
         style="width: {GUTTER_W}px"
       >
         <!-- The playhead badge's tip protrudes 6px BELOW this row, so the spacer above (which is

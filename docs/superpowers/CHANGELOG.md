@@ -4725,3 +4725,27 @@ sits further right than the members' own 12px indent, and a line through it woul
 the member names. In the timeline the chevron is the row's first element, which is the only reason the
 alignment is available there. Nor the panel's left inset, a different container with its own padding,
 and not what the screenshot showed.
+
+**The ruler's gutter corner stops cutting the row beneath it (2026-09-09).** Reported as *"what's up
+with the gap above the label of audio lane?"*, then sharpened to *"like the bg and accent line are cut
+from above"* — which is the accurate description and the reason the first reading ("a gap") was
+misleading.
+
+**There is no gap.** The element is the ruler's gutter CORNER — the `GUTTER_W × 24` span that sits
+over the row names, the spreadsheet corner cell — and it was `bg-surface-active` (#2d2d33) while the
+ruler strip it belongs to is `bg-surface` (#1e1e22). A paler filled block, full gutter width, sitting
+directly on the first row. With the audio lane selected, its tint and its accent bar begin abruptly
+underneath that block, so the row reads as clipped from above rather than as starting there.
+
+**Pre-existing, but MY change is what surfaced it.** Before the gutter went full-bleed earlier today
+the corner started 8px in from the panel edge, so it read as a small inset patch; reaching the edge
+turned it into a band. Worth stating plainly: the report arrived immediately after that commit and the
+honest answer is not "this was always like that" — it was always wrong and my change is what made it
+look wrong.
+
+**Fixed by giving the corner the ruler's own ground.** It is not a control and has nothing to say — it
+is simply the part of the ruler that happens to sit over the names — so `bg-surface`, and the
+`border-r` still marks the gutter edge, which is the only job this element actually has. Measured
+after: corner and ruler both `rgb(30, 30, 34)`. The family doc had already specified this and the app
+had drifted from it — *"Ruler: `panel` ground, ticks in `line`, labels in `muted`"*: one ground for
+the whole ruler, no second tone for its corner.
