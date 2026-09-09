@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeTimelineSpans } from "../lib/timeline-spans";
+import { resolveGlyphHolds } from "../lib/timeline-glyphs";
 
 describe("computeTimelineSpans", () => {
   it("an inked key with holds is one span covering all of them", () => {
@@ -79,6 +80,22 @@ describe("computeTimelineSpans", () => {
     expect(computeTimelineSpans(["—", "—"])).toEqual([]);
     expect(computeTimelineSpans(["", "—", "◆", "—"])).toEqual([
       { startFrame: 2, endFrame: 3, blank: false, keyFrames: [2] },
+    ]);
+  });
+
+  // The block-drag preview, end to end. A key at 0 holding to 3 with a blank key at 4, dragged +2:
+  // `displayGlyph` blanks the vacated cell and leaves the one after it empty, so the raw preview
+  // stops the span at 3 — the span visibly refused to follow the key until the pointer was released
+  // (reported 2026-09-09). Re-resolved, the gap holds and the span reaches the moved key.
+  it("a dragged blank key drags the span with it (preview)", () => {
+    const rawPreview = ["◆", "—", "—", "—", "", "", "◇"];
+    expect(computeTimelineSpans(rawPreview)).toEqual([
+      { startFrame: 0, endFrame: 3, blank: false, keyFrames: [0] },
+      { startFrame: 6, endFrame: 6, blank: true, keyFrames: [] },
+    ]);
+    expect(computeTimelineSpans(resolveGlyphHolds(rawPreview))).toEqual([
+      { startFrame: 0, endFrame: 5, blank: false, keyFrames: [0] },
+      { startFrame: 6, endFrame: 6, blank: true, keyFrames: [] },
     ]);
   });
 

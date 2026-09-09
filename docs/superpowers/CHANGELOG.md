@@ -5372,3 +5372,35 @@ to attribute.
 Measured after, at `cellW` 12: major ticks at x 285.4 / 345.4 / 405.4, the labelled cells for 5 / 10 /
 15 starting at 286.4 / 346.4 / 406.4 — the 1px tick's right edge IS the frame's left edge — and the
 first guide line at 285.4, identical to the first major tick.
+
+**A dragged key now drags its span with it (2026-09-09).** Reported as *"when dragging hollow key to
+the left, all good — the span shortens, but then dragging to the right, the span is not scaled to the
+key until mouse is released"*. Exactly right, and the asymmetry is the clue.
+
+**Root cause.** The block-drag preview builds its glyph array CELL BY CELL (`displayGlyph`): the moved
+range shows the glyph sliding into it, the vacated range is blanked. Blanking is only correct where
+nothing follows. A vacated cell INSIDE a hold run still holds the inked key before it — which is what
+the drop itself produces, since `moveBlockFrames` → `deleteBlock` writes holds and a hold after an
+inked key renders `—`. Dragging a blank key RIGHT therefore left `""` in the gap and the span stopped
+short; dragging LEFT looked fine only because shortening needs no re-resolution.
+
+**Fix: `resolveGlyphHolds`** in `timeline-glyphs.ts`, applied in `displaySpansFor` before the spans are
+computed. It is `computeTimelineGlyphs`' own rule applied to glyphs rather than cells — `◆`/`◇` are the
+keys, everything else is a hold, and a hold shows `—` only while the resolved key is inked. Six tests
+written first and watched fail, including the one that makes it safe to apply unconditionally rather
+than only mid-drag: **re-resolving well-formed output is a no-op**, asserted both directly and against
+`computeTimelineGlyphs`' own output.
+
+The reported case is pinned end to end in `timeline-spans.test.ts`: the raw preview
+`["◆","—","—","—","","","◇"]` yields a span of 0–3 with the blank at 6 — the span refusing to follow —
+and the re-resolved one yields 0–5, reaching the moved key.
+
+**And it corrects a claim I made earlier today.** The `if (run)` guard in `computeTimelineSpans` was
+documented as "load-bearing, not belt-and-braces" precisely because `displayGlyph` could strand a hold
+with no key before it. That is no longer true — the preview is well-formed now — so the comment says
+so. The guard and its test stay: the function takes a plain `string[]`, the throw it prevents happens
+inside a render, and it keeps the `keyFrames` invariant true.
+
+**Not browser-verified**, and this is the same path that has resisted verification all day: a scripted
+drag lands on key-move or resize instead of a block move, so the preview cannot be exercised from the
+harness. The evidence here is the failing-then-passing test at the exact reported glyph array.

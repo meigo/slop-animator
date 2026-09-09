@@ -38,3 +38,37 @@ export function computeTimelineGlyphs(
   }
   return out;
 }
+
+/**
+ * Re-resolve a glyph array that has been PATCHED cell by cell, so holds mean what they would mean
+ * after the edit lands.
+ *
+ * `Timeline.svelte`'s block-drag preview (`displayGlyph`) builds its array per cell: the moved range
+ * shows the glyph sliding into it, the vacated range is blanked. Blanking is right only where nothing
+ * follows — a vacated cell INSIDE a hold run still holds the inked key before it, which is exactly
+ * what the drop produces (`moveBlockFrames` → `deleteBlock` writes holds, and a hold after an inked
+ * key renders `—`). Without this pass, dragging a blank key RIGHT left `""` in the gap, so the span
+ * did not grow to follow it until the pointer was released; dragging LEFT looked fine only because
+ * shortening needs no re-resolution. Reported 2026-09-09.
+ *
+ * The rule is `computeTimelineGlyphs`' rule, applied to glyphs instead of cells: `◆` and `◇` are the
+ * keys, everything else is a hold, and a hold shows `—` only while the resolved key is inked. Running
+ * it on well-formed output is a NO-OP — asserted in the tests, and the reason it can be applied
+ * unconditionally rather than only while dragging.
+ */
+export function resolveGlyphHolds(glyphs: string[]): string[] {
+  const out: string[] = new Array(glyphs.length);
+  let hasKey = false;
+  let inkedKey = false;
+  for (let f = 0; f < glyphs.length; f++) {
+    const g = glyphs[f];
+    if (g === "◆" || g === "◇") {
+      hasKey = true;
+      inkedKey = g === "◆";
+      out[f] = g;
+      continue;
+    }
+    out[f] = hasKey && inkedKey ? "—" : "";
+  }
+  return out;
+}

@@ -142,7 +142,7 @@
     clampTimelineCellW,
   } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
-  import { computeTimelineGlyphs } from "./timeline-glyphs";
+  import { computeTimelineGlyphs, resolveGlyphHolds } from "./timeline-glyphs";
   import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
@@ -260,7 +260,11 @@
     const shown = Array.from({ length: appState.project.frameCount }, (_, f) =>
       displayGlyph(layer.id, glyphs, f),
     );
-    return computeTimelineSpans(shown);
+    // `displayGlyph` patches CELL BY CELL, so a vacated cell comes back blank even where the inked
+    // key before it keeps holding. Re-resolving turns those back into `—`, which is what the drop
+    // actually produces — without it, dragging a blank key RIGHT left a gap the span would not grow
+    // into until release, while dragging LEFT looked correct because shortening needs no re-resolve.
+    return computeTimelineSpans(resolveGlyphHolds(shown));
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
