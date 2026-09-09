@@ -576,15 +576,20 @@
   <!-- `pl-[13px]` on a GROUP MEMBER, and deliberately on this element rather than on the
        `.group-members` container that used to carry it. An inset `box-shadow` paints at the BORDER
        box, which padding does not move — so the row's content indents while its `.ui-selected` bar
-       stays at x=0, landing on the group rail the block draws there. Put the same 13px on the
-       container instead and the bar moves with it, which is what made a selected member draw a
-       second line beside the rail. Content lands at 13 + the inner `p-1`, exactly where the
-       container's padding used to put it, so nothing moved. -->
+       stays at x=0, landing on the group rail drawn there. Put the same padding on the
+       `.group-members` container instead and the bar moves with it, which is what made a selected
+       member draw a second line beside the rail.
+       19px = the group header's chevron (15) plus its gap (4), i.e. the DISCLOSURE COLUMN — so a
+       member's eye/lock/name land on exactly the same x as its group's, which is the standard tree
+       rule (a child's content aligns under the parent's; the nesting is carried by the guide line,
+       here the rail). It was 13px, which put every child column 6px LEFT of its parent's: children
+       reading as less indented than their group, a near-miss that looks like an error rather than a
+       step. Measured before: group eye/lock/name at 41/60/79, member at 35/54/73. -->
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
     class:group-rail={layer.groupId != null}
-    class:pl-[13px]={layer.groupId != null}
+    class:pl-[19px]={layer.groupId != null}
     class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
@@ -689,7 +694,7 @@
           <input
             use:settleOnUnmount={layer.id}
             style={sliderFill(opacityNow, 0, 100)}
-            class="w-10 aria-disabled:opacity-40"
+            class="w-9 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
             type="range"
@@ -750,7 +755,7 @@
           <span class="flex items-center gap-1" title="Line boil strength (this layer)">
             <Waves size={13} class="shrink-0" />
             <input
-              class="w-10"
+              class="w-9"
               type="range"
               min="0"
               max="1"
@@ -1038,7 +1043,7 @@
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
                     style={sliderFill(gOpNow, 0, 100)}
-                    class="w-10 aria-disabled:opacity-40"
+                    class="w-9 aria-disabled:opacity-40"
                     class:pointer-events-none={gOpPinned}
                     aria-disabled={gOpPinned}
                     type="range"

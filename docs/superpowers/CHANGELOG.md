@@ -5073,3 +5073,27 @@ Extracted to a `.group-rail` class in `app.css` rather than repeated inline, sin
 elements: the group header, the group's detail strip, and every member row. Still not a child element
 — `.group-members` is a SortableJS container and a stray child would be treated as a draggable row
 (gotcha #2).
+
+**Group members align with their group's columns (2026-09-09).** Asked as *"should we increase the
+indent to align parent/children icons?"* Yes — and measuring first changed what "align" had to mean.
+
+**It was a near-miss, not a step.** Group header: grip 4, chevron 22, eye 41, lock 60, name 79. Member:
+grip 17, eye 35, lock 54, name 73. Every shared column sat **6px LEFT** of its parent's, so children
+read as slightly LESS indented than the group containing them — which is why it looked like an error
+rather than like nesting.
+
+**19px, not "a bit more".** That is the group header's chevron (15) plus its gap (4) — the DISCLOSURE
+COLUMN. It puts a member's eye/lock/name on exactly the group's x (41/60/79 measured after), which is
+the standard tree rule: a child's content aligns under its parent's, and the nesting is carried by the
+guide line rather than by a second indent. The rail built earlier today is that guide line, so the cue
+it removes is already replaced. A member's drag grip lands at 23, in the chevron's own column, which is
+where a tree puts a child's first control.
+
+**The 6px came off the sliders, for the third time today.** The strip had 3px spare at 224px and the
+extra indent takes 6 more, so `w-10` → `w-9` (40 → 36px) on all three sliders: 183px used of 188
+available, back to the 5px of margin the layout originally had. Verified one line at the default width
+with a group MEMBER selected, which is the binding case.
+
+Worth stating plainly: the opacity slider has now gone 48 → 40 → 36px across three requests in one
+session. It is still a drag target on a Pencil-first app, and if it starts to feel cramped the honest
+fix is a wider default panel, not a fourth trim.
