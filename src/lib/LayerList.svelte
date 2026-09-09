@@ -583,6 +583,7 @@
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
+    class:group-rail={layer.groupId != null}
     class:pl-[13px]={layer.groupId != null}
     class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
@@ -936,32 +937,12 @@
             seg.group,
             appState.project.layers,
           )}
-          <!-- The group rail: ONE 2px line at x=0, running the WHOLE block — header, detail strip
-               and members — describing group relation, with the ACCENT segment being whichever row
-               inside it is selected. Asked for in exactly those terms: "try not indent the line,
-               distinction is made by the color — whole line describes group relation and accent
-               color selection."
-               Three positions were tried before this one, and each failed for a reason worth keeping.
-               A 1px `border-l` on `.group-members` at x=0 was collinear with the header's 2px
-               `.ui-selected` bar, so the edge changed THICKNESS partway down. Inset to x=6 it cleared
-               that but ran parallel to a selected MEMBER's own bar at 13. Moved to x=13 at 2px it
-               matched the member bars but no longer met the header's, which is at 0.
-               x=0 at 2px is the only position where every bar in the block already paints: the
-               header's, the detail strip's, and — once the members' indent moves off the container
-               and onto the ROWS, below — each member's. Same column, same width, so the line never
-               doubles and never steps; only its colour changes.
-               A BACKGROUND, not a child and not a wrapper: the members are a SortableJS container and
-               a stray child would be treated as a draggable row (gotcha #2). Nothing in the block
-               paints an opaque background of its own — only hovers and translucent tints — so the
-               rail shows through, and a selected row's 2px inset accent covers exactly its stretch of
-               it. -->
-          <div
-            class="group-block border-b border-border-light"
-            style="background-image: linear-gradient(var(--rail), var(--rail)); background-size: 2px 100%; background-position: 0 0; background-repeat: no-repeat; --rail: color-mix(in srgb, var(--color-text-muted) 45%, transparent)"
-            data-group-id={seg.group.id}
-          >
+          <!-- The rail itself is on the ROWS (`.group-rail`, defined in app.css), not here: a
+               parent's background is always covered by an opaque child, so with it on the block a
+               member row's hover erased the line under it. -->
+          <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
-              class="flex items-center gap-1 p-1 hover:bg-surface-hover"
+              class="group-rail flex items-center gap-1 p-1 hover:bg-surface-hover"
               class:ui-selected={groupLit}
               role="presentation"
             >
@@ -1035,7 +1016,7 @@
                    slider should align with the left edge of drag handle, like layer sliders do".
                    If Row 2's padding ever changes, this must change with it. -->
               <div
-                class="flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary"
+                class="group-rail flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary"
                 class:ui-selected={groupLit}
               >
                 <span

@@ -5051,3 +5051,25 @@ The arithmetic, since the next person to add a control here will need it: each s
 = 191`. The binding case is a GROUP MEMBER, which is 13px narrower than a top-level layer because of
 its indent. Overflow is still a wrap rather than a clip, so being wrong here costs a line, not a
 control.
+
+**The group rail survives a hover (2026-09-09).** Reported as *"on hover the line disappears"* — the
+last thing wrong with it, and a consequence of where it was drawn rather than of how.
+
+**Why it vanished.** The rail was a background on `.group-block`, and a parent's background is always
+covered by an opaque child. `hover:bg-surface-hover` is opaque (#2d2d33), so hovering a member painted
+over the line beneath it.
+
+**Why the fix works, which is the part worth remembering.** CSS paints background layers
+colour-first-then-images. Moving the rail onto the ROWS as a background-IMAGE puts it ABOVE each row's
+own background-COLOR, so a hover slides underneath it and the line stays. An inset `box-shadow` paints
+above both — which is exactly what we want, since that is how a selected row's accent bar still lights
+its own stretch of the rail.
+
+So the layering now reads, bottom to top: hover colour → rail image → selection bar. Each of the three
+things that wants that column gets it in the right order, without any of them being conditional on the
+others.
+
+Extracted to a `.group-rail` class in `app.css` rather than repeated inline, since it is now on three
+elements: the group header, the group's detail strip, and every member row. Still not a child element
+— `.group-members` is a SortableJS container and a stray child would be treated as a draggable row
+(gotcha #2).

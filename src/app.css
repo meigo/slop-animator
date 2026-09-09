@@ -206,6 +206,27 @@ textarea,
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+/* The layer panel's group rail: a 2px line at x=0 marking which rows are one group, with a selected
+   row's `.ui-selected` bar lighting its own stretch of it (same column, same width, so the two never
+   double up).
+
+   A background-IMAGE, and that is the whole trick. Background layers paint colour first, then images
+   — so a row's `hover:bg-surface-hover`, which sets background-COLOR, passes UNDER this and the rail
+   survives the hover. It did not when the rail lived on `.group-block`: a parent's background is
+   always covered by an opaque child, so hovering a member erased the line under it. An inset
+   `box-shadow` paints ABOVE both, which is why the accent selection bar still wins where it should.
+
+   Applied per ROW (header, group detail strip, and each member) rather than to the block, for the
+   same reason. Not a child element: `.group-members` is a SortableJS container and a stray child
+   would be treated as a draggable row (gotcha #2). */
+.group-rail {
+  --rail: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  background-image: linear-gradient(var(--rail), var(--rail));
+  background-size: 2px 100%;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+}
+
 /* SortableJS drag states */
 .sortable-ghost {
   opacity: 0.4;
