@@ -441,7 +441,7 @@ Do this BEFORE making the width adjustable, so no intermediate commit can violat
 Append to `src/__tests__/timeline-grid.test.ts`:
 
 ```typescript
-import { edgePx } from "../lib/timeline-grid";
+import { edgePx, moveCancelPx } from "../lib/timeline-grid";
 
 describe("edgePx keeps the resize hotspot inside half a column", () => {
   const MOVE_CANCEL_PX = 6; // Timeline.svelte's companion constant
@@ -451,10 +451,11 @@ describe("edgePx keeps the resize hotspot inside half a column", () => {
   });
 
   it("never lets EDGE_PX + MOVE_CANCEL_PX reach half the column", () => {
-    // The invariant recorded at Timeline.svelte:1051. At 12px it is impossible with a fixed
-    // MOVE_CANCEL_PX of 6, which is exactly why the cancel threshold scales too (Task 5 Step 3).
+    // The invariant recorded at Timeline.svelte:1051, asserted as it is actually stated — BOTH
+    // thresholds against half the column, not edgePx alone. At 12px it is impossible with a fixed
+    // MOVE_CANCEL_PX of 6, which is exactly why the cancel threshold scales too (Step 3).
     for (const w of [12, 16, 20, 24, 28, 32]) {
-      expect(edgePx(w)).toBeLessThan(w / 2);
+      expect(edgePx(w) + moveCancelPx(w)).toBeLessThan(w / 2);
     }
   });
 
