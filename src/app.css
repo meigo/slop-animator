@@ -170,10 +170,20 @@ textarea,
   background-color: var(--color-accent-hover);
 }
 /* Tint plus a left edge. `box-shadow: inset` rather than a border so the row's geometry does not
-   change when it becomes selected (§5: state must not move the layout). */
+   change when it becomes selected (§5: state must not move the layout).
+   The edge marks where the ROW STARTS, so exactly one element per row may carry it — the leftmost,
+   sticky label cell. Pieces further along the same row (the animation expander, the lock/hidden
+   badge) need the tint but NOT an edge of their own; they use `.ui-selected-tint` below. They
+   carried `.ui-selected` briefly and each drew its own bar, so a selected row grew two extra
+   vertical rules floating mid-label. They were `bg-surface-active` before the accent landed — a
+   plain background, which stacks harmlessly — which is why the fault arrived with the accent. */
 .ui-selected {
   background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
   box-shadow: inset 2px 0 0 var(--color-accent);
+}
+/* The same tint with no edge, for pieces that sit inside an already-marked row. */
+.ui-selected-tint {
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 /* SortableJS drag states */
@@ -262,6 +272,15 @@ input[type="range"]::-moz-range-thumb {
 :focus-visible {
   outline: 2px solid var(--color-selection);
   outline-offset: 1px;
+}
+/* …but a STICKY control's ring is drawn 1px OUTSIDE its box, which is precisely the strip the next
+   sticky element's opaque background paints over — so in the timeline gutter the ring showed up
+   half-covered and ragged. Drawing it inside the control's own box means nothing else can cover it.
+   The ring is kept rather than removed: it is the keyboard affordance, and `:focus-visible` already
+   ensures a pointer press never paints one. */
+.sticky:focus-visible,
+.sticky :focus-visible {
+  outline-offset: -2px;
 }
 
 /* Rotate handle. CSS has no rotate cursor, so this is an inline SVG: a ~290° arc with a tangential

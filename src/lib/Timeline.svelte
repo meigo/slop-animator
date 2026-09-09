@@ -2764,7 +2764,7 @@
                  the rows are folded away. -->
             <button
               class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
-              class:ui-selected={isRowSelected(layer.id)}
+              class:ui-selected-tint={isRowSelected(layer.id)}
               style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
               title={layer.tracksCollapsed
                 ? "Show this layer's animation rows"
@@ -2798,7 +2798,7 @@
           <span
             class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
-            class:ui-selected={isRowSelected(layer.id)}
+            class:ui-selected-tint={isRowSelected(layer.id)}
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {
