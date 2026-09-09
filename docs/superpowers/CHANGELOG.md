@@ -4997,3 +4997,21 @@ line up by construction rather than by coincidence; if one changes the other mus
 Measured after: group grip box at 4 and its slider at 8; member grip box at 17 and its slider at 21 —
 **+4 in both cases**, the same relationship rather than the same number, which is the thing that has to
 hold when the rows sit at different indents.
+
+**A group's Rename and Ungroup move to its detail strip (2026-09-09).** Reported as *"there's that
+distinction — rename and other icons on layer moved next to the opacity slider, while on group these
+are at top level"*. Layers put their actions on Row 2 beside the sliders; groups put theirs on the
+header row. Now both are Row 1 = identity (grip, chevron, visibility, lock, name), Row 2 = controls.
+
+**The codebase had already written the rule and then broken it three lines later.** The comment
+introducing the group's detail strip says: *"Same rule as a layer's Row 2: detail controls only for the
+group you're on (a member selected, or this group's own track). Always-on looked like selection."* The
+strip obeyed that; the Rename and Ungroup buttons sitting ABOVE it were always visible, so a group with
+nothing selected still showed two lit controls — the exact look that comment was written to remove.
+
+**Rename still edits inline in the header.** Only the button that STARTS the edit moved, so the input
+still appears where the name is. Verified: clicking Rename in the strip puts a focused input carrying
+"Group 1" in the header row, not in the strip.
+
+The side benefit is that the group name gets the full row to truncate into, which matters on a
+drag-resizable panel that defaults to 224px.

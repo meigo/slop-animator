@@ -1002,21 +1002,7 @@
                   title="Select group"
                   onclick={() => selectGroup(seg.group.id)}>{seg.group.name}</button
                 >
-                <button
-                  class="text-text-secondary hover:text-text"
-                  title="Rename group"
-                  onclick={() => startGroupEdit(seg.group)}
-                >
-                  <Pencil size={13} />
-                </button>
               {/if}
-              <button
-                class="text-text-secondary hover:text-text"
-                title="Ungroup"
-                onclick={() => ungroup(seg.group.id)}
-              >
-                <Ungroup size={14} />
-              </button>
             </div>
             <!-- Same rule as a layer's Row 2: detail controls only for the group you're on
                  (a member selected, or this group's own track). Always-on looked like selection. -->
@@ -1074,6 +1060,31 @@
                   />
                   <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(gOpNow)}</span>
                 </span>
+                <!-- Rename and Ungroup live HERE, not on the header row, so a group's actions sit
+                     where a layer's do: Row 1 is identity (grip, chevron, visibility, lock, name),
+                     Row 2 is controls. Two things were wrong with the header. It put a group's
+                     actions on a different line from every layer's — reported as "rename and other
+                     icons on layer moved next to the opacity slider while on group these are at top
+                     level" — and it showed them ALWAYS, which contradicts the rule stated three lines
+                     below this strip and applied to it: "detail controls only for the group you're
+                     on. Always-on looked like selection." The strip already obeyed that; the icons
+                     above it did not.
+                     Rename still edits inline in the HEADER — this only moves the button that starts
+                     it, so the input appears where the name is. -->
+                <button
+                  class="text-text-secondary hover:text-text"
+                  title="Rename group"
+                  onclick={() => startGroupEdit(seg.group)}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  class="text-text-secondary hover:text-text"
+                  title="Ungroup"
+                  onclick={() => ungroup(seg.group.id)}
+                >
+                  <Ungroup size={14} />
+                </button>
               </div>
             {/if}
             <!-- No padding here any more: a member's indent lives on the ROW (see `layerRow`), so
