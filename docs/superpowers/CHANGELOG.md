@@ -4866,3 +4866,24 @@ a DIFFERENT module instance than the mounted components hold, so probe writes la
 — the render kept reporting `playhead 0, w 14` while the store read back `120, 24`. **So this is owed
 a real look on the iPad**: drag the frame-width slider with the playhead parked mid-view and confirm it
 stays put.
+
+**The blocked-edit caption is legible over any paper (2026-09-09).** Reported as *"hidden layer warning
+on canvas could be louder — pale yellow on grey is a bit weak. yellow in this app context, maybe it
+could be slightly more saturated?"* Half right, and the half that was wrong is the interesting one.
+
+**Measured before changing anything.** `warn` (#d5b75d) on `bg-surface/70` over this project's paper
+composites to #5D5C5B and gives **3.43:1** — under WCAG AA (4.5:1) for text at this size. So "a bit
+weak" was not a matter of taste; it was objectively too low.
+
+**But the ground was the culprit, not the hue, and the ground was not even FIXED.** At 70% opacity the
+badge composites against whatever is behind it: 3.43:1 over the default paper, **3.14:1 over white**,
+and over the transparent-background checkerboard it changes square by square. A caption whose whole job
+is to say "you cannot edit this" must not get harder to read as the artwork under it gets lighter.
+Solid `surface` puts it at **8.51:1** and makes it independent of the paper entirely. A `warn/40`
+hairline and `font-medium` make it read as a warning CHIP rather than a floating label.
+
+**The token stays.** Saturating `--color-warn` would have diverged the whole family — it was
+deliberately moved off amber-500 to this muted gold earlier the same day to match
+slop-video-compositor, and it is used for in/out markers, locks and hidden badges throughout — to fix
+one badge's background. If a louder caption is still wanted after this, the next step is this chip
+(a filled `warn` ground with dark text), not the shared token.
