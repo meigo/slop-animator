@@ -12,6 +12,7 @@ import {
   addFrame,
   insertKeyframe,
   insertBlankKeyframe,
+  clearFrameIsNoOp,
   setHold,
   duplicateKeyframe,
   deleteFrame,
@@ -939,5 +940,45 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(l.tracks).not.toBe(bag); // …and the BAG is replaced too — the rule reaches both levels
       expect(before.keys.map((k) => k.frame)).toEqual([0, 10]);
     });
+  });
+});
+
+/**
+ * Clearing a frame that already shows nothing must do NOTHING — not materialise a keyframe, not
+ * push an undo entry. Reported as: blank keys "carry no meaning and are just noise", and you could
+ * stack them freely. The first blank after content is the meaningful one — it ends a hold run —
+ * so the guard is about the RESOLVED content at the frame, not about whether a key cell exists.
+ *
+ * `clearFrameIsNoOp` is the pure predicate the action asks before doing any work.
+ */
+describe("clearFrameIsNoOp", () => {
+  const key = (empty = false) =>
+    ({ kind: "key", canvas: { empty } as unknown as HTMLCanvasElement }) as Cell;
+  const hold = () => ({ kind: "hold" }) as Cell;
+  const isEmpty = (c: HTMLCanvasElement) => (c as unknown as { empty: boolean }).empty;
+
+  it("is a no-op on a frame before any keyframe", () => {
+    expect(clearFrameIsNoOp([hold(), hold()], 0, isEmpty)).toBe(true);
+  });
+
+  it("is a no-op on an already-blank keyframe — this is the stacking case", () => {
+    expect(clearFrameIsNoOp([key(true)], 0, isEmpty)).toBe(true);
+  });
+
+  it("is a no-op on a hold that resolves to a blank key", () => {
+    expect(clearFrameIsNoOp([key(true), hold(), hold()], 2, isEmpty)).toBe(true);
+  });
+
+  it("is NOT a no-op on an inked keyframe", () => {
+    expect(clearFrameIsNoOp([key()], 0, isEmpty)).toBe(false);
+  });
+
+  it("is NOT a no-op on a hold over an inked key — clearing there ends the run", () => {
+    // The meaningful case the guard must not swallow: this materialises a key and blanks it.
+    expect(clearFrameIsNoOp([key(), hold(), hold()], 2, isEmpty)).toBe(false);
+  });
+
+  it("is NOT a no-op past the stored track when an inked key still holds", () => {
+    expect(clearFrameIsNoOp([key()], 5, isEmpty)).toBe(false);
   });
 });

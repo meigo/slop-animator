@@ -130,6 +130,7 @@ import {
   clampGutterLabelWidth,
   DEFAULT_GUTTER_LABEL_WIDTH,
 } from "../anim/panel-layout";
+import { clampTimelineCellW, DEFAULT_CELL_W } from "../lib/timeline-grid";
 import { trimHead, trimTail } from "../audio/trim";
 import { audioFrameSpan } from "../audio/peaks";
 import {
@@ -218,6 +219,7 @@ interface AnimState {
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
+  timelineCellW: number; // px width of a timeline frame column
   /** WHICH TIMELINE ROW IS SELECTED — the single value every selection highlight reads.
    *
    *  This is deliberately separate from `activeLayerId`, which answers a DIFFERENT question ("what
@@ -314,6 +316,7 @@ export const state: AnimState = $state({
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
+  timelineCellW: DEFAULT_CELL_W,
   activeRow: { kind: "layer", id: project.layers[0].id },
   timelineSelection: null,
   cellClipboard: null,
@@ -909,7 +912,7 @@ export function animateLayer(layerId: number): void {
     // group-level track, where it genuinely is content-derived.
     // Replaces the BAG as well as the track — gotcha #8 now applies at two levels, and the
     // spread keeps any sibling track this layer already carries.
-    l.tracks = { ...l.tracks, transform: createTransformTrack(l.transform, null) };
+    l.tracks = { ...l.tracks, transform: createTransformTrack(l.transform, null, state.playhead) };
     unfoldTracks(l);
   });
   // Session focus, not undoable — after the commit, never inside it.
@@ -946,7 +949,7 @@ export function animateLayerOpacity(layerId: number): void {
   commitStructural(() => {
     // Replaces the BAG as well as the track (gotcha #8), keeping any sibling track this layer
     // already carries — same convention `animateLayer` uses for the transform track.
-    l.tracks = { ...l.tracks, opacity: { keys: [{ frame: 0, v: l.opacity }] } };
+    l.tracks = { ...l.tracks, opacity: { keys: [{ frame: state.playhead, v: l.opacity }] } };
     unfoldTracks(l);
   });
   selectTrack({ owner: "layer", id: layerId, prop: "opacity" });
@@ -982,7 +985,10 @@ export function animateGroup(groupId: number): void {
     // so freezing one there would only risk describing the OLD document size after a resize.
     // Replaces the BAG as well as the track — gotcha #8 reaches groups too, and the spread keeps
     // any sibling track a group may gain later.
-    g.tracks = { ...g.tracks, transform: createTransformTrack(groupTransform(g), box) };
+    g.tracks = {
+      ...g.tracks,
+      transform: createTransformTrack(groupTransform(g), box, state.playhead),
+    };
     // Unfold the group AND its track rows. `collapsed` hides members; `tracksCollapsed` would
     // hide the row we just created. Animate that produced no visible change is worse than one
     // that shows rows you can fold away again.
@@ -1020,7 +1026,7 @@ export function animateGroupOpacity(groupId: number): void {
   commitStructural(() => {
     g.tracks = {
       ...g.tracks,
-      opacity: { keys: [{ frame: 0, v: groupOpacityAt(g, 0) }] },
+      opacity: { keys: [{ frame: state.playhead, v: groupOpacityAt(g, state.playhead) }] },
     };
     g.collapsed = false;
     g.tracksCollapsed = false;
@@ -1974,6 +1980,7 @@ export function gatherPreferences(): Preferences {
     timelineHeight: state.timelineHeight,
     layerPanelWidth: state.layerPanelWidth,
     timelineLabelWidth: state.timelineLabelWidth,
+    timelineCellW: state.timelineCellW,
     pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
   };
 }
@@ -1995,6 +2002,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
     state.layerPanelWidth = clampPanelWidth(p.layerPanelWidth, window.innerWidth);
   if (typeof p.timelineLabelWidth === "number")
     state.timelineLabelWidth = clampGutterLabelWidth(p.timelineLabelWidth, window.innerWidth);
+  if (typeof p.timelineCellW === "number")
+    state.timelineCellW = clampTimelineCellW(p.timelineCellW);
   if (p.pressureCurve && typeof p.pressureCurve === "object") {
     const { cp1, cp2 } = p.pressureCurve;
     if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")

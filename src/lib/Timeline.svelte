@@ -6,8 +6,8 @@
     Trash2,
     Image,
     Film,
-    ArrowRightToLine,
-    ArrowLeftToLine,
+    ChevronsRight,
+    ChevronsLeft,
     Layers,
     Waves,
     Settings,
@@ -72,6 +72,7 @@
     insertFrameAllLayers,
     deleteFrameAllLayers,
     ensureDrawableKeyframe,
+    clearFrameIsNoOp,
     restoreCellTrack,
     setHoldSpan,
     holdSpanEnd,
@@ -128,16 +129,25 @@
     videoClipOriginOffset,
   } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
-  import { columnAtX, lengthAtX, planCellPointer } from "./timeline-grid";
+  import {
+    columnAtX,
+    lengthAtX,
+    moveCancelPx,
+    planCellPointer,
+    MIN_CELL_W,
+    MAX_CELL_W,
+    clampTimelineCellW,
+  } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs } from "./timeline-glyphs";
+  import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
   import TrackKeyControls from "./TrackKeyControls.svelte";
   import Playbar from "./Playbar.svelte";
 
-  const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
+  const CELL_W = $derived(appState.timelineCellW); // px, column width (box-border cells, no gap → contiguous columns)
   // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
   // every consumer below — the ruler spacer, both playhead offsets, the sticky plate, the strip
   // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be
@@ -208,6 +218,10 @@
   // unchanged — so this is a cache hit and does zero work. Previously each cell ran a per-cell
   // resolveKeyframeIndex backward scan over the reactive cells proxy: O(frames²) of expensive proxy
   // reads, re-run on every scrub step (the scrub-jitter root cause).
+  //
+  // Entries are never deleted, so a loaded project can reuse a dead layer id and hit a stale entry
+  // keyed to it — safe only because `state.version` is strictly monotonic (and `replaceProject` ends
+  // in `bump()`), so a stale entry's `version` can never match the current one.
   const glyphCache = new Map<number, { version: number; frameCount: number; glyphs: string[] }>();
   function glyphsFor(layer: DrawingLayer, version: number): string[] {
     const frameCount = appState.project.frameCount;
@@ -216,6 +230,34 @@
     const glyphs = computeTimelineGlyphs(layer.cells, frameCount, (c) => isCellEmpty(c, version));
     glyphCache.set(layer.id, { version, frameCount, glyphs });
     return glyphs;
+  }
+
+  // Same never-deleted/stale-id caveat as `glyphCache` above, and the same reason it's safe: a
+  // stale entry can never version-match a live `state.version`.
+  const spanCache = new Map<
+    number,
+    { version: number; frameCount: number; spans: TimelineSpan[] }
+  >();
+  function spansFor(layer: DrawingLayer, version: number): TimelineSpan[] {
+    const frameCount = appState.project.frameCount;
+    const hit = spanCache.get(layer.id);
+    if (hit && hit.version === version && hit.frameCount === frameCount) return hit.spans;
+    const spans = computeTimelineSpans(glyphsFor(layer, version));
+    spanCache.set(layer.id, { version, frameCount, spans });
+    return spans;
+  }
+
+  /** Spans as CURRENTLY DISPLAYED: identical to `spansFor` except while a block drag is previewing
+   *  over this row, when the glyphs are re-read through `displayGlyph` so the spans slide with the
+   *  ghost. Uncached on purpose — a drag does not bump `appState.version`, so the cache cannot see
+   *  it, and the cost is one O(frames) pass on the handful of rows a drag touches. */
+  function displaySpansFor(layer: DrawingLayer, version: number): TimelineSpan[] {
+    if (!selRect || !rowMovesWithBlock(layer.id)) return spansFor(layer, version);
+    const glyphs = glyphsFor(layer, version);
+    const shown = Array.from({ length: appState.project.frameCount }, (_, f) =>
+      displayGlyph(layer.id, glyphs, f),
+    );
+    return computeTimelineSpans(shown);
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -1048,9 +1090,11 @@
   let pressFrame = -1;
 
   const LONG_PRESS_MS = 400;
-  // INVARIANT: EDGE_PX (resize hotspot, timeline-grid.ts) + MOVE_CANCEL_PX must stay < CELL_W/2,
-  // so a pending long-press can't let a resize cross a column boundary before it's cancelled.
-  const MOVE_CANCEL_PX = 6;
+  // INVARIANT: edgePx(CELL_W) + moveCancelPx(CELL_W) must stay < CELL_W/2, so a pending
+  // long-press can't let a resize cross a column boundary before it's cancelled. Both scale with
+  // the column now — a fixed 5 + 6 held only at the fixed 24px width (11 < 12, one pixel spare)
+  // and breaks below about 22px. `timeline-grid.test.ts` pins it across the zoom range.
+  const MOVE_CANCEL_PX = $derived(moveCancelPx(CELL_W));
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;
   let pressStartY = 0;
@@ -1728,6 +1772,11 @@
   function clearFrame() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    // Already blank? Do nothing at all — no keyframe materialised out of a hold, no undo entry.
+    // Without this, clearing an already-empty frame kept stacking meaningless ◇ boundaries and
+    // undo steps. A hold over an INKED key is not caught by this: clearing there ends the run.
+    if (clearFrameIsNoOp(l.cells, appState.playhead, (c) => isCellEmpty(c, appState.version)))
+      return;
     liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
     const { canvas, materialized } = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const layerId = l.id; // resolved at restore time: `restoreStructure` can replace the layer object
@@ -1923,6 +1972,11 @@
          read it — hiding the pair made the feature undiscoverable to anyone who had never happened
          to select the audio lane, a reference row, or a video clip. -->
     <span class="mx-3 h-5 w-px bg-border"></span>
+    <!-- Chevrons, NOT the arrow-to-line pair: those two glyphs mean "set play-in" and "set
+         play-out" in slop-video-compositor and slop-audio-editor, and this app had them on trim —
+         mirrored as well as reused, so the same icon said "in" there and "trim end" here. The
+         chevrons also read better for what these actually do: the clip's head is pushed RIGHT to
+         the playhead, its tail pushed LEFT. In/Out took the family glyphs; see Playbar.svelte. -->
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
       aria-disabled={!trimTarget}
@@ -1932,7 +1986,7 @@
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("start");
-      }}><ArrowRightToLine size={16} /></button
+      }}><ChevronsRight size={16} /></button
     >
     <button
       class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
@@ -1943,7 +1997,7 @@
       onclick={() => {
         if (!trimTarget) return;
         trimToPlayhead("end");
-      }}><ArrowLeftToLine size={16} /></button
+      }}><ChevronsLeft size={16} /></button
     >
 
     <span class="ml-auto"></span>
@@ -2127,6 +2181,19 @@
 
     <span class="mx-3 h-5 w-px bg-border"></span>
     <Playbar variant="settings" />
+    <label class="flex items-center gap-1 text-xs text-text-secondary">
+      <input
+        type="range"
+        title="Frame width"
+        min={MIN_CELL_W}
+        max={MAX_CELL_W}
+        step="2"
+        class="w-20"
+        value={appState.timelineCellW}
+        oninput={(e) => (appState.timelineCellW = clampTimelineCellW(+e.currentTarget.value))}
+        style={sliderFill(appState.timelineCellW, MIN_CELL_W, MAX_CELL_W)}
+      />
+    </label>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
@@ -2134,6 +2201,25 @@
        what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
        which both aborts the custom pan and (correctly) suppresses its fling. -->
   <div class="relative flex-1 min-h-0 overflow-auto overscroll-contain" bind:this={gridWrapper}>
+    <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
+         conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
+         group headers, and the property rows whose grid cells were deleted — showed nothing, so the
+         guides broke into disconnected segments wherever such a row sat between two layers.
+         A background here is continuous by construction, costs zero DOM nodes, and needs no row to
+         opt in. The line occupies [5·CELL_W − 1, 5·CELL_W), which is exactly where the ruler's
+         every-5 tick sits: that tick is a `border-r` on the cell whose (f+1)%5===0, i.e. its RIGHT
+         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
+         25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
+         guides and the dividers read as one quiet lattice instead of one dominating the other. The
+         floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
+         dividers prove 1.41 is not. -->
+    <div
+      class="pointer-events-none absolute inset-y-0 z-0"
+      style="left: {GUTTER_W}px; width: {stripFrames *
+        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {5 * CELL_W -
+        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {5 * CELL_W - 1}px {5 *
+        CELL_W}px);"
+    ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
@@ -2202,26 +2288,33 @@
         ></span>
       </span>
       {#if playRange}
-        <!-- Play-range edges: accent line + a triangle pointing INTO the range (slop-compositor /
-             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected. -->
+        <!-- Play-range edges: a `warn` line + a triangle pointing INTO the range (slop-compositor /
+             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected.
+             WARN, not accent, and the distinction is the family's whole reason for having a second
+             accent (SLOP-TIMELINE-UI.md §6): `accent` means state that is part of the document and
+             reaches a render; `warn` means session-only monitoring that never does. This range only
+             bounds PLAYBACK — it lives on `state.playback`, is not written to the project file, and
+             the export never reads it — so painting it in the selection colour claimed it affects
+             the output. It does not. The wash also drops 28% -> 15%, matching the compositor: a
+             heavy band reads as a clip and competes with the media it sits over. -->
         <div
           class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
-          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-selection)"
+          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
         >
           <div
             class="absolute top-0 left-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-right: 5px solid transparent"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-right: 5px solid transparent"
           ></div>
         </div>
         <div
           class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
           style="left: {GUTTER_W +
             (playRange.end + 1) * CELL_W -
-            2}px; background: var(--color-selection)"
+            2}px; background: var(--color-warn)"
         >
           <div
             class="absolute top-0 right-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-left: 5px solid transparent"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-left: 5px solid transparent"
           ></div>
         </div>
       {/if}
@@ -2291,7 +2384,7 @@
               ? 'border-text-muted'
               : 'border-text-muted/35'}"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
-              ? 'background: color-mix(in srgb, var(--color-selection) 28%, transparent);'
+              ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
               : ''}"
           >
             {rulerLabel(f)}
@@ -2327,7 +2420,10 @@
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
              and is where a transform track would live. -->
-        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+        <div
+          class="flex w-max items-center border-b border-border"
+          style="min-width: {stripMinW}px"
+        >
           <div
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
@@ -2448,7 +2544,10 @@
             return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
           })}
           {@const readOnly = spec.readOnly}
-          <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+          <div
+            class="flex w-max items-center border-b border-border"
+            style="min-width: {stripMinW}px"
+          >
             <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
                  Transform scope at it — without switching the TOOL, so glancing at a track mid-
                  brush does not yank you out of drawing. A layer-owned track also lights its
@@ -2524,10 +2623,13 @@
             <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
                  per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
                  carries its own 1px border, so adjacent segments never meet. Absolute positioning
-                 also makes a key a real hit target for dragging it to another frame. -->
+                 also makes a key a real hit target for dragging it to another frame. All children
+                 being absolute means this container has no intrinsic width — needs an explicit one
+                 (see the drawing-row div below) or it collapses to 0 and every pointer handler here
+                 goes dead. -->
             <div
-              class="relative flex select-none"
-              style="touch-action: none"
+              class="relative flex h-6 select-none"
+              style="touch-action: none; width: {appState.project.frameCount * CELL_W}px"
               role="presentation"
               onpointerdown={(e) => {
                 if (!isFinePointer(e)) {
@@ -2556,9 +2658,6 @@
                 if (!isFinePointer(e)) touchPanUp(e);
               }}
             >
-              {#each Array(appState.project.frameCount) as _, f (f)}
-                <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
-              {/each}
               <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
                    the same distinction the layer rows already draw, because it is the same fact. A
                    drawing hold repeats one drawing across those frames; a property hold repeats one
@@ -2617,7 +2716,10 @@
       {:else}
         {@const layer = row.layer}
         {@const animated = isLayerAnimated(layer)}
-        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+        <div
+          class="flex w-max items-center border-b border-border"
+          style="min-width: {stripMinW}px"
+        >
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:pl-4={layer.groupId != null}
@@ -2673,9 +2775,8 @@
                  an animated layer pays for it. The Spline glyph is what still says "animated" when
                  the rows are folded away. -->
             <button
-              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 text-text-secondary hover:text-text hover:bg-surface-hover"
-              class:bg-surface={!isRowSelected(layer.id)}
-              class:ui-selected={isRowSelected(layer.id)}
+              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
+              class:ui-selected-tint={isRowSelected(layer.id)}
               style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
               title={layer.tracksCollapsed
                 ? "Show this layer's animation rows"
@@ -2707,9 +2808,9 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
-            class:ui-selected={isRowSelected(layer.id)}
+            class:ui-selected-tint={isRowSelected(layer.id)}
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {
@@ -2733,10 +2834,16 @@
               />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
           </span>
           {#if layer.kind === "draw"}
-            {@const glyphs = glyphsFor(layer, appState.version)}
+            <!-- Explicit h-6 + width: the span/selection children are now `absolute`, so unlike the
+                 old per-frame in-flow cells they contribute nothing to this container's intrinsic
+                 size. Without an explicit size here the row would collapse to 0x0 and every pointer
+                 handler below (hit-tested against this div's own box) would stop firing past x=0 —
+                 a silent gesture regression. Width matches the exact box the old per-frame divs
+                 summed to (frameCount * CELL_W); height matches their h-6. -->
             <div
-              class="flex select-none"
-              style="touch-action: none; cursor: {rowCursor}"
+              class="relative flex h-6 select-none"
+              style="touch-action: none; cursor: {rowCursor}; width: {appState.project.frameCount *
+                CELL_W}px"
               class:opacity-100={isRowSelected(layer.id)}
               class:opacity-70={!isRowSelected(layer.id)}
               data-layer-id={layer.id}
@@ -2748,14 +2855,61 @@
               onpointercancel={(e) => rowUp(e, layer)}
               onpointerleave={rowLeave}
             >
+              <!-- Spans first, then the selection wash OVER them. Selection used to be a solid
+                   `bg-selection` block UNDERNEATH, so a span's border sat on a hard rectangle and the
+                   pair read as an outline rather than as a selected span. A translucent wash on top
+                   tints the lane and the span alike, which is what "these frames are selected"
+                   should look like. Per-frame because a marquee selects frames, not spans — a block
+                   can start and end mid-run. -->
+              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
+                {#if !s.blank}
+                  <!-- Blank keyframes are not drawn at all. A ◇ means "nothing from here", so the
+                       honest picture is an empty lane; drawing a faint outline for it made a
+                       boundary look like content and stacked into noise when several landed in a
+                       row. `computeTimelineSpans` still REPORTS them — it describes the track
+                       truthfully — the view just declines to paint them. -->
+                  <div
+                    class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
+                    style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
+                      s.startFrame +
+                      1) *
+                      CELL_W -
+                      4}px"
+                  >
+                    <!-- Flash's key marks: a filled diamond on the span's first frame and a
+                         hollow one on its last. They are what tells a DRAWING span from a media
+                         clip — the two are deliberately the same colour, so the difference has to
+                         be content, not hue — and they restore the keyframe legibility that ◆
+                         carried before spans.
+                         CENTRED ON THE FRAME CELL, not on the span's edges, so they line up with
+                         the playhead (which sits at frame*CELL_W + CELL_W/2) and with the
+                         transform/opacity keys, which already anchor there. The span itself starts
+                         2px into the frame, hence the -2. Same `size-2` diamond as those property
+                         keys too: three kinds of key mark at three sizes read as three unrelated
+                         things.
+                         A one-frame span shows only the filled diamond; a hollow one on the same
+                         frame would claim a run that is not there. -->
+                    <span
+                      class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
+                      style="left: {CELL_W / 2 - 2}px"
+                    ></span>
+                    {#if s.endFrame > s.startFrame}
+                      <span
+                        class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
+                        style="left: {(s.endFrame - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
+                      ></span>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
               {#each Array(appState.project.frameCount) as _, f (f)}
-                <div
-                  class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
-                  class:bg-selection={inSelection(layer.id, f)}
-                  style="width: {CELL_W}px"
-                >
-                  {displayGlyph(layer.id, glyphs, f)}
-                </div>
+                {#if inSelection(layer.id, f)}
+                  <div
+                    class="pointer-events-none absolute inset-y-0 z-10"
+                    style="left: {f *
+                      CELL_W}px; width: {CELL_W}px; background: color-mix(in srgb, var(--color-selection) 35%, transparent)"
+                  ></div>
+                {/if}
               {/each}
             </div>
           {:else}
@@ -2794,7 +2948,7 @@
                 <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
                 <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
                 <div
-                  class="absolute inset-y-0 box-border cursor-grab overflow-hidden border border-media-clip-border bg-media-clip"
+                  class="absolute inset-y-0.5 box-border cursor-grab overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
                   style="left: {keptLeft}px; width: {kept.spanFrames *
                     CELL_W}px; touch-action: none"
                   role="presentation"
@@ -2859,7 +3013,7 @@
                    row's clip hangs past the end, which says nothing about this image. -->
               {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
               <div
-                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text"
+                class="relative my-0.5 box-border h-5 overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
                 class:border-media-clip-border={span !== null}
                 class:cursor-grab={span !== null}
                 class:border-dashed={span === null}

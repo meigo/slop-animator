@@ -58,6 +58,31 @@ export function insertBlankKeyframe(layer: DrawingLayer, after: number, ops: Can
   layer.cells.splice(at + 1, 0, { kind: "key", canvas: ops.create() });
 }
 
+/**
+ * Would clearing this frame change anything? Clearing blanks the keyframe that RESOLVES at
+ * `frame` — so if what resolves there already has no ink, there is nothing to clear and the whole
+ * action should do nothing: no keyframe materialised out of a hold, no undo entry pushed.
+ *
+ * Reported as blank keyframes carrying no meaning and stacking into noise: you could clear the
+ * same already-blank frame repeatedly and each press left another ◇ and another undo step.
+ *
+ * The predicate is about RESOLVED CONTENT, not about whether a key cell happens to sit here. A
+ * hold over an INKED key is emphatically not a no-op — clearing there materialises a keyframe and
+ * ends the run, which is the whole point of the tool. Only "this frame already shows nothing"
+ * qualifies. Frames past the stored track resolve to the last key, so an inked key still holding
+ * past the end is clearable too.
+ */
+export function clearFrameIsNoOp(
+  cells: Cell[],
+  frame: number,
+  isEmpty: (canvas: HTMLCanvasElement) => boolean,
+): boolean {
+  const ki = resolveKeyframeIndex(cells, frame);
+  if (ki === null) return true; // nothing resolves here yet — the lane is empty
+  const cell = cells[ki];
+  return cell.kind !== "key" || isEmpty(cell.canvas);
+}
+
 /** Make the cell at `frame` a hold. */
 export function setHold(layer: DrawingLayer, frame: number): void {
   layer.cells[frame] = { kind: "hold" };

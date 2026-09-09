@@ -633,8 +633,9 @@ export function withTrackKeys(track: TransformTrack, keys: TransformKey[]): Tran
 export function createTransformTrack(
   t: RefTransform,
   box: { x: number; y: number; w: number; h: number } | null,
+  frame: number,
 ): TransformTrack {
-  return { keys: [{ frame: 0, v: { ...t } }], box: box ? { ...box } : null };
+  return { keys: [{ frame, v: { ...t } }], box: box ? { ...box } : null };
 }
 
 /**

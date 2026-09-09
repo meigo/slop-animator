@@ -325,7 +325,7 @@
 </script>
 
 {#if state.project.audio}
-  <div class="flex w-max items-center" style="min-width: {minWidth}px">
+  <div class="flex w-max items-center border-b border-border" style="min-width: {minWidth}px">
     <div
       class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 px-1 cursor-pointer"
       class:bg-surface={!isAudioRowSelected()}

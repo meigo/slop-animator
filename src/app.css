@@ -62,16 +62,30 @@
      below, so it goes to very nearly the ground — a trimmed region reads as empty lane, the same
      message by the only route still available.
      Named media-clip, not clip — bg-clip-* is Tailwind's background-clip namespace. */
-  --color-media-clip: #172036;
+  /* LIFTED from the family's #172036 (hsl 222 40% 15%) on 2026-09-09, and this deliberately
+     inverts the shared doc's rule that says "if a clip is hard to pick out, brighten the BORDER or
+     lift the lane, do not lift the fill". That rule was written for slop-video-compositor, where a
+     clip is a large block carrying a thumbnail and a filename — the fill is a backdrop for content.
+     A drawing-layer span has no content of its own: it IS the block. At 1.17:1 against the lane the
+     fill was invisible and the 2.20:1 border did all the work, so a track of short holds read as a
+     row of empty outlines — "too much and too little at the same time". Now 1.59:1, just above the
+     5-frame guides (1.56:1), and the border is gone: spans are separated by a 4px gap, so nothing
+     needs outlining, and dropping it removes one line per span. Reference clips keep their border,
+     since they carry text that needs a frame. */
+  --color-media-clip: #263659;
   --color-media-clip-dim: #13141a;
   --color-media-clip-border: #384b75;
   /* The caution colour: "here is why what you are about to do will not land" — a hidden or locked
      layer, an edit that will be refused, eraser mode, a failed autosave. It was `text-amber-500`
-     hard-coded in 9 files. 7.76:1 on the panel. Its MEANING deliberately differs from the family's
+     hard-coded in 9 files. Taken from slop-video-compositor 2026-09-09 when the family moved off
+     amber-500 (#f59e0b): there it paints wedges and toggles and read as too light and too loud, so
+     it dropped to the same hue at lower saturation and lightness. HERE it is text, not a fill, so
+     that reasoning does not transfer — but the swap is still an improvement on its own terms,
+     8.51:1 on the panel against amber-500's 7.74:1. Its MEANING deliberately differs from the family's
      `warn` (session-only state that never reaches an export) — see the note in SLOP-TIMELINE-UI.md.
      While this app still had a light theme this token needed a second value, amber-700, because
      amber-500 is only 2.15:1 on white; that is one of the costs the light theme was carrying. */
-  --color-warn: #f59e0b;
+  --color-warn: #d5b75d;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
@@ -170,9 +184,25 @@ textarea,
   background-color: var(--color-accent-hover);
 }
 /* Tint plus a left edge. `box-shadow: inset` rather than a border so the row's geometry does not
-   change when it becomes selected (§5: state must not move the layout). */
+   change when it becomes selected (§5: state must not move the layout).
+   The edge marks where the ROW STARTS, so exactly one element per row may carry it — the leftmost,
+   sticky label cell. Pieces further along the same row (the animation expander, the lock/hidden
+   badge) need the tint but NOT an edge of their own; they use `.ui-selected-tint` below. They
+   carried `.ui-selected` briefly and each drew its own bar, so a selected row grew two extra
+   vertical rules floating mid-label. They were `bg-surface-active` before the accent landed — a
+   plain background, which stacks harmlessly — which is why the fault arrived with the accent. */
+.ui-selected,
+.ui-selected-tint {
+  /* ONE definition, so the row and the pieces inside it cannot drift apart.
+     10%, down from 18% (1.30:1 over the panel, which read as heavy on a layer row). At 1.15:1 the
+     tint is barely a wash — and that is the point: the 2px edge is 5.25:1 and is what actually
+     says WHICH row, so the fill only has to hint at the extent. Deliberately below the hover
+     shade (1.21:1): hover is transient and wants to be felt, selection is persistent and wants to
+     be quiet, and the edge keeps the two from ever being confused. */
+  --ui-selected-tint: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  background-color: var(--ui-selected-tint);
+}
 .ui-selected {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
@@ -262,6 +292,15 @@ input[type="range"]::-moz-range-thumb {
 :focus-visible {
   outline: 2px solid var(--color-selection);
   outline-offset: 1px;
+}
+/* …but a STICKY control's ring is drawn 1px OUTSIDE its box, which is precisely the strip the next
+   sticky element's opaque background paints over — so in the timeline gutter the ring showed up
+   half-covered and ragged. Drawing it inside the control's own box means nothing else can cover it.
+   The ring is kept rather than removed: it is the keyboard affordance, and `:focus-visible` already
+   ensures a pointer press never paints one. */
+.sticky:focus-visible,
+.sticky :focus-visible {
+  outline-offset: -2px;
 }
 
 /* Rotate handle. CSS has no rotate cursor, so this is an inline SVG: a ~290° arc with a tangential

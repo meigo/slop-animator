@@ -6,7 +6,35 @@ export type CellPointer =
   | { kind: "move"; keyIndex: number }
   | { kind: "resize"; keyIndex: number };
 
-const EDGE_PX = 5; // hotspot width at a span's right edge
+/**
+ * Resize-hotspot half-width for a given column width. Was a fixed 5px, which held only because
+ * the column was a fixed 24: the invariant at Timeline.svelte:1051 requires
+ * `edgePx + moveCancelPx < cellW / 2`, and at 24 that is 5 + 6 = 11 < 12 — one pixel of margin.
+ * Below about 22px a fixed pair breaks it and a pending long-press can let a resize cross a column
+ * boundary before it is cancelled. Both thresholds therefore scale with the column.
+ */
+export function edgePx(cellW: number): number {
+  return Math.max(2, Math.min(5, Math.round(cellW * 0.2)));
+}
+
+/** Companion to `edgePx`: how far a pointer may travel before a pending long-press is cancelled.
+ *  `Math.floor`, not `Math.round`: rounding the `.5` case upward broke the
+ *  `edgePx + moveCancelPx < cellW / 2` invariant at w=14 and w=18 (both reachable zoom stops). */
+export function moveCancelPx(cellW: number): number {
+  return Math.max(3, Math.min(6, Math.floor(cellW * 0.25)));
+}
+
+/** Supported frame-column widths. 24 is the historical fixed value and stays the default, so
+ *  nothing changes until the zoom is moved. 12 is Flash's default; below it the marks stop being
+ *  hittable with a finger even with the scaled thresholds. */
+export const MIN_CELL_W = 12;
+export const MAX_CELL_W = 32;
+export const DEFAULT_CELL_W = 24;
+
+export function clampTimelineCellW(w: number): number {
+  if (!Number.isFinite(w)) return DEFAULT_CELL_W;
+  return Math.max(MIN_CELL_W, Math.min(MAX_CELL_W, Math.round(w)));
+}
 
 /**
  * Classify a pointer-down at horizontal `offsetX` (px from the track's left edge):
@@ -30,7 +58,8 @@ export function planCellPointer(
     // dashes stop. Anchoring it at `cells.length` put it mid-run, with the span continuing past a
     // hotspot that could no longer be reached from the visible edge.
     const spanEnd = end >= cells.length ? Math.max(end, count) : end;
-    if (Math.abs(offsetX - spanEnd * cellW) <= EDGE_PX) return { kind: "resize", keyIndex: ki };
+    if (Math.abs(offsetX - spanEnd * cellW) <= edgePx(cellW))
+      return { kind: "resize", keyIndex: ki };
     if (frame === ki) return { kind: "move", keyIndex: ki };
   }
   return { kind: "seek", frame };

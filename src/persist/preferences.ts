@@ -10,6 +10,7 @@ export interface Preferences {
   timelineHeight?: number; // px height of the resizable timeline panel
   layerPanelWidth?: number; // px width of the resizable layer panel
   timelineLabelWidth?: number; // px width of the timeline gutter's name column
+  timelineCellW?: number; // px width of a timeline frame column
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
   /** Ignored since 2026-09-08 — the app is dark-only. Kept on the type so a stored pref from an
    *  older version still parses; nothing reads it, so a user who last saved "light" simply gets
