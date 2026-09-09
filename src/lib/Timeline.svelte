@@ -2864,20 +2864,27 @@
                       CELL_W -
                       4}px"
                   >
-                    <!-- Flash's key marks: a filled dot on the span's first frame and a hollow one
-                         on its last. They are what tells a DRAWING span from a media clip — the two
-                         are deliberately the same colour, so the difference has to be content, not
-                         hue — and they restore the keyframe legibility that ◆ carried before spans.
-                         A one-frame span shows only the dot; a hollow mark on the same frame would
-                         claim a run that is not there. -->
+                    <!-- Flash's key marks: a filled diamond on the span's first frame and a
+                         hollow one on its last. They are what tells a DRAWING span from a media
+                         clip — the two are deliberately the same colour, so the difference has to
+                         be content, not hue — and they restore the keyframe legibility that ◆
+                         carried before spans.
+                         CENTRED ON THE FRAME CELL, not on the span's edges, so they line up with
+                         the playhead (which sits at frame*CELL_W + CELL_W/2) and with the
+                         transform/opacity keys, which already anchor there. The span itself starts
+                         2px into the frame, hence the -2. Same `size-2` diamond as those property
+                         keys too: three kinds of key mark at three sizes read as three unrelated
+                         things.
+                         A one-frame span shows only the filled diamond; a hollow one on the same
+                         frame would claim a run that is not there. -->
                     <span
-                      class="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-text"
-                      style="left: 3px"
+                      class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
+                      style="left: {CELL_W / 2 - 2}px"
                     ></span>
                     {#if s.endFrame > s.startFrame}
                       <span
-                        class="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full border border-text"
-                        style="right: 3px"
+                        class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
+                        style="left: {(s.endFrame - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
                       ></span>
                     {/if}
                   </div>
