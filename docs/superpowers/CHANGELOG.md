@@ -4887,3 +4887,384 @@ deliberately moved off amber-500 to this muted gold earlier the same day to matc
 slop-video-compositor, and it is used for in/out markers, locks and hidden badges throughout — to fix
 one badge's background. If a louder caption is still wanted after this, the next step is this chip
 (a filled `warn` ground with dark text), not the shared token.
+
+**Property rows stop looking like layers (2026-09-09).** Reported as *"gutter, Transform and Opacity
+rows look like common layers. How could we make these more distinctive?"* They did, for two reasons at
+once: a track row reserved the same type slot a layer row does and left it BLANK — so it was
+typographically identical to a drawing layer, which also leaves it blank — and its indent MIRRORED its
+owner, so `Layer 2` and its `Opacity` sat at exactly the same x and read as siblings. Both are fixed,
+because either alone leaves the other ambiguity: a glyph with flush indentation still reads as a
+sibling wearing a badge, and an indent with no glyph reads as a nested layer.
+
+**The glyph is `GitCommitHorizontal` — a key on a line, which is literally what the strip draws for
+this row.** Two earlier candidates were rejected in review, both by the reporter:
+
+- A **diamond** was the first attempt and lasted one screenshot: *"diamonds are too ambiguous"*. Right
+  — the diamond is already three things here (a cell key, a property key, the blank-keyframe button),
+  so a fourth use adds a shape to disambiguate with, not a meaning.
+- **`Spline`** looks apt and is wrong: it is already on the RIGHT of these rows' OWNERS, as the
+  animated marker beside the track-fold chevron. It would appear twice on one group row meaning two
+  different things.
+
+12px against the layer rows' 13px: close enough to share an optical column, small enough that the row
+still reads as subordinate to the one above it.
+
+**The indent took two passes, and the reporter caught both.** The first idea was owner + a full 12px
+step — *"2 in group level moves animation rows to the same indent with child layers"*, and exactly so:
+a group header sits at 12 and its members at 24, so its tracks would have landed on 24 and traded
+"these look like layers" for "these look like the members below them". A half-step (+6) fixed that and
+broke something else: *"icons touch the spine line"*, because the group spine runs at 19-20 (the
+chevron's centre) and an 18px row put its glyph hard against it.
+
+**So the constraint set had no room between the layers.** Layer rows own 12 and 24; the spine owns
+19-20. **All property rows now share ONE column at 30px** — clear of both layer indents, 12px clear of
+the spine, and simpler than two property depths. Ownership is read from adjacency, which is how After
+Effects reads too: a property sits directly under the row it belongs to. The one oddity is that a
+GROUP's properties end up deeper than its member layers; in practice the glyph column reads as its own
+class of row and the question does not arise.
+
+Measured after: `Group 1` 12, its `Transform`/`Opacity` 30, members 24, `Layer 2`'s `Opacity` 30, refs
+and audio 12; spine 19-20, nearest glyph edge 32.
+
+**The layer panel's group rail: one line at the edge, colour carrying the meaning (2026-09-09).**
+Asked as *"layer panel, are the accent bar and spine line rendered correctly here?"* — no — then
+*"that double line solution feels distracting"* — and finally the design itself: *"try not indent the
+line, distinction is made by the color — whole line describes group relation and accent color
+selection."*
+
+**Four positions, and each failure narrowed the answer to one:**
+
+| position | what broke |
+| --- | --- |
+| 1px `border-l` on `.group-members`, x=0 | collinear with the header's 2px `.ui-selected` bar, so the edge changed THICKNESS partway down |
+| inset to x=6 | cleared the header's bar, ran parallel to a selected MEMBER's bar at 13 |
+| x=13, 2px | matched the member bars, no longer met the header's, which is at 0 |
+| **x=0, 2px, whole block** | nothing — every bar in the block already paints there |
+
+**x=0 at 2px is the only column every bar in the block shares** — the header's, the detail strip's,
+and each member's. Same column, same width, so the line never doubles and never steps; only its colour
+changes. Neutral says "these rows are one group"; accent says "this row is selected".
+
+**The move that made it work is where the members' indent lives.** It was `pl-[13px]` on the
+`.group-members` container, which pushes each row's BORDER BOX to 13 and takes its inset bar with it.
+It is now `pl-[13px]` on the ROW — an inset `box-shadow` paints at the border box, which padding does
+not move, so the content indents while the bar stays at 0. Content lands at 13 + the row's inner `p-1`
+= 17, exactly where it was, so nothing moved.
+
+**Drawn as a background on `.group-block`**, not a border and not a child: the members are a SortableJS
+container, so a stray child would be treated as a draggable row (gotcha #2 — the reorder path that
+already cost real debugging). Nothing in the block paints an opaque background of its own, only hovers
+and translucent tints, so the rail shows through and a selected row's accent covers exactly its
+stretch.
+
+**The timeline spine is unchanged and still accent-when-active**, which is geometry rather than
+inconsistency: there the gutter rows are full-bleed, so their bars sit at 0 and the spine at 19 never
+shares a column with them.
+
+Measured after: rail `0px 0px` / `2px 100%`; header box at 0; selected member box at 0 with a 2px inset
+accent shadow; member content (drag grip) at 17, unchanged. Verified with a member selected and with
+the group selected.
+
+**The "Group" label comes off the group opacity slider (2026-09-09).** Asked as *"any reason for
+having Group label there?"* There was one, and it did not hold up.
+
+**The case for it:** the group's detail strip shows whenever the group OR one of its members is
+selected, so with a member selected the group's opacity slider sits one row above that member's own —
+and confusing them means fading the wrong thing.
+
+**Why it still goes:** it repeated the bold `Group 1` on the row directly above, two lines running,
+and it broke this panel's own convention — every other slider here is unlabelled, because the strip
+sits UNDER the row it belongs to and that is what says whose it is. The one adjacent moment is already
+answered three other ways: **position** (each strip under its own row, and the group's is not indented
+while a member's is), **shape** (a group strip has one slider; a layer's has two plus a pencil), and
+the slider's own `title` — "Group opacity", or the animated / locked-member-pinned variants.
+
+Consistency was the deciding argument rather than clutter: labelling exactly one of the panel's
+sliders makes the other two look like an oversight. The alternative — label them all, including a
+layer's `100` and `1.0` — was offered and declined.
+
+**The group opacity slider aligns with the drag handle, like the layer ones (2026-09-09).** Reported as
+*"left edge of the slider should align with the left edge of drag handle, like layer sliders do"* —
+and the 4px came from a detail worth writing down.
+
+The group's detail strip used `px-1` (4px), which aligns with the drag grip's BOX. But `GripVertical`
+draws its dots INSET inside a 14px box, so the visible handle starts ~4px further in — which is why
+the layer row's own detail strip uses `pl-2` (8px). Aligning to the box aligns to nothing you can see.
+
+The group strip now carries `pl-2 pr-1 pb-1`, character for character the layer strip's, so the two
+line up by construction rather than by coincidence; if one changes the other must.
+
+Measured after: group grip box at 4 and its slider at 8; member grip box at 17 and its slider at 21 —
+**+4 in both cases**, the same relationship rather than the same number, which is the thing that has to
+hold when the rows sit at different indents.
+
+**A group's Rename and Ungroup move to its detail strip (2026-09-09).** Reported as *"there's that
+distinction — rename and other icons on layer moved next to the opacity slider, while on group these
+are at top level"*. Layers put their actions on Row 2 beside the sliders; groups put theirs on the
+header row. Now both are Row 1 = identity (grip, chevron, visibility, lock, name), Row 2 = controls.
+
+**The codebase had already written the rule and then broken it three lines later.** The comment
+introducing the group's detail strip says: *"Same rule as a layer's Row 2: detail controls only for the
+group you're on (a member selected, or this group's own track). Always-on looked like selection."* The
+strip obeyed that; the Rename and Ungroup buttons sitting ABOVE it were always visible, so a group with
+nothing selected still showed two lit controls — the exact look that comment was written to remove.
+
+**Rename still edits inline in the header.** Only the button that STARTS the edit moved, so the input
+still appears where the name is. Verified: clicking Rename in the strip puts a focused input carrying
+"Group 1" in the header row, not in the strip.
+
+The side benefit is that the group name gets the full row to truncate into, which matters on a
+drag-resizable panel that defaults to 224px.
+
+**Icons in front of the sliders (2026-09-09).** Asked as *"or could we use suitable icons in front of
+sliders?"* — after the text-label option was declined. `Blend` for opacity, `Waves` for boil; `Waves`
+is already the boil glyph on the timeline's own boil button, so it is a reuse rather than a new
+symbol. Both sit INSIDE the existing title wrapper, so the icon carries the same tooltip on desktop.
+
+**The reason this is worth real estate is iPad.** `title` tooltips are mouse-only — a documented
+gotcha in this project — so on the app's primary device the only thing distinguishing a layer's two
+sliders was that one reads "100" and the other "1.0". The icons are the first identification that
+works with a Pencil.
+
+**Measured cost, before building it: 5px.** The layer strip had exactly 5px of headroom at the default
+224px panel (189px used of 194px available), and the comment above it records the tuning — *"sizes are
+tuned so a DRAW layer stays on one line at the default width"*. Two icons at 13px plus their gaps is
+~42px, so this necessarily wraps. It does: the strip goes 20px → 40px, and a selected draw layer's row
+65px instead of 45px. One line again at **≥288px**; still one line at 224px for the GROUP strip, which
+has only one slider.
+
+**Wrapping exposed a pre-existing bug, which is the part worth keeping.** Opacity's slider and readout
+share a wrapper *"so they can never wrap apart"*; boil's were three loose children. The moment the
+strip took a second line, the boil slider wrapped away from its own value and read as broken. Boil now
+has the same wrapper, so the strip breaks BETWEEN opacity and boil — a seam that means something — and
+each line carries its own icon, slider and number. That is arguably better than the cramped single
+line it replaces.
+
+**And then the sliders paid for it** (*"we could shorten sliders a bit in layers panel"*), so the
+default width keeps its one-line layout instead of the panel default having to move. Sliders `w-12` →
+`w-10` (48 → 40px) and every gap in the strip 8 → 4px, applied to all three sliders so the group's
+still matches a layer's. That is 231px of content down to **191px against 194px available** — one line
+again at 224, with 3px spare where there used to be 5.
+
+The arithmetic, since the next person to add a control here will need it: each slider group is
+`icon 13 + gap 4 + slider 40 + gap 4 + readout 24 = 85`, and the strip is `85 + 4 + 85 + 4 + pencil 13
+= 191`. The binding case is a GROUP MEMBER, which is 13px narrower than a top-level layer because of
+its indent. Overflow is still a wrap rather than a clip, so being wrong here costs a line, not a
+control.
+
+**The group rail survives a hover (2026-09-09).** Reported as *"on hover the line disappears"* — the
+last thing wrong with it, and a consequence of where it was drawn rather than of how.
+
+**Why it vanished.** The rail was a background on `.group-block`, and a parent's background is always
+covered by an opaque child. `hover:bg-surface-hover` is opaque (#2d2d33), so hovering a member painted
+over the line beneath it.
+
+**Why the fix works, which is the part worth remembering.** CSS paints background layers
+colour-first-then-images. Moving the rail onto the ROWS as a background-IMAGE puts it ABOVE each row's
+own background-COLOR, so a hover slides underneath it and the line stays. An inset `box-shadow` paints
+above both — which is exactly what we want, since that is how a selected row's accent bar still lights
+its own stretch of the rail.
+
+So the layering now reads, bottom to top: hover colour → rail image → selection bar. Each of the three
+things that wants that column gets it in the right order, without any of them being conditional on the
+others.
+
+Extracted to a `.group-rail` class in `app.css` rather than repeated inline, since it is now on three
+elements: the group header, the group's detail strip, and every member row. Still not a child element
+— `.group-members` is a SortableJS container and a stray child would be treated as a draggable row
+(gotcha #2).
+
+**Group members align with their group's columns (2026-09-09).** Asked as *"should we increase the
+indent to align parent/children icons?"* Yes — and measuring first changed what "align" had to mean.
+
+**It was a near-miss, not a step.** Group header: grip 4, chevron 22, eye 41, lock 60, name 79. Member:
+grip 17, eye 35, lock 54, name 73. Every shared column sat **6px LEFT** of its parent's, so children
+read as slightly LESS indented than the group containing them — which is why it looked like an error
+rather than like nesting.
+
+**19px, not "a bit more".** That is the group header's chevron (15) plus its gap (4) — the DISCLOSURE
+COLUMN. It puts a member's eye/lock/name on exactly the group's x (41/60/79 measured after), which is
+the standard tree rule: a child's content aligns under its parent's, and the nesting is carried by the
+guide line rather than by a second indent. The rail built earlier today is that guide line, so the cue
+it removes is already replaced. A member's drag grip lands at 23, in the chevron's own column, which is
+where a tree puts a child's first control.
+
+**The 6px came off the sliders, for the third time today.** The strip had 3px spare at 224px and the
+extra indent takes 6 more, so `w-10` → `w-9` (40 → 36px) on all three sliders: 183px used of 188
+available, back to the 5px of margin the layout originally had. Verified one line at the default width
+with a group MEMBER selected, which is the binding case.
+
+Worth stating plainly: the opacity slider has now gone 48 → 40 → 36px across three requests in one
+session. It is still a drag target on a Pencil-first app, and if it starts to feel cramped the honest
+fix is a wider default panel, not a fourth trim.
+
+**The timeline gutter takes the panel's single-line rail (2026-09-09).** Asked as *"now let's take the
+same single line concept and use it in timeline gutter as well"*. The two surfaces now share one idea
+AND one CSS class (`.group-rail`), rather than two implementations of a similar-looking thing.
+
+**What it replaces:** a 1px hairline at x=19 that went accent whenever the group was active. That
+worked, but it said the same thing twice — the rail lit AND the selected row's bar lit — and it needed
+its own colour logic (`groupDetailShown`), its own snippet, and an absolutely-positioned span per row.
+All three are gone: the rail is a class on the sticky label, and the label is where `.ui-selected`
+already paints.
+
+**This supersedes the chevron alignment** requested earlier the same day (*"align expand arrow and the
+group spine line horizontally"* → 19px, the chevron's centre). The single-line concept requires the
+rail to share the selection bar's column, and in the gutter those rows are FULL-BLEED, so that column
+is x=0. The two requests cannot both hold; the newer one wins and the older is recorded here rather
+than silently dropped.
+
+**Layering is the same trick as the panel**, and works for the same reason: the rail is a
+background-IMAGE and the labels' `bg-surface` / `hover:bg-surface-hover` are background-COLOUR, so the
+rail paints above them and survives a hover; `.ui-selected`'s inset shadow paints above both and lights
+its own segment.
+
+Measured after: every row in the group — header, its two track rows, four members, a member's track
+row — reports `0px 0px / 2px 100%` with its label at x=0, and only the selected row carries the 2px
+accent inset. The audio row, outside the group, has no rail. `groupDetailShown`'s import went with the
+snippet; it is no longer needed here.
+
+**One label column inside a group (2026-09-09).** Asked as *"align transform/opacity animation rows
+icon with group label left side. then align drawing layer labels with animation row labels."* Two
+chained alignments; both land exactly.
+
+**The glyph now starts at the padding edge, not centred in its slot.** A 12px icon centred in a 14px
+slot sat at 31 while the group's label sits at 30 — a 1px miss, which is worse than a deliberate offset
+because it reads as sloppiness. `justify-start` puts the ink at exactly 30 and makes the alignment
+independent of the icon's WIDTH, so changing the glyph cannot silently break it. The slot keeps `w-3.5`,
+which is what holds the label column steady.
+
+**Everything inside a group now shares one label column at 48** — a member layer's name and a property
+row's label alike. Measured after: group label 30, property glyph 30, and `Transform`, `Opacity`,
+`Layer 4`, `Layer 3`, `Layer 2`, the member's own `Opacity` and `Layer 1` all at 48. Audio and
+reference rows, outside the group, stay at 12/30.
+
+**The cost, stated plainly, because it half-reverses an earlier decision in this same file.** A member
+layer and a property row are now identically indented, so **the glyph is the only thing separating
+them** — and the 2026-09-09 entry "Property rows stop looking like layers" argued for both a glyph AND
+a distinct indent, on the grounds that "a glyph with flush indentation still reads as a sibling wearing
+a badge". Two things have changed since that was written: the group RAIL now carries the structure that
+indentation used to carry alone, and the glyph itself went from a diamond (one of four in this app) to
+`GitCommitHorizontal`, which nothing else uses. The indent half of that argument is superseded; the
+glyph half is what makes it safe.
+
+The same flattening applies to a member's OWN property row, which sits at the member's indent rather
+than inside it — ownership is read from adjacency, which is what the layer panel and After Effects both
+do.
+
+**Property row labels dim to `text-muted/80` (2026-09-09).** Asked as *"can you dim down a bit
+transform/opacity labels"*. Unselected track rows go from `text-text-muted` to `text-text-muted/80`;
+the glyph inherits, so the whole row recedes together. Selected stays `text-text-secondary`, so
+selection still steps up two levels rather than one.
+
+**The number, because this one crosses a line.** `text-muted` (#8a8a93) on `surface` is **4.86:1** —
+only just over WCAG AA's 4.5 for text — so ANY dimming drops below it: /85 → 3.89, /80 → **3.61**,
+/75 → 3.33, /70 → 3.08. 80% is the modest end of what was asked for and it is still a 3.6:1 label at
+14px, which is legible but no longer AA.
+
+**The alternative, if that ever matters:** de-emphasise by SIZE instead of contrast — `text-xs` on
+these labels reads as subordinate while keeping 4.86:1. It was not done here because dimming is what
+was asked for and these rows are secondary chrome rather than something you must read to work safely
+(unlike the blocked-edit caption fixed earlier today, which was raised from 3.43:1 to 8.51:1 for
+exactly that reason). Recording the option so the choice is visible rather than implicit.
+
+**Gutter items lose 4px of left padding (2026-09-09).** Asked as *"decrease a bit left padding of
+gutter items"*: `pl-3` → `pl-2` (12 → 8px).
+
+**Four places had to move, not one.** Every other indent in the gutter is DERIVED from that base — the
+property glyph aligns with the group's label, which is `base + chevron + gap`, and a grouped row's
+label aligns with the property row's. So the base padding went 12 → 8 on the group header, the layer
+row and the audio lane's label, and the derived indent went 30 → 26 on both track rows and grouped
+layers. Change one without the others and the two alignments set minutes earlier silently break.
+
+Measured after: base rows at 8, group label 26, property glyph 26 (still exactly on the label), and
+every in-group label at 44. Audio lane at 8, matching. The rail is unaffected — it is at x=0 and
+padding does not move it, which is the same property that lets a member's selection bar sit on it.
+
+The derivation is now written into the comment on the track row's glyph slot, so the next person to
+change the base padding finds out that three other numbers depend on it.
+
+**The playhead is red (2026-09-09).** Reported as *"indigo playhead blends with blue keys. use red one
+like other slop apps do?"* — and the family doc had already called it, so this is closing a divergence
+rather than making a choice:
+
+> **Playhead**: 1px line in `danger` running the FULL height of the timeline including the ruler…
+> **It is the only red in the timeline, which is what makes it findable.**
+
+This app had been drawing it in `accent` — the same blue as the property keys, the span diamonds, the
+row selection and the range-selection wash. The one mark you track during playback was the same colour
+as everything it has to be read against.
+
+`--color-danger: #f87171` (red-400) added to the theme, and the three playhead pieces take it: the
+full-height line, the frame badge, and the badge's tip. **6.01:1 on `surface`**, and `accent-text` on
+the badge is **6.77:1**.
+
+**The rule that travels with the token, since it is easy to lose later:** the playhead's head must
+differ from the in/out wedges in SHAPE, not merely in colour — `danger` red against `warn` amber is
+the worst pair for the common colour blindnesses, so colour alone would leave them indistinguishable
+for some users. It does differ: the playhead's tip is a SYMMETRIC triangle, the in/out markers' are
+right-angled wedges pointing into the range. Verified with a range set, both on screen at once.
+
+Not changed, and worth knowing: the family spec says a **1px** line and this app's is 2px (`w-0.5`).
+That predates the colour question and is arguably right for a touch device, so it stays until someone
+asks.
+
+**The playhead handle: badge fills the ruler, wedge hangs into the tracks, line is 1px (2026-09-09).**
+Asked as *"move wedge of the playhead handle down to the tracks area, scale rectangle to the bottom of
+the ruler and center the number label to be aligned with ruler numbers"*, plus *"make the line of it
+thinner"*.
+
+- **Badge** `h-[18px]` → `h-6`, so it is exactly the ruler's 24px. Its number then centres where the
+  ruler's own labels do for free — measured after, the badge and the ruler's "5" cell are the SAME box
+  (top 0, bottom 24, h 24, w 16), so they cannot disagree about a baseline.
+- **Wedge** `top: 18px` → `top: 24px`: below the ruler, pointing at the frame it marks.
+- **Line** `w-0.5` → `w-px`, which is also what the family doc specifies, and centred by
+  `translateX(-50%)` instead of a baked `-1` so the left expression stays the same one
+  `anchoredScrollLeft` anchors on.
+
+**This restores an overhang deleted earlier today, so the leak it caused had to be solved properly
+rather than reverted to.** Anything of the ruler's (z-35) that reaches below 24px paints over the row
+labels (z-20) once the playhead scrolls behind the sticky gutter. The old answer was a 6px
+`GUTTER_W`-wide mask, and that could not work: it had to vanish against the gutter header ABOVE it and
+against the first row BELOW it, which are different colours — one of them a selected row's tint, which
+is not even constant. **The tip is now simply not rendered when it would be over the names**, gated on
+a reactive `gridScrollLeft` fed by the scroller's `onscroll`. One number per scroll event and one
+`{#if}` — nowhere near the per-cell work behind this file's documented scrub jitter — and it matches
+what the artist would expect, since the playhead is off-screen.
+
+Verified: at `scrollLeft` 0 the tip renders; at 600, with the playhead at frame 5 (content offset 132),
+it does not, and the element over the first row's gutter is the row label. The badge stays rendered
+either way, correctly — the ruler's sticky corner covers it, which is what z-10-under-z-20 is for.
+
+**A harness note, because the first test said the opposite.** Setting `scrollLeft` from the console in
+a BACKGROUND tab changes the property but fires no `scroll` event, so the handler never ran and the tip
+appeared not to hide. Confirmed by counting events: 0 fired across two assignments. Dispatching
+`new Event('scroll')` exercises the handler. Third harness trap this session, after rAF never firing
+and a post-HMR dynamic import resolving to a detached module.
+
+**The ruler stops flashing a focus ring (2026-09-09).** Reported as *"when dragging the playhead and
+using space to start the playback the focus rect is shown"*, with the good question attached: *"does
+the ruler need it at all?"*
+
+**Mechanism.** The ruler is `role="slider"` with `tabindex="-1"`. `-1` keeps it out of the tab order
+but a POINTER can still focus it, and Chrome promotes a pointer-focused element to `:focus-visible` on
+the next KEYPRESS — so scrubbing and then hitting Space to play rang the whole ruler.
+
+**Nearly removed it, and svelte-check said no.** `rulerKey` handles ←/→/Home/End, the exact four keys
+`App.svelte` already handles globally, and has to `stopPropagation` so they do not fire twice — so on
+capability grounds the tabindex earns nothing. But `role="slider"` is an INTERACTIVE role, and
+`a11y_interactive_supports_focus` fails the build without a tabindex. The role is what makes assistive
+tech announce the scrubber and its current frame, so it stays, and the tabindex stays with it.
+
+**So the ring goes instead, and that is not a compromise.** An element Tab cannot reach can never
+receive genuine keyboard focus, so a ring on it is always a false positive — it can only ever be
+triggered by a pointer press followed by a key. `.ruler-no-ring:focus-visible { outline: none }`,
+unlayered on purpose: the global `:focus-visible` rule is unlayered too, and a Tailwind
+`focus-visible:outline-none` would sit in `@layer utilities` and LOSE to it — this file's documented
+cascade gotcha.
+
+**Not reproduced synthetically, and worth saying so.** A scripted click + drag + Space left
+`document.activeElement` on `body` and no outline anywhere, including after clicking a button first,
+so the harness does not deliver focus the way a real pointer does. The fix targets the mechanism
+identified from the markup, not a reproduction — the one thing to confirm on the device is that
+dragging the playhead and pressing Space no longer rings the ruler.

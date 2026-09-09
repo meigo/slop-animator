@@ -4,6 +4,7 @@
   import {
     Plus,
     Diamond,
+    GitCommitHorizontal,
     Trash2,
     Image,
     Film,
@@ -119,7 +120,7 @@
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
-  import { groupDetailShown, groupHeaderSelected } from "../anim/active-row";
+  import { groupHeaderSelected } from "../anim/active-row";
   import {
     videoClipLayout,
     offsetAfterClipDrag,
@@ -1021,6 +1022,19 @@
   let dragLastBoundary = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
+
+  /** The scroller's horizontal offset, tracked reactively for ONE reason: the playhead's tip hangs
+   *  BELOW the ruler into the tracks, and the ruler is z-35 while the row labels are z-20 — so when
+   *  the playhead scrolls behind the sticky gutter, the tip paints over the layer NAMES.
+   *  This replaced the previous answer to that leak, a 6px `GUTTER_W`-wide mask hung under the
+   *  sticky spacer, which could not work: it had to be invisible against the ruler's gutter header
+   *  ABOVE it and against the first row BELOW it, and those are different colours — one of them a
+   *  selected row's tint, which is not even constant. Hiding the tip is the honest version, since
+   *  the thing being covered simply is not there.
+   *  One number per scroll event and one `{#if}`; nowhere near the per-cell work that caused this
+   *  file's documented scrub jitter. */
+  let gridScrollLeft = $state(0);
+  const playheadBehindGutter = $derived(appState.playhead * CELL_W + CELL_W / 2 < gridScrollLeft);
   // Visible height of the scroller — the gutter plate must cover empty space below the last row.
   let gridH = $state(0);
   $effect(() => {
@@ -1236,7 +1250,12 @@
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
-    /** Indented to sit under its owner, the way a group member's own row is. */
+    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 24px
+     *  or from 12px. The row itself lands at owner + 6px, deliberately NOT owner + a full level:
+     *  a property is not a nesting depth, it is an attribute of the row above, and a full step
+     *  would put a GROUP's tracks at 24px — exactly the indent its member LAYERS use, trading one
+     *  "these look like layers" for another. The half-step lands on 18 and 30, and the layer
+     *  indents are 12 and 24, so it cannot collide with either by construction. */
     indent: boolean;
     /** Which group's BLOCK this row sits inside, for the spine — not the same question as
      *  `indent`. A group's OWN track row is not indented (it is the group's, not a member's) but it
@@ -1860,39 +1879,6 @@
   );
 </script>
 
-<!-- The group spine: a hairline down the gutter marking which rows belong to one group.
-     Drawn PER ROW because the timeline's rows are a flat list (the layer panel nests them, so there
-     the same effect is one `border-l` on `.group-members`); consecutive rows stack their segments
-     into one continuous line from under the group header past its last nested track.
-     `-bottom-px` bleeds it over the row's own `border-b`, or the line breaks at every boundary.
-     NOT the accent bar extended down the members, which was the first idea: that bar is
-     `.ui-selected` and means "this row is selected". Spending it on unselected rows would give
-     accent two meanings — the exact tangle we removed when three elements per row each drew their
-     own bar — and it would only show while the GROUP row was selected, which is when you need it
-     least. Select a member and the extent would vanish, though that is when "which group am I in?"
-     is the live question. So: a neutral hairline always, `accent` while the group is the one being
-     worked on. The neutral colour is `text-muted` at 50%, NOT `border`: this file already hit that
-     wall on the ruler ticks — `border` and `surface` sit ~1.02:1 apart on the family ramp, so a 1px
-     `border` hairline on a `surface` row is invisible, which is the whole job undone.
-     19px is the group chevron's CENTRE, not a round number: the header's label starts at `pl-3`
-     (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19. Aligning the two makes the
-     chevron read as the bracket's head — the control that opens the block sits on the line that
-     shows how far it reaches. Move either the padding or the chevron's width and this must follow. `groupDetailShown` is that question already answered and already tested — the group
-     is the working target, or one of its members is the selected row (a member's TRACK row counts,
-     since `layerRowSelected` resolves a layer-owned track to its owner). -->
-{#snippet groupSpine(groupId: number | null)}
-  {#if groupId != null}
-    {@const lit = groupDetailShown(appState.activeRow, groupId, appState.project.layers)}
-    <span
-      class="pointer-events-none absolute top-0 -bottom-px left-[19px] w-px"
-      class:bg-accent={lit}
-      class:bg-text-muted={!lit}
-      class:opacity-50={!lit}
-      role="presentation"
-    ></span>
-  {/if}
-{/snippet}
-
 <svelte:window onresize={onWindowResize} />
 
 <div
@@ -2279,6 +2265,7 @@
   <div
     class="relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
     bind:this={gridWrapper}
+    onscroll={(e) => (gridScrollLeft = e.currentTarget.scrollLeft)}
   >
     <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
          conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
@@ -2303,8 +2290,10 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute inset-y-0 z-10 w-0.5 bg-accent pointer-events-none"
-      style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+      class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
+      style="left: {GUTTER_W +
+        appState.playhead * CELL_W +
+        CELL_W / 2}px; transform: translateX(-50%)"
     ></div>
     <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
          (absolute, inset-y-0, z-10) leaked through empty space below the last track. This
@@ -2398,43 +2387,53 @@
         </div>
       {/if}
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
-           the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
+           the sticky gutter (z-20) so it slides out of sight instead of floating over the names.
+           `danger`, not `accent`: in accent it was the same blue as the property keys, the span
+           diamonds and the row selection, so the one mark you track during playback blended into the
+           marks it has to be read against. The family doc reserves red for exactly this. -->
       <div
-        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
       >
         {appState.playhead + 1}
       </div>
-      <!-- …and its downward tip. The badge is 18px and this is the last 6px, so the handle ends
-           EXACTLY at the ruler's bottom edge and nothing protrudes into the first row.
-           It used to be `h-6` + a tip at `top: 24px`, hanging 6px into the row below. Because the
-           ruler is z-35 and the row labels are z-20, that overhang painted over the gutter NAMES
-           whenever the playhead scrolled behind the gutter, and the fix at the time was a 6px
-           `GUTTER_W`-wide mask hung under the sticky spacer. That mask then WAS the "gap between the
-           header and audio lane row": in the ruler's dark tone it read as a gap and clipped the first
-           row's tint and accent bar; in the header's lighter tone it aligned with neither, leaving
-           the gutter header 6px deeper than the ruler beside it. A cover that has to match two
-           different things at once cannot exist, so the overhang it was covering is gone instead —
-           the mask is deleted, and the header's bottom is the ruler's bottom again.
-           The playhead LINE (absolute, inset-y-0) starts at the top of the scroller and runs the full
-           height, so it meets this tip at the ruler's edge and continues down: nothing is lost by not
-           overhanging. If the badge is ever made taller, this `top` must move with it — the two add
-           up to 24px and that is the whole invariant. -->
-      <div
-        class="absolute z-10 pointer-events-none"
-        style="left: {GUTTER_W +
-          appState.playhead * CELL_W +
-          CELL_W /
-            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
-      ></div>
-      <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
-           no capability — it only added a stray stop and a click focus ring. role/aria stay so
-           assistive tech can still read the ruler in browse mode. -->
+      <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
+           the frame it marks. The badge is the ruler's full 24px, so its number centres exactly
+           where the ruler's own labels do (those are `text-xs/6` in an `h-6` cell — same box, same
+           centre), and this starts where the badge ends.
+           `{#if !playheadBehindGutter}` is what makes the overhang safe. The ruler is z-35 and the
+           row labels z-20, so anything of the ruler's that reaches below 24px paints over the layer
+           NAMES once the playhead scrolls behind the sticky gutter. The previous answer was a 6px
+           mask hung under the gutter spacer, and it could not work — it had to disappear against the
+           gutter header above it AND against the first row below it, which are different colours,
+           one of them a selected row's tint. Not drawing the tip when it would be over the names has
+           no such problem, and it is also what the artist would expect: the playhead is off-screen.
+           If the badge's height changes, this `top` must change with it. -->
+      {#if !playheadBehindGutter}
+        <div
+          class="absolute z-10 pointer-events-none"
+          style="left: {GUTTER_W +
+            appState.playhead * CELL_W +
+            CELL_W /
+              2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+        ></div>
+      {/if}
+      <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
+           no capability — it only added a stray stop. The tabindex CANNOT go entirely, even though
+           `rulerKey` duplicates those same four global keys: `role="slider"` is an interactive role
+           and svelte-check fails the build without one (a11y_interactive_supports_focus). role/aria
+           stay so assistive tech reads the ruler and its current frame.
+           `.ruler-no-ring` is why it does not flash a focus ring: `-1` keeps it out of the tab order
+           but a POINTER can still focus it, and Chrome promotes a pointer-focused element to
+           `:focus-visible` on the next KEYPRESS — so dragging the playhead and then hitting Space to
+           play rang the whole ruler. Suppressing it costs nothing real: an element Tab cannot reach
+           can never receive keyboard focus, so the ring here could only ever have been a false
+           positive. -->
       <div
         bind:this={rulerEl}
-        class="flex cursor-ew-resize select-none bg-surface-active"
+        class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
         style="touch-action: none"
         role="slider"
         tabindex="-1"
@@ -2518,7 +2517,7 @@
           style="min-width: {stripMinW}px"
         >
           <div
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
+            class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:ui-selected={groupLit}
             class:text-text={groupLit}
@@ -2646,12 +2645,12 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
-              class:pl-6={spec.indent}
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[26px] text-left hover:bg-surface-hover {spec.selected
+                ? 'text-text-secondary'
+                : 'text-text-muted/80'}"
+              class:group-rail={spec.groupId != null}
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
-              class:text-text-secondary={spec.selected}
-              class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
               title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
                 ? 'aim the Transform tool at it'
@@ -2675,12 +2674,29 @@
                 spec.select();
               }}
             >
-              {@render groupSpine(spec.groupId)}
-              <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
-                   starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
-                   sibling rather than as something belonging to the row above. The indent itself
-                   also mirrors the owner, so a grouped layer's track sits with it. -->
-              <span class="flex w-3.5 shrink-0" role="presentation"></span>
+              <!-- The type slot, which layer rows reserve and reference layers fill with a Film /
+                   Image glyph. A property row fills it with `GitCommitHorizontal` — a key on a
+                   line, which is literally what the strip draws for this row. It was blank until
+                   2026-09-09, which meant a track row and a DRAWING layer's row were typographically
+                   identical, reported as "Transform and Opacity rows look like common layers".
+                   NOT a diamond, which was the first attempt: the diamond is already three things in
+                   this app (a cell key, a property key, and the blank-keyframe button), so a fourth
+                   use was "too ambiguous". NOT `Spline` either — that glyph is already on the RIGHT
+                   of these same rows' owners, as the animated marker beside the track-fold chevron,
+                   so it would appear twice on one row meaning two things.
+                   12px against the layer rows' 13px: near enough to sit in the same optical column,
+                   small enough that this row still reads as subordinate to the one above it. -->
+              <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
+                   glyph has to line up with the GROUP LABEL's left edge (26px = the header's `pl-2`
+                   plus its chevron and gap; every number here is derived from that base padding, so
+                   changing it moves all of them), and centring a 12px icon in
+                   a 14px slot put its ink 1px right of it — close enough to read as a miss. Starting
+                   it at the padding edge makes the alignment exact and independent of the icon's
+                   width, so swapping the glyph cannot silently break it. The slot keeps its `w-3.5`,
+                   which is what holds the LABEL column steady. -->
+              <span class="flex w-3.5 shrink-0 justify-start" role="presentation">
+                <GitCommitHorizontal size={12} />
+              </span>
               <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
             >
             <!-- The same read-only marker its owner's row carries. Without it a locked owner's track
@@ -2815,8 +2831,9 @@
           style="min-width: {stripMinW}px"
         >
           <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
-            class:pl-6={layer.groupId != null}
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 text-left hover:bg-surface-hover"
+            class:group-rail={layer.groupId != null}
+            class:pl-[26px]={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
@@ -2831,7 +2848,6 @@
             onpointercancel={touchPanUp}
             onclick={() => setActiveLayer(layer.id)}
           >
-            {@render groupSpine(layer.groupId ?? null)}
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.

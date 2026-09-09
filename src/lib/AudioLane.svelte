@@ -326,10 +326,10 @@
 
 {#if state.project.audio}
   <div class="flex w-max items-center border-b border-border" style="min-width: {minWidth}px">
-    <!-- `pl-3`, matching the layer rows: the timeline scroller is full-bleed, so the 8px that used to
+    <!-- `pl-2`, matching the layer rows: the timeline scroller is full-bleed, so the 8px that used to
          come from its `p-2` lives on the gutter labels now. -->
     <div
-      class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 pr-1 pl-3 cursor-pointer"
+      class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 pr-1 pl-2 cursor-pointer"
       class:bg-surface={!isAudioRowSelected()}
       class:text-text-secondary={!isAudioRowSelected()}
       class:ui-selected={isAudioRowSelected()}

@@ -11,10 +11,12 @@
     Eye,
     EyeOff,
     GripVertical,
+    Blend,
     Pencil,
     Link,
     FolderPlus,
     Ungroup,
+    Waves,
     ChevronDown,
     ChevronRight,
     Image,
@@ -571,9 +573,23 @@
        layer-ish is selected while the audio lane is, and one click restores it. The draw target does
        not go missing: the status bar names the active layer independently of any highlight. -->
   {@const active = isRowSelected(layer.id)}
+  <!-- `pl-[13px]` on a GROUP MEMBER, and deliberately on this element rather than on the
+       `.group-members` container that used to carry it. An inset `box-shadow` paints at the BORDER
+       box, which padding does not move — so the row's content indents while its `.ui-selected` bar
+       stays at x=0, landing on the group rail drawn there. Put the same padding on the
+       `.group-members` container instead and the bar moves with it, which is what made a selected
+       member draw a second line beside the rail.
+       19px = the group header's chevron (15) plus its gap (4), i.e. the DISCLOSURE COLUMN — so a
+       member's eye/lock/name land on exactly the same x as its group's, which is the standard tree
+       rule (a child's content aligns under the parent's; the nesting is carried by the guide line,
+       here the rail). It was 13px, which put every child column 6px LEFT of its parent's: children
+       reading as less indented than their group, a near-miss that looks like an error rather than a
+       step. Measured before: group eye/lock/name at 41/60/79, member at 35/54/73. -->
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
+    class:group-rail={layer.groupId != null}
+    class:pl-[19px]={layer.groupId != null}
     class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
@@ -657,22 +673,28 @@
            and this row keeps gaining controls, so wrap is what makes both safe — a narrower panel
            takes another line instead of clipping. Sizes are tuned so a DRAW layer stays on one line
            at the default width; a video ref flows onto a second. -->
-      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary">
+      <div class="flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary">
         <!-- Slider + readout share one wrapper so they can never wrap apart — and so the title can
              live on an element that still receives pointer events when the slider itself is made
              inert, the same split ToolOptions' Ease control uses. -->
         <span
-          class="flex items-center gap-2"
+          class="flex items-center gap-1"
           title={opacityInert
             ? "Opacity — animated, and the layer is locked or hidden, so its keys can't be edited"
             : opacityTrack
               ? `Opacity — animated; a change keys frame ${opacityFrame + 1}`
               : "Opacity"}
         >
+          <!-- Identifies the slider WITHOUT text. On iPad `title` never appears (documented: tooltips
+               are mouse-only), so on this app's primary device the only thing telling opacity from
+               boil was that one reads "100" and the other "1.0". Inside the title wrapper on purpose,
+               so the icon carries the same tooltip on desktop. `Blend` for opacity, `Waves` for boil
+               — the latter is already the boil glyph on the timeline's own boil button. -->
+          <Blend size={13} class="shrink-0" />
           <input
             use:settleOnUnmount={layer.id}
             style={sliderFill(opacityNow, 0, 100)}
-            class="w-12 aria-disabled:opacity-40"
+            class="w-9 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
             type="range"
@@ -725,21 +747,28 @@
           </button>
         {/if}
         {#if layer.kind === "draw"}
-          <input
-            class="w-12"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={layer.boilStrength}
-            oninput={bump}
-            onclick={(e) => e.stopPropagation()}
-            style={sliderFill(layer.boilStrength, 0, 1)}
-            title="Line boil strength (this layer)"
-          />
-          <span class="text-xs tabular-nums w-6 text-text-muted"
-            >{layer.boilStrength.toFixed(1)}</span
-          >
+          <!-- Icon + slider + readout in ONE wrapper, the same reason the opacity group has one:
+               "so they can never wrap apart". Boil was three loose children, which only became
+               visible once the icons pushed this strip past one line at the default 224px panel — the
+               boil slider wrapped away from its own value and read as broken. Grouped, the strip
+               breaks between opacity and boil, which is a seam that means something. -->
+          <span class="flex items-center gap-1" title="Line boil strength (this layer)">
+            <Waves size={13} class="shrink-0" />
+            <input
+              class="w-9"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={layer.boilStrength}
+              oninput={bump}
+              onclick={(e) => e.stopPropagation()}
+              style={sliderFill(layer.boilStrength, 0, 1)}
+            />
+            <span class="text-xs tabular-nums w-6 text-text-muted"
+              >{layer.boilStrength.toFixed(1)}</span
+            >
+          </span>
         {/if}
         <button
           class="text-text-secondary hover:text-text"
@@ -913,9 +942,12 @@
             seg.group,
             appState.project.layers,
           )}
+          <!-- The rail itself is on the ROWS (`.group-rail`, defined in app.css), not here: a
+               parent's background is always covered by an opaque child, so with it on the block a
+               member row's hover erased the line under it. -->
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
-              class="flex items-center gap-1 p-1 hover:bg-surface-hover"
+              class="group-rail flex items-center gap-1 p-1 hover:bg-surface-hover"
               class:ui-selected={groupLit}
               role="presentation"
             >
@@ -971,21 +1003,7 @@
                   title="Select group"
                   onclick={() => selectGroup(seg.group.id)}>{seg.group.name}</button
                 >
-                <button
-                  class="text-text-secondary hover:text-text"
-                  title="Rename group"
-                  onclick={() => startGroupEdit(seg.group)}
-                >
-                  <Pencil size={13} />
-                </button>
               {/if}
-              <button
-                class="text-text-secondary hover:text-text"
-                title="Ungroup"
-                onclick={() => ungroup(seg.group.id)}
-              >
-                <Ungroup size={14} />
-              </button>
             </div>
             <!-- Same rule as a layer's Row 2: detail controls only for the group you're on
                  (a member selected, or this group's own track). Always-on looked like selection. -->
@@ -995,23 +1013,37 @@
               {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
               {@const gOpPinned =
                 !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
+              <!-- `pl-2 pr-1 pb-1`, character for character the LAYER row's detail strip
+                   (`layerRow` Row 2), so the two line up by construction rather than by coincidence.
+                   It was `px-1` (4px), which aligns with the drag grip's BOX — but `GripVertical`
+                   draws its dots inset inside a 14px box, so the visible handle starts at ~8px and
+                   the group's slider sat 4px left of every layer's. Reported as "left edge of the
+                   slider should align with the left edge of drag handle, like layer sliders do".
+                   If Row 2's padding ever changes, this must change with it. -->
               <div
-                class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
+                class="group-rail flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary"
                 class:ui-selected={groupLit}
               >
                 <span
-                  class="flex items-center gap-2"
+                  class="flex items-center gap-1"
                   title={gOpPinned
                     ? "Group opacity — animated, and a locked member pins the group"
                     : gOpTrack
                       ? `Group opacity — animated; a change keys frame ${gOpFrame + 1}`
                       : "Group opacity"}
                 >
-                  <span class="text-xs text-text-muted">Group</span>
+                  <!-- No "Group" label. It repeated the bold `Group 1` on the row directly above,
+                       and it broke this panel's own convention: every other slider here is unlabelled
+                       because the strip sits UNDER the row it belongs to, which is what says whose it
+                       is. The one moment the two are genuinely adjacent — a member selected, so this
+                       strip and the member's own opacity slider are a row apart — is already answered
+                       three other ways: position, shape (a group strip has ONE slider, a layer's has
+                       two plus a pencil), and this element's `title`. -->
+                  <Blend size={13} class="shrink-0" />
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
                     style={sliderFill(gOpNow, 0, 100)}
-                    class="w-12 aria-disabled:opacity-40"
+                    class="w-9 aria-disabled:opacity-40"
                     class:pointer-events-none={gOpPinned}
                     aria-disabled={gOpPinned}
                     type="range"
@@ -1030,20 +1062,37 @@
                   />
                   <span class="text-xs tabular-nums w-6 text-text-muted">{Math.round(gOpNow)}</span>
                 </span>
+                <!-- Rename and Ungroup live HERE, not on the header row, so a group's actions sit
+                     where a layer's do: Row 1 is identity (grip, chevron, visibility, lock, name),
+                     Row 2 is controls. Two things were wrong with the header. It put a group's
+                     actions on a different line from every layer's — reported as "rename and other
+                     icons on layer moved next to the opacity slider while on group these are at top
+                     level" — and it showed them ALWAYS, which contradicts the rule stated three lines
+                     below this strip and applied to it: "detail controls only for the group you're
+                     on. Always-on looked like selection." The strip already obeyed that; the icons
+                     above it did not.
+                     Rename still edits inline in the HEADER — this only moves the button that starts
+                     it, so the input appears where the name is. -->
+                <button
+                  class="text-text-secondary hover:text-text"
+                  title="Rename group"
+                  onclick={() => startGroupEdit(seg.group)}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  class="text-text-secondary hover:text-text"
+                  title="Ungroup"
+                  onclick={() => ungroup(seg.group.id)}
+                >
+                  <Ungroup size={14} />
+                </button>
               </div>
             {/if}
-            <!-- The group spine, the panel's half of it. Nested rows mean one `border-l` here does
-                 what the timeline needs a per-row segment for; keep the two LOOKS in step, not the
-                 code. `accent` while this is the group being worked on (the same `groupDetail` the
-                 detail strip uses), a neutral hairline otherwise — never `.ui-selected`, which means
-                 "this ROW is selected" and would claim every member was. -->
-            <div
-              class="group-members pl-3 border-l {groupDetail
-                ? 'border-accent'
-                : 'border-text-muted/50'}"
-              class:hidden={seg.group.collapsed}
-              use:membersSortable
-            >
+            <!-- No padding here any more: a member's indent lives on the ROW (see `layerRow`), so
+                 the row's border box starts at x=0 and its `.ui-selected` bar lands on the block's
+                 rail instead of 13px inboard of it. -->
+            <div class="group-members" class:hidden={seg.group.collapsed} use:membersSortable>
               {#each seg.layers as layer (layer.id)}
                 {@render layerRow(layer)}
               {/each}

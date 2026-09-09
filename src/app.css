@@ -86,6 +86,18 @@
      While this app still had a light theme this token needed a second value, amber-700, because
      amber-500 is only 2.15:1 on white; that is one of the costs the light theme was carrying. */
   --color-warn: #d5b75d;
+
+  /* THE playhead, and nothing else. red-400, straight from the family doc, which reserves it:
+     "Playhead: 1px line in `danger` … It is the only red in the timeline, which is what makes it
+     findable." This app had been drawing the playhead in `accent` — the same blue as the property
+     keys, the span diamonds and the selection — so it blended into exactly the marks it has to be
+     read against.
+     6.01:1 on `surface`, and `accent-text` on it is 6.77:1 for the frame badge.
+     One rule travels with this token: the playhead's head must differ from the in/out wedges in
+     SHAPE, not merely in colour — `danger` red against `warn` amber is the worst pair for the common
+     colour blindnesses. It does: the playhead's tip is a SYMMETRIC triangle, the in/out markers'
+     are right-angled wedges pointing into the range. */
+  --color-danger: #f87171;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
@@ -206,6 +218,27 @@ textarea,
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+/* The layer panel's group rail: a 2px line at x=0 marking which rows are one group, with a selected
+   row's `.ui-selected` bar lighting its own stretch of it (same column, same width, so the two never
+   double up).
+
+   A background-IMAGE, and that is the whole trick. Background layers paint colour first, then images
+   — so a row's `hover:bg-surface-hover`, which sets background-COLOR, passes UNDER this and the rail
+   survives the hover. It did not when the rail lived on `.group-block`: a parent's background is
+   always covered by an opaque child, so hovering a member erased the line under it. An inset
+   `box-shadow` paints ABOVE both, which is why the accent selection bar still wins where it should.
+
+   Applied per ROW (header, group detail strip, and each member) rather than to the block, for the
+   same reason. Not a child element: `.group-members` is a SortableJS container and a stray child
+   would be treated as a draggable row (gotcha #2). */
+.group-rail {
+  --rail: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  background-image: linear-gradient(var(--rail), var(--rail));
+  background-size: 2px 100%;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+}
+
 /* SortableJS drag states */
 .sortable-ghost {
   opacity: 0.4;
@@ -301,6 +334,18 @@ input[type="range"]::-moz-range-thumb {
 .sticky:focus-visible,
 .sticky :focus-visible {
   outline-offset: -2px;
+}
+
+/* The timeline ruler, and only it. It carries `role="slider"` + `tabindex="-1"`: the role is what
+   makes assistive tech announce the scrubber and its current frame, and svelte-check requires an
+   interactive role to have a tabindex. But `-1` keeps it out of the tab order while still letting a
+   POINTER focus it — and Chrome promotes a pointer-focused element to `:focus-visible` on the next
+   keypress, so dragging the playhead and then pressing Space to play rang the entire ruler.
+   An element Tab cannot reach can never receive genuine keyboard focus, so a ring here is always a
+   false positive. Unlayered on purpose: the `:focus-visible` rule above is unlayered too, and a
+   Tailwind `focus-visible:outline-none` sits in `@layer utilities`, which would LOSE to it. */
+.ruler-no-ring:focus-visible {
+  outline: none;
 }
 
 /* Rotate handle. CSS has no rotate cursor, so this is an inline SVG: a ~290° arc with a tangential
