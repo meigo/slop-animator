@@ -1022,6 +1022,19 @@
   let dragLastBoundary = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
+
+  /** The scroller's horizontal offset, tracked reactively for ONE reason: the playhead's tip hangs
+   *  BELOW the ruler into the tracks, and the ruler is z-35 while the row labels are z-20 — so when
+   *  the playhead scrolls behind the sticky gutter, the tip paints over the layer NAMES.
+   *  This replaced the previous answer to that leak, a 6px `GUTTER_W`-wide mask hung under the
+   *  sticky spacer, which could not work: it had to be invisible against the ruler's gutter header
+   *  ABOVE it and against the first row BELOW it, and those are different colours — one of them a
+   *  selected row's tint, which is not even constant. Hiding the tip is the honest version, since
+   *  the thing being covered simply is not there.
+   *  One number per scroll event and one `{#if}`; nowhere near the per-cell work that caused this
+   *  file's documented scrub jitter. */
+  let gridScrollLeft = $state(0);
+  const playheadBehindGutter = $derived(appState.playhead * CELL_W + CELL_W / 2 < gridScrollLeft);
   // Visible height of the scroller — the gutter plate must cover empty space below the last row.
   let gridH = $state(0);
   $effect(() => {
@@ -2252,6 +2265,7 @@
   <div
     class="relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
     bind:this={gridWrapper}
+    onscroll={(e) => (gridScrollLeft = e.currentTarget.scrollLeft)}
   >
     <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
          conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
@@ -2276,8 +2290,10 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute inset-y-0 z-10 w-0.5 bg-danger pointer-events-none"
-      style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
+      class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
+      style="left: {GUTTER_W +
+        appState.playhead * CELL_W +
+        CELL_W / 2}px; transform: translateX(-50%)"
     ></div>
     <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
          (absolute, inset-y-0, z-10) leaked through empty space below the last track. This
@@ -2376,35 +2392,34 @@
            diamonds and the row selection, so the one mark you track during playback blended into the
            marks it has to be read against. The family doc reserves red for exactly this. -->
       <div
-        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
       >
         {appState.playhead + 1}
       </div>
-      <!-- …and its downward tip. The badge is 18px and this is the last 6px, so the handle ends
-           EXACTLY at the ruler's bottom edge and nothing protrudes into the first row.
-           It used to be `h-6` + a tip at `top: 24px`, hanging 6px into the row below. Because the
-           ruler is z-35 and the row labels are z-20, that overhang painted over the gutter NAMES
-           whenever the playhead scrolled behind the gutter, and the fix at the time was a 6px
-           `GUTTER_W`-wide mask hung under the sticky spacer. That mask then WAS the "gap between the
-           header and audio lane row": in the ruler's dark tone it read as a gap and clipped the first
-           row's tint and accent bar; in the header's lighter tone it aligned with neither, leaving
-           the gutter header 6px deeper than the ruler beside it. A cover that has to match two
-           different things at once cannot exist, so the overhang it was covering is gone instead —
-           the mask is deleted, and the header's bottom is the ruler's bottom again.
-           The playhead LINE (absolute, inset-y-0) starts at the top of the scroller and runs the full
-           height, so it meets this tip at the ruler's edge and continues down: nothing is lost by not
-           overhanging. If the badge is ever made taller, this `top` must move with it — the two add
-           up to 24px and that is the whole invariant. -->
-      <div
-        class="absolute z-10 pointer-events-none"
-        style="left: {GUTTER_W +
-          appState.playhead * CELL_W +
-          CELL_W /
-            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
-      ></div>
+      <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
+           the frame it marks. The badge is the ruler's full 24px, so its number centres exactly
+           where the ruler's own labels do (those are `text-xs/6` in an `h-6` cell — same box, same
+           centre), and this starts where the badge ends.
+           `{#if !playheadBehindGutter}` is what makes the overhang safe. The ruler is z-35 and the
+           row labels z-20, so anything of the ruler's that reaches below 24px paints over the layer
+           NAMES once the playhead scrolls behind the sticky gutter. The previous answer was a 6px
+           mask hung under the gutter spacer, and it could not work — it had to disappear against the
+           gutter header above it AND against the first row below it, which are different colours,
+           one of them a selected row's tint. Not drawing the tip when it would be over the names has
+           no such problem, and it is also what the artist would expect: the playhead is off-screen.
+           If the badge's height changes, this `top` must change with it. -->
+      {#if !playheadBehindGutter}
+        <div
+          class="absolute z-10 pointer-events-none"
+          style="left: {GUTTER_W +
+            appState.playhead * CELL_W +
+            CELL_W /
+              2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+        ></div>
+      {/if}
       <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop and a click focus ring. role/aria stay so
            assistive tech can still read the ruler in browse mode. -->

@@ -5208,3 +5208,36 @@ right-angled wedges pointing into the range. Verified with a range set, both on 
 Not changed, and worth knowing: the family spec says a **1px** line and this app's is 2px (`w-0.5`).
 That predates the colour question and is arguably right for a touch device, so it stays until someone
 asks.
+
+**The playhead handle: badge fills the ruler, wedge hangs into the tracks, line is 1px (2026-09-09).**
+Asked as *"move wedge of the playhead handle down to the tracks area, scale rectangle to the bottom of
+the ruler and center the number label to be aligned with ruler numbers"*, plus *"make the line of it
+thinner"*.
+
+- **Badge** `h-[18px]` → `h-6`, so it is exactly the ruler's 24px. Its number then centres where the
+  ruler's own labels do for free — measured after, the badge and the ruler's "5" cell are the SAME box
+  (top 0, bottom 24, h 24, w 16), so they cannot disagree about a baseline.
+- **Wedge** `top: 18px` → `top: 24px`: below the ruler, pointing at the frame it marks.
+- **Line** `w-0.5` → `w-px`, which is also what the family doc specifies, and centred by
+  `translateX(-50%)` instead of a baked `-1` so the left expression stays the same one
+  `anchoredScrollLeft` anchors on.
+
+**This restores an overhang deleted earlier today, so the leak it caused had to be solved properly
+rather than reverted to.** Anything of the ruler's (z-35) that reaches below 24px paints over the row
+labels (z-20) once the playhead scrolls behind the sticky gutter. The old answer was a 6px
+`GUTTER_W`-wide mask, and that could not work: it had to vanish against the gutter header ABOVE it and
+against the first row BELOW it, which are different colours — one of them a selected row's tint, which
+is not even constant. **The tip is now simply not rendered when it would be over the names**, gated on
+a reactive `gridScrollLeft` fed by the scroller's `onscroll`. One number per scroll event and one
+`{#if}` — nowhere near the per-cell work behind this file's documented scrub jitter — and it matches
+what the artist would expect, since the playhead is off-screen.
+
+Verified: at `scrollLeft` 0 the tip renders; at 600, with the playhead at frame 5 (content offset 132),
+it does not, and the element over the first row's gutter is the row label. The badge stays rendered
+either way, correctly — the ruler's sticky corner covers it, which is what z-10-under-z-20 is for.
+
+**A harness note, because the first test said the opposite.** Setting `scrollLeft` from the console in
+a BACKGROUND tab changes the property but fires no `scroll` event, so the handler never ran and the tip
+appeared not to hide. Confirmed by counting events: 0 fired across two assignments. Dispatching
+`new Event('scroll')` exercises the handler. Third harness trap this session, after rAF never firing
+and a post-HMR dynamic import resolving to a detached module.
