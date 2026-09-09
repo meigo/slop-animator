@@ -4415,3 +4415,38 @@ bar agreeing in every one.
 Two self-inflicted snags, both caught by the build: an import-pruning heuristic counted two symbol
 names that appear only in a COMMENT and kept them, and `status-hint.test.ts` had a SECOND local
 `base` context inside a later describe block that the first edit missed.
+
+**The pixel tools now dim for a hidden or locked layer too (2026-09-09).** Spotted from two
+screenshots: *"when group layer is selected — tools dimmed but options not. when hidden layer is
+selected both tools and options are active."* The second half is the bug, and it is the same CLASS
+as the entry above — a second predicate answering "can you draw here?" and disagreeing with
+`whyNotEditable`.
+
+`pixelToolsBlock()` asked only two questions: is the working target a layer row, and is the active
+layer a reference. **It never checked hidden or locked**, so a hidden layer left every pixel tool at
+full brightness while a stroke silently refused — the exact failure the dimming exists to prevent —
+and it was visibly inconsistent with a group row, which did dim. The caption knew all along, because
+it asks `whyNotEditable`.
+
+The row check stays first and stays this function's own: on a group or audio row the active layer is
+usually a perfectly good drawing layer, so the fix is to select a layer row rather than to change
+anything about the layer, and `whyNotEditable` sees only a layer and cannot know that. Everything
+after it now delegates. Nothing regresses, because `whyNotEditable` already returns `not-draw` for
+references — and the toolbar's tooltips get the group-aware reasons for free, since they already
+render `editBlockLabel(toolsBlock)`.
+
+**The options bar staying live is deliberate and unchanged.** ToolOptions' own comment states the
+rule: *"Brush settings stay live (session prefs). Actions and instructional copy must not promise a
+stroke that will not land — same split as the toolbar's dimmed pixel tools."* You set up Size/Press/
+Ink before switching to a drawable layer; the bar's ACTIONS (fill, the selection ops) already gate
+on the block. Worth noting that comment says "same split as the toolbar's dimmed pixel tools" — it
+was written believing the toolbar already did this. It did not, until now.
+
+**Verified in Chrome**, all four states, with the Size slider live in every one:
+
+| case | tools dimmed | tooltip |
+| --- | --- | --- |
+| healthy layer | 0/3 | "Brush" |
+| hidden layer | **3/3** (was 0) | "Brush — Layer hidden — show it to edit" |
+| visible layer in a hidden group | **3/3** | "Brush — Group hidden — show the group to edit" |
+| group row | 3/3 | "Brush — Select a layer row to edit" |

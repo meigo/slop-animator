@@ -55,6 +55,7 @@ import {
   type Project,
   type Layer,
   type LayerEditBlock,
+  whyNotEditable,
   type DrawingLayer,
   type Cell,
   type AudioTrack,
@@ -1658,12 +1659,21 @@ export function pixelToolsDimmed(): boolean {
   return pixelToolsBlock() !== null;
 }
 
-/** WHY the pixel tools are dimmed, so the toolbar's titles can say something true. The two
- *  refusals are different: on a group or audio row the active layer is usually a fine drawing
- *  layer and the fix is to select a layer row, not to switch layer kind. */
+/** WHY the pixel tools are dimmed, so the toolbar's titles can say something true.
+ *
+ *  The row check comes FIRST and is this function's own: on a group or audio row the active layer
+ *  is usually a perfectly good drawing layer, so the fix is to select a layer row, not to change
+ *  anything about the layer — `whyNotEditable` sees only a layer and cannot know that.
+ *
+ *  Everything after that DELEGATES, and used to not. This asked only "is it a reference?", so a
+ *  hidden or locked layer left every pixel tool at full brightness while a stroke silently
+ *  refused — the exact failure the dimming exists to prevent, and visibly inconsistent with a
+ *  group row, which did dim. Two predicates answering "can you draw here?" will drift; the
+ *  caption already knew, because it asks `whyNotEditable`. Now they cannot disagree, and the
+ *  toolbar's titles get the group-aware reasons for nothing. */
 export function pixelToolsBlock(): LayerEditBlock | null {
   if (workingTarget(state.activeRow).kind !== "layer") return "not-layer-row";
-  return activeLayer().kind === "ref" ? "not-draw" : null;
+  return whyNotEditable(activeLayer(), state.project.groups);
 }
 
 /** Is this group's header the selected row (not a member, not a proxy)? With no id: is SOME
