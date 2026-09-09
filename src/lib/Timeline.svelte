@@ -131,6 +131,7 @@
   import { columnAtX, lengthAtX, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs } from "./timeline-glyphs";
+  import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
@@ -216,6 +217,32 @@
     const glyphs = computeTimelineGlyphs(layer.cells, frameCount, (c) => isCellEmpty(c, version));
     glyphCache.set(layer.id, { version, frameCount, glyphs });
     return glyphs;
+  }
+
+  const spanCache = new Map<
+    number,
+    { version: number; frameCount: number; spans: TimelineSpan[] }
+  >();
+  function spansFor(layer: DrawingLayer, version: number): TimelineSpan[] {
+    const frameCount = appState.project.frameCount;
+    const hit = spanCache.get(layer.id);
+    if (hit && hit.version === version && hit.frameCount === frameCount) return hit.spans;
+    const spans = computeTimelineSpans(glyphsFor(layer, version));
+    spanCache.set(layer.id, { version, frameCount, spans });
+    return spans;
+  }
+
+  /** Spans as CURRENTLY DISPLAYED: identical to `spansFor` except while a block drag is previewing
+   *  over this row, when the glyphs are re-read through `displayGlyph` so the spans slide with the
+   *  ghost. Uncached on purpose — a drag does not bump `appState.version`, so the cache cannot see
+   *  it, and the cost is one O(frames) pass on the handful of rows a drag touches. */
+  function displaySpansFor(layer: DrawingLayer, version: number): TimelineSpan[] {
+    if (!selRect || !rowMovesWithBlock(layer.id)) return spansFor(layer, version);
+    const glyphs = glyphsFor(layer, version);
+    const shown = Array.from({ length: appState.project.frameCount }, (_, f) =>
+      displayGlyph(layer.id, glyphs, f),
+    );
+    return computeTimelineSpans(shown);
   }
 
   // Ruler shows frame 1, then every 5th frame (1, 5, 10, 15, …); other columns are bare ticks.
@@ -2758,10 +2785,16 @@
               />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
           </span>
           {#if layer.kind === "draw"}
-            {@const glyphs = glyphsFor(layer, appState.version)}
+            <!-- Explicit h-6 + width: the span/selection children are now `absolute`, so unlike the
+                 old per-frame in-flow cells they contribute nothing to this container's intrinsic
+                 size. Without an explicit size here the row would collapse to 0x0 and every pointer
+                 handler below (hit-tested against this div's own box) would stop firing past x=0 —
+                 a silent gesture regression. Width matches the exact box the old per-frame divs
+                 summed to (frameCount * CELL_W); height matches their h-6. -->
             <div
-              class="relative flex select-none"
-              style="touch-action: none; cursor: {rowCursor}"
+              class="relative flex h-6 select-none"
+              style="touch-action: none; cursor: {rowCursor}; width: {appState.project.frameCount *
+                CELL_W}px"
               class:opacity-100={isRowSelected(layer.id)}
               class:opacity-70={!isRowSelected(layer.id)}
               data-layer-id={layer.id}
@@ -2773,14 +2806,29 @@
               onpointercancel={(e) => rowUp(e, layer)}
               onpointerleave={rowLeave}
             >
+              <!-- Selection first, UNDER the spans: a selected frame tints the lane, and the ink
+                   drawn on it must stay legible. Per-frame because a marquee selects frames, not
+                   spans — a block can start and end mid-run. -->
               {#each Array(appState.project.frameCount) as _, f (f)}
+                {#if inSelection(layer.id, f)}
+                  <div
+                    class="pointer-events-none absolute top-0 h-6 bg-selection"
+                    style="left: {f * CELL_W}px; width: {CELL_W}px"
+                  ></div>
+                {/if}
+              {/each}
+              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
                 <div
-                  class="box-border h-6 leading-none text-xs flex items-center justify-center"
-                  class:bg-selection={inSelection(layer.id, f)}
-                  style="width: {CELL_W}px"
-                >
-                  {displayGlyph(layer.id, glyphs, f)}
-                </div>
+                  class="pointer-events-none absolute top-1 h-4 rounded-sm border"
+                  class:bg-media-clip={!s.blank}
+                  class:border-media-clip-border={!s.blank}
+                  class:border-border={s.blank}
+                  style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
+                    s.startFrame +
+                    1) *
+                    CELL_W -
+                    4}px"
+                ></div>
               {/each}
             </div>
           {:else}
