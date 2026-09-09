@@ -4502,3 +4502,47 @@ identical before and at the key. A note on the verification, because the first t
 wrong and looked like a bug: setting the playhead to 17 and 23 on a **10-frame** project put it out
 of range, and the first structural commit legitimately clamped it back to 9 — which read as
 "animateLayer moves the playhead". It does not. The probe was invalid, not the code.
+
+**The hollow diamond moved onto the blank keyframe it was describing (2026-09-09).** Reported as
+*"when dragging keyframe next to blank key, the last one follows — is that by design?"*, then twice
+more before I had finished measuring: *"blank keyframes seem to snap to next keys in other situations
+as well"* and, decisively, *"it might be confusion about where the blank key is displayed and where it
+actually is"* / *"it looks better when the blank key symbol is inside the span, but it actually is
+outside next to it, right?"* — which is the whole bug, diagnosed by the person who could see it.
+
+**The cause was mine, from `e30bbda` item 6.** The plan drew a `◇` as an outlined one-frame span; I
+changed it to not drawing blank keys AT ALL, on the argument that a faint outline "made a boundary
+look like content and stacked into noise". That argument was fine and the fix was not: the span
+already carried a hollow diamond on its LAST HELD frame, so the only visible "the ink stops here" mark
+sat one cell to the LEFT of the cell that actually stops it, and the cell that governs the run had no
+pixels at all. Two marks' worth of meaning on one mark, at the wrong frame.
+
+**What that produced, measured against the real functions rather than reasoned about** (a scratch
+Vitest file over `moveBlockFrames`/`setHoldSpan` → `computeTimelineGlyphs` → `computeTimelineSpans`,
+deleted after):
+
+| gesture | before → after |
+| --- | --- |
+| drag the key alone +1 | `span 0-2, blank 3` → `span 1-2, blank 3` — the tail is pinned by the invisible key, so the span SHRINKS instead of sliding |
+| drag the whole visible span +2 | `span 0-2, blank 3` → `span 2-7` — the blank key is overwritten and gone; content silently runs to the end of the document |
+| drag the span's right edge +2 | `span 0-2, blank 3, span 5-7` → `span 0-4, blank 5, span 7-7` — the splice shifts the blank key AND the next real key |
+
+Only the third is by design (`setHoldSpan` splices, exactly as Flash's F5 does). The first two are the
+invisibility biting: one pins a span's end to something with no pixels, the other destroys a keyframe
+with nothing on screen to warn you. Both stop being surprising the moment the mark is in the right
+place, so neither needed a behaviour change.
+
+**The fix is one mark per meaning.** The span keeps its filled diamond on its first frame and loses
+the hollow one; the blank key gets the hollow diamond, on its own frame, in the empty lane, with no
+fill behind it. A `◇` means "nothing from here", so a filled block there would still be a lie — the
+honest picture is an outline with empty lane around it. A span that ends because an INKED key follows
+needs no cap (the next filled block says so), and one running to the document end never needed one.
+
+This also answers open question 3 of the spec — *"does the hollow end-cap earn its place?"* — with
+**no**: it was competing with the blank key for the same meaning at the wrong frame. Render-only;
+`computeTimelineSpans` was already reporting blank spans truthfully and is untouched, so there was no
+node-testable surface and no test change (1117 still green, build 0/0).
+
+**Verified in Chrome** on a hand-built track — inked key at 1 holding to 4, blank key at 5, inked key
+at 8 holding to 10, blank key at 11 — with the hollow diamonds landing on 5 and 11, the spans ending
+at 4 and 10, and the filled diamond still centred under the playhead.

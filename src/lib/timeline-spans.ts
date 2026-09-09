@@ -7,7 +7,8 @@
  * Re-deriving any of that here would create a second answer that can drift from the first.
  *
  * `endFrame` is INCLUSIVE. A `blank` span is a `◇` keyframe: a real boundary with no content,
- * drawn as an outline rather than a fill, and always one frame long because nothing holds over it.
+ * always one frame long because nothing holds over it. The view draws it as a hollow diamond on its
+ * own frame with no fill behind it — the frame where the ink stops is the one that owns the mark.
  */
 export interface TimelineSpan {
   startFrame: number;

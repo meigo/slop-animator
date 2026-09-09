@@ -2862,12 +2862,22 @@
                    should look like. Per-frame because a marquee selects frames, not spans — a block
                    can start and end mid-run. -->
               {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
-                {#if !s.blank}
-                  <!-- Blank keyframes are not drawn at all. A ◇ means "nothing from here", so the
-                       honest picture is an empty lane; drawing a faint outline for it made a
-                       boundary look like content and stacked into noise when several landed in a
-                       row. `computeTimelineSpans` still REPORTS them — it describes the track
-                       truthfully — the view just declines to paint them. -->
+                {#if s.blank}
+                  <!-- A blank keyframe: the frame where the ink STOPS. It gets the hollow diamond,
+                       drawn on its own frame in the empty lane and with no fill behind it — a ◇
+                       means "nothing from here", so a filled block would be a lie.
+                       The hollow mark used to sit on the span's LAST HELD frame instead, one cell to
+                       the LEFT of this one, while the blank key itself was drawn as nothing at all.
+                       That put the only visible "it ends here" mark on a frame that is not the one
+                       you drag, select or delete, and the cell that actually governs the run had no
+                       pixels: dragging the span pinned its tail to something invisible, and dragging
+                       the whole span overwrote the blank key and silently ran the content to the end
+                       of the document. One hollow diamond, on the frame that owns the meaning. -->
+                  <span
+                    class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
+                    style="left: {s.startFrame * CELL_W + CELL_W / 2}px"
+                  ></span>
+                {:else}
                   <div
                     class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
                     style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
@@ -2876,29 +2886,22 @@
                       CELL_W -
                       4}px"
                   >
-                    <!-- Flash's key marks: a filled diamond on the span's first frame and a
-                         hollow one on its last. They are what tells a DRAWING span from a media
-                         clip — the two are deliberately the same colour, so the difference has to
-                         be content, not hue — and they restore the keyframe legibility that ◆
-                         carried before spans.
-                         CENTRED ON THE FRAME CELL, not on the span's edges, so they line up with
-                         the playhead (which sits at frame*CELL_W + CELL_W/2) and with the
-                         transform/opacity keys, which already anchor there. The span itself starts
-                         2px into the frame, hence the -2. Same `size-2` diamond as those property
-                         keys too: three kinds of key mark at three sizes read as three unrelated
-                         things.
-                         A one-frame span shows only the filled diamond; a hollow one on the same
-                         frame would claim a run that is not there. -->
+                    <!-- Flash's key mark: a filled diamond on the span's first frame. It is what
+                         tells a DRAWING span from a media clip — the two are deliberately the same
+                         colour, so the difference has to be content, not hue — and it restores the
+                         keyframe legibility that ◆ carried before spans.
+                         CENTRED ON THE FRAME CELL, not on the span's edges, so it lines up with the
+                         playhead (which sits at frame*CELL_W + CELL_W/2) and with the transform/
+                         opacity keys, which already anchor there. The span itself starts 2px into
+                         the frame, hence the -2. Same `size-2` diamond as those property keys too:
+                         three kinds of key mark at three sizes read as three unrelated things.
+                         The span's right EDGE is where the run ends; it needs no mark of its own.
+                         Where a run ends because a blank key follows, that key carries the hollow
+                         diamond above — on its own frame, which is the one you can actually grab. -->
                     <span
                       class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
                       style="left: {CELL_W / 2 - 2}px"
                     ></span>
-                    {#if s.endFrame > s.startFrame}
-                      <span
-                        class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
-                        style="left: {(s.endFrame - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
-                      ></span>
-                    {/if}
                   </div>
                 {/if}
               {/each}
