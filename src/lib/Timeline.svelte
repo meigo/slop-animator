@@ -2340,9 +2340,20 @@
              scrolled right. This masks that band. It must be a child of the STICKY spacer: an
              absolute box in the row itself would be positioned from the row's left edge, which
              scrolls away, and a taller spacer would push every track down by 6px. `top-full` puts it
-             exactly under the ruler; the border continues the gutter divider through the strip. -->
+             exactly under the ruler; the border continues the gutter divider through the strip.
+             `bg-surface-active`, MATCHING THE SPACER IT HANGS FROM, not `bg-surface` as it was until
+             2026-09-09. This strip is painted OVER the first row's gutter — that is its whole job —
+             so in the ruler's dark tone it read as a 6px gap between the light header and the row,
+             and it clipped the top of that row's selection tint and accent bar. Reported twice, as
+             "the gap above the label of audio lane" and "the bg and accent line are cut from the
+             top". Both were this. It is an extension of the header below the ruler, so it takes the
+             header's colour and the header simply reads 6px taller.
+             It also hid from `elementFromPoint` (it is `pointer-events-none`), which is how a probe
+             reported "row top 24.0, label top 24.0, zero gap" while the paint said otherwise — TRUE
+             of the layout, and irrelevant to a mask drawn on top of it. Hit-testing is not painting;
+             to find what covers something, colour the boxes in. -->
         <span
-          class="pointer-events-none absolute left-0 top-full bg-surface border-r border-text-muted"
+          class="pointer-events-none absolute left-0 top-full bg-surface-active border-r border-text-muted"
           style="width: {GUTTER_W}px; height: 6px"
         ></span>
       </span>

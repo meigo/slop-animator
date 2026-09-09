@@ -4775,3 +4775,30 @@ tested, having ALREADY measured the geometry as correct — the measurement said
 and instead of asking what else could produce the look, I reached for the nearest visible thing and
 changed it. A fix that removes a feature and does not fix the symptom is two regressions. The corner's
 divergence from the shared doc's "Ruler: `panel` ground" is deliberate and stays.
+
+**The 6px mask under the ruler was the "gap" all along (2026-09-09).** Third report on the same
+pixels — *"see that gap between the header and audio lane row"* — and the first two ("the gap above
+the label of audio lane", "the bg and accent line are cut from the top") were the same thing described
+from different angles. Every one of them was accurate; my diagnosis was not.
+
+**What it is.** A `pointer-events-none` span, 6px tall and `GUTTER_W` wide, hanging at `top-full` off
+the ruler's sticky gutter spacer. It exists for a real reason, recorded when it was added: the playhead
+badge's tip protrudes 6px below the ruler, and with the ruler at z-35 and the row labels at z-20 that
+tip leaked over the gutter names when scrolled right. The strip masks it. It is painted OVER the first
+row's gutter — that is the entire job — and it was `bg-surface`, so against the `surface-active` header
+directly above it, it read as a 6px gap, and it clipped the top of that row's selection tint and accent
+bar. Fixed by giving it the colour of the spacer it hangs from: it is an extension of the header below
+the ruler, so the header simply reads 6px taller and the row starts flush under it.
+
+**Why three rounds, and the lesson.** I probed the geometry, got `ruler bottom 24.0, row top 24.0,
+label top 24.0, gap 0.0`, and concluded "nothing is cut — this is a contrast effect". Every number was
+correct and the conclusion was wrong, because **layout is not paint**: an absolutely-positioned mask
+sits on top of a box without changing where that box begins. Worse, my `elementFromPoint` probe
+"confirmed" the label was the topmost element one pixel below the ruler — it is not, and the reason is
+that the mask is `pointer-events-none`, which removes it from hit-testing and from exactly that probe.
+**Hit-testing is not painting.** What finally found it took ten seconds: set the label's background to
+red and look at which pixels turn red.
+
+Acting on that wrong conclusion cost a bad commit in between — flattening the ruler corner to
+`bg-surface`, which deleted a separator the artist wanted and did not fix the symptom, then had to be
+reverted. The report was right three times before I stopped theorising and coloured the boxes in.
