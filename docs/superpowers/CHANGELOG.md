@@ -4176,8 +4176,9 @@ that changes output. Per that document's §8 the app wins and the document gets 
 
 Verified in the built CSS rather than assumed — `svelte-check` cannot see a Tailwind class that was
 never generated: `.text-warn{color:var(--color-warn)}` is emitted and both values appear in the
-output. **Owed an eyeball in both themes** at the amber spots: a hidden or locked layer row, a
-blocked-edit message, the eraser label.
+output. **VERIFIED on iPad 2026-09-09** as part of the colour pass below. (The "both themes" this
+originally asked for no longer exists — the light theme was removed the next day, so `warn` is a
+single value again and the amber-700 half of this entry is history rather than live code.)
 
 **Flagged, not touched** (out of the chosen scope): colours Tailwind utilities cannot reach because
 they are drawn on canvas — `AudioLane.svelte` (`#2b3240`, `#24272f`, `#3d4759`, `#999999`),
@@ -4231,7 +4232,7 @@ class.
 **Verified in the browser in BOTH themes** rather than reported blind: `.ui-on` computes to
 `rgb(91,140,255)` with `rgb(18,18,18)` text — i.e. it does beat the base `text-text-secondary` — and
 `.ui-selected` shows the tint with the inset left bar, over `#1e1e1e` dark and `#ffffff` light.
-Screenshots were compared against the compositor. **Owed an iPad pass** for how loud the accent
+Screenshots were compared against the compositor. **VERIFIED on iPad 2026-09-09** for how loud the accent
 reads on device.
 
 **The dark theme takes the family ramp verbatim, and the sliders with it (2026-09-08).** Third and
@@ -4280,7 +4281,12 @@ on one tag whose `onclick={(e) => …}` contains a `>`, and refused two more tha
 rather than `bind:value`. All three were finished by hand. Caught by the build, but worth recording:
 **an HTML-tag regex cannot be trusted on markup containing arrow functions.**
 
-**Owed an iPad pass** — the accent's loudness, and whether the fainter dividers still read on device.
+**VERIFIED on iPad 2026-09-09** — confirmed by the user on the deployed build: *"ipad — colors ok"*.
+That covers the two open questions this entry raised, and the second is the one worth recording,
+because it was a real risk rather than a formality: adopting `line` verbatim dropped dividers to
+1.10:1 over the panel where `#383838` had been 1.42:1, and the fallback if they had not read on
+device was to lift `--color-border` ALONE rather than the ramp. They read. No change needed, and the
+ramp stays byte-identical to slop-audio-editor's and slop-video-compositor's.
 
 **The light theme is gone; the app is dark-only (2026-09-08).** Removed at the user's call — *"I'm
 starting to doubt on needing a light theme. I don't use it personally"* — and it was the single
