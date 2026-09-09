@@ -4611,3 +4611,33 @@ Also confirmed by the review and worth recording: `displaySpansFor`'s uncached p
 dearer. Span count is monotonically non-increasing under the merge (500 span objects and up to 1000
 elements for a 500-frame track on 1s become one span and 500 diamonds), and it was always dominated by
 the `Array.from({length: frameCount})` glyph pass above it.
+
+**The numeric play-range readout is gone (2026-09-09).** Asked as *"honestly, is numeric frame range
+label needed at all?"* — no, and three things already carried it. The ruler draws the range in place
+(warn edge lines with inward triangles, plus a 15% warn wash) over NUMBERED frames, so the extent is
+legible where it lives; the ✕ beside the in/out icons is what says a range is set, and it has to exist
+anyway as the only way to clear one; the status bar already carries the frame readout.
+
+It also cut against the family layout this app has been aligning to. `SLOP-TIMELINE-UI.md` specifies
+the transport row as `range (set in / set out / clear) | time readout` — three controls in the range
+group, no numeric label, and the readout it names is the PLAYHEAD's, not the range's.
+slop-video-compositor follows that, reporting range changes through its status line transiently
+(`app.status = "Playhead play-in 3.40s"`) rather than parking numbers in the bar.
+
+The label was conditional, so it cost nothing with no range set — but with one set it competed for
+horizontal space in the bar that already had to be fixed for wrapping in iPad portrait. The one case
+it served is a long project scrolled so the range is off-screen: you then know a range EXISTS (the ✕)
+but not where. If that ever actually bites, the family's answer is a transient status message on
+set/clear, not permanent chrome. `effectiveRange`'s import went with it — orphaned by this change.
+
+**A note on the verification, because the first pass looked like a bug and was not.** Setting
+`state.playback.range = { start: 5, end: 9 }` from the console rendered NO ruler markers at all, which
+read as "the ruler doesn't actually show the range" — i.e. as the removal's whole justification being
+false. The stored shape is `{ in, out }` (`src/anim/playback.ts:16`), not `{ start, end }`: that is
+what `effectiveRange` CONSUMES, and what it RETURNS is `{ start, end }`. So both fields came back
+`undefined`, `Math.min(undefined, last)` gave `NaN`, the markers positioned at `NaN` px and drew
+nothing, while `{#if appState.playback.range}` stayed truthy and the ✕ showed — a state that looks
+exactly like a broken renderer. Re-probed with `{ in: 5, out: 9 }` and the ruler drew the range
+correctly. **Second time on this project a console probe with an invalid shape has impersonated a bug**
+(the first was seeking the playhead past a 10-frame project's end, 2026-09-09); print what the function
+actually consumes before believing the picture.
