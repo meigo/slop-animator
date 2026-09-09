@@ -2619,12 +2619,12 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[30px] text-left hover:bg-surface-hover"
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[30px] text-left hover:bg-surface-hover {spec.selected
+                ? 'text-text-secondary'
+                : 'text-text-muted/80'}"
               class:group-rail={spec.groupId != null}
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
-              class:text-text-secondary={spec.selected}
-              class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
               title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
                 ? 'aim the Transform tool at it'

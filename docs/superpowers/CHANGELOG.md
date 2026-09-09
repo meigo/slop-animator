@@ -5151,3 +5151,19 @@ glyph half is what makes it safe.
 The same flattening applies to a member's OWN property row, which sits at the member's indent rather
 than inside it — ownership is read from adjacency, which is what the layer panel and After Effects both
 do.
+
+**Property row labels dim to `text-muted/80` (2026-09-09).** Asked as *"can you dim down a bit
+transform/opacity labels"*. Unselected track rows go from `text-text-muted` to `text-text-muted/80`;
+the glyph inherits, so the whole row recedes together. Selected stays `text-text-secondary`, so
+selection still steps up two levels rather than one.
+
+**The number, because this one crosses a line.** `text-muted` (#8a8a93) on `surface` is **4.86:1** —
+only just over WCAG AA's 4.5 for text — so ANY dimming drops below it: /85 → 3.89, /80 → **3.61**,
+/75 → 3.33, /70 → 3.08. 80% is the modest end of what was asked for and it is still a 3.6:1 label at
+14px, which is legible but no longer AA.
+
+**The alternative, if that ever matters:** de-emphasise by SIZE instead of contrast — `text-xs` on
+these labels reads as subordinate while keeping 4.86:1. It was not done here because dimming is what
+was asked for and these rows are secondary chrome rather than something you must read to work safely
+(unlike the blocked-edit caption fixed earlier today, which was raised from 3.43:1 to 8.51:1 for
+exactly that reason). Recording the option so the choice is visible rather than implicit.
