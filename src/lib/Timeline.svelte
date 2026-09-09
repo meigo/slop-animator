@@ -2732,7 +2732,7 @@
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}
             <div
-              class="relative flex select-none border-b border-border-light"
+              class="relative flex select-none border-b border-border"
               style="touch-action: none; cursor: {rowCursor}"
               class:opacity-100={isRowSelected(layer.id)}
               class:opacity-70={!isRowSelected(layer.id)}
@@ -2751,7 +2751,7 @@
                     1) %
                     5 ===
                   0
-                    ? 'border-r border-border/50'
+                    ? 'border-r border-text-muted/40'
                     : ''}"
                   class:bg-selection={inSelection(layer.id, f)}
                   style="width: {CELL_W}px"
