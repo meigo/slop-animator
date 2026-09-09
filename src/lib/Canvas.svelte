@@ -2298,9 +2298,22 @@
   <!-- z-10: a CSS-transformed wrapper (the display) can composite above a later sibling
        on WebKit. The overlay must sit above the paper so a lifted selection stays visible. -->
   <canvas bind:this={overlay} class="pointer-events-none absolute inset-0 z-10"></canvas>
+  <!-- The blocked-edit caption. OPAQUE ground, not `bg-surface/70` as it was until 2026-09-09.
+       Reported as "pale yellow on grey is a bit weak", and it measured that way: `warn` (#d5b75d) on
+       70% surface over this project's paper is **3.43:1**, under AA for text this size — and the
+       ground was not even fixed, since 70% composites against whatever is BEHIND it. On white paper
+       it fell to 3.14:1, and over the transparent-background checkerboard it changes square by
+       square. A caption that says "you cannot edit this" must not get harder to read as the artwork
+       under it gets lighter. Solid `surface` puts it at **8.51:1** and makes it independent of the
+       paper entirely. The `warn/40` hairline and `font-medium` are what make it read as a warning
+       CHIP rather than a floating label.
+       The token itself is unchanged and should stay: `warn` was deliberately moved off amber-500 to
+       this muted gold on 2026-09-09 to match slop-video-compositor, and the contrast problem here was
+       the ground, not the hue — saturating the token would have diverged the whole family to fix one
+       badge's background. -->
   {#if editBlockCaption}
     <div
-      class="pointer-events-none absolute top-2 left-2 z-10 rounded px-1.5 py-0.5 text-xs text-warn bg-surface/70"
+      class="pointer-events-none absolute top-2 left-2 z-10 rounded border border-warn/40 bg-surface px-1.5 py-0.5 text-xs font-medium text-warn shadow-sm shadow-black/40"
     >
       {editBlockCaption}
     </div>

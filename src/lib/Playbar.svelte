@@ -10,7 +10,6 @@
     clearPlayRange,
   } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
-  import { effectiveRange } from "../anim/playback";
   import { clickOutside } from "./click-outside";
   import {
     ArrowLeftToLine,
@@ -115,9 +114,15 @@
       aria-label="Set range out"
       onclick={setPlayRangeOut}><ArrowRightToLine size={16} /></button
     >
+    <!-- Clear only: no numeric range readout. The ruler draws the range in place, with warn edge
+         markers over numbered frames, so the extent is legible where it lives; this ✕ is what says a
+         range is SET, and the status bar already carries the frame readout. The family layout agrees
+         (SLOP-TIMELINE-UI.md §"transport row": set in / set out / clear, and the readout it names is
+         the playhead's, not the range's) — slop-video-compositor reports range changes through its
+         status line transiently rather than parking numbers in the bar. The one case the label
+         served was a range scrolled off-screen; the answer to that is a transient status message,
+         not permanent chrome competing for a bar that already wraps in iPad portrait. -->
     {#if appState.playback.range}
-      {@const er = effectiveRange(appState.playback.range, appState.project.frameCount)}
-      <span class="tabular-nums">{er.start + 1}–{er.end + 1}</span>
       <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { sliderFill } from "./slider-fill";
   import {
     Plus,
@@ -118,7 +119,7 @@
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
-  import { groupHeaderSelected } from "../anim/active-row";
+  import { groupDetailShown, groupHeaderSelected } from "../anim/active-row";
   import {
     videoClipLayout,
     offsetAfterClipDrag,
@@ -136,6 +137,7 @@
     planCellPointer,
     MIN_CELL_W,
     MAX_CELL_W,
+    anchoredScrollLeft,
     clampTimelineCellW,
   } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -1095,6 +1097,34 @@
   // the column now — a fixed 5 + 6 held only at the fixed 24px width (11 < 12, one pixel spare)
   // and breaks below about 22px. `timeline-grid.test.ts` pins it across the zoom range.
   const MOVE_CANCEL_PX = $derived(moveCancelPx(CELL_W));
+
+  /** Set the frame width, keeping the PLAYHEAD pinned to the screen x it already occupies.
+   *  The arithmetic — and why the playhead is the right origin — lives with `anchoredScrollLeft` in
+   *  `timeline-grid.ts`, where it is unit-tested; this function is the DOM half.
+   *
+   *  The target is computed BEFORE the store write, from the old width and the current scroll. Read
+   *  after, and `el.scrollLeft` has already been re-clamped against a `scrollWidth` that changed
+   *  under it, so the anchor would be computed from a position the artist never saw.
+   *
+   *  `await tick()` is load-bearing: the strip's width is `frameCount * CELL_W`, so until Svelte has
+   *  re-rendered at the new width the scroller's `scrollWidth` is still the OLD one and the browser
+   *  clamps the assignment against it. Assigning after the flush lets that clamp do the right thing
+   *  at both ends, which is also why no manual clamping is needed here.
+   *
+   *  A playhead that is currently OFF-screen keeps its (negative, or past-the-edge) offset rather
+   *  than being pulled into view: preserving the relative position means the visible content moves
+   *  the way the artist expects, where snapping it to an edge would be a jump they did not ask for. */
+  async function setCellW(next: number) {
+    const el = gridWrapper;
+    const w0 = appState.timelineCellW;
+    const w1 = clampTimelineCellW(next);
+    if (w1 === w0) return;
+    const target = el ? anchoredScrollLeft(appState.playhead, w0, w1, el.scrollLeft, GUTTER_W) : 0;
+    appState.timelineCellW = w1;
+    if (!el) return;
+    await tick();
+    el.scrollLeft = target;
+  }
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;
   let pressStartY = 0;
@@ -1208,6 +1238,10 @@
     owner: string;
     /** Indented to sit under its owner, the way a group member's own row is. */
     indent: boolean;
+    /** Which group's BLOCK this row sits inside, for the spine — not the same question as
+     *  `indent`. A group's OWN track row is not indented (it is the group's, not a member's) but it
+     *  IS inside the block, so the spine runs unbroken from the header down past the last member. */
+    groupId: number | null;
     /** Highlighted with its OWNER — a layer and its tracks are one thing, so there is no separate
      *  selection state to keep. */
     selected: boolean;
@@ -1240,6 +1274,7 @@
       prop,
       owner: layer.name,
       indent: layer.groupId != null,
+      groupId: layer.groupId ?? null,
       selected: isTrackSelected("layer", layer.id, prop),
       readOnly: locked || hidden,
       block: locked ? "locked" : hidden ? "hidden" : null,
@@ -1280,6 +1315,7 @@
       prop,
       owner: group.name,
       indent: false,
+      groupId: group.id,
       // Through the accessor, never a hand-rolled `activeRow` conjunction: a view that combines
       // `activeRow` with `activeLayerId`-derived state has shipped a forgotten term twice here.
       selected: isTrackSelected("group", group.id, prop),
@@ -1824,6 +1860,39 @@
   );
 </script>
 
+<!-- The group spine: a hairline down the gutter marking which rows belong to one group.
+     Drawn PER ROW because the timeline's rows are a flat list (the layer panel nests them, so there
+     the same effect is one `border-l` on `.group-members`); consecutive rows stack their segments
+     into one continuous line from under the group header past its last nested track.
+     `-bottom-px` bleeds it over the row's own `border-b`, or the line breaks at every boundary.
+     NOT the accent bar extended down the members, which was the first idea: that bar is
+     `.ui-selected` and means "this row is selected". Spending it on unselected rows would give
+     accent two meanings — the exact tangle we removed when three elements per row each drew their
+     own bar — and it would only show while the GROUP row was selected, which is when you need it
+     least. Select a member and the extent would vanish, though that is when "which group am I in?"
+     is the live question. So: a neutral hairline always, `accent` while the group is the one being
+     worked on. The neutral colour is `text-muted` at 50%, NOT `border`: this file already hit that
+     wall on the ruler ticks — `border` and `surface` sit ~1.02:1 apart on the family ramp, so a 1px
+     `border` hairline on a `surface` row is invisible, which is the whole job undone.
+     19px is the group chevron's CENTRE, not a round number: the header's label starts at `pl-3`
+     (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19. Aligning the two makes the
+     chevron read as the bracket's head — the control that opens the block sits on the line that
+     shows how far it reaches. Move either the padding or the chevron's width and this must follow. `groupDetailShown` is that question already answered and already tested — the group
+     is the working target, or one of its members is the selected row (a member's TRACK row counts,
+     since `layerRowSelected` resolves a layer-owned track to its owner). -->
+{#snippet groupSpine(groupId: number | null)}
+  {#if groupId != null}
+    {@const lit = groupDetailShown(appState.activeRow, groupId, appState.project.layers)}
+    <span
+      class="pointer-events-none absolute top-0 -bottom-px left-[19px] w-px"
+      class:bg-accent={lit}
+      class:bg-text-muted={!lit}
+      class:opacity-50={!lit}
+      role="presentation"
+    ></span>
+  {/if}
+{/snippet}
+
 <svelte:window onresize={onWindowResize} />
 
 <div
@@ -2190,7 +2259,7 @@
         step="2"
         class="w-20"
         value={appState.timelineCellW}
-        oninput={(e) => (appState.timelineCellW = clampTimelineCellW(+e.currentTarget.value))}
+        oninput={(e) => setCellW(+e.currentTarget.value)}
         style={sliderFill(appState.timelineCellW, MIN_CELL_W, MAX_CELL_W)}
       />
     </label>
@@ -2200,7 +2269,17 @@
   <!-- `overscroll-contain`: reaching either end must not hand the scroll to an ancestor. Chaining is
        what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
        which both aborts the custom pan and (correctly) suppresses its fling. -->
-  <div class="relative flex-1 min-h-0 overflow-auto overscroll-contain" bind:this={gridWrapper}>
+  <!-- `-mx-2` cancels the root's `p-2` horizontally so the scrollport spans the panel edge to edge.
+       Without it the gutter began 8px in while the strip was CLIPPED flush on the right — a margin on
+       one side only — and a selected row's accent bar and background both started at that 8px, so a
+       row looked inset from a panel it actually fills. The 8px is handed back to the gutter's LABELS
+       (`pl-3` where they were `px-1`, `pl-6` where a group member was `pl-4`), so every icon and name
+       stays at the screen position it had; what moved is the row BACKGROUND, which now reaches 0, and
+       the frame strip, which gains the reclaimed 8px at each end. -->
+  <div
+    class="relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
+    bind:this={gridWrapper}
+  >
     <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
          conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
          group headers, and the property rows whose grid cells were deleted — showed nothing, so the
@@ -2272,20 +2351,20 @@
       class="sticky top-0 z-35 flex w-max items-stretch bg-surface"
       style="min-width: {stripMinW}px"
     >
+      <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
+           is the header over the row names, and the tone is what separates the ruler from the rows
+           beneath it. Briefly changed to `bg-surface` on 2026-09-09 on the theory that a paler block
+           was what made a selected first row look "cut from the top" — it was not. Measured with the
+           audio lane selected: ruler bottom 24.0, row top 24.0, label top 24.0, zero gap, nothing
+           overlapping. Flattening the tone removed the separator and left the reported look intact,
+           which is how we know the SEPARATOR is what the eye was reading, not a clipped row: with no
+           edge above it, a 10%-accent tint looks like it begins somewhere arbitrary. Restored.
+           This is a deliberate divergence from the shared doc's "Ruler: `panel` ground" — noted in
+           SLOP-TIMELINE-UI.md, not drift. -->
       <span
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
       >
-        <!-- The playhead badge's tip protrudes 6px BELOW this row, so the spacer above (which is
-             only as tall as the ruler) cannot hide it and the tip leaked over the gutter names when
-             scrolled right. This masks that band. It must be a child of the STICKY spacer: an
-             absolute box in the row itself would be positioned from the row's left edge, which
-             scrolls away, and a taller spacer would push every track down by 6px. `top-full` puts it
-             exactly under the ruler; the border continues the gutter divider through the strip. -->
-        <span
-          class="pointer-events-none absolute left-0 top-full bg-surface border-r border-text-muted"
-          style="width: {GUTTER_W}px; height: 6px"
-        ></span>
       </span>
       {#if playRange}
         <!-- Play-range edges: a `warn` line + a triangle pointing INTO the range (slop-compositor /
@@ -2321,20 +2400,34 @@
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
       <div
-        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
       >
         {appState.playhead + 1}
       </div>
-      <!-- …and its downward tip, continuing into the playhead line below. -->
+      <!-- …and its downward tip. The badge is 18px and this is the last 6px, so the handle ends
+           EXACTLY at the ruler's bottom edge and nothing protrudes into the first row.
+           It used to be `h-6` + a tip at `top: 24px`, hanging 6px into the row below. Because the
+           ruler is z-35 and the row labels are z-20, that overhang painted over the gutter NAMES
+           whenever the playhead scrolled behind the gutter, and the fix at the time was a 6px
+           `GUTTER_W`-wide mask hung under the sticky spacer. That mask then WAS the "gap between the
+           header and audio lane row": in the ruler's dark tone it read as a gap and clipped the first
+           row's tint and accent bar; in the header's lighter tone it aligned with neither, leaving
+           the gutter header 6px deeper than the ruler beside it. A cover that has to match two
+           different things at once cannot exist, so the overhang it was covering is gone instead —
+           the mask is deleted, and the header's bottom is the ruler's bottom again.
+           The playhead LINE (absolute, inset-y-0) starts at the top of the scroller and runs the full
+           height, so it meets this tip at the ruler's edge and continues down: nothing is lost by not
+           overhanging. If the badge is ever made taller, this `top` must move with it — the two add
+           up to 24px and that is the whole invariant. -->
       <div
         class="absolute z-10 pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W /
-            2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
+            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
       ></div>
       <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop and a click focus ring. role/aria stay so
@@ -2425,7 +2518,7 @@
           style="min-width: {stripMinW}px"
         >
           <div
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:ui-selected={groupLit}
             class:text-text={groupLit}
@@ -2553,8 +2646,8 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-              class:pl-4={spec.indent}
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+              class:pl-6={spec.indent}
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
@@ -2582,6 +2675,7 @@
                 spec.select();
               }}
             >
+              {@render groupSpine(spec.groupId)}
               <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
                    starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
                    sibling rather than as something belonging to the row above. The indent itself
@@ -2721,8 +2815,8 @@
           style="min-width: {stripMinW}px"
         >
           <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-            class:pl-4={layer.groupId != null}
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+            class:pl-6={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
@@ -2737,15 +2831,18 @@
             onpointercancel={touchPanUp}
             onclick={() => setActiveLayer(layer.id)}
           >
+            {@render groupSpine(layer.groupId ?? null)}
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
-                 A GROUP MEMBER is the one deliberate exception: `pl-4` above lands it at the same
-                 POSITION the panel uses, 16px, because with group rows now present an un-indented
+                 A GROUP MEMBER is the one deliberate exception: `pl-6` above lands it at the same
+                 SCREEN position the panel's member reaches, because with group rows now present an un-indented
                  member reads as the group's SIBLING. The two surfaces get there with different
                  classes — the panel's `.group-members pl-3` (12px) sits on top of the list's own
                  `pl-1` (4px), where this row has no list padding under it — so compare the resulting
-                 offset, never the class value. The marker column is a separate sticky element pinned
+                 offset, never the class value — and note this row's own base padding is `pl-3`, not
+                 `pl-1`, since the scroller went full-bleed (`-mx-2`) and handed its 8px to the labels.
+                 The marker column is a separate sticky element pinned
                  at LABEL_W, so it stays aligned regardless. -->
             <span
               class="flex w-3.5 shrink-0 justify-center"

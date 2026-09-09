@@ -83,3 +83,35 @@ export function columnAtX(offsetX: number, cellW: number, count: number): number
 export function lengthAtX(offsetX: number, cellW: number): number {
   return Math.max(1, Math.min(9999, Math.round(offsetX / cellW)));
 }
+
+/**
+ * The `scrollLeft` that keeps the PLAYHEAD at the screen x it already occupies while the frame
+ * column width changes from `fromW` to `toW`.
+ *
+ * Zooming a timeline from its left edge is the wrong origin: the frame you are working on is the one
+ * you want to keep looking at, and between 12px and 32px a frame 200 columns out travels 4000px — so
+ * the playhead leaves the viewport on almost any zoom that matters. Anchoring on it is what every NLE
+ * does and it costs one subtraction.
+ *
+ * The playhead's CONTENT x is `gutterW + frame * w + w / 2` — the same expression the playhead line
+ * itself uses. Note the trailing half column: it is why "just scale scrollLeft" is wrong even at
+ * frame 0, whose centre moves 12px → 16px away from the gutter on a 24 → 32 zoom.
+ *
+ * `gutterW` cancels (this is a difference of two content positions at the same gutter), so a
+ * user-widened name column cannot change how zoom behaves — asserted in the tests rather than left
+ * as a claim. It is still a parameter because the caller has it and passing it reads clearer than
+ * a comment explaining its absence.
+ *
+ * Floored at 0. The browser clamps a `scrollLeft` assignment anyway, but a negative here would mean
+ * "the anchor cannot be held" and should read as the left end, not as a number.
+ */
+export function anchoredScrollLeft(
+  frame: number,
+  fromW: number,
+  toW: number,
+  scrollLeft: number,
+  gutterW: number,
+): number {
+  const contentX = (w: number) => gutterW + frame * w + w / 2;
+  return Math.max(0, contentX(toW) - (contentX(fromW) - scrollLeft));
+}

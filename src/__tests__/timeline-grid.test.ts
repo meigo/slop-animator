@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { columnAtX, lengthAtX, planCellPointer } from "../lib/timeline-grid";
+import { anchoredScrollLeft, columnAtX, lengthAtX, planCellPointer } from "../lib/timeline-grid";
 import type { Cell } from "../anim/document";
 
 describe("columnAtX", () => {
@@ -127,5 +127,44 @@ describe("edgePx keeps the resize hotspot inside half a column", () => {
 
   it("never collapses to nothing", () => {
     expect(edgePx(8)).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("anchoredScrollLeft", () => {
+  const G = 228; // GUTTER_W in the app; any positive value works, it cancels out of the anchor
+
+  it("keeps the playhead at the same screen x when zooming in", () => {
+    // playhead 120 at w=24 sits at content x 228 + 120*24 + 12 = 3120; scrolled to 2420 it is on
+    // screen at 700. At w=32 its content x is 228 + 120*32 + 16 = 4084, so scrollLeft must be 3384.
+    expect(anchoredScrollLeft(120, 24, 32, 2420, G)).toBe(3384);
+  });
+
+  it("keeps it put when zooming out too", () => {
+    expect(anchoredScrollLeft(120, 24, 12, 2420, G)).toBe(974);
+  });
+
+  it("is an identity when the width does not change", () => {
+    expect(anchoredScrollLeft(120, 24, 24, 2420, G)).toBe(2420);
+  });
+
+  // The anchor is a DIFFERENCE of content positions, so the gutter cancels: a project whose gutter
+  // has been dragged wider must not zoom differently.
+  it("does not depend on the gutter width", () => {
+    expect(anchoredScrollLeft(120, 24, 32, 2420, 228)).toBe(
+      anchoredScrollLeft(120, 24, 32, 2420, 400),
+    );
+  });
+
+  // Frame 0 is the case where the naive "scale scrollLeft" approach is visibly wrong: its centre is
+  // half a column from the gutter, so it MOVES on zoom even at scrollLeft 0, and the anchor has to
+  // account for that half column rather than assuming the origin is the strip's left edge.
+  it("accounts for the half-column centre offset at frame 0", () => {
+    expect(anchoredScrollLeft(0, 24, 32, 0, G)).toBe(4);
+  });
+
+  // Never returns a negative: the caller assigns it to scrollLeft, and while the browser clamps,
+  // a negative would silently mean "left end" where the intent was an anchor that cannot be held.
+  it("floors at zero rather than going negative", () => {
+    expect(anchoredScrollLeft(0, 32, 12, 0, G)).toBe(0);
   });
 });

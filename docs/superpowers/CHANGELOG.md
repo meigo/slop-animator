@@ -4611,3 +4611,279 @@ Also confirmed by the review and worth recording: `displaySpansFor`'s uncached p
 dearer. Span count is monotonically non-increasing under the merge (500 span objects and up to 1000
 elements for a 500-frame track on 1s become one span and 500 diamonds), and it was always dominated by
 the `Array.from({length: frameCount})` glyph pass above it.
+
+**The numeric play-range readout is gone (2026-09-09).** Asked as *"honestly, is numeric frame range
+label needed at all?"* — no, and three things already carried it. The ruler draws the range in place
+(warn edge lines with inward triangles, plus a 15% warn wash) over NUMBERED frames, so the extent is
+legible where it lives; the ✕ beside the in/out icons is what says a range is set, and it has to exist
+anyway as the only way to clear one; the status bar already carries the frame readout.
+
+It also cut against the family layout this app has been aligning to. `SLOP-TIMELINE-UI.md` specifies
+the transport row as `range (set in / set out / clear) | time readout` — three controls in the range
+group, no numeric label, and the readout it names is the PLAYHEAD's, not the range's.
+slop-video-compositor follows that, reporting range changes through its status line transiently
+(`app.status = "Playhead play-in 3.40s"`) rather than parking numbers in the bar.
+
+The label was conditional, so it cost nothing with no range set — but with one set it competed for
+horizontal space in the bar that already had to be fixed for wrapping in iPad portrait. The one case
+it served is a long project scrolled so the range is off-screen: you then know a range EXISTS (the ✕)
+but not where. If that ever actually bites, the family's answer is a transient status message on
+set/clear, not permanent chrome. `effectiveRange`'s import went with it — orphaned by this change.
+
+**A note on the verification, because the first pass looked like a bug and was not.** Setting
+`state.playback.range = { start: 5, end: 9 }` from the console rendered NO ruler markers at all, which
+read as "the ruler doesn't actually show the range" — i.e. as the removal's whole justification being
+false. The stored shape is `{ in, out }` (`src/anim/playback.ts:16`), not `{ start, end }`: that is
+what `effectiveRange` CONSUMES, and what it RETURNS is `{ start, end }`. So both fields came back
+`undefined`, `Math.min(undefined, last)` gave `NaN`, the markers positioned at `NaN` px and drew
+nothing, while `{#if appState.playback.range}` stayed truthy and the ✕ showed — a state that looks
+exactly like a broken renderer. Re-probed with `{ in: 5, out: 9 }` and the ruler drew the range
+correctly. **Second time on this project a console probe with an invalid shape has impersonated a bug**
+(the first was seeking the playhead past a 10-frame project's end, 2026-09-09); print what the function
+actually consumes before believing the picture.
+
+**A group spine marks which rows belong to a group (2026-09-09).** Asked as *"I'd like the range of
+group to be better readable. One option is to span that blue vertical line across all the child layers
+and nested animation tracks?"*
+
+**The blue line was the wrong carrier, and the reason matters more than the fix.** That bar is
+`.ui-selected` and means *this row is selected*. Extending it down the members gives accent two
+meanings — the same tangle removed earlier today when three elements per row each drew their own bar —
+and the family doc reserves accent for exactly one of them. Worse, it only appears while the GROUP row
+is selected, which is when the information is least needed: you just clicked the group. Select a
+MEMBER and the extent vanishes, though that is precisely when "which group am I inside?" is live.
+
+**So: a separate hairline, drawn always, accent only while the group is the one being worked on.** It
+sits at 8px in the gutter — left of the members' 16px indent, right of the header's 4px — so it reads
+as a bracket rather than as a second selection bar. Lit-ness reuses `groupDetailShown`, which already
+answers "the working target is this group, or one of its members is the selected row" and is already
+tested; a member's TRACK row counts too, since `layerRowSelected` resolves a layer-owned track to its
+owner. No new predicate, no hand-rolled `activeRow` conjunction (the thing `layerTrackSpec`'s comment
+warns has shipped a forgotten term twice).
+
+**Two surfaces, two mechanisms, one look.** The timeline's rows are a FLAT list, so the spine is a
+per-row absolutely-positioned span, `-bottom-px` to bleed over each row's own `border-b` — without
+that it breaks at every boundary. The layer panel genuinely nests members in `.group-members`, so
+there it is one `border-l` on that container. `TrackRowSpec` gained `groupId`, which is deliberately
+NOT the same question as its existing `indent`: a group's own track row is not indented (it is the
+group's, not a member's) but it IS inside the block, so the spine runs unbroken from under the header
+past the last member's last nested track.
+
+**`border` was the obvious neutral colour and it is invisible.** First pass used `bg-border`, and at
+1px on a `surface` row it could not be seen at all — the job undone. This file had already hit that
+wall and written it down for the ruler ticks: `border` and `surface-active` sit ~1.02:1 apart on the
+family ramp, which is why those ticks use `text-muted`. The spine now does the same, at 50%.
+
+**A third invalid console probe, for the record.** Seeding a member's opacity track as
+`{keys: [{frame, value}]}` made the panel's opacity readout show `NaN` — which looks like a bug in the
+opacity path. The keyframe's value field is `v`, not `value` (`document.ts:83`), named that way on
+purpose. Re-seeded correctly and the readout was fine. That is now three times in two days a probe
+with the wrong shape has impersonated a defect (playhead past a 10-frame project; `{start,end}` for
+`{in,out}`; and this). **Read the type, then write the probe** — the cost of not doing so is a false
+bug report, and twice now it was caught only by checking before speaking.
+
+**The timeline gutter goes full-bleed (2026-09-09).** Asked as *"there is that margin on the left
+(there is none on the right). I'd keep equal padding for icon/labels but start header bg from the 0
+and put accent line also there?"* — correct on all three counts.
+
+**Where the asymmetry came from.** The timeline root carries `p-2`, and the scrolling grid is inside
+it. On the LEFT that padding is visible as 8px of bare panel before the gutter starts; on the RIGHT
+the strip is wider than the scrollport, so it is CLIPPED flush at the padding edge and the same 8px
+never shows. One padding, two appearances. The consequence was worse than the margin: a selected row's
+accent bar and its background both began at that 8px, so a row that fills the panel looked inset from
+it, and the group header's background floated rather than reading as a band.
+
+**Fixed by moving the 8px rather than deleting it.** `-mx-2` on the scroller cancels the root's
+horizontal padding, so the scrollport spans edge to edge and every `sticky left-0` gutter row now
+starts at panel x=0 — background, header band and accent bar with it. The 8px is handed to the gutter
+LABELS: `px-1` → `pr-1 pl-3` on all four (group header, layer row, track row, and the audio lane's,
+which is a separate component reached through `labelW`), and `pl-4` → `pl-6` for a group member. Every
+icon and name therefore stays at the screen x it had — verified by measuring, not by eye: each row's
+box now reports `left: 0` from the panel with `padding-left` 12px (24px for a member). The group spine
+moved `left-2` → `left-4` to ride along. The frame strip gains the reclaimed 8px at each end.
+
+The one real cost: `LABEL_W` is unchanged (it is a persisted, user-resizable preference — growing it
+would silently move everyone's gutter), so the label's TEXT area is 8px narrower and truncates
+slightly earlier. The gutter is draggable, which is the answer if it ever matters.
+
+**A note for whoever edits that indent comment next:** it used to justify `pl-4` as "the same POSITION
+the panel uses, 16px". The number is now 24px and the claim is unchanged, because the container it is
+measured from moved 8px left. That comment already warned to "compare the resulting offset, never the
+class value"; this is the case it was written for, and it has been updated rather than left to read as
+a contradiction.
+
+**And the spine centres on the group's chevron** (asked in the same breath: *"perhaps align expand
+arrow and the group spine line horizontally?"* / *"center these i mean"*). 19px, not a round number:
+the header's label starts at `pl-3` (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19.
+Measured after the change — chevron centre 19.0, spine centre 19.5, which is as close as a 1px line
+gets to a centre that falls on a pixel boundary. The point is that the control which OPENS the block
+now sits on the line that shows how far the block REACHES.
+
+Not touched, and deliberately: the LAYER PANEL's spine is not aligned to ITS chevron, and should not
+be. Measured at 29px apart, because that header puts a drag grip BEFORE the chevron — so the chevron
+sits further right than the members' own 12px indent, and a line through it would run straight through
+the member names. In the timeline the chevron is the row's first element, which is the only reason the
+alignment is available there. Nor the panel's left inset, a different container with its own padding,
+and not what the screenshot showed.
+
+**The ruler's gutter corner — a wrong fix, reverted the same hour (2026-09-09).**
+> **SUPERSEDED by the paragraph at the end of this entry.** The change described below was made and
+> then REVERTED: the corner is `surface-active` again.
+
+ Reported as *"what's up
+with the gap above the label of audio lane?"*, then sharpened to *"like the bg and accent line are cut
+from above"* — which is the accurate description and the reason the first reading ("a gap") was
+misleading.
+
+**There is no gap.** The element is the ruler's gutter CORNER — the `GUTTER_W × 24` span that sits
+over the row names, the spreadsheet corner cell — and it was `bg-surface-active` (#2d2d33) while the
+ruler strip it belongs to is `bg-surface` (#1e1e22). A paler filled block, full gutter width, sitting
+directly on the first row. With the audio lane selected, its tint and its accent bar begin abruptly
+underneath that block, so the row reads as clipped from above rather than as starting there.
+
+**Pre-existing, but MY change is what surfaced it.** Before the gutter went full-bleed earlier today
+the corner started 8px in from the panel edge, so it read as a small inset patch; reaching the edge
+turned it into a band. Worth stating plainly: the report arrived immediately after that commit and the
+honest answer is not "this was always like that" — it was always wrong and my change is what made it
+look wrong.
+
+**Fixed by giving the corner the ruler's own ground.** It is not a control and has nothing to say — it
+is simply the part of the ruler that happens to sit over the names — so `bg-surface`, and the
+`border-r` still marks the gutter edge, which is the only job this element actually has. Measured
+after: corner and ruler both `rgb(30, 30, 34)`. The family doc had already specified this and the app
+had drifted from it — *"Ruler: `panel` ground, ticks in `line`, labels in `muted`"*: one ground for
+the whole ruler, no second tone for its corner.
+
+**REVERTED.** *"You removed the light header that should be there (for separation) and look at the
+accent line and bg highlight — they still seem to be cut from the top."* Both halves correct, and the
+second is what proves the first: flattening the corner removed a separator the artist relies on AND
+left the reported symptom untouched, which means the corner's TONE was never the cause.
+
+**The geometry was never wrong.** Measured with the audio lane selected: ruler bottom 24.0, row top
+24.0, label top 24.0, gap 0.0, label height 28 in a 29px row (the 1px is its own `border-b`). Nothing
+overlaps and nothing is clipped. What the eye reads as a cut is contrast, not layout — a 10%-accent
+tint with no defined edge above it looks like it begins somewhere arbitrary.
+
+**The actual stack above that row, measured** (page px, top down): the playbar row (28), then **8px of
+bare root background** — the playbar's own `mb-2` — then the 24px ruler corner, then the row. With the
+corner flattened to `surface`, that 8px gap and the 24px corner merged into ONE 32px undifferentiated
+dark band above a subtly tinted row. That is the "cut". Restoring `surface-active` splits it back into
+gap + header.
+
+**Lesson, and it is the same one twice in one day.** I changed a colour on a hypothesis I had not
+tested, having ALREADY measured the geometry as correct — the measurement said "not a layout problem",
+and instead of asking what else could produce the look, I reached for the nearest visible thing and
+changed it. A fix that removes a feature and does not fix the symptom is two regressions. The corner's
+divergence from the shared doc's "Ruler: `panel` ground" is deliberate and stays.
+
+**The 6px mask under the ruler was the "gap" all along (2026-09-09).** Third report on the same
+pixels — *"see that gap between the header and audio lane row"* — and the first two ("the gap above
+the label of audio lane", "the bg and accent line are cut from the top") were the same thing described
+from different angles. Every one of them was accurate; my diagnosis was not.
+
+**What it is.** A `pointer-events-none` span, 6px tall and `GUTTER_W` wide, hanging at `top-full` off
+the ruler's sticky gutter spacer. It exists for a real reason, recorded when it was added: the playhead
+badge's tip protrudes 6px below the ruler, and with the ruler at z-35 and the row labels at z-20 that
+tip leaked over the gutter names when scrolled right. The strip masks it. It is painted OVER the first
+row's gutter — that is the entire job — and it was `bg-surface`, so against the `surface-active` header
+directly above it, it read as a 6px gap, and it clipped the top of that row's selection tint and accent
+bar. Fixed by giving it the colour of the spacer it hangs from: it is an extension of the header below
+the ruler, so the header simply reads 6px taller and the row starts flush under it.
+
+**Why three rounds, and the lesson.** I probed the geometry, got `ruler bottom 24.0, row top 24.0,
+label top 24.0, gap 0.0`, and concluded "nothing is cut — this is a contrast effect". Every number was
+correct and the conclusion was wrong, because **layout is not paint**: an absolutely-positioned mask
+sits on top of a box without changing where that box begins. Worse, my `elementFromPoint` probe
+"confirmed" the label was the topmost element one pixel below the ruler — it is not, and the reason is
+that the mask is `pointer-events-none`, which removes it from hit-testing and from exactly that probe.
+**Hit-testing is not painting.** What finally found it took ten seconds: set the label's background to
+red and look at which pixels turn red.
+
+Acting on that wrong conclusion cost a bad commit in between — flattening the ruler corner to
+`bg-surface`, which deleted a separator the artist wanted and did not fix the symptom, then had to be
+reverted. The report was right three times before I stopped theorising and coloured the boxes in.
+
+**The mask is deleted; the playhead handle now fits the ruler (2026-09-09).** Fourth and last round on
+these pixels: *"now you moved the bottom of header down and it's not aligned with the ruler row."*
+Correct — recolouring the 6px mask to match the header removed the gap by making the gutter header
+30px deep against a 24px ruler, a visible step at the gutter divider.
+
+**That is the proof the mask itself was unfixable.** It has to be invisible against the header ABOVE it
+and against the first row BELOW it, and those are different colours — one of which (a selected row's
+tint) is not even constant. No single fill satisfies both. So the thing it was covering had to go
+instead.
+
+**What it was covering:** the playhead badge was `h-6` (24px, the ruler's full height) with its tip a
+separate triangle at `top: 24px` — hanging 6px into the first row. With the ruler at z-35 and row
+labels at z-20, that overhang painted over the gutter NAMES whenever the playhead scrolled behind the
+gutter, and the mask existed to hide it. The badge is now `h-[18px]` and the tip sits at `top: 18px`,
+so the two add to exactly 24 and the handle ends on the ruler's bottom edge. Nothing protrudes,
+nothing needs masking.
+
+**Nothing is lost by not overhanging.** The playhead LINE is `absolute inset-y-0` on the scroller — it
+starts at the top and runs the full height — so it meets the tip at the ruler's edge and continues
+down through the rows. The overhang was never what connected them.
+
+**Verified, both halves.** Alignment: ruler bottom, corner bottom, tip bottom and the audio label's top
+all measure 649.0 — one line. And the invariant the mask protected: scrolled to `scrollLeft = 400` with
+the playhead behind the gutter, the badge and tip disappear under the sticky spacer with nothing
+leaking over the names, which is what z-10-under-z-20 was always supposed to do for the badge and now
+does for the tip too.
+
+Four rounds on one 6px strip. The report was right every time; what took so long was that I kept
+theorising from a screenshot instead of colouring the boxes in, and once I did, the fix was to remove
+the workaround rather than to keep recolouring it.
+
+**Timeline zoom anchors on the playhead (2026-09-09).** Asked as *"timeline horizontal scaling. origin
+could be at playhead"* — right, and the left edge was the wrong origin. Between 12px and 32px a frame
+200 columns out travels 4000px, so the frame you are working on leaves the viewport on almost any zoom
+that matters.
+
+`anchoredScrollLeft(frame, fromW, toW, scrollLeft, gutterW)` in `timeline-grid.ts` returns the
+`scrollLeft` that keeps the playhead at the screen x it already occupies. Pure, six tests written
+first and watched fail. Two of them pin things that are easy to get wrong: the **half-column centre
+offset** (the playhead sits at `gutter + frame*w + w/2`, so "just scale scrollLeft" is wrong even at
+frame 0, whose centre moves 12px → 16px on a 24→32 zoom), and **gutter independence** (the anchor is a
+difference of two content positions, so a user-widened name column must not change how zoom behaves).
+
+The DOM half is `setCellW` in `Timeline.svelte`. Two ordering constraints, both load-bearing: the
+target is computed BEFORE the store write (read after, and `scrollLeft` has already been re-clamped
+against a `scrollWidth` that changed underneath, so the anchor would come from a position never on
+screen), and the assignment happens after `await tick()` (until Svelte re-renders at the new width the
+scroller's `scrollWidth` is still the old one and the browser clamps against it). Letting the browser
+do the end clamping is why no manual clamping is needed.
+
+A playhead that is currently OFF screen keeps its offset rather than being pulled into view:
+preserving the relative position moves the visible content the way the artist expects, where snapping
+to an edge would be a jump they did not ask for.
+
+**Verified in Chrome, then partly un-verifiable.** Before the pure function was extracted, the
+end-to-end behaviour measured **drift 0** on zoom in (24→32, scrollLeft 2420→3384), zoom out (24→12,
+2420→974), and at the left end (frame 0 at scrollLeft 0). The extraction moved that same arithmetic
+into the tested function without changing it. The post-extraction browser re-check could NOT be
+completed: after Vite HMR, `await import('/src/state/appState.svelte.ts')` from the console resolves to
+a DIFFERENT module instance than the mounted components hold, so probe writes land on a detached store
+— the render kept reporting `playhead 0, w 14` while the store read back `120, 24`. **So this is owed
+a real look on the iPad**: drag the frame-width slider with the playhead parked mid-view and confirm it
+stays put.
+
+**The blocked-edit caption is legible over any paper (2026-09-09).** Reported as *"hidden layer warning
+on canvas could be louder — pale yellow on grey is a bit weak. yellow in this app context, maybe it
+could be slightly more saturated?"* Half right, and the half that was wrong is the interesting one.
+
+**Measured before changing anything.** `warn` (#d5b75d) on `bg-surface/70` over this project's paper
+composites to #5D5C5B and gives **3.43:1** — under WCAG AA (4.5:1) for text at this size. So "a bit
+weak" was not a matter of taste; it was objectively too low.
+
+**But the ground was the culprit, not the hue, and the ground was not even FIXED.** At 70% opacity the
+badge composites against whatever is behind it: 3.43:1 over the default paper, **3.14:1 over white**,
+and over the transparent-background checkerboard it changes square by square. A caption whose whole job
+is to say "you cannot edit this" must not get harder to read as the artwork under it gets lighter.
+Solid `surface` puts it at **8.51:1** and makes it independent of the paper entirely. A `warn/40`
+hairline and `font-medium` make it read as a warning CHIP rather than a floating label.
+
+**The token stays.** Saturating `--color-warn` would have diverged the whole family — it was
+deliberately moved off amber-500 to this muted gold earlier the same day to match
+slop-video-compositor, and it is used for in/out markers, locks and hidden badges throughout — to fix
+one badge's background. If a louder caption is still wanted after this, the next step is this chip
+(a filled `warn` ground with dark text), not the shared token.
