@@ -4726,7 +4726,11 @@ the member names. In the timeline the chevron is the row's first element, which 
 alignment is available there. Nor the panel's left inset, a different container with its own padding,
 and not what the screenshot showed.
 
-**The ruler's gutter corner stops cutting the row beneath it (2026-09-09).** Reported as *"what's up
+**The ruler's gutter corner — a wrong fix, reverted the same hour (2026-09-09).**
+> **SUPERSEDED by the paragraph at the end of this entry.** The change described below was made and
+> then REVERTED: the corner is `surface-active` again.
+
+ Reported as *"what's up
 with the gap above the label of audio lane?"*, then sharpened to *"like the bg and accent line are cut
 from above"* — which is the accurate description and the reason the first reading ("a gap") was
 misleading.
@@ -4749,3 +4753,25 @@ is simply the part of the ruler that happens to sit over the names — so `bg-su
 after: corner and ruler both `rgb(30, 30, 34)`. The family doc had already specified this and the app
 had drifted from it — *"Ruler: `panel` ground, ticks in `line`, labels in `muted`"*: one ground for
 the whole ruler, no second tone for its corner.
+
+**REVERTED.** *"You removed the light header that should be there (for separation) and look at the
+accent line and bg highlight — they still seem to be cut from the top."* Both halves correct, and the
+second is what proves the first: flattening the corner removed a separator the artist relies on AND
+left the reported symptom untouched, which means the corner's TONE was never the cause.
+
+**The geometry was never wrong.** Measured with the audio lane selected: ruler bottom 24.0, row top
+24.0, label top 24.0, gap 0.0, label height 28 in a 29px row (the 1px is its own `border-b`). Nothing
+overlaps and nothing is clipped. What the eye reads as a cut is contrast, not layout — a 10%-accent
+tint with no defined edge above it looks like it begins somewhere arbitrary.
+
+**The actual stack above that row, measured** (page px, top down): the playbar row (28), then **8px of
+bare root background** — the playbar's own `mb-2` — then the 24px ruler corner, then the row. With the
+corner flattened to `surface`, that 8px gap and the 24px corner merged into ONE 32px undifferentiated
+dark band above a subtly tinted row. That is the "cut". Restoring `surface-active` splits it back into
+gap + header.
+
+**Lesson, and it is the same one twice in one day.** I changed a colour on a hypothesis I had not
+tested, having ALREADY measured the geometry as correct — the measurement said "not a layout problem",
+and instead of asking what else could produce the look, I reached for the nearest visible thing and
+changed it. A fix that removes a feature and does not fix the symptom is two regressions. The corner's
+divergence from the shared doc's "Ruler: `panel` ground" is deliberate and stays.
