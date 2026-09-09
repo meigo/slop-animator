@@ -40,8 +40,13 @@ export function computeTimelineSpans(glyphs: string[]): TimelineSpan[] {
         out.push(run);
       }
     } else if (g === "—") {
-      // A hold only ever continues the key before it, so `run` is non-null here for any glyph array
-      // `computeTimelineGlyphs` can produce. Guarded anyway: this function takes a plain string[].
+      // A hold only ever continues the key before it in `computeTimelineGlyphs` output. It does NOT
+      // in `Timeline.svelte`'s block-drag preview (`displayGlyph`), which blanks the vacated source
+      // range and strands the holds that followed the dragged key — dragging a key out of its own
+      // run yields ["", "—", "◆", "—"], whose f=1 is a hold with no key before it. This guard is
+      // therefore load-bearing, not belt-and-braces: without it that render throws mid-drag. It also
+      // keeps the `keyFrames` invariant below true, since a content span is only ever CREATED in the
+      // ◆ branch and so can never come back empty. Tested; do not remove.
       if (run) run.endFrame = f;
     } else {
       // "◇" or "": content stops. The blank key gets its own one-frame span; "" gets nothing.

@@ -61,9 +61,24 @@ describe("computeTimelineSpans", () => {
     ]);
   });
 
+  // `computeTimelineGlyphs` emits — past the end of the STORED track for an inked key (it keeps
+  // holding to the document length), so a span must not stop early at `cells.length`. Not
+  // redundant with the first test: that one pins the merge, this one pins the producer's rule.
   it("a run continuing past the stored track keeps holding", () => {
     expect(computeTimelineSpans(["◆", "—", "—", "—", "—"])).toEqual([
       { startFrame: 0, endFrame: 4, blank: false, keyFrames: [0] },
+    ]);
+  });
+
+  // NOT reachable from `computeTimelineGlyphs`, but very much reachable from `Timeline.svelte`'s
+  // block-drag preview (`displayGlyph`), which blanks the vacated source range and leaves the holds
+  // that followed the dragged key stranded. Without the `if (run)` guard in the — branch this throws
+  // `Cannot set properties of null` inside a render function, mid-gesture. This test is what stops
+  // that guard being deleted as unreachable — it is not.
+  it("a stranded hold with no key before it produces no span (drag-preview glyphs)", () => {
+    expect(computeTimelineSpans(["—", "—"])).toEqual([]);
+    expect(computeTimelineSpans(["", "—", "◆", "—"])).toEqual([
+      { startFrame: 2, endFrame: 3, blank: false, keyFrames: [2] },
     ]);
   });
 

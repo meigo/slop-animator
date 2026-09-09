@@ -4540,7 +4540,8 @@ needs no cap (the next filled block says so), and one running to the document en
 
 This also answers open question 3 of the spec — *"does the hollow end-cap earn its place?"* — with
 **no**: it was competing with the blank key for the same meaning at the wrong frame. Render-only;
-`computeTimelineSpans` was already reporting blank spans truthfully and is untouched, so there was no
+`computeTimelineSpans` was already reporting blank spans truthfully and its LOGIC is untouched (only
+its docstring changed), so there was no
 node-testable surface and no test change (1117 still green, build 0/0).
 
 **Verified in Chrome** on a hand-built track — inked key at 1 holding to 4, blank key at 5, inked key
@@ -4574,3 +4575,39 @@ separate one-frame spans.
 **Verified in Chrome** on a track built to match the reported screenshot — a held key at 1, blank key
 at 5, three keys on 1s at 7/8/9, blank key at 10, then a key at 12 holding to the end. The three keys
 render as one block carrying three diamonds; the two blank keys carry the hollow ones.
+
+**Review pass on the two entries above (2026-09-09).** A superpowers code review of
+`cd19d838..1555c93e` returned no Critical findings and three Important ones. Two were mine to own:
+
+**The `if (run)` guard is load-bearing, and I had documented it as unreachable.** I wrote that a `—`
+glyph always follows a key "for any glyph array `computeTimelineGlyphs` can produce", and guarded it
+only because the signature takes a plain `string[]`. That missed the SECOND producer: `displayGlyph`
+(`Timeline.svelte:1139`), which synthesises the block-drag preview by blanking the vacated source
+range — and leaves the holds that followed the dragged key stranded. Dragging a key out of its own run
+yields `["", "—", "◆", "—"]`, whose `f=1` is a hold with no key before it. Without the guard,
+`run.endFrame = f` throws `Cannot set properties of null` inside a render function, mid-gesture. The
+comment now names the real caller, and a test pins it — which is the only thing that actually stops a
+future reader deleting a guard whose defence is a sentence. Behaviour was never affected: the old
+scan-forward implementation skipped stray `—` silently too.
+
+**The spec and plan still carried the superseded rules, unmarked.** CLAUDE.md's supersession rule is
+written for CLAUDE.md and CHANGELOG.md, but its REASON — "an agent that greps and lands on it first
+will act on it" — applies harder to a plan file holding a copy-pasteable test body that now fails.
+Both are marked now: a `> **SUPERSEDED**` block on the spec's "a Flash span is precisely ◆ followed by
+its run of —" paragraph (also retiring its phase-3 note about the end-cap as a resize hotspot, since
+the cap no longer exists), and one on the plan's inverted test with an explicit "do NOT paste these
+bodies back in — they fail." **The convention now extends to specs and plans.**
+
+The third finding was a dropped comment: the past-the-track test lost the sentence saying which
+producer rule it protects, which is what stops it being deleted as redundant. Restored.
+
+**Checked, not conceded:** the review flagged that adjacent diamonds could crowd at `MIN_CELL_W = 12`,
+since a `size-2` square rotated 45° has an 11.3px diagonal — the merge removed the 4px inter-block gap
+that used to keep back-to-back keys countable. Eyeballed in Chrome at cellW 12 with eight keys on 1s:
+they stay distinctly separate, tight but countable. No zoom-dependent diamond sizing added — that
+would be speculative work against a problem that does not appear.
+
+Also confirmed by the review and worth recording: `displaySpansFor`'s uncached path got CHEAPER, not
+dearer. Span count is monotonically non-increasing under the merge (500 span objects and up to 1000
+elements for a 500-frame track on 1s become one span and 500 diamonds), and it was always dominated by
+the `Array.from({length: frameCount})` glyph pass above it.
