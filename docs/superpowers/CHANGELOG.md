@@ -5349,3 +5349,26 @@ grid has, and is the tallest row rather than the shortest.
   below, where the 24px ruler had 3.85/3.3 for the same 4px stub.
 - **Playhead badge** fills the ruler at `h-[29px]`, and its wedge starts at `top: 29px` so the handle
   still ends exactly at the ruler's edge with the tip hanging into the tracks.
+
+**The 5-frame tick marks where its frame BEGINS (2026-09-09).** Came out of the question *"do some
+animation apps align playhead and keys on the ruler lines instead of between these?"* — the answer to
+which is that it splits along frame-based vs time-based tools, and this app is rightly the first kind
+(a frame is a cell you draw in, not an instant; the span rendering only means anything in a cell
+model). But asking it surfaced a real off-by-one one layer down.
+
+**The tick you count from sat one frame late.** A tick is drawn on its cell's RIGHT edge, and the major
+was `(f + 1) % 5 === 0` — i.e. on frame 5's right edge, the boundary between 5 and 6. So the line
+beside the number "5" marked where frame 5 ENDED. It is now `(f + 2) % 5 === 0`: the right edge of
+frame 4, which is frame 5's left edge. Frame 1 has no major either way — its left edge is the strip's
+origin, where there is no preceding cell to carry a border.
+
+**The 5-frame background guides had to move with it**, and this is the part that would have been easy
+to miss: they are the SAME boundary drawn behind the rows, and their comment said so explicitly
+("exactly where the ruler's every-5 tick sits"). The gradient's line moved from `[5·W − 1, 5·W)` to
+`[4·W − 1, 4·W)` within each 5-cell period. Change one without the other and the ruler and the grid
+disagree about where a five lands — a divergence that would read as a rendering bug and be very hard
+to attribute.
+
+Measured after, at `cellW` 12: major ticks at x 285.4 / 345.4 / 405.4, the labelled cells for 5 / 10 /
+15 starting at 286.4 / 346.4 / 406.4 — the 1px tick's right edge IS the frame's left edge — and the
+first guide line at 285.4, identical to the first major tick.

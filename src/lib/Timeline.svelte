@@ -2272,9 +2272,11 @@
          group headers, and the property rows whose grid cells were deleted — showed nothing, so the
          guides broke into disconnected segments wherever such a row sat between two layers.
          A background here is continuous by construction, costs zero DOM nodes, and needs no row to
-         opt in. The line occupies [5·CELL_W − 1, 5·CELL_W), which is exactly where the ruler's
-         every-5 tick sits: that tick is a `border-r` on the cell whose (f+1)%5===0, i.e. its RIGHT
-         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
+         opt in. The line occupies [4·CELL_W − 1, 4·CELL_W) within each 5-cell period, which is
+         exactly where the ruler's major tick sits: that tick is drawn on the RIGHT edge of the cell
+         whose (f+2)%5===0, i.e. the LEFT edge of the labelled frame. The two are one boundary and
+         must move together — before 2026-09-09 both sat one cell later, on frame 5's right edge,
+         which put the line you count from one frame past the number naming it. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
          25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
          guides and the dividers read as one quiet lattice instead of one dominating the other. The
          floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
@@ -2282,9 +2284,9 @@
     <div
       class="pointer-events-none absolute inset-y-0 z-0"
       style="left: {GUTTER_W}px; width: {stripFrames *
-        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {5 * CELL_W -
-        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {5 * CELL_W - 1}px {5 *
-        CELL_W}px);"
+        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {4 * CELL_W -
+        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W - 1}px {4 *
+        CELL_W}px, transparent {4 * CELL_W}px {5 * CELL_W}px);"
     ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
@@ -2496,7 +2498,15 @@
                warn wash wherever a label sits inside the range. Labelling every 10 frames when narrow
                only makes the collision rarer — the label still does not fit its own 12px column.
                Ticks use `text-muted`, not `border`: those two are 1.02:1 apart on the family ramp, so
-               a `border`-coloured tick on this ground is invisible. -->
+               a `border`-coloured tick on this ground is invisible.
+               `(f + 2) % 5`, not `(f + 1) % 5` — the major marks where the labelled frame BEGINS.
+               A tick is drawn on its cell's RIGHT edge, so the major for "5" belongs on cell f=3
+               (frame 4's right edge = frame 5's left edge). It used to be `(f + 1)`, which put it on
+               frame 5's RIGHT edge — the boundary between 5 and 6 — so the tick you counted from sat
+               one frame late. Frame 1 has no major either way: its left edge is the strip's origin,
+               where there is no preceding cell to carry a border.
+               The 5-frame background guides moved with it and MUST stay in step; they are the same
+               boundary drawn behind the rows. -->
           <div
             class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
@@ -2506,7 +2516,7 @@
             {rulerLabel(f)}
             {#each ["top-0", "bottom-0"] as edge (edge)}
               <span
-                class="absolute right-0 w-px {edge} {(f + 1) % 5 === 0
+                class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
                   ? 'h-1 bg-text-muted'
                   : 'h-[3px] bg-text-muted/35'}"
                 role="presentation"
