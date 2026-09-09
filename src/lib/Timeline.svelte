@@ -138,7 +138,7 @@
   import TrackKeyControls from "./TrackKeyControls.svelte";
   import Playbar from "./Playbar.svelte";
 
-  const CELL_W = 24; // px, fixed column width (box-border cells, no gap → contiguous columns)
+  const CELL_W = $derived(appState.timelineCellW); // px, column width (box-border cells, no gap → contiguous columns)
   // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
   // every consumer below — the ruler spacer, both playhead offsets, the sticky plate, the strip
   // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be

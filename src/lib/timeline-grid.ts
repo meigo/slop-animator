@@ -22,6 +22,18 @@ export function moveCancelPx(cellW: number): number {
   return Math.max(3, Math.min(6, Math.round(cellW * 0.25)));
 }
 
+/** Supported frame-column widths. 24 is the historical fixed value and stays the default, so
+ *  nothing changes until the zoom is moved. 12 is Flash's default; below it the marks stop being
+ *  hittable with a finger even with the scaled thresholds. */
+export const MIN_CELL_W = 12;
+export const MAX_CELL_W = 32;
+export const DEFAULT_CELL_W = 24;
+
+export function clampTimelineCellW(w: number): number {
+  if (!Number.isFinite(w)) return DEFAULT_CELL_W;
+  return Math.max(MIN_CELL_W, Math.min(MAX_CELL_W, Math.round(w)));
+}
+
 /**
  * Classify a pointer-down at horizontal `offsetX` (px from the track's left edge):
  * - near a keyframe span's right edge → resize that key's hold span

@@ -130,6 +130,7 @@ import {
   clampGutterLabelWidth,
   DEFAULT_GUTTER_LABEL_WIDTH,
 } from "../anim/panel-layout";
+import { clampTimelineCellW, DEFAULT_CELL_W } from "../lib/timeline-grid";
 import { trimHead, trimTail } from "../audio/trim";
 import { audioFrameSpan } from "../audio/peaks";
 import {
@@ -218,6 +219,7 @@ interface AnimState {
   timelineHeight: number; // px height of the resizable timeline panel
   layerPanelWidth: number; // px width of the resizable layer panel
   timelineLabelWidth: number; // px width of the timeline gutter's NAME column (excl. marker column)
+  timelineCellW: number; // px width of a timeline frame column
   /** WHICH TIMELINE ROW IS SELECTED — the single value every selection highlight reads.
    *
    *  This is deliberately separate from `activeLayerId`, which answers a DIFFERENT question ("what
@@ -314,6 +316,7 @@ export const state: AnimState = $state({
   timelineHeight: DEFAULT_TIMELINE_HEIGHT,
   layerPanelWidth: DEFAULT_PANEL_WIDTH,
   timelineLabelWidth: DEFAULT_GUTTER_LABEL_WIDTH,
+  timelineCellW: DEFAULT_CELL_W,
   activeRow: { kind: "layer", id: project.layers[0].id },
   timelineSelection: null,
   cellClipboard: null,
@@ -1977,6 +1980,7 @@ export function gatherPreferences(): Preferences {
     timelineHeight: state.timelineHeight,
     layerPanelWidth: state.layerPanelWidth,
     timelineLabelWidth: state.timelineLabelWidth,
+    timelineCellW: state.timelineCellW,
     pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
   };
 }
@@ -1998,6 +2002,8 @@ export function applyPreferences(p: Partial<Preferences>): void {
     state.layerPanelWidth = clampPanelWidth(p.layerPanelWidth, window.innerWidth);
   if (typeof p.timelineLabelWidth === "number")
     state.timelineLabelWidth = clampGutterLabelWidth(p.timelineLabelWidth, window.innerWidth);
+  if (typeof p.timelineCellW === "number")
+    state.timelineCellW = clampTimelineCellW(p.timelineCellW);
   if (p.pressureCurve && typeof p.pressureCurve === "object") {
     const { cp1, cp2 } = p.pressureCurve;
     if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")
