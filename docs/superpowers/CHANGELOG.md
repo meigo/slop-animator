@@ -4502,3 +4502,112 @@ identical before and at the key. A note on the verification, because the first t
 wrong and looked like a bug: setting the playhead to 17 and 23 on a **10-frame** project put it out
 of range, and the first structural commit legitimately clamped it back to 9 — which read as
 "animateLayer moves the playhead". It does not. The probe was invalid, not the code.
+
+**The hollow diamond moved onto the blank keyframe it was describing (2026-09-09).** Reported as
+*"when dragging keyframe next to blank key, the last one follows — is that by design?"*, then twice
+more before I had finished measuring: *"blank keyframes seem to snap to next keys in other situations
+as well"* and, decisively, *"it might be confusion about where the blank key is displayed and where it
+actually is"* / *"it looks better when the blank key symbol is inside the span, but it actually is
+outside next to it, right?"* — which is the whole bug, diagnosed by the person who could see it.
+
+**The cause was mine, from `e30bbda` item 6.** The plan drew a `◇` as an outlined one-frame span; I
+changed it to not drawing blank keys AT ALL, on the argument that a faint outline "made a boundary
+look like content and stacked into noise". That argument was fine and the fix was not: the span
+already carried a hollow diamond on its LAST HELD frame, so the only visible "the ink stops here" mark
+sat one cell to the LEFT of the cell that actually stops it, and the cell that governs the run had no
+pixels at all. Two marks' worth of meaning on one mark, at the wrong frame.
+
+**What that produced, measured against the real functions rather than reasoned about** (a scratch
+Vitest file over `moveBlockFrames`/`setHoldSpan` → `computeTimelineGlyphs` → `computeTimelineSpans`,
+deleted after):
+
+| gesture | before → after |
+| --- | --- |
+| drag the key alone +1 | `span 0-2, blank 3` → `span 1-2, blank 3` — the tail is pinned by the invisible key, so the span SHRINKS instead of sliding |
+| drag the whole visible span +2 | `span 0-2, blank 3` → `span 2-7` — the blank key is overwritten and gone; content silently runs to the end of the document |
+| drag the span's right edge +2 | `span 0-2, blank 3, span 5-7` → `span 0-4, blank 5, span 7-7` — the splice shifts the blank key AND the next real key |
+
+Only the third is by design (`setHoldSpan` splices, exactly as Flash's F5 does). The first two are the
+invisibility biting: one pins a span's end to something with no pixels, the other destroys a keyframe
+with nothing on screen to warn you. Both stop being surprising the moment the mark is in the right
+place, so neither needed a behaviour change.
+
+**The fix is one mark per meaning.** The span keeps its filled diamond on its first frame and loses
+the hollow one; the blank key gets the hollow diamond, on its own frame, in the empty lane, with no
+fill behind it. A `◇` means "nothing from here", so a filled block there would still be a lie — the
+honest picture is an outline with empty lane around it. A span that ends because an INKED key follows
+needs no cap (the next filled block says so), and one running to the document end never needed one.
+
+This also answers open question 3 of the spec — *"does the hollow end-cap earn its place?"* — with
+**no**: it was competing with the blank key for the same meaning at the wrong frame. Render-only;
+`computeTimelineSpans` was already reporting blank spans truthfully and its LOGIC is untouched (only
+its docstring changed), so there was no
+node-testable surface and no test change (1117 still green, build 0/0).
+
+**Verified in Chrome** on a hand-built track — inked key at 1 holding to 4, blank key at 5, inked key
+at 8 holding to 10, blank key at 11 — with the hollow diamonds landing on 5 and 11, the spans ending
+at 4 and 10, and the filled diamond still centred under the playhead.
+
+**Only a blank key splits a run (2026-09-09).** Asked for immediately after the diamond move, with the
+reasoning attached: *"it might not be technically correct but — a span could not be split between
+keyframes with content, only blank keys could do it. So continuous logic units would form, as usually
+it's about a specific object what is animated and blank frame will end that."*
+
+That is right, and it is also what Flash does. `computeTimelineSpans` used to break a run at every
+key, so a character drawn on 1s rendered as a row of disconnected one-frame blocks — the screenshot
+that prompted this shows three adjacent keys reading as three separate objects. But those frames ARE
+one thing: one drawing being animated. The frame that ends it is the `◇`, which is also the frame the
+artist reaches for when they want it ended.
+
+**Adjacent keys now share one span and are told apart by their marks, not by gaps.** A filled diamond
+lands on EVERY keyframe inside the run instead of only its first; the run is ended by a blank key or
+by running out of content, and by nothing else. `TimelineSpan` gains `keyFrames: number[]` — always
+non-empty for a content span (a run starts at a key), always empty for a blank one. The renderer
+`{#each}`es it.
+
+This **supersedes** the spec's "back-to-back keys are separate spans, not one run", and that test is
+inverted in place with a comment saying why, rather than deleted — the old rule was deliberate, so a
+future reader should find the reversal, not a silent gap. Ten tests, the nine new expectations written
+first and watched fail (`expected [{…(2)}] to deeply equal [{…(3)}]`), including the two cases that
+pin the new rule: a blank key SPLITS what would otherwise be one run, and back-to-back blank keys stay
+separate one-frame spans.
+
+**Verified in Chrome** on a track built to match the reported screenshot — a held key at 1, blank key
+at 5, three keys on 1s at 7/8/9, blank key at 10, then a key at 12 holding to the end. The three keys
+render as one block carrying three diamonds; the two blank keys carry the hollow ones.
+
+**Review pass on the two entries above (2026-09-09).** A superpowers code review of
+`cd19d838..1555c93e` returned no Critical findings and three Important ones. Two were mine to own:
+
+**The `if (run)` guard is load-bearing, and I had documented it as unreachable.** I wrote that a `—`
+glyph always follows a key "for any glyph array `computeTimelineGlyphs` can produce", and guarded it
+only because the signature takes a plain `string[]`. That missed the SECOND producer: `displayGlyph`
+(`Timeline.svelte:1139`), which synthesises the block-drag preview by blanking the vacated source
+range — and leaves the holds that followed the dragged key stranded. Dragging a key out of its own run
+yields `["", "—", "◆", "—"]`, whose `f=1` is a hold with no key before it. Without the guard,
+`run.endFrame = f` throws `Cannot set properties of null` inside a render function, mid-gesture. The
+comment now names the real caller, and a test pins it — which is the only thing that actually stops a
+future reader deleting a guard whose defence is a sentence. Behaviour was never affected: the old
+scan-forward implementation skipped stray `—` silently too.
+
+**The spec and plan still carried the superseded rules, unmarked.** CLAUDE.md's supersession rule is
+written for CLAUDE.md and CHANGELOG.md, but its REASON — "an agent that greps and lands on it first
+will act on it" — applies harder to a plan file holding a copy-pasteable test body that now fails.
+Both are marked now: a `> **SUPERSEDED**` block on the spec's "a Flash span is precisely ◆ followed by
+its run of —" paragraph (also retiring its phase-3 note about the end-cap as a resize hotspot, since
+the cap no longer exists), and one on the plan's inverted test with an explicit "do NOT paste these
+bodies back in — they fail." **The convention now extends to specs and plans.**
+
+The third finding was a dropped comment: the past-the-track test lost the sentence saying which
+producer rule it protects, which is what stops it being deleted as redundant. Restored.
+
+**Checked, not conceded:** the review flagged that adjacent diamonds could crowd at `MIN_CELL_W = 12`,
+since a `size-2` square rotated 45° has an 11.3px diagonal — the merge removed the 4px inter-block gap
+that used to keep back-to-back keys countable. Eyeballed in Chrome at cellW 12 with eight keys on 1s:
+they stay distinctly separate, tight but countable. No zoom-dependent diamond sizing added — that
+would be speculative work against a problem that does not appear.
+
+Also confirmed by the review and worth recording: `displaySpansFor`'s uncached path got CHEAPER, not
+dearer. Span count is monotonically non-increasing under the merge (500 span objects and up to 1000
+elements for a 500-frame track on 1s become one span and 500 diamonds), and it was always dominated by
+the `Array.from({length: frameCount})` glyph pass above it.

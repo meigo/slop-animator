@@ -201,6 +201,11 @@ describe("computeTimelineSpans", () => {
     expect(computeTimelineSpans(["◆"])).toEqual([{ startFrame: 0, endFrame: 0, blank: false }]);
   });
 
+  // > **SUPERSEDED 2026-09-09** — INVERTED after first use. Back-to-back keys are now ONE run,
+  // > marked at each key (`keyFrames: [0, 1]`); only a blank key splits a run. Every expectation in
+  // > this task's test block also gained `keyFrames`. Do NOT paste these bodies back in — they fail.
+  // > The live tests are `src/__tests__/timeline-spans.test.ts`; the reasoning is the 2026-09-09
+  // > entry "Only a blank key splits a run" in `docs/superpowers/CHANGELOG.md`.
   it("back-to-back keys are separate spans, not one run", () => {
     expect(computeTimelineSpans(["◆", "◆", "—"])).toEqual([
       { startFrame: 0, endFrame: 0, blank: false },

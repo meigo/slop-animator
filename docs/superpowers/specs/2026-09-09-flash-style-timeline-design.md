@@ -39,6 +39,16 @@ a span. That matches the ask exactly.
 | `—` | hold continuing an inked key | the filled span |
 | `""` | no key yet, or a hold after a blank key | empty lane |
 
+> **SUPERSEDED 2026-09-09** — three of the rules below changed after the first real use, at the
+> user's request. (1) A run is now ended ONLY by a blank key: adjacent inked keys share one span and
+> are told apart by a filled diamond on each, because a character drawn on 1s otherwise read as a row
+> of disconnected objects. (2) The hollow end-cap is gone from the span's last held frame; the hollow
+> diamond now marks the BLANK KEY, on its own frame, which is the cell that actually stops the run.
+> (3) `TimelineSpan` therefore carries `keyFrames: number[]`. See the two 2026-09-09 entries at the
+> end of `docs/superpowers/CHANGELOG.md` for the reasoning and the measured evidence. The phase-3
+> note below about the end-cap as a resize hotspot goes with it — the block's right edge is still a
+> target, but the cap it names no longer exists.
+
 A Flash span is precisely "a `◆` followed by its run of `—`", and the hollow end-cap is that run's
 last frame. **Converting is a run-length pass over an array we already compute** — a rendering
 change, not a model change. The part that would normally carry the risk is done and tested.
