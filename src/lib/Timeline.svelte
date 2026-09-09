@@ -217,6 +217,10 @@
   // unchanged — so this is a cache hit and does zero work. Previously each cell ran a per-cell
   // resolveKeyframeIndex backward scan over the reactive cells proxy: O(frames²) of expensive proxy
   // reads, re-run on every scrub step (the scrub-jitter root cause).
+  //
+  // Entries are never deleted, so a loaded project can reuse a dead layer id and hit a stale entry
+  // keyed to it — safe only because `state.version` is strictly monotonic (and `replaceProject` ends
+  // in `bump()`), so a stale entry's `version` can never match the current one.
   const glyphCache = new Map<number, { version: number; frameCount: number; glyphs: string[] }>();
   function glyphsFor(layer: DrawingLayer, version: number): string[] {
     const frameCount = appState.project.frameCount;
@@ -227,6 +231,8 @@
     return glyphs;
   }
 
+  // Same never-deleted/stale-id caveat as `glyphCache` above, and the same reason it's safe: a
+  // stale entry can never version-match a live `state.version`.
   const spanCache = new Map<
     number,
     { version: number; frameCount: number; spans: TimelineSpan[] }
@@ -2164,9 +2170,10 @@
 
     <span class="mx-3 h-5 w-px bg-border"></span>
     <Playbar variant="settings" />
-    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Frame width">
+    <label class="flex items-center gap-1 text-xs text-text-secondary">
       <input
         type="range"
+        title="Frame width"
         min={MIN_CELL_W}
         max={MAX_CELL_W}
         step="2"
@@ -2598,10 +2605,13 @@
             <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
                  per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
                  carries its own 1px border, so adjacent segments never meet. Absolute positioning
-                 also makes a key a real hit target for dragging it to another frame. -->
+                 also makes a key a real hit target for dragging it to another frame. All children
+                 being absolute means this container has no intrinsic width — needs an explicit one
+                 (see the drawing-row div below) or it collapses to 0 and every pointer handler here
+                 goes dead. -->
             <div
               class="relative flex h-6 select-none"
-              style="touch-action: none"
+              style="touch-action: none; width: {appState.project.frameCount * CELL_W}px"
               role="presentation"
               onpointerdown={(e) => {
                 if (!isFinePointer(e)) {

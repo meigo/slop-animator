@@ -17,9 +17,11 @@ export function edgePx(cellW: number): number {
   return Math.max(2, Math.min(5, Math.round(cellW * 0.2)));
 }
 
-/** Companion to `edgePx`: how far a pointer may travel before a pending long-press is cancelled. */
+/** Companion to `edgePx`: how far a pointer may travel before a pending long-press is cancelled.
+ *  `Math.floor`, not `Math.round`: rounding the `.5` case upward broke the
+ *  `edgePx + moveCancelPx < cellW / 2` invariant at w=14 and w=18 (both reachable zoom stops). */
 export function moveCancelPx(cellW: number): number {
-  return Math.max(3, Math.min(6, Math.round(cellW * 0.25)));
+  return Math.max(3, Math.min(6, Math.floor(cellW * 0.25)));
 }
 
 /** Supported frame-column widths. 24 is the historical fixed value and stays the default, so
