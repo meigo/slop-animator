@@ -2276,7 +2276,7 @@
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
     <div
-      class="absolute inset-y-0 z-10 w-0.5 bg-accent pointer-events-none"
+      class="absolute inset-y-0 z-10 w-0.5 bg-danger pointer-events-none"
       style="left: {GUTTER_W + appState.playhead * CELL_W + CELL_W / 2 - 1}px"
     ></div>
     <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
@@ -2371,9 +2371,12 @@
         </div>
       {/if}
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
-           the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
+           the sticky gutter (z-20) so it slides out of sight instead of floating over the names.
+           `danger`, not `accent`: in accent it was the same blue as the property keys, the span
+           diamonds and the row selection, so the one mark you track during playback blended into the
+           marks it has to be read against. The family doc reserves red for exactly this. -->
       <div
-        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
@@ -2400,7 +2403,7 @@
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W /
-            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
+            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
       ></div>
       <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop and a click focus ring. role/aria stay so

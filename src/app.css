@@ -86,6 +86,18 @@
      While this app still had a light theme this token needed a second value, amber-700, because
      amber-500 is only 2.15:1 on white; that is one of the costs the light theme was carrying. */
   --color-warn: #d5b75d;
+
+  /* THE playhead, and nothing else. red-400, straight from the family doc, which reserves it:
+     "Playhead: 1px line in `danger` … It is the only red in the timeline, which is what makes it
+     findable." This app had been drawing the playhead in `accent` — the same blue as the property
+     keys, the span diamonds and the selection — so it blended into exactly the marks it has to be
+     read against.
+     6.01:1 on `surface`, and `accent-text` on it is 6.77:1 for the frame badge.
+     One rule travels with this token: the playhead's head must differ from the in/out wedges in
+     SHAPE, not merely in colour — `danger` red against `warn` amber is the worst pair for the common
+     colour blindnesses. It does: the playhead's tip is a SYMMETRIC triangle, the in/out markers'
+     are right-angled wedges pointing into the range. */
+  --color-danger: #f87171;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the

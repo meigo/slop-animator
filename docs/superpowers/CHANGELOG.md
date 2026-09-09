@@ -5183,3 +5183,28 @@ padding does not move it, which is the same property that lets a member's select
 
 The derivation is now written into the comment on the track row's glyph slot, so the next person to
 change the base padding finds out that three other numbers depend on it.
+
+**The playhead is red (2026-09-09).** Reported as *"indigo playhead blends with blue keys. use red one
+like other slop apps do?"* — and the family doc had already called it, so this is closing a divergence
+rather than making a choice:
+
+> **Playhead**: 1px line in `danger` running the FULL height of the timeline including the ruler…
+> **It is the only red in the timeline, which is what makes it findable.**
+
+This app had been drawing it in `accent` — the same blue as the property keys, the span diamonds, the
+row selection and the range-selection wash. The one mark you track during playback was the same colour
+as everything it has to be read against.
+
+`--color-danger: #f87171` (red-400) added to the theme, and the three playhead pieces take it: the
+full-height line, the frame badge, and the badge's tip. **6.01:1 on `surface`**, and `accent-text` on
+the badge is **6.77:1**.
+
+**The rule that travels with the token, since it is easy to lose later:** the playhead's head must
+differ from the in/out wedges in SHAPE, not merely in colour — `danger` red against `warn` amber is
+the worst pair for the common colour blindnesses, so colour alone would leave them indistinguishable
+for some users. It does differ: the playhead's tip is a SYMMETRIC triangle, the in/out markers' are
+right-angled wedges pointing into the range. Verified with a range set, both on screen at once.
+
+Not changed, and worth knowing: the family spec says a **1px** line and this app's is 2px (`w-0.5`).
+That predates the colour question and is arguably right for a touch device, so it stays until someone
+asks.
