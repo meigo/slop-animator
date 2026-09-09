@@ -187,13 +187,19 @@ textarea,
    carried `.ui-selected` briefly and each drew its own bar, so a selected row grew two extra
    vertical rules floating mid-label. They were `bg-surface-active` before the accent landed — a
    plain background, which stacks harmlessly — which is why the fault arrived with the accent. */
-.ui-selected {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-/* The same tint with no edge, for pieces that sit inside an already-marked row. */
+.ui-selected,
 .ui-selected-tint {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  /* ONE definition, so the row and the pieces inside it cannot drift apart.
+     10%, down from 18% (1.30:1 over the panel, which read as heavy on a layer row). At 1.15:1 the
+     tint is barely a wash — and that is the point: the 2px edge is 5.25:1 and is what actually
+     says WHICH row, so the fill only has to hint at the extent. Deliberately below the hover
+     shade (1.21:1): hover is transient and wants to be felt, selection is persistent and wants to
+     be quiet, and the edge keeps the two from ever being confused. */
+  --ui-selected-tint: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  background-color: var(--ui-selected-tint);
+}
+.ui-selected {
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 /* SortableJS drag states */
