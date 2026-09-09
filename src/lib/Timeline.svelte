@@ -2288,26 +2288,33 @@
         ></span>
       </span>
       {#if playRange}
-        <!-- Play-range edges: accent line + a triangle pointing INTO the range (slop-compositor /
-             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected. -->
+        <!-- Play-range edges: a `warn` line + a triangle pointing INTO the range (slop-compositor /
+             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected.
+             WARN, not accent, and the distinction is the family's whole reason for having a second
+             accent (SLOP-TIMELINE-UI.md §6): `accent` means state that is part of the document and
+             reaches a render; `warn` means session-only monitoring that never does. This range only
+             bounds PLAYBACK — it lives on `state.playback`, is not written to the project file, and
+             the export never reads it — so painting it in the selection colour claimed it affects
+             the output. It does not. The wash also drops 28% -> 15%, matching the compositor: a
+             heavy band reads as a clip and competes with the media it sits over. -->
         <div
           class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
-          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-selection)"
+          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
         >
           <div
             class="absolute top-0 left-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-right: 5px solid transparent"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-right: 5px solid transparent"
           ></div>
         </div>
         <div
           class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
           style="left: {GUTTER_W +
             (playRange.end + 1) * CELL_W -
-            2}px; background: var(--color-selection)"
+            2}px; background: var(--color-warn)"
         >
           <div
             class="absolute top-0 right-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-selection); border-left: 5px solid transparent"
+            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-left: 5px solid transparent"
           ></div>
         </div>
       {/if}
@@ -2377,7 +2384,7 @@
               ? 'border-text-muted'
               : 'border-text-muted/35'}"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
-              ? 'background: color-mix(in srgb, var(--color-selection) 28%, transparent);'
+              ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
               : ''}"
           >
             {rulerLabel(f)}
