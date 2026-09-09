@@ -5288,3 +5288,38 @@ it here because an entry that still reads "owed a look" is indistinguishable fro
 Still NOT confirmed, and carried forward rather than quietly folded into the above: the **Pencil
 block-drag** on the timeline (`displaySpansFor`). A scripted drag lands on key-move or resize instead,
 so that preview path has been implemented, reviewed and shipped without ever being watched.
+
+**Flash's ruler: short ticks top and bottom, number centred between them (2026-09-09).** Asked as
+*"how to solve frame numbers overlapping with ruler bars on narrow scales?"*, then corrected mid-build:
+*"numbers have to stay in the center. flash had short ticks at the top and bottom of the ruler."* The
+correction is the better design and the one shipped — my first pass moved the numbers to a top band
+with the ticks below, which solved the collision but changed where you read the number.
+
+**Measured before proposing anything.** At `cellW` 12 a two-digit label is **13–15px in a 12px cell**,
+so it overflowed ~1px each side onto BOTH neighbouring ticks; a three-digit label — this project
+reaches 300 — is ~22px and crossed them outright. So it was never a crowding problem between labels:
+each label simply does not fit between the ticks either side of it, and no cadence change fixes that.
+
+**The fix is structural rather than tuned.** Each tick is now two stubs, one at the ruler's top edge
+and one at its bottom, and the number keeps the clear band between them. The two occupy disjoint
+horizontal bands, so a label cannot collide with a tick **at any zoom or any digit count** — there is
+nothing here to re-tune when the zoom range or the project length changes.
+
+**The heights are derived from the ink, not from the em box — and getting that wrong cost a round.**
+First attempt used 6px stubs, reasoned from "a 12px glyph box in a 24px line". Reported back as *"still
+touching numbers"*, correctly: measuring with `measureText` at the actual font (12px system-ui, 24px
+line) gives baseline 16.5, `actualBoundingBoxAscent` 8.65 and descent 0.2, so the digits occupy
+**y 7.85 → 16.7** — leaving the 6px stubs just 1.85px above and 1.3px below. The em box is not where
+the ink is, and a 1px gap reads as a collision.
+
+Stubs are now **4px major, 3px minor**, measured clearances of 3.85/3.3 and 4.85/4.3. That also caps
+how a major can differ: there is no room to make it meaningfully taller, so it is 1px taller and mainly
+BRIGHTER, which is what keeps the 5-frame cadence readable from the tick row alone.
+
+**Two alternatives rejected.** Masking the ticks behind each label with an opaque background works at
+any width, but it would punch a hole in the play-range's warn wash wherever a label sits inside the
+range. Labelling every 10 frames when narrow only makes the collision rarer.
+
+Verified at both ends of the zoom: `cellW` 12 with three-digit labels (110–175) crossing several tick
+positions cleanly, and `cellW` 32; and with a play range set, where the wash stays unbroken under its
+labels. Stub geometry measured at 0–6 and 18–24 in a 24px row.

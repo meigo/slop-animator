@@ -2466,20 +2466,43 @@
         ></div>
         {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = playRange}
-          <!-- Ruler ticks: border and surface-active are near-identical (1.02:1 apart on the
-               family ramp), so ticks use text-muted — minors dimmed, every 5th (the label
-               cadence) at full strength. -->
+          <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
+               number centred in the clear band between them. The two bands are disjoint, so a label
+               can never collide with a tick — at any zoom, at any digit count.
+               It was a full-height `border-r` with the label centred THROUGH it, which worked only
+               while a label fitted inside one column. Measured at `cellW` 12: a two-digit label is
+               13–15px in a 12px cell, so it overflowed ~1px each side onto BOTH neighbouring ticks,
+               and a three-digit one (this project reaches 300) is ~22px and crossed them outright.
+               Reported 2026-09-09 as "frame numbers overlapping with ruler bars on narrow scales".
+               Heights are set by the TEXT, and by its INK rather than its em box — the difference
+               is the whole bug. Measured with `measureText` at this exact font (12px system-ui in a
+               24px line): baseline 16.5, `actualBoundingBoxAscent` 8.65, descent 0.2, so the digits
+               occupy **y 7.85 → 16.7**. The first attempt used 6px stubs, reasoning from the 12px em
+               box, which left 1.85px above and 1.3px below — reported as "still touching numbers",
+               and correctly. 4px (major) and 3px (minor) leave 3.3–4.9px at every edge.
+               That also caps how tall a major can be: majors are 1px taller than minors and, mainly,
+               BRIGHTER, because there is no room to distinguish them by height alone.
+               Two alternatives were weighed and rejected. Masking the ticks behind each label with an
+               opaque background works at any width too, but it would punch a hole in the play-range's
+               warn wash wherever a label sits inside the range. Labelling every 10 frames when narrow
+               only makes the collision rarer — the label still does not fit its own 12px column.
+               Ticks use `text-muted`, not `border`: those two are 1.02:1 apart on the family ramp, so
+               a `border`-coloured tick on this ground is invisible. -->
           <div
-            class="box-border h-6 border-r text-xs/6 text-center text-text-secondary {(f + 1) %
-              5 ===
-            0
-              ? 'border-text-muted'
-              : 'border-text-muted/35'}"
+            class="relative box-border h-6 text-xs/6 text-center text-text-secondary"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
               ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
               : ''}"
           >
             {rulerLabel(f)}
+            {#each ["top-0", "bottom-0"] as edge (edge)}
+              <span
+                class="absolute right-0 w-px {edge} {(f + 1) % 5 === 0
+                  ? 'h-1 bg-text-muted'
+                  : 'h-[3px] bg-text-muted/35'}"
+                role="presentation"
+              ></span>
+            {/each}
           </div>
         {/each}
       </div>
