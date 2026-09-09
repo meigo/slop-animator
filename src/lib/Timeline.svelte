@@ -2335,27 +2335,6 @@
         class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
         style="width: {GUTTER_W}px"
       >
-        <!-- The playhead badge's tip protrudes 6px BELOW this row, so the spacer above (which is
-             only as tall as the ruler) cannot hide it and the tip leaked over the gutter names when
-             scrolled right. This masks that band. It must be a child of the STICKY spacer: an
-             absolute box in the row itself would be positioned from the row's left edge, which
-             scrolls away, and a taller spacer would push every track down by 6px. `top-full` puts it
-             exactly under the ruler; the border continues the gutter divider through the strip.
-             `bg-surface-active`, MATCHING THE SPACER IT HANGS FROM, not `bg-surface` as it was until
-             2026-09-09. This strip is painted OVER the first row's gutter — that is its whole job —
-             so in the ruler's dark tone it read as a 6px gap between the light header and the row,
-             and it clipped the top of that row's selection tint and accent bar. Reported twice, as
-             "the gap above the label of audio lane" and "the bg and accent line are cut from the
-             top". Both were this. It is an extension of the header below the ruler, so it takes the
-             header's colour and the header simply reads 6px taller.
-             It also hid from `elementFromPoint` (it is `pointer-events-none`), which is how a probe
-             reported "row top 24.0, label top 24.0, zero gap" while the paint said otherwise — TRUE
-             of the layout, and irrelevant to a mask drawn on top of it. Hit-testing is not painting;
-             to find what covers something, colour the boxes in. -->
-        <span
-          class="pointer-events-none absolute left-0 top-full bg-surface-active border-r border-text-muted"
-          style="width: {GUTTER_W}px; height: 6px"
-        ></span>
       </span>
       {#if playRange}
         <!-- Play-range edges: a `warn` line + a triangle pointing INTO the range (slop-compositor /
@@ -2391,20 +2370,34 @@
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names. -->
       <div
-        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-[18px] px-1 flex items-center justify-center rounded bg-accent text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
       >
         {appState.playhead + 1}
       </div>
-      <!-- …and its downward tip, continuing into the playhead line below. -->
+      <!-- …and its downward tip. The badge is 18px and this is the last 6px, so the handle ends
+           EXACTLY at the ruler's bottom edge and nothing protrudes into the first row.
+           It used to be `h-6` + a tip at `top: 24px`, hanging 6px into the row below. Because the
+           ruler is z-35 and the row labels are z-20, that overhang painted over the gutter NAMES
+           whenever the playhead scrolled behind the gutter, and the fix at the time was a 6px
+           `GUTTER_W`-wide mask hung under the sticky spacer. That mask then WAS the "gap between the
+           header and audio lane row": in the ruler's dark tone it read as a gap and clipped the first
+           row's tint and accent bar; in the header's lighter tone it aligned with neither, leaving
+           the gutter header 6px deeper than the ruler beside it. A cover that has to match two
+           different things at once cannot exist, so the overhang it was covering is gone instead —
+           the mask is deleted, and the header's bottom is the ruler's bottom again.
+           The playhead LINE (absolute, inset-y-0) starts at the top of the scroller and runs the full
+           height, so it meets this tip at the ruler's edge and continues down: nothing is lost by not
+           overhanging. If the badge is ever made taller, this `top` must move with it — the two add
+           up to 24px and that is the whole invariant. -->
       <div
         class="absolute z-10 pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W /
-            2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
+            2}px; top: 18px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-accent)"
       ></div>
       <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop and a click focus ring. role/aria stay so

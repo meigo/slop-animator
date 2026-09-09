@@ -4802,3 +4802,34 @@ red and look at which pixels turn red.
 Acting on that wrong conclusion cost a bad commit in between — flattening the ruler corner to
 `bg-surface`, which deleted a separator the artist wanted and did not fix the symptom, then had to be
 reverted. The report was right three times before I stopped theorising and coloured the boxes in.
+
+**The mask is deleted; the playhead handle now fits the ruler (2026-09-09).** Fourth and last round on
+these pixels: *"now you moved the bottom of header down and it's not aligned with the ruler row."*
+Correct — recolouring the 6px mask to match the header removed the gap by making the gutter header
+30px deep against a 24px ruler, a visible step at the gutter divider.
+
+**That is the proof the mask itself was unfixable.** It has to be invisible against the header ABOVE it
+and against the first row BELOW it, and those are different colours — one of which (a selected row's
+tint) is not even constant. No single fill satisfies both. So the thing it was covering had to go
+instead.
+
+**What it was covering:** the playhead badge was `h-6` (24px, the ruler's full height) with its tip a
+separate triangle at `top: 24px` — hanging 6px into the first row. With the ruler at z-35 and row
+labels at z-20, that overhang painted over the gutter NAMES whenever the playhead scrolled behind the
+gutter, and the mask existed to hide it. The badge is now `h-[18px]` and the tip sits at `top: 18px`,
+so the two add to exactly 24 and the handle ends on the ruler's bottom edge. Nothing protrudes,
+nothing needs masking.
+
+**Nothing is lost by not overhanging.** The playhead LINE is `absolute inset-y-0` on the scroller — it
+starts at the top and runs the full height — so it meets the tip at the ruler's edge and continues
+down through the rows. The overhang was never what connected them.
+
+**Verified, both halves.** Alignment: ruler bottom, corner bottom, tip bottom and the audio label's top
+all measure 649.0 — one line. And the invariant the mask protected: scrolled to `scrollLeft = 400` with
+the playhead behind the gutter, the badge and tip disappear under the sticky spacer with nothing
+leaking over the names, which is what z-10-under-z-20 was always supposed to do for the badge and now
+does for the tip too.
+
+Four rounds on one 6px strip. The report was right every time; what took so long was that I kept
+theorising from a screenshot instead of colouring the boxes in, and once I did, the fix was to remove
+the workaround rather than to keep recolouring it.
