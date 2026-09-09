@@ -2134,6 +2134,21 @@
        what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
        which both aborts the custom pan and (correctly) suppresses its fling. -->
   <div class="relative flex-1 min-h-0 overflow-auto overscroll-contain" bind:this={gridWrapper}>
+    <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
+         conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
+         group headers, and the property rows whose grid cells were deleted — showed nothing, so the
+         guides broke into disconnected segments wherever such a row sat between two layers.
+         A background here is continuous by construction, costs zero DOM nodes, and needs no row to
+         opt in. The line occupies [5·CELL_W − 1, 5·CELL_W), which is exactly where the ruler's
+         every-5 tick sits: that tick is a `border-r` on the cell whose (f+1)%5===0, i.e. its RIGHT
+         edge. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35). -->
+    <div
+      class="pointer-events-none absolute inset-y-0 z-0"
+      style="left: {GUTTER_W}px; width: {stripFrames *
+        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {5 * CELL_W -
+        1}px, color-mix(in oklab, var(--color-text-muted) 40%, transparent) {5 * CELL_W - 1}px {5 *
+        CELL_W}px);"
+    ></div>
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
@@ -2747,12 +2762,7 @@
             >
               {#each Array(appState.project.frameCount) as _, f (f)}
                 <div
-                  class="box-border h-6 leading-none text-xs flex items-center justify-center {(f +
-                    1) %
-                    5 ===
-                  0
-                    ? 'border-r border-text-muted/40'
-                    : ''}"
+                  class="box-border h-6 leading-none text-xs flex items-center justify-center"
                   class:bg-selection={inSelection(layer.id, f)}
                   style="width: {CELL_W}px"
                 >
