@@ -4833,3 +4833,36 @@ does for the tip too.
 Four rounds on one 6px strip. The report was right every time; what took so long was that I kept
 theorising from a screenshot instead of colouring the boxes in, and once I did, the fix was to remove
 the workaround rather than to keep recolouring it.
+
+**Timeline zoom anchors on the playhead (2026-09-09).** Asked as *"timeline horizontal scaling. origin
+could be at playhead"* — right, and the left edge was the wrong origin. Between 12px and 32px a frame
+200 columns out travels 4000px, so the frame you are working on leaves the viewport on almost any zoom
+that matters.
+
+`anchoredScrollLeft(frame, fromW, toW, scrollLeft, gutterW)` in `timeline-grid.ts` returns the
+`scrollLeft` that keeps the playhead at the screen x it already occupies. Pure, six tests written
+first and watched fail. Two of them pin things that are easy to get wrong: the **half-column centre
+offset** (the playhead sits at `gutter + frame*w + w/2`, so "just scale scrollLeft" is wrong even at
+frame 0, whose centre moves 12px → 16px on a 24→32 zoom), and **gutter independence** (the anchor is a
+difference of two content positions, so a user-widened name column must not change how zoom behaves).
+
+The DOM half is `setCellW` in `Timeline.svelte`. Two ordering constraints, both load-bearing: the
+target is computed BEFORE the store write (read after, and `scrollLeft` has already been re-clamped
+against a `scrollWidth` that changed underneath, so the anchor would come from a position never on
+screen), and the assignment happens after `await tick()` (until Svelte re-renders at the new width the
+scroller's `scrollWidth` is still the old one and the browser clamps against it). Letting the browser
+do the end clamping is why no manual clamping is needed.
+
+A playhead that is currently OFF screen keeps its offset rather than being pulled into view:
+preserving the relative position moves the visible content the way the artist expects, where snapping
+to an edge would be a jump they did not ask for.
+
+**Verified in Chrome, then partly un-verifiable.** Before the pure function was extracted, the
+end-to-end behaviour measured **drift 0** on zoom in (24→32, scrollLeft 2420→3384), zoom out (24→12,
+2420→974), and at the left end (frame 0 at scrollLeft 0). The extraction moved that same arithmetic
+into the tested function without changing it. The post-extraction browser re-check could NOT be
+completed: after Vite HMR, `await import('/src/state/appState.svelte.ts')` from the console resolves to
+a DIFFERENT module instance than the mounted components hold, so probe writes land on a detached store
+— the render kept reporting `playhead 0, w 14` while the store read back `120, 24`. **So this is owed
+a real look on the iPad**: drag the frame-width slider with the playhead parked mid-view and confirm it
+stays put.

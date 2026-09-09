@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { sliderFill } from "./slider-fill";
   import {
     Plus,
@@ -136,6 +137,7 @@
     planCellPointer,
     MIN_CELL_W,
     MAX_CELL_W,
+    anchoredScrollLeft,
     clampTimelineCellW,
   } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
@@ -1095,6 +1097,34 @@
   // the column now — a fixed 5 + 6 held only at the fixed 24px width (11 < 12, one pixel spare)
   // and breaks below about 22px. `timeline-grid.test.ts` pins it across the zoom range.
   const MOVE_CANCEL_PX = $derived(moveCancelPx(CELL_W));
+
+  /** Set the frame width, keeping the PLAYHEAD pinned to the screen x it already occupies.
+   *  The arithmetic — and why the playhead is the right origin — lives with `anchoredScrollLeft` in
+   *  `timeline-grid.ts`, where it is unit-tested; this function is the DOM half.
+   *
+   *  The target is computed BEFORE the store write, from the old width and the current scroll. Read
+   *  after, and `el.scrollLeft` has already been re-clamped against a `scrollWidth` that changed
+   *  under it, so the anchor would be computed from a position the artist never saw.
+   *
+   *  `await tick()` is load-bearing: the strip's width is `frameCount * CELL_W`, so until Svelte has
+   *  re-rendered at the new width the scroller's `scrollWidth` is still the OLD one and the browser
+   *  clamps the assignment against it. Assigning after the flush lets that clamp do the right thing
+   *  at both ends, which is also why no manual clamping is needed here.
+   *
+   *  A playhead that is currently OFF-screen keeps its (negative, or past-the-edge) offset rather
+   *  than being pulled into view: preserving the relative position means the visible content moves
+   *  the way the artist expects, where snapping it to an edge would be a jump they did not ask for. */
+  async function setCellW(next: number) {
+    const el = gridWrapper;
+    const w0 = appState.timelineCellW;
+    const w1 = clampTimelineCellW(next);
+    if (w1 === w0) return;
+    const target = el ? anchoredScrollLeft(appState.playhead, w0, w1, el.scrollLeft, GUTTER_W) : 0;
+    appState.timelineCellW = w1;
+    if (!el) return;
+    await tick();
+    el.scrollLeft = target;
+  }
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;
   let pressStartY = 0;
@@ -2229,7 +2259,7 @@
         step="2"
         class="w-20"
         value={appState.timelineCellW}
-        oninput={(e) => (appState.timelineCellW = clampTimelineCellW(+e.currentTarget.value))}
+        oninput={(e) => setCellW(+e.currentTarget.value)}
         style={sliderFill(appState.timelineCellW, MIN_CELL_W, MAX_CELL_W)}
       />
     </label>
