@@ -2526,7 +2526,7 @@
                  carries its own 1px border, so adjacent segments never meet. Absolute positioning
                  also makes a key a real hit target for dragging it to another frame. -->
             <div
-              class="relative flex select-none"
+              class="relative flex h-6 select-none"
               style="touch-action: none"
               role="presentation"
               onpointerdown={(e) => {
@@ -2556,9 +2556,6 @@
                 if (!isFinePointer(e)) touchPanUp(e);
               }}
             >
-              {#each Array(appState.project.frameCount) as _, f (f)}
-                <div class="box-border h-6 border border-border" style="width: {CELL_W}px"></div>
-              {/each}
               <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
                    the same distinction the layer rows already draw, because it is the same fact. A
                    drawing hold repeats one drawing across those frames; a property hold repeats one
