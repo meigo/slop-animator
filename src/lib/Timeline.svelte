@@ -1843,14 +1843,18 @@
      is the live question. So: a neutral hairline always, `accent` while the group is the one being
      worked on. The neutral colour is `text-muted` at 50%, NOT `border`: this file already hit that
      wall on the ruler ticks — `border` and `surface` sit ~1.02:1 apart on the family ramp, so a 1px
-     `border` hairline on a `surface` row is invisible, which is the whole job undone. `groupDetailShown` is that question already answered and already tested — the group
+     `border` hairline on a `surface` row is invisible, which is the whole job undone.
+     19px is the group chevron's CENTRE, not a round number: the header's label starts at `pl-3`
+     (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19. Aligning the two makes the
+     chevron read as the bracket's head — the control that opens the block sits on the line that
+     shows how far it reaches. Move either the padding or the chevron's width and this must follow. `groupDetailShown` is that question already answered and already tested — the group
      is the working target, or one of its members is the selected row (a member's TRACK row counts,
      since `layerRowSelected` resolves a layer-owned track to its owner). -->
 {#snippet groupSpine(groupId: number | null)}
   {#if groupId != null}
     {@const lit = groupDetailShown(appState.activeRow, groupId, appState.project.layers)}
     <span
-      class="pointer-events-none absolute top-0 -bottom-px left-2 w-px"
+      class="pointer-events-none absolute top-0 -bottom-px left-[19px] w-px"
       class:bg-accent={lit}
       class:bg-text-muted={!lit}
       class:opacity-50={!lit}
@@ -2235,7 +2239,17 @@
   <!-- `overscroll-contain`: reaching either end must not hand the scroll to an ancestor. Chaining is
        what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
        which both aborts the custom pan and (correctly) suppresses its fling. -->
-  <div class="relative flex-1 min-h-0 overflow-auto overscroll-contain" bind:this={gridWrapper}>
+  <!-- `-mx-2` cancels the root's `p-2` horizontally so the scrollport spans the panel edge to edge.
+       Without it the gutter began 8px in while the strip was CLIPPED flush on the right — a margin on
+       one side only — and a selected row's accent bar and background both started at that 8px, so a
+       row looked inset from a panel it actually fills. The 8px is handed back to the gutter's LABELS
+       (`pl-3` where they were `px-1`, `pl-6` where a group member was `pl-4`), so every icon and name
+       stays at the screen position it had; what moved is the row BACKGROUND, which now reaches 0, and
+       the frame strip, which gains the reclaimed 8px at each end. -->
+  <div
+    class="relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
+    bind:this={gridWrapper}
+  >
     <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
          conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
          group headers, and the property rows whose grid cells were deleted — showed nothing, so the
@@ -2460,7 +2474,7 @@
           style="min-width: {stripMinW}px"
         >
           <div
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:ui-selected={groupLit}
             class:text-text={groupLit}
@@ -2588,8 +2602,8 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-              class:pl-4={spec.indent}
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+              class:pl-6={spec.indent}
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
@@ -2757,8 +2771,8 @@
           style="min-width: {stripMinW}px"
         >
           <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
-            class:pl-4={layer.groupId != null}
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+            class:pl-6={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
@@ -2777,12 +2791,14 @@
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
-                 A GROUP MEMBER is the one deliberate exception: `pl-4` above lands it at the same
-                 POSITION the panel uses, 16px, because with group rows now present an un-indented
+                 A GROUP MEMBER is the one deliberate exception: `pl-6` above lands it at the same
+                 SCREEN position the panel's member reaches, because with group rows now present an un-indented
                  member reads as the group's SIBLING. The two surfaces get there with different
                  classes — the panel's `.group-members pl-3` (12px) sits on top of the list's own
                  `pl-1` (4px), where this row has no list padding under it — so compare the resulting
-                 offset, never the class value. The marker column is a separate sticky element pinned
+                 offset, never the class value — and note this row's own base padding is `pl-3`, not
+                 `pl-1`, since the scroller went full-bleed (`-mx-2`) and handed its 8px to the labels.
+                 The marker column is a separate sticky element pinned
                  at LABEL_W, so it stays aligned regardless. -->
             <span
               class="flex w-3.5 shrink-0 justify-center"

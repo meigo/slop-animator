@@ -4681,3 +4681,47 @@ purpose. Re-seeded correctly and the readout was fine. That is now three times i
 with the wrong shape has impersonated a defect (playhead past a 10-frame project; `{start,end}` for
 `{in,out}`; and this). **Read the type, then write the probe** — the cost of not doing so is a false
 bug report, and twice now it was caught only by checking before speaking.
+
+**The timeline gutter goes full-bleed (2026-09-09).** Asked as *"there is that margin on the left
+(there is none on the right). I'd keep equal padding for icon/labels but start header bg from the 0
+and put accent line also there?"* — correct on all three counts.
+
+**Where the asymmetry came from.** The timeline root carries `p-2`, and the scrolling grid is inside
+it. On the LEFT that padding is visible as 8px of bare panel before the gutter starts; on the RIGHT
+the strip is wider than the scrollport, so it is CLIPPED flush at the padding edge and the same 8px
+never shows. One padding, two appearances. The consequence was worse than the margin: a selected row's
+accent bar and its background both began at that 8px, so a row that fills the panel looked inset from
+it, and the group header's background floated rather than reading as a band.
+
+**Fixed by moving the 8px rather than deleting it.** `-mx-2` on the scroller cancels the root's
+horizontal padding, so the scrollport spans edge to edge and every `sticky left-0` gutter row now
+starts at panel x=0 — background, header band and accent bar with it. The 8px is handed to the gutter
+LABELS: `px-1` → `pr-1 pl-3` on all four (group header, layer row, track row, and the audio lane's,
+which is a separate component reached through `labelW`), and `pl-4` → `pl-6` for a group member. Every
+icon and name therefore stays at the screen x it had — verified by measuring, not by eye: each row's
+box now reports `left: 0` from the panel with `padding-left` 12px (24px for a member). The group spine
+moved `left-2` → `left-4` to ride along. The frame strip gains the reclaimed 8px at each end.
+
+The one real cost: `LABEL_W` is unchanged (it is a persisted, user-resizable preference — growing it
+would silently move everyone's gutter), so the label's TEXT area is 8px narrower and truncates
+slightly earlier. The gutter is draggable, which is the answer if it ever matters.
+
+**A note for whoever edits that indent comment next:** it used to justify `pl-4` as "the same POSITION
+the panel uses, 16px". The number is now 24px and the claim is unchanged, because the container it is
+measured from moved 8px left. That comment already warned to "compare the resulting offset, never the
+class value"; this is the case it was written for, and it has been updated rather than left to read as
+a contradiction.
+
+**And the spine centres on the group's chevron** (asked in the same breath: *"perhaps align expand
+arrow and the group spine line horizontally?"* / *"center these i mean"*). 19px, not a round number:
+the header's label starts at `pl-3` (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19.
+Measured after the change — chevron centre 19.0, spine centre 19.5, which is as close as a 1px line
+gets to a centre that falls on a pixel boundary. The point is that the control which OPENS the block
+now sits on the line that shows how far the block REACHES.
+
+Not touched, and deliberately: the LAYER PANEL's spine is not aligned to ITS chevron, and should not
+be. Measured at 29px apart, because that header puts a drag grip BEFORE the chevron — so the chevron
+sits further right than the members' own 12px indent, and a line through it would run straight through
+the member names. In the timeline the chevron is the row's first element, which is the only reason the
+alignment is available there. Nor the panel's left inset, a different container with its own padding,
+and not what the screenshot showed.
