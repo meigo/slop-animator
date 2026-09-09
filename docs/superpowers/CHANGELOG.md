@@ -5323,3 +5323,29 @@ range. Labelling every 10 frames when narrow only makes the collision rarer.
 Verified at both ends of the zoom: `cellW` 12 with three-digit labels (110–175) crossing several tick
 positions cleanly, and `cellW` 32; and with a play range set, where the wash stays unbroken under its
 labels. Stub geometry measured at 0–6 and 18–24 in a 24px row.
+
+**The ruler is 30px (2026-09-09).** Asked as *"the ruler can actually be a bit higher. same height as
+tracks below it"* — then, once the measurements were on the table, *"i actually had the height of that
+in mind. make the ruler 30px high to start with"*, "that" being the AUDIO LANE.
+
+**Why the audio lane is taller, since it came up:** its waveform canvas is 28px (`AudioLane.svelte`),
+and peaks are drawn from a midline out to `height - 2`. At a 24px row the waveform would lose about a
+seventh of its amplitude range. It is sized by its content, not by the grid's rhythm — which is exactly
+why it is the row worth matching if you want a ruler with room in it.
+
+Measured before: ruler **24px**, layer/group/track rows **25px** (24 of content plus their own
+`border-b`), audio lane **29px**. The ruler was also the only row in the grid with NO bottom divider.
+It is now **30px total — 29px of content plus a `border-b`** — so it gains the divider the rest of the
+grid has, and is the tallest row rather than the shortest.
+
+**Everything sized against the ruler had to be re-derived, not stretched:**
+
+- **Line height** follows the content (`text-xs/[29px]`), so the number stays centred. That moves the
+  digit ink from y 7.85–16.7 to **10.35–19.2**.
+- **Tick stubs** are 4px major / 3px minor — trimmed from 6/4 after a look (*"tick stubs could be
+  couple of pixels shorter"*). The minor is NOT 2px, which "a couple shorter" would literally give it:
+  at `text-muted/35` a 2px stub is nearly invisible, so the pair separates by 1px of height and mostly
+  by brightness. What the taller ruler actually buys is CLEARANCE — 6.35px above the digits and 5.8
+  below, where the 24px ruler had 3.85/3.3 for the same 4px stub.
+- **Playhead badge** fills the ruler at `h-[29px]`, and its wedge starts at `top: 29px` so the handle
+  still ends exactly at the ruler's edge with the tip hanging into the tracks.

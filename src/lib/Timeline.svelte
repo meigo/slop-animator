@@ -2331,13 +2331,19 @@
          distinct shade + a divider set the time band apart from the content tracks below. -->
     <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <!-- z-35: the per-row gutter labels are sticky at z-20 and come LATER in DOM order, so at equal
+    <!-- `border-b`: the ruler is the only row in the grid that had no bottom divider, which also made
+         it 24px where every layer and track row is 25 (24 + its own border). One class gives it both
+         — the divider the rest of the grid has, and the same box height, so it stops reading a pixel
+         short of the tracks below it. The 24px CONTENT is untouched, which matters: the tick stubs
+         and the playhead badge are both sized against it. (The audio lane is 29px and stays that way
+         — `h-7` to fit a waveform, not a row height.)
+         z-35: the per-row gutter labels are sticky at z-20 and come LATER in DOM order, so at equal
          z they painted OVER this row — layer names leaked across the ruler as you scrolled the tracks
          vertically. The ruler is the thing rows scroll UNDER, so it has to outrank them. The playhead
          badge is a child of this row and rides along; the gutter resize grip sits above it again
          (z-40) so it stays grabbable at the ruler's level. -->
     <div
-      class="sticky top-0 z-35 flex w-max items-stretch bg-surface"
+      class="sticky top-0 z-35 flex w-max items-stretch border-b border-border bg-surface"
       style="min-width: {stripMinW}px"
     >
       <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
@@ -2392,7 +2398,7 @@
            diamonds and the row selection, so the one mark you track during playback blended into the
            marks it has to be read against. The family doc reserves red for exactly this. -->
       <div
-        class="absolute top-0 z-10 h-6 px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
+        class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
         style="left: {GUTTER_W +
           appState.playhead * CELL_W +
           CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
@@ -2417,7 +2423,7 @@
           style="left: {GUTTER_W +
             appState.playhead * CELL_W +
             CELL_W /
-              2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+              2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
         ></div>
       {/if}
       <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
@@ -2474,6 +2480,9 @@
                13–15px in a 12px cell, so it overflowed ~1px each side onto BOTH neighbouring ticks,
                and a three-digit one (this project reaches 300) is ~22px and crossed them outright.
                Reported 2026-09-09 as "frame numbers overlapping with ruler bars on narrow scales".
+               4px major / 3px minor. The minor is NOT 2px (which "a couple shorter" would give it):
+               at `text-muted/35` a 2px stub is nearly invisible, so the pair separates by 1px of
+               height and mostly by brightness.
                Heights are set by the TEXT, and by its INK rather than its em box — the difference
                is the whole bug. Measured with `measureText` at this exact font (12px system-ui in a
                24px line): baseline 16.5, `actualBoundingBoxAscent` 8.65, descent 0.2, so the digits
@@ -2489,7 +2498,7 @@
                Ticks use `text-muted`, not `border`: those two are 1.02:1 apart on the family ramp, so
                a `border`-coloured tick on this ground is invisible. -->
           <div
-            class="relative box-border h-6 text-xs/6 text-center text-text-secondary"
+            class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
             style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
               ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
               : ''}"
