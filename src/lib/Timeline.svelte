@@ -2857,7 +2857,7 @@
                        row. `computeTimelineSpans` still REPORTS them — it describes the track
                        truthfully — the view just declines to paint them. -->
                   <div
-                    class="pointer-events-none absolute inset-y-0.5 rounded-sm border bg-media-clip border-media-clip-border"
+                    class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
                     style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
                       s.startFrame +
                       1) *

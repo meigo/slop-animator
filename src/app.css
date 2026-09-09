@@ -62,7 +62,17 @@
      below, so it goes to very nearly the ground — a trimmed region reads as empty lane, the same
      message by the only route still available.
      Named media-clip, not clip — bg-clip-* is Tailwind's background-clip namespace. */
-  --color-media-clip: #172036;
+  /* LIFTED from the family's #172036 (hsl 222 40% 15%) on 2026-09-09, and this deliberately
+     inverts the shared doc's rule that says "if a clip is hard to pick out, brighten the BORDER or
+     lift the lane, do not lift the fill". That rule was written for slop-video-compositor, where a
+     clip is a large block carrying a thumbnail and a filename — the fill is a backdrop for content.
+     A drawing-layer span has no content of its own: it IS the block. At 1.17:1 against the lane the
+     fill was invisible and the 2.20:1 border did all the work, so a track of short holds read as a
+     row of empty outlines — "too much and too little at the same time". Now 1.59:1, just above the
+     5-frame guides (1.56:1), and the border is gone: spans are separated by a 4px gap, so nothing
+     needs outlining, and dropping it removes one line per span. Reference clips keep their border,
+     since they carry text that needs a frame. */
+  --color-media-clip: #263659;
   --color-media-clip-dim: #13141a;
   --color-media-clip-border: #384b75;
   /* The caution colour: "here is why what you are about to do will not land" — a hidden or locked
