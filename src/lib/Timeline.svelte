@@ -2732,7 +2732,7 @@
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}
             <div
-              class="flex select-none"
+              class="relative flex select-none border-b border-border-light"
               style="touch-action: none; cursor: {rowCursor}"
               class:opacity-100={isRowSelected(layer.id)}
               class:opacity-70={!isRowSelected(layer.id)}
@@ -2747,7 +2747,12 @@
             >
               {#each Array(appState.project.frameCount) as _, f (f)}
                 <div
-                  class="box-border h-6 border border-border leading-none text-xs flex items-center justify-center"
+                  class="box-border h-6 leading-none text-xs flex items-center justify-center {(f +
+                    1) %
+                    5 ===
+                  0
+                    ? 'border-r border-border/50'
+                    : ''}"
                   class:bg-selection={inSelection(layer.id, f)}
                   style="width: {CELL_W}px"
                 >
