@@ -1,7 +1,7 @@
 <script lang="ts">
   import { state as appState, activeLayer } from "../state/appState.svelte";
   import { whyRowRefusesTransform, workingTarget } from "../anim/active-row";
-  import { isLayerLocked, isLayerVisible, layerTransformTrack } from "../anim/document";
+  import { layerTransformTrack, whyNotEditable } from "../anim/document";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
 
@@ -54,8 +54,10 @@
       ((!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null);
     return contextHint({
       tool: appState.tool,
-      locked: audioOn || groupOn ? false : isLayerLocked(l, appState.project.groups),
-      hiddenLayer: audioOn || groupOn ? false : !isLayerVisible(l, appState.project.groups),
+      // The SAME function the canvas overlay and the selection bar ask, so the three cannot
+      // disagree about why an edit is refused — they used to, because this one re-derived it from
+      // isLayerLocked/isLayerVisible, which cannot see whether the LAYER or its GROUP is at fault.
+      editBlock: audioOn || groupOn ? null : whyNotEditable(l, appState.project.groups),
       notDraw: l.kind !== "draw",
       audioRow: audioOn,
       groupRow: groupOn,

@@ -4380,3 +4380,38 @@ beside the Free transform / Distort / Mesh buttons it explains, which is a diffe
 
 Verified in Chrome in the exact reported state (hidden layer, deform tool): the options row is empty
 and one caption remains on the stage, with the status bar's persistent copy at the bottom.
+
+**A blocked edit now names the GROUP when the group is the blocker (2026-09-09).** Reported as *"when
+selecting visible group layer after hidden layer, the warning on canvas is still shown"* — which
+looked like a stale caption and was not. Reproduced in the browser first:
+
+| step | layer's own `visible` | group's `visible` | caption shown |
+| --- | --- | --- | --- |
+| select a hidden layer | `false` | — | "Layer hidden — show it to edit" |
+| select a **visible** layer in a hidden group | **`true`** | `false` | "Layer hidden — show it to edit" |
+
+The caption persisted because the layer genuinely was not editable — `isLayerVisible()` returns
+false when EITHER the layer or its group is hidden. But `whyNotEditable()` collapsed both into
+`"hidden"`, so it reported **the wrong reason with the wrong fix attached**: the layer is not hidden,
+and toggling its eye does nothing, because the group's eye is the one that is off. It read as stale
+only because the wording was identical to the previous message. `locked` had the same defect.
+
+`LayerEditBlock` gains `group-hidden` and `group-locked`, and `whyNotEditable` now reads the raw
+flags — deliberately NOT `isLayerLocked`/`isLayerVisible`, which fold the group into the layer and
+are right for "can this be edited" and useless for "why not". The layer's own flag wins when both
+apply, since it is the nearer of the two fixes; locks still rank ahead of hides.
+
+**The same conflation existed a second time, in `StatusBar`**, which built the hint from `locked` and
+`hiddenLayer` booleans it derived ITSELF from those two folding predicates — so the status bar could
+not have named the group either, and two places were re-deriving an answer `whyNotEditable` already
+owned. Those two `HintContext` fields collapse into one `editBlock`, so the bar, the stage overlay
+and the selection panel now read the same value and cannot drift.
+
+Five tests, written first and watched fail with exactly the reported symptom (`expected 'hidden' to
+be 'group-hidden'`). **Verified in Chrome** across all four states — hidden layer, visible layer in a
+hidden group, unlocked layer in a locked group, and healthy — with the stage overlay and the status
+bar agreeing in every one.
+
+Two self-inflicted snags, both caught by the build: an import-pruning heuristic counted two symbol
+names that appear only in a COMMENT and kept them, and `status-hint.test.ts` had a SECOND local
+`base` context inside a later describe block that the first edit missed.

@@ -3,8 +3,7 @@ import { contextHint, editBlockLabel, type HintContext } from "../lib/status-hin
 
 const base: HintContext = {
   tool: "brush",
-  locked: false,
-  hiddenLayer: false,
+  editBlock: null,
   notDraw: false,
   audioRow: false,
   groupRow: false,
@@ -18,19 +17,19 @@ const ctx = (over: Partial<HintContext>): HintContext => ({ ...base, ...over });
 
 describe("contextHint precedence", () => {
   it("a locked layer outranks every tool hint", () => {
-    expect(contextHint(ctx({ tool: "transform", locked: true }))).toMatch(/Layer locked/);
-    expect(contextHint(ctx({ tool: "pose", locked: true, poseActive: true }))).toMatch(/unlock/);
+    expect(contextHint(ctx({ tool: "transform", editBlock: "locked" }))).toMatch(/Layer locked/);
+    expect(contextHint(ctx({ tool: "pose", editBlock: "locked", poseActive: true }))).toMatch(
+      /unlock/,
+    );
   });
 });
 
 describe("hidden layers", () => {
   it("a hidden layer explains itself, and lock wins when both apply", () => {
-    expect(contextHint(ctx({ tool: "brush", hiddenLayer: true }))).toBe(
+    expect(contextHint(ctx({ tool: "brush", editBlock: "hidden" }))).toBe(
       "Layer hidden — show it to edit",
     );
-    expect(contextHint(ctx({ tool: "select", locked: true, hiddenLayer: true }))).toMatch(
-      /Layer locked/,
-    );
+    expect(contextHint(ctx({ tool: "select", editBlock: "locked" }))).toMatch(/Layer locked/);
   });
 });
 
@@ -45,7 +44,9 @@ describe("reference layers", () => {
   });
 
   it("lock still outranks a reference", () => {
-    expect(contextHint(ctx({ tool: "brush", notDraw: true, locked: true }))).toMatch(/locked/);
+    expect(contextHint(ctx({ tool: "brush", notDraw: true, editBlock: "locked" }))).toMatch(
+      /locked/,
+    );
   });
 });
 
@@ -58,7 +59,9 @@ describe("group row selected", () => {
   });
 
   it("does not inherit a leftover member's lock", () => {
-    expect(contextHint(ctx({ tool: "brush", groupRow: true, locked: true }))).toMatch(/layer row/);
+    expect(contextHint(ctx({ tool: "brush", groupRow: true, editBlock: "locked" }))).toMatch(
+      /layer row/,
+    );
   });
 
   // The gizmo hides and the canvas drag returns in both of these, and until now the bar described
@@ -101,7 +104,7 @@ describe("audio row selected", () => {
   });
 
   it("does not inherit a leftover layer's lock", () => {
-    expect(contextHint(ctx({ tool: "transform", audioRow: true, locked: true }))).toMatch(
+    expect(contextHint(ctx({ tool: "transform", audioRow: true, editBlock: "locked" }))).toMatch(
       /layer row/,
     );
   });
@@ -171,8 +174,7 @@ describe("contextHint per tool state", () => {
 describe("contextHint — animated layer", () => {
   const base = {
     tool: "transform",
-    locked: false,
-    hiddenLayer: false,
+    editBlock: null,
     notDraw: false,
     audioRow: false,
     groupRow: false,
@@ -200,6 +202,6 @@ describe("contextHint — animated layer", () => {
 
   // A hint for a gesture that currently does nothing is worse than none.
   it("still puts the locked refusal first", () => {
-    expect(contextHint({ ...base, locked: true, animatedFrame: 12 })).toContain("locked");
+    expect(contextHint({ ...base, editBlock: "locked", animatedFrame: 12 })).toContain("locked");
   });
 });

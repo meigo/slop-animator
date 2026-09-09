@@ -42,6 +42,7 @@ import {
   type Cell,
   type Project,
   type DrawingLayer,
+  type LayerGroup,
   type ReferenceMedia,
   type ReferenceLayer,
   type Layer,
@@ -1161,5 +1162,54 @@ describe("animated opacity through buildFrameDrawList", () => {
     l.opacity = 42;
     p.layers = [l];
     expect(buildFrameDrawList(p, 5)[0].opacity).toBe(42);
+  });
+});
+
+/**
+ * A layer inside a hidden or locked GROUP is not editable — but the reason it gives has to name
+ * the group, because the fix is the group's control and not the layer's. Reported as the canvas
+ * warning "still showing" after selecting a visible layer: it was not stale, it was the wrong
+ * message. `isLayerVisible`/`isLayerLocked` fold the group's flag into the layer's, and
+ * `whyNotEditable` collapsed both into "hidden"/"locked", so a visible layer in a hidden group
+ * read "Layer hidden — show it to edit" and toggling that layer's eye did nothing.
+ */
+describe("whyNotEditable names the group when the group is the blocker", () => {
+  const layer = (over: Partial<DrawingLayer> = {}): DrawingLayer =>
+    ({
+      id: 1,
+      kind: "draw",
+      name: "L",
+      visible: true,
+      locked: false,
+      opacity: 100,
+      cells: [],
+      groupId: 9,
+      ...over,
+    }) as DrawingLayer;
+  const group = (over: Partial<LayerGroup> = {}): LayerGroup =>
+    ({ id: 9, name: "G", visible: true, locked: false, collapsed: false, ...over }) as LayerGroup;
+
+  it("blames the LAYER when the layer's own flag is what blocks it", () => {
+    expect(whyNotEditable(layer({ visible: false }), [group()])).toBe("hidden");
+    expect(whyNotEditable(layer({ locked: true }), [group()])).toBe("locked");
+  });
+
+  it("blames the GROUP when the layer is fine and the group is not", () => {
+    expect(whyNotEditable(layer(), [group({ visible: false })])).toBe("group-hidden");
+    expect(whyNotEditable(layer(), [group({ locked: true })])).toBe("group-locked");
+  });
+
+  it("prefers the layer's own flag when both are set, since that is the nearer fix", () => {
+    expect(whyNotEditable(layer({ visible: false }), [group({ visible: false })])).toBe("hidden");
+    expect(whyNotEditable(layer({ locked: true }), [group({ locked: true })])).toBe("locked");
+  });
+
+  it("keeps locks ahead of hides, as before", () => {
+    expect(whyNotEditable(layer({ locked: true, visible: false }), [group()])).toBe("locked");
+    expect(whyNotEditable(layer(), [group({ locked: true, visible: false })])).toBe("group-locked");
+  });
+
+  it("still returns null for an editable layer in a healthy group", () => {
+    expect(whyNotEditable(layer(), [group()])).toBeNull();
   });
 });
