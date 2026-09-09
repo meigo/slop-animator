@@ -5268,3 +5268,23 @@ cascade gotcha.
 so the harness does not deliver focus the way a real pointer does. The fix targets the mechanism
 identified from the markup, not a reproduction — the one thing to confirm on the device is that
 dragging the playhead and pressing Space no longer rings the ruler.
+
+## iPad verification pass — 2026-09-09 (ALL PASSED)
+
+Everything flagged as owed across today's two merges was tested on the device and confirmed. Recording
+it here because an entry that still reads "owed a look" is indistinguishable from one nobody checked.
+
+- **Dragging a layer between groups.** The one that mattered. `.group-members` is a SortableJS
+  container and today's panel work changed its padding, its classes and its children five separate
+  times — the reorder path CLAUDE.md's gotcha #2 records as having already cost real debugging, and the
+  one thing the browser harness cannot exercise at all.
+- **Scrub the playhead, then press Space.** No focus ring. This fix was aimed at a mechanism read out
+  of the markup rather than at a reproduction: scripted clicks leave `document.activeElement` on
+  `body`, so the harness could not produce the ring in the first place.
+- **The frame-width slider with the playhead parked mid-view.** The anchor holds. It measured drift 0
+  before `anchoredScrollLeft` was extracted, but the post-extraction re-check was impossible — after
+  HMR a console `import()` of the store resolves to a detached module instance.
+
+Still NOT confirmed, and carried forward rather than quietly folded into the above: the **Pencil
+block-drag** on the timeline (`displaySpansFor`). A scripted drag lands on key-move or resize instead,
+so that preview path has been implemented, reviewed and shipped without ever being watched.
