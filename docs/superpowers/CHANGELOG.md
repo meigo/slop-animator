@@ -4887,3 +4887,41 @@ deliberately moved off amber-500 to this muted gold earlier the same day to matc
 slop-video-compositor, and it is used for in/out markers, locks and hidden badges throughout — to fix
 one badge's background. If a louder caption is still wanted after this, the next step is this chip
 (a filled `warn` ground with dark text), not the shared token.
+
+**Property rows stop looking like layers (2026-09-09).** Reported as *"gutter, Transform and Opacity
+rows look like common layers. How could we make these more distinctive?"* They did, for two reasons at
+once: a track row reserved the same type slot a layer row does and left it BLANK — so it was
+typographically identical to a drawing layer, which also leaves it blank — and its indent MIRRORED its
+owner, so `Layer 2` and its `Opacity` sat at exactly the same x and read as siblings. Both are fixed,
+because either alone leaves the other ambiguity: a glyph with flush indentation still reads as a
+sibling wearing a badge, and an indent with no glyph reads as a nested layer.
+
+**The glyph is `GitCommitHorizontal` — a key on a line, which is literally what the strip draws for
+this row.** Two earlier candidates were rejected in review, both by the reporter:
+
+- A **diamond** was the first attempt and lasted one screenshot: *"diamonds are too ambiguous"*. Right
+  — the diamond is already three things here (a cell key, a property key, the blank-keyframe button),
+  so a fourth use adds a shape to disambiguate with, not a meaning.
+- **`Spline`** looks apt and is wrong: it is already on the RIGHT of these rows' OWNERS, as the
+  animated marker beside the track-fold chevron. It would appear twice on one group row meaning two
+  different things.
+
+12px against the layer rows' 13px: close enough to share an optical column, small enough that the row
+still reads as subordinate to the one above it.
+
+**The indent took two passes, and the reporter caught both.** The first idea was owner + a full 12px
+step — *"2 in group level moves animation rows to the same indent with child layers"*, and exactly so:
+a group header sits at 12 and its members at 24, so its tracks would have landed on 24 and traded
+"these look like layers" for "these look like the members below them". A half-step (+6) fixed that and
+broke something else: *"icons touch the spine line"*, because the group spine runs at 19-20 (the
+chevron's centre) and an 18px row put its glyph hard against it.
+
+**So the constraint set had no room between the layers.** Layer rows own 12 and 24; the spine owns
+19-20. **All property rows now share ONE column at 30px** — clear of both layer indents, 12px clear of
+the spine, and simpler than two property depths. Ownership is read from adjacency, which is how After
+Effects reads too: a property sits directly under the row it belongs to. The one oddity is that a
+GROUP's properties end up deeper than its member layers; in practice the glyph column reads as its own
+class of row and the question does not arise.
+
+Measured after: `Group 1` 12, its `Transform`/`Opacity` 30, members 24, `Layer 2`'s `Opacity` 30, refs
+and audio 12; spine 19-20, nearest glyph edge 32.

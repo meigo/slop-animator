@@ -4,6 +4,7 @@
   import {
     Plus,
     Diamond,
+    GitCommitHorizontal,
     Trash2,
     Image,
     Film,
@@ -1236,7 +1237,12 @@
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
-    /** Indented to sit under its owner, the way a group member's own row is. */
+    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 24px
+     *  or from 12px. The row itself lands at owner + 6px, deliberately NOT owner + a full level:
+     *  a property is not a nesting depth, it is an attribute of the row above, and a full step
+     *  would put a GROUP's tracks at 24px — exactly the indent its member LAYERS use, trading one
+     *  "these look like layers" for another. The half-step lands on 18 and 30, and the layer
+     *  indents are 12 and 24, so it cannot collide with either by construction. */
     indent: boolean;
     /** Which group's BLOCK this row sits inside, for the spine — not the same question as
      *  `indent`. A group's OWN track row is not indented (it is the group's, not a member's) but it
@@ -2646,8 +2652,7 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
-              class:pl-6={spec.indent}
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[30px] text-left hover:bg-surface-hover"
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
@@ -2676,11 +2681,21 @@
               }}
             >
               {@render groupSpine(spec.groupId)}
-              <!-- Empty type slot, exactly as the layer rows reserve one. Without it this row's name
-                   starts 18px left of its owner's (the glyph's width plus the gap) and reads as a
-                   sibling rather than as something belonging to the row above. The indent itself
-                   also mirrors the owner, so a grouped layer's track sits with it. -->
-              <span class="flex w-3.5 shrink-0" role="presentation"></span>
+              <!-- The type slot, which layer rows reserve and reference layers fill with a Film /
+                   Image glyph. A property row fills it with `GitCommitHorizontal` — a key on a
+                   line, which is literally what the strip draws for this row. It was blank until
+                   2026-09-09, which meant a track row and a DRAWING layer's row were typographically
+                   identical, reported as "Transform and Opacity rows look like common layers".
+                   NOT a diamond, which was the first attempt: the diamond is already three things in
+                   this app (a cell key, a property key, and the blank-keyframe button), so a fourth
+                   use was "too ambiguous". NOT `Spline` either — that glyph is already on the RIGHT
+                   of these same rows' owners, as the animated marker beside the track-fold chevron,
+                   so it would appear twice on one row meaning two things.
+                   12px against the layer rows' 13px: near enough to sit in the same optical column,
+                   small enough that this row still reads as subordinate to the one above it. -->
+              <span class="flex w-3.5 shrink-0 justify-center" role="presentation">
+                <GitCommitHorizontal size={12} />
+              </span>
               <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
             >
             <!-- The same read-only marker its owner's row carries. Without it a locked owner's track
