@@ -88,7 +88,7 @@
          behind the gear. It lived in the settings popover until 2026-08-16. -->
     <button
       class={btn}
-      class:bg-surface-active={appState.playback.loop}
+      class:ui-on={appState.playback.loop}
       title={appState.playback.loop ? "Looping — click to play once" : "Play once — click to loop"}
       aria-pressed={appState.playback.loop}
       onclick={() => (appState.playback.loop = !appState.playback.loop)}
@@ -116,7 +116,7 @@
   <div class="relative shrink-0" use:clickOutside={() => (settingsOpen = false)}>
     <button
       class={btn}
-      class:bg-surface-active={settingsOpen}
+      class:ui-on={settingsOpen}
       title="Playback settings"
       onclick={() => (settingsOpen = !settingsOpen)}
     >
@@ -140,7 +140,7 @@
             {#each FPS_PRESETS as p (p)}
               <button
                 class="px-1.5 py-0.5 rounded"
-                class:bg-surface-active={appState.project.fps === p}
+                class:ui-on={appState.project.fps === p}
                 onclick={() => setFps(p)}>{p}</button
               >
             {/each}

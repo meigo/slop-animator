@@ -87,7 +87,7 @@
         {#each PRESETS as p (p)}
           <button
             class="px-2 py-1 rounded border border-border text-xs hover:bg-surface-hover"
-            class:bg-surface-active={w === p.w && h === p.h}
+            class:ui-on={w === p.w && h === p.h}
             onclick={() => {
               w = p.w;
               h = p.h;
@@ -124,12 +124,12 @@
           <span class="text-text-secondary w-14">Mode</span>
           <button
             class="px-2 py-1 rounded border border-border text-xs"
-            class:bg-surface-active={mode === "scale"}
+            class:ui-on={mode === "scale"}
             onclick={() => (mode = "scale")}>Scale</button
           >
           <button
             class="px-2 py-1 rounded border border-border text-xs"
-            class:bg-surface-active={mode === "crop"}
+            class:ui-on={mode === "crop"}
             onclick={() => (mode = "crop")}>Crop</button
           >
         </div>
@@ -139,7 +139,7 @@
             {#each ANCHORS as a (a)}
               <button
                 class="h-4 border border-border hover:bg-surface-hover"
-                class:bg-surface-active={a.ax === anchor.ax && a.ay === anchor.ay}
+                class:ui-on={a.ax === anchor.ax && a.ay === anchor.ay}
                 onclick={() => (anchor = a)}
                 aria-label="Anchor {a.ax},{a.ay}"
               ></button>
@@ -152,7 +152,7 @@
            prompt is never a surprise. Amber, not red: red is reserved but unused in this codebase and
            would need its own contrast pass; the native confirm is the actual gate. -->
       {#if appState.sizeDialog.mode === "new"}
-        <p class="text-xs/snug text-amber-500">
+        <p class="text-xs/snug text-warn">
           Replaces the current project and clears its autosave. Save it first if you want to keep
           it.
         </p>
@@ -162,7 +162,7 @@
         <button class="px-3 py-1 rounded hover:bg-surface-hover text-text-secondary" onclick={close}
           >Cancel</button
         >
-        <button class="px-3 py-1 rounded bg-surface-active text-text" onclick={confirm}
+        <button class="px-3 py-1 rounded bg-accent text-accent-text" onclick={confirm}
           >{appState.sizeDialog.mode === "new" ? "Create" : "Resize"}</button
         >
       </div>

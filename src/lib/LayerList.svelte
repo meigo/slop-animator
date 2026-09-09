@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import { buildSegments } from "../anim/row-layout";
   import { onMount } from "svelte";
   import Sortable from "sortablejs";
@@ -573,7 +574,7 @@
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
-    class:bg-surface-active={active}
+    class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
   >
@@ -583,7 +584,7 @@
         ><GripVertical size={14} /></span
       >
       <button
-        class={layer.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+        class={layer.visible ? "text-text-muted hover:text-text" : "text-warn"}
         title={layer.visible ? "Visible — click to hide" : "Hidden — edits refused; click to show"}
         onclick={(e) => {
           e.stopPropagation();
@@ -595,7 +596,7 @@
       </button>
       <button
         class={isLayerLocked(layer, appState.project.groups)
-          ? "text-amber-500"
+          ? "text-warn"
           : "text-text-muted hover:text-text"}
         onclick={(e) => {
           e.stopPropagation();
@@ -670,6 +671,7 @@
         >
           <input
             use:settleOnUnmount={layer.id}
+            style={sliderFill(opacityNow, 0, 100)}
             class="w-12 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
@@ -732,6 +734,7 @@
             bind:value={layer.boilStrength}
             oninput={bump}
             onclick={(e) => e.stopPropagation()}
+            style={sliderFill(layer.boilStrength, 0, 1)}
             title="Line boil strength (this layer)"
           />
           <span class="text-xs tabular-nums w-6 text-text-muted"
@@ -913,7 +916,7 @@
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
               class="flex items-center gap-1 p-1 hover:bg-surface-hover"
-              class:bg-surface-active={groupLit}
+              class:ui-selected={groupLit}
               role="presentation"
             >
               <!-- Same class the layer rows use, so the ROOT Sortable (handle: .layer-drag-handle)
@@ -934,7 +937,7 @@
                   />{/if}
               </button>
               <button
-                class={seg.group.visible ? "text-text-muted hover:text-text" : "text-amber-500"}
+                class={seg.group.visible ? "text-text-muted hover:text-text" : "text-warn"}
                 title={seg.group.visible
                   ? "Group visible — click to hide"
                   : "Group hidden — members' edits refused; click to show"}
@@ -943,7 +946,7 @@
                 {#if seg.group.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
               </button>
               <button
-                class={seg.group.locked ? "text-amber-500" : "text-text-muted hover:text-text"}
+                class={seg.group.locked ? "text-warn" : "text-text-muted hover:text-text"}
                 title={seg.group.locked
                   ? "Group locked — click to unlock (members keep their own locks)"
                   : "Unlocked — click to lock every layer in this group"}
@@ -994,7 +997,7 @@
                 !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
               <div
                 class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
-                class:bg-surface-active={groupLit}
+                class:ui-selected={groupLit}
               >
                 <span
                   class="flex items-center gap-2"
@@ -1007,6 +1010,7 @@
                   <span class="text-xs text-text-muted">Group</span>
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
+                    style={sliderFill(gOpNow, 0, 100)}
                     class="w-12 aria-disabled:opacity-40"
                     class:pointer-events-none={gOpPinned}
                     aria-disabled={gOpPinned}

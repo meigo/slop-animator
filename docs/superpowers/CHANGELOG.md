@@ -4146,3 +4146,307 @@ SortableJS's pointer fallback, a different path again. **VERIFIED on iPad 2026-0
 user on the deployed build: the grab works and groups reorder. This was the one part the Chrome run
 could not reach, so the user's confirmation is the only evidence that path has ever had. Nothing
 owed.
+
+**A `warn` role, and the amber was unreadable in the default theme (2026-09-08).** First step of
+aligning the slop apps on `/Users/meigo/Projects/slop/SLOP-TIMELINE-UI.md` — the shared visual
+language that `slop-audio-editor` and `slop-video-compositor` already follow. That document names
+this app as a deliberate divergence (light-first, `.dark` class, `@theme --color-*`), so what is
+shared is the ROLE NAMES, never the hex values.
+
+**Only one role was earned.** The document defines `danger`, `warn`, `ok` and `disabled`; a survey
+found consumers for exactly one. There is no red and no green anywhere in the components, and
+`disabled` is not a colour here — it is `aria-disabled` (110 uses) plus `opacity-40` (31). Adding
+the other three would have put dead tokens in the theme. They can arrive when something needs them.
+
+**The real find was an accessibility bug, not a naming gap.** `text-amber-500` was hard-coded in 9
+files (15 uses) and is **2.15:1 on white** — WORSE than the `#999` that `app.css`'s own comment
+rejects as unreadable at 2.85:1 — and this app is light-first, so that was the DEFAULT experience.
+Every other token in that file carries a measured contrast note; this one escaped the check purely
+by never having been a token. Now themed: `#b45309` (amber-700, 5.02:1 on white) in light,
+`#f59e0b` (amber-500, 7.76:1 on `#1e1e1e`) in dark, both in line with the `text-muted` steps. The
+reverse does not work — amber-700 is only 3.32:1 on the dark panel — so this is genuinely one role
+with two values, not a single colour that was picked badly.
+
+**The meaning deliberately does NOT match the family's**, and the divergence is recorded in the
+shared document rather than papered over. There, `warn` is the secondary accent for session-only
+monitoring state that never reaches an export (solo, in/out markers). Here it means *"why what you
+are about to do will not land"*: hidden/locked layers (7 uses), blocked-edit explanations (7),
+eraser mode and the persist alert (2). Hidden layers genuinely do not render, so this is saved state
+that changes output. Per that document's §8 the app wins and the document gets the note.
+
+Verified in the built CSS rather than assumed — `svelte-check` cannot see a Tailwind class that was
+never generated: `.text-warn{color:var(--color-warn)}` is emitted and both values appear in the
+output. **Owed an eyeball in both themes** at the amber spots: a hidden or locked layer row, a
+blocked-edit message, the eraser label.
+
+**Flagged, not touched** (out of the chosen scope): colours Tailwind utilities cannot reach because
+they are drawn on canvas — `AudioLane.svelte` (`#2b3240`, `#24272f`, `#3d4759`, `#999999`),
+`RefTransformGizmo.svelte` (`#3b82f6`), `Canvas.svelte` (`#0080ff`). All are fixed dark-ish values
+regardless of theme. §8 of the shared document tolerates `var(--color-*)` inside scoped CSS for
+exactly this kind of furniture, so they could become roles later; it is a larger job than this one.
+
+**The accent, and why the app read as flat grey next to the other two (2026-09-08).** The `warn`
+role above was the right change and the wrong scope: it repaints small amber text, so the honest
+report was *"I can't see any difference."* Comparing the two apps side by side in the browser found
+the actual gap, and it is not the greys.
+
+**The greys were already the family's** — panel `#1e1e1e` against `#1e1e22`, ground `#121212`
+against `#101013`, differences no eye resolves. What differed is that **this app had no accent
+colour in use at all**:
+
+| | how "this is active" was shown | contrast vs the panel |
+| --- | --- | --- |
+| slop-video-compositor | filled `#5b8cff` | 5.27:1 |
+| slop-animator (before) | `surface-active`, a lighter grey | **1.32:1** |
+
+1.32:1 is a change you can measure and not one you can see, which is exactly why the interface read
+as flat monochrome beside the compositor's. The cause was the token collision noted when this
+alignment started and then not acted on: `--color-accent` here was `#e0e0e0`, a near-white INK
+colour — the opposite of the family's meaning — while the actual blue sat in `--color-selection`,
+used in FIVE places (the focus ring and `accent-color`) and never for state.
+
+**`--color-accent` is now `#5b8cff`**, theme-independent as in the family, with `accent-hover`
+`#7aa3ff`; `--color-selection` is kept as an alias so nothing naming it breaks. `--color-accent-text`
+(the label ON the fill) is `#121212`: white is only 3.16:1 on that blue, near-black is 5.92:1, and
+§6 of the shared document already says a filled toggle switches its label to `ground`. The 11
+existing `accent` uses — slider thumb, primary buttons — become blue as a consequence, which is what
+the compositor does with its own Export button and zoom slider.
+
+**The on-state is defined ONCE, in CSS, not spread across 37 markup edits.** Two classes, because
+they mark two different things: `.ui-on` fills a toggle or tool (28 sites), `.ui-selected` gives a
+row an 18% accent tint plus a 2px left edge drawn as `box-shadow: inset` (9 sites) — a whole layer
+row filled solid blue would shout, and §5 forbids state that changes an element's geometry. Three
+`bg-surface-active` uses are deliberately LEFT grey: the timeline gutter corner, the resize strip
+and the export progress track are structure, not state.
+
+**Why CSS rather than `class:bg-accent` + `class:text-accent-text`:** every shared button constant
+in this app already sets a text colour (`text-text-secondary` in Toolbar, Playbar and Timeline;
+`text-text` in TimelineSelectionBar), and a `class:` directive layering a second colour utility over
+it is decided by the order Tailwind EMITS them, not by the markup — the defect §6 of the shared
+document records as *"a loop button styled that way looked completely dead."* These rules sit
+OUTSIDE any `@layer`, and **unlayered declarations beat layered ones in the cascade whatever their
+order**, so the on-state cannot lose that race. A future toggle gets the behaviour by naming one
+class.
+
+**Verified in the browser in BOTH themes** rather than reported blind: `.ui-on` computes to
+`rgb(91,140,255)` with `rgb(18,18,18)` text — i.e. it does beat the base `text-text-secondary` — and
+`.ui-selected` shows the tint with the inset left bar, over `#1e1e1e` dark and `#ffffff` light.
+Screenshots were compared against the compositor. **Owed an iPad pass** for how loud the accent
+reads on device.
+
+**The dark theme takes the family ramp verbatim, and the sliders with it (2026-09-08).** Third and
+largest step of the alignment. The user's correction is the reason it went this far: I had called the
+difference between animator's neutral greys and the family's faintly tinted ones "barely" visible,
+and that is wrong — *"grayscale vs slight tint is not barely, it's quite easily distinguishable"*.
+Over a whole toolbar or timeline it reads immediately, which is why the shared document has an entire
+table weighing zinc against slate against gray rather than just using `neutral`.
+
+**Every dark value is now the family's hex** — ground `#101013`, panel `#1e1e22`, raised `#2d2d33`,
+line `#2e2e35`, text `#f4f4f5`, muted `#a1a1aa`, clip `#172036` with border `#384b75`. Three tokens
+had no family equivalent and were chosen to match its cast and hold their old contrast:
+`border-light` `#26262b` (a subtler divider, between panel and line), `text-muted` `#8a8a93` (this
+app has a THIRD text level; 4.86:1 on the panel against the old value's 4.83:1), and
+`media-clip-dim` `#13141a`.
+
+Two consequences worth stating rather than discovering later. **Dividers are fainter** — `line` is
+1.10:1 over the panel where `#383838` was 1.42:1; that is the family's deliberate "only slightly
+lighter than what it divides", and if it proves too subtle the fix is to lift `--color-border` alone,
+not the ramp. And **`surface-hover` and `surface-active` collapsed into one value**, which was only
+safe because active state had already moved to the accent — before that commit they had to differ.
+
+**Blue clips supersede the neutral ones** and the note arguing for them. That note's reasoning was
+"neutral keeps clips from competing with the selection blue" — written when this app had no accent in
+real use, so it was guarding against a blue that never appeared on screen. The new clip is also
+DARKER than the old (1.17:1 on the ground against 2.02:1), which serves the same note's other goal:
+the waveform stays the loudest thing in the lane. The clip is found by its BORDER (2.20:1), not its
+fill.
+
+**Sliders adopt §6**: 4px track, 12px thumb, and the filled portion rebuilt as a gradient because
+`appearance: none` — the only way to size a thumb the browser draws — also loses the fill the browser
+drew for free. The fill is the accent mixed 50% into the track, so it does not compete with the thumb
+you are actually aiming at. All 21 range inputs are wired.
+
+`sliderFill(value, min, max)` is a PURE function with 5 tests, not a Svelte action: `bind:value`
+already re-renders the `style` attribute on every change, so the fill tracks values set from the
+store as well as by dragging — which an action listening for `input` events would miss. It always
+emits both stops so a bipolar control could be added without touching the stylesheet.
+
+**Deliberately NOT adopted: §3's 24px control height.** This app's controls are 28-32px because it
+is driven by a Pencil and fingers; the other two apps are desktop-only. Shrinking every control would
+undo exactly what `bbd272d` and the portrait-bar fix were tuning. §8 says the app wins.
+
+A scripted edit inserted the slider `style=` into 19 of the 21 inputs; the regex `<input[^>]*>` broke
+on one tag whose `onclick={(e) => …}` contains a `>`, and refused two more that use `value={…}`
+rather than `bind:value`. All three were finished by hand. Caught by the build, but worth recording:
+**an HTML-tag regex cannot be trusted on markup containing arrow functions.**
+
+**Owed an iPad pass** — the accent's loudness, and whether the fainter dividers still read on device.
+
+**The light theme is gone; the app is dark-only (2026-09-08).** Removed at the user's call — *"I'm
+starting to doubt on needing a light theme. I don't use it personally"* — and it was the single
+biggest source of friction in the whole alignment, not merely an unused feature.
+
+**What it was costing.** Every token was TWO decisions and two contrast checks against two different
+grounds. `warn` genuinely needed two values (amber-700 is 3.32:1 on dark; amber-500 is 2.15:1 on
+white), which is the entire reason that token was fiddly. `SLOP-TIMELINE-UI.md` had to carry a
+carve-out naming this app as light-first and telling adopters to map roles onto "its existing light
+and dark scales" — a special case in a document meant to be copied. And the light scale was pure
+NEUTRAL while the new dark ramp is tinted, so keeping both would have meant hand-tuning a second
+tinted ramp with no family reference to copy from. Dark-only makes this an ordinary family member:
+the roles are the family's roles and the values are its hexes.
+
+**The artwork is untouched.** The paper is `project.bgColor`, painted in `render.ts`, entirely
+independent of the UI theme — a white page stays white on dark chrome, which is what every drawing
+app does anyway.
+
+Removed: the whole `.dark` block (its values merged into `@theme`, which is now the one palette),
+`color-scheme: light` → `dark`, `state.theme` and its default, the theme entries in
+gather/applyPreferences, `toggleTheme()` and the View-menu item in `Toolbar.svelte`, and the
+`classList.toggle("dark", …)` calls in `App.svelte` and the toolbar.
+
+**Two migration details that would have bitten.** `Preferences.theme` is KEPT on the type as ignored
+legacy rather than deleted: a stored `"light"` from an older version still parses, and because
+nothing reads it the user simply gets the one theme instead of being stranded in a light UI with the
+toggle that would have escaped it now removed. And `AudioLane`'s waveform action took a `theme`
+parameter it never read, purely to re-run the draw on a toggle — its colours come from CSS tokens via
+`getComputedStyle`, which nothing else invalidated. With one palette those tokens cannot change under
+it, so the parameter is gone and `audioVersion` is the only real dependency.
+
+A side effect worth noting: the hard-coded hexes in `AudioLane.svelte` (`#2b3240`, `#24272f`,
+`#3d4759`, `#999999`), flagged out of scope earlier, were dark values all along — so they were
+subtly WRONG in the light theme and are simply correct now. They remain candidates for tokens.
+
+One leftover the greps did not reach: `index.html` hard-coded `class="dark"` on `<html>`, put there
+to avoid a flash of light chrome before JS ran. With one palette and no `.dark` rules it was dead,
+and it was found only by checking the rendered page rather than the source — a browser check earning
+its keep on a change whose whole risk surface is "did the tokens actually merge".
+
+**VERIFIED in Chrome:** renders dark with no `.dark` class anywhere, panel `rgb(30,30,34)`, accent
+`#5b8cff`, text `#f4f4f5`, no theme item in the View menu, sliders filled. Owed the usual iPad
+eyeball, but the risk is low — a failure here would be unmissable rather than subtle.
+
+**Size presets are fixed squares, and Smooth moved into the gear (2026-09-08).** Asked for from a
+screenshot: *"make brush size buttons higher and square."* They were text with `px-0.5`, so each
+button was a different width and the accent fill a different SHAPE per preset — "12" a wide pill,
+"4" a narrow one. Now `size-6`: a 24×24 square, which is §3's shared control height and roughly
+doubles a touch target that had been text-height. It is the same call
+`SLOP-TIMELINE-UI.md` §6 makes for its flag rows — a fixed square so a row does not reflow as its
+glyphs differ in width.
+
+**Measured before claiming it, and it had re-broken the portrait fit from earlier the same day.**
+The squares add 45px, and the Smooth brush had only 39px to give: its bar ended at **1030 against a
+12.9" iPad's 1024** and would have wrapped again. Smooth was the widest engine because it alone
+carried the "Smooth" slider (+120px).
+
+So that slider moved into the gear panel — which is where the gear's own rule (`bbd272d`) puts it
+anyway: you calibrate smoothing once, like Stream beside it, rather than riding it mid-stroke. It is
+smooth-only, so it was hidden for every other engine regardless.
+
+**Result: every brush now ends at exactly 910px, 114px spare in portrait** — and the bar is the same
+width for EVERY engine, which it never was before (Smooth 1030 / Ink 910 / Calligraphy 910 before
+this; the earlier portrait entry's ~955 estimate for Smooth is superseded). That uniformity is worth
+more than the 45px: there is now one width to check rather than one per brush.
+
+**VERIFIED in Chrome** across smooth / ink / calligraphy / pencil: all end at 910, all on a single
+row, Smooth reachable in the gear under Stream with its value readout. Owed the usual iPad eyeball
+for the touch feel of the 24px squares.
+
+**The blocked-edit reason was shown twice on the deform/pose tools (2026-09-09).** Reported from a
+screenshot: *"is the double warning on the canvas needed?"* It was not.
+
+Two independent captions, written for different reasons and never compared. `Canvas.svelte`'s stage
+overlay fires for ANY blocked tool, and its own comment records why it lives on the stage rather
+than in the options bar — an inline span there shoved Size/Press sideways. `ToolOptions.svelte`'s
+was inside the `deform`/`pose` branch only, written as "swap this tool's instructions for the
+reason" without noticing the overlay already said it. So every other tool showed the message once
+and deform/pose showed it twice, plus the status bar's copy at the bottom.
+
+The ToolOptions one is removed; the stage overlay is the keeper, since it covers every tool and sits
+where the gesture would have happened. One wrinkle that would have bitten a careless deletion: the
+branch read `{#if paintBlock} reason {:else if deform} instructions`, so removing just the reason
+would have fallen through to telling a hidden layer to "drag the grid handles on the canvas". The
+instructions are now gated on NOT blocked, and the bar simply shows nothing there.
+
+`editBlockLabel` stays imported — five tooltips still use it.
+
+**A measurement error worth recording, because it nearly caused a second unnecessary edit.** A DOM
+sweep for the string reported THREE visible copies, the extra one in `SelectionActions.svelte`. It
+is not visible: that element computes `opacity: 1` while its parent `.selection-actions-panel` sits
+at `opacity: 0`, and opacity does not inherit as a computed value, so checking the leaf says
+"visible" when the subtree is not. **Check the ancestor chain, not the element, before calling
+something visible.** That caption is correct as it stands — it appears only when the panel is up,
+beside the Free transform / Distort / Mesh buttons it explains, which is a different question from
+"why won't the canvas take a stroke".
+
+Verified in Chrome in the exact reported state (hidden layer, deform tool): the options row is empty
+and one caption remains on the stage, with the status bar's persistent copy at the bottom.
+
+**A blocked edit now names the GROUP when the group is the blocker (2026-09-09).** Reported as *"when
+selecting visible group layer after hidden layer, the warning on canvas is still shown"* — which
+looked like a stale caption and was not. Reproduced in the browser first:
+
+| step | layer's own `visible` | group's `visible` | caption shown |
+| --- | --- | --- | --- |
+| select a hidden layer | `false` | — | "Layer hidden — show it to edit" |
+| select a **visible** layer in a hidden group | **`true`** | `false` | "Layer hidden — show it to edit" |
+
+The caption persisted because the layer genuinely was not editable — `isLayerVisible()` returns
+false when EITHER the layer or its group is hidden. But `whyNotEditable()` collapsed both into
+`"hidden"`, so it reported **the wrong reason with the wrong fix attached**: the layer is not hidden,
+and toggling its eye does nothing, because the group's eye is the one that is off. It read as stale
+only because the wording was identical to the previous message. `locked` had the same defect.
+
+`LayerEditBlock` gains `group-hidden` and `group-locked`, and `whyNotEditable` now reads the raw
+flags — deliberately NOT `isLayerLocked`/`isLayerVisible`, which fold the group into the layer and
+are right for "can this be edited" and useless for "why not". The layer's own flag wins when both
+apply, since it is the nearer of the two fixes; locks still rank ahead of hides.
+
+**The same conflation existed a second time, in `StatusBar`**, which built the hint from `locked` and
+`hiddenLayer` booleans it derived ITSELF from those two folding predicates — so the status bar could
+not have named the group either, and two places were re-deriving an answer `whyNotEditable` already
+owned. Those two `HintContext` fields collapse into one `editBlock`, so the bar, the stage overlay
+and the selection panel now read the same value and cannot drift.
+
+Five tests, written first and watched fail with exactly the reported symptom (`expected 'hidden' to
+be 'group-hidden'`). **Verified in Chrome** across all four states — hidden layer, visible layer in a
+hidden group, unlocked layer in a locked group, and healthy — with the stage overlay and the status
+bar agreeing in every one.
+
+Two self-inflicted snags, both caught by the build: an import-pruning heuristic counted two symbol
+names that appear only in a COMMENT and kept them, and `status-hint.test.ts` had a SECOND local
+`base` context inside a later describe block that the first edit missed.
+
+**The pixel tools now dim for a hidden or locked layer too (2026-09-09).** Spotted from two
+screenshots: *"when group layer is selected — tools dimmed but options not. when hidden layer is
+selected both tools and options are active."* The second half is the bug, and it is the same CLASS
+as the entry above — a second predicate answering "can you draw here?" and disagreeing with
+`whyNotEditable`.
+
+`pixelToolsBlock()` asked only two questions: is the working target a layer row, and is the active
+layer a reference. **It never checked hidden or locked**, so a hidden layer left every pixel tool at
+full brightness while a stroke silently refused — the exact failure the dimming exists to prevent —
+and it was visibly inconsistent with a group row, which did dim. The caption knew all along, because
+it asks `whyNotEditable`.
+
+The row check stays first and stays this function's own: on a group or audio row the active layer is
+usually a perfectly good drawing layer, so the fix is to select a layer row rather than to change
+anything about the layer, and `whyNotEditable` sees only a layer and cannot know that. Everything
+after it now delegates. Nothing regresses, because `whyNotEditable` already returns `not-draw` for
+references — and the toolbar's tooltips get the group-aware reasons for free, since they already
+render `editBlockLabel(toolsBlock)`.
+
+**The options bar staying live is deliberate and unchanged.** ToolOptions' own comment states the
+rule: *"Brush settings stay live (session prefs). Actions and instructional copy must not promise a
+stroke that will not land — same split as the toolbar's dimmed pixel tools."* You set up Size/Press/
+Ink before switching to a drawable layer; the bar's ACTIONS (fill, the selection ops) already gate
+on the block. Worth noting that comment says "same split as the toolbar's dimmed pixel tools" — it
+was written believing the toolbar already did this. It did not, until now.
+
+**Verified in Chrome**, all four states, with the Size slider live in every one:
+
+| case | tools dimmed | tooltip |
+| --- | --- | --- |
+| healthy layer | 0/3 | "Brush" |
+| hidden layer | **3/3** (was 0) | "Brush — Layer hidden — show it to edit" |
+| visible layer in a hidden group | **3/3** | "Brush — Group hidden — show the group to edit" |
+| group row | 3/3 | "Brush — Select a layer row to edit" |

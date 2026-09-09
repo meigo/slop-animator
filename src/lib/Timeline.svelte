@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import {
     Plus,
     Diamond,
@@ -1950,7 +1951,7 @@
     <!-- onion skin (how you SEE the sheet — sits with boil and fps, not with Add/Delete) -->
     <button
       class={toolBtn}
-      class:bg-surface-active={appState.onion.enabled}
+      class:ui-on={appState.onion.enabled}
       title="Onion skin"
       onclick={() => {
         appState.onion.enabled = !appState.onion.enabled;
@@ -1962,7 +1963,7 @@
     <div class="relative" use:clickOutside={() => (onionSettingsOpen = false)}>
       <button
         class={toolBtn}
-        class:bg-surface-active={onionSettingsOpen}
+        class:ui-on={onionSettingsOpen}
         title="Onion skin settings"
         onclick={() => (onionSettingsOpen = !onionSettingsOpen)}><Settings size={16} /></button
       >
@@ -1979,6 +1980,7 @@
               max="3"
               bind:value={appState.onion.prev}
               onchange={repaint}
+              style={sliderFill(appState.onion.prev, 0, 3)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.prev}</span
             ></label
@@ -1992,6 +1994,7 @@
               max="3"
               bind:value={appState.onion.next}
               onchange={repaint}
+              style={sliderFill(appState.onion.next, 0, 3)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums">{appState.onion.next}</span
             ></label
@@ -2036,7 +2039,7 @@
     <!-- line boil -->
     <button
       class={toolBtn}
-      class:bg-surface-active={appState.project.boil.enabled}
+      class:ui-on={appState.project.boil.enabled}
       title="Line boil (playback)"
       onclick={() => {
         appState.project.boil.enabled = !appState.project.boil.enabled;
@@ -2046,7 +2049,7 @@
     <div class="relative" use:clickOutside={() => (boilSettingsOpen = false)}>
       <button
         class={toolBtn}
-        class:bg-surface-active={boilSettingsOpen}
+        class:ui-on={boilSettingsOpen}
         title="Boil settings"
         onclick={() => (boilSettingsOpen = !boilSettingsOpen)}><Settings size={16} /></button
       >
@@ -2063,6 +2066,7 @@
               max="8"
               step="0.1"
               bind:value={appState.project.boil.amount}
+              style={sliderFill(appState.project.boil.amount, 0, 8)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.amount}</span
@@ -2077,6 +2081,7 @@
               max="40"
               step="1"
               bind:value={appState.project.boil.cols}
+              style={sliderFill(appState.project.boil.cols, 4, 40)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.cols}</span
@@ -2091,6 +2096,7 @@
               max="8"
               step="1"
               bind:value={appState.project.boil.rate}
+              style={sliderFill(appState.project.boil.rate, 1, 8)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.rate}</span
@@ -2105,6 +2111,7 @@
               max="1"
               step="0.05"
               bind:value={appState.project.boil.weight}
+              style={sliderFill(appState.project.boil.weight, 0, 1)}
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.weight}</span
@@ -2274,8 +2281,9 @@
         ></div>
         {#each Array(appState.project.frameCount) as _, f (f)}
           {@const r = playRange}
-          <!-- Ruler ticks: border/surface-active are near-identical in both themes, so ticks use
-               text-muted — minors dimmed, every 5th (the label cadence) at full strength. -->
+          <!-- Ruler ticks: border and surface-active are near-identical (1.02:1 apart on the
+               family ramp), so ticks use text-muted — minors dimmed, every 5th (the label
+               cadence) at full strength. -->
           <div
             class="box-border h-6 border-r text-xs/6 text-center text-text-secondary {(f + 1) %
               5 ===
@@ -2323,7 +2331,7 @@
           <div
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
-            class:bg-surface-active={groupLit}
+            class:ui-selected={groupLit}
             class:text-text={groupLit}
             class:text-text-secondary={!groupLit}
             style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
@@ -2402,7 +2410,7 @@
             </button>
           {/if}
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 bg-surface border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px"
             title={g.locked ? "Group locked — edits refused" : !g.visible ? "Group hidden" : ""}
@@ -2449,7 +2457,7 @@
               class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
               class:pl-4={spec.indent}
               class:bg-surface={!spec.selected}
-              class:bg-surface-active={spec.selected}
+              class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
               class:text-text-muted={!spec.selected}
               style="width: {LABEL_W}px; touch-action: none"
@@ -2486,7 +2494,7 @@
                  row was the one place that refused an edit while showing no reason, directly under a
                  row displaying the amber padlock. -->
             <span
-              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-amber-500 border-r border-text-muted"
+              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-warn border-r border-text-muted"
               role="presentation"
               style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
               onpointerdown={(e) => {
@@ -2614,7 +2622,7 @@
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:pl-4={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
-            class:bg-surface-active={isRowSelected(layer.id)}
+            class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}
             class:text-text-secondary={!isRowSelected(layer.id)}
             style="width: {animated ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
@@ -2667,7 +2675,7 @@
             <button
               class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 text-text-secondary hover:text-text hover:bg-surface-hover"
               class:bg-surface={!isRowSelected(layer.id)}
-              class:bg-surface-active={isRowSelected(layer.id)}
+              class:ui-selected={isRowSelected(layer.id)}
               style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
               title={layer.tracksCollapsed
                 ? "Show this layer's animation rows"
@@ -2699,9 +2707,9 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-amber-500 border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
-            class:bg-surface-active={isRowSelected(layer.id)}
+            class:ui-selected={isRowSelected(layer.id)}
             role="presentation"
             style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
             onpointerdown={(e) => {

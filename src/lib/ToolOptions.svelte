@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sliderFill } from "./slider-fill";
   import { onMount } from "svelte";
   import {
     state as appState,
@@ -81,10 +82,18 @@
   class="flex min-h-10 flex-wrap items-center gap-2 border-b border-border bg-surface px-2 text-text *:shrink-0"
 >
   {#if appState.tool === "brush" || appState.tool === "eraser"}
-    {#if appState.tool === "eraser"}<span class="text-xs text-amber-500">Eraser</span>{/if}
+    {#if appState.tool === "eraser"}<span class="text-xs text-warn">Eraser</span>{/if}
     <label class="flex items-center gap-1 text-sm text-text-secondary"
       >Size
-      <input type="range" min="0.5" max="60" step="0.5" class="w-24" bind:value={stroke.size} />
+      <input
+        type="range"
+        min="0.5"
+        max="60"
+        step="0.5"
+        class="w-24"
+        bind:value={stroke.size}
+        style={sliderFill(stroke.size, 0.5, 60)}
+      />
       <input
         class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
         type="number"
@@ -95,11 +104,16 @@
         title="Brush size"
       />
     </label>
+    <!-- Fixed SQUARE, not padding: the presets are 1-2 digits, so padding alone makes each button
+         a different width and the on-state fill a different shape per preset ("12" a wide pill,
+         "4" a narrow one). SLOP-TIMELINE-UI.md §6 makes the same call for its flag rows — a fixed
+         square so the row does not reflow as the glyphs differ in width. 24px is §3's shared
+         control height, and it roughly doubles the touch target these had at text height. -->
     <div class="flex items-center gap-px" title="Size presets">
       {#each SIZE_PRESETS as preset (preset)}
         <button
-          class="px-0.5 text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
-          class:bg-surface-active={stroke.size === preset}
+          class="size-6 shrink-0 flex items-center justify-center text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+          class:ui-on={stroke.size === preset}
           onclick={() => (stroke.size = preset)}>{preset}</button
         >
       {/each}
@@ -108,7 +122,15 @@
       class="flex items-center gap-1 text-sm text-text-secondary"
       title="How much pen pressure widens the stroke"
       >Press
-      <input type="range" min="1" max="8" step="0.5" class="w-24" bind:value={stroke.sizeRange} />
+      <input
+        type="range"
+        min="1"
+        max="8"
+        step="0.5"
+        class="w-24"
+        bind:value={stroke.sizeRange}
+        style={sliderFill(stroke.sizeRange, 1, 8)}
+      />
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
     <select
@@ -125,22 +147,23 @@
     </select>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Opacity
-      <input type="range" min="1" max="100" class="w-16" bind:value={stroke.opacity} />
+      <input
+        type="range"
+        min="1"
+        max="100"
+        class="w-16"
+        bind:value={stroke.opacity}
+        style={sliderFill(stroke.opacity, 1, 100)}
+      />
     </label>
-    {#if smoothOnly}
-      <label class="flex items-center gap-1 text-xs text-text-secondary"
-        >Smooth
-        <input type="range" min="0" max="100" class="w-16" bind:value={stroke.smoothing} />
-      </label>
-    {/if}
     <!-- Set-and-forget params live behind the gear, the pattern onion/boil/playback already use:
          what you adjust mid-stroke stays on the bar, what you calibrate once does not. On iPad the
          brush row was overrunning the viewport and the far controls were out of comfortable reach. -->
     <div class="relative" use:clickOutside={() => (brushSettingsOpen = false)}>
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
-        class:bg-surface-active={brushSettingsOpen}
-        title="Brush settings — streamline, pooling, nib angle and flatness, taper, paint behind, pressure curve"
+        class:ui-on={brushSettingsOpen}
+        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -151,7 +174,14 @@
         >
           <label class="flex items-center gap-2" title="Smooth the incoming pointer path"
             ><span class="w-14 text-text-secondary">Stream</span>
-            <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.streamline} />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              class="flex-1"
+              bind:value={stroke.streamline}
+              style={sliderFill(stroke.streamline, 0, 100)}
+            />
             <span class="w-8 text-right text-text-muted tabular-nums">{stroke.streamline}</span>
           </label>
           {#if isInk}
@@ -159,7 +189,14 @@
               class="flex items-center gap-2"
               title="Swell the mark where the pen lingers, the way ink soaks in — 0 is off"
               ><span class="w-14 text-text-secondary">Pool</span>
-              <input type="range" min="0" max="100" class="flex-1" bind:value={stroke.dwellPool} />
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="flex-1"
+                bind:value={stroke.dwellPool}
+                style={sliderFill(stroke.dwellPool ?? 0, 0, 100)}
+              />
               <span class="w-8 text-right text-text-muted tabular-nums"
                 >{stroke.dwellPool ?? 0}</span
               >
@@ -179,6 +216,7 @@
                 step="1"
                 class="flex-1"
                 bind:value={stroke.nibAngle}
+                style={sliderFill(stroke.nibAngle ?? 0, 0, 180)}
               />
               <span class="w-8 text-right text-text-muted tabular-nums">{stroke.nibAngle}°</span>
             </label>
@@ -193,6 +231,7 @@
                 step="0.01"
                 class="flex-1"
                 bind:value={stroke.nibFlatness}
+                style={sliderFill(stroke.nibFlatness ?? 0, 0, MAX_NIB_FLATNESS)}
               />
               <span class="w-8 text-right text-text-muted tabular-nums"
                 >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
@@ -200,6 +239,22 @@
             </label>
           {/if}
           {#if smoothOnly}
+            <!-- Moved off the bar 2026-09-08 when the size presets became 24px squares: Smooth was
+                 the only control that pushed the row past a 12.9" iPad's portrait width. It belongs
+                 here anyway by the gear's own rule — you calibrate it once, like Stream, rather
+                 than riding it mid-stroke. -->
+            <label class="flex items-center gap-2" title="Smooth the perfect-freehand outline"
+              ><span class="w-14 text-text-secondary">Smooth</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="flex-1"
+                bind:value={stroke.smoothing}
+                style={sliderFill(stroke.smoothing, 0, 100)}
+              />
+              <span class="w-8 text-right text-text-muted tabular-nums">{stroke.smoothing}</span>
+            </label>
             <label class="flex items-center gap-2" title="Taper stroke ends">
               <input type="checkbox" bind:checked={stroke.taper} /> Taper
             </label>
@@ -221,26 +276,54 @@
   {:else if appState.tool === "fill"}
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill color tolerance"
       >Tolerance
-      <input type="range" min="0" max="128" class="w-24" bind:value={appState.fill.tolerance} />
+      <input
+        type="range"
+        min="0"
+        max="128"
+        class="w-24"
+        bind:value={appState.fill.tolerance}
+        style={sliderFill(appState.fill.tolerance, 0, 128)}
+      />
       <span class="text-xs w-6 tabular-nums">{appState.fill.tolerance}</span>
     </label>
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
       title="Grow the filled region (px)"
       >Expand
-      <input type="range" min="0" max="8" class="w-16" bind:value={appState.fill.expand} />
+      <input
+        type="range"
+        min="0"
+        max="8"
+        class="w-16"
+        bind:value={appState.fill.expand}
+        style={sliderFill(appState.fill.expand, 0, 8)}
+      />
       <span class="text-xs w-4 tabular-nums">{appState.fill.expand}</span>
     </label>
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
       title="Bridge breaks in the outline before filling, up to about twice this many pixels"
       >Gap
-      <input type="range" min="0" max={MAX_GAP} class="w-16" bind:value={appState.fill.gap} />
+      <input
+        type="range"
+        min="0"
+        max={MAX_GAP}
+        class="w-16"
+        bind:value={appState.fill.gap}
+        style={sliderFill(appState.fill.gap, 0, MAX_GAP)}
+      />
       <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
     </label>
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
       >Opacity
-      <input type="range" min="1" max="100" class="w-16" bind:value={appState.fill.opacity} />
+      <input
+        type="range"
+        min="1"
+        max="100"
+        class="w-16"
+        bind:value={appState.fill.opacity}
+        style={sliderFill(appState.fill.opacity, 1, 100)}
+      />
     </label>
     <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
          `brush.color`, so the label is now true rather than aspirational. -->
@@ -373,7 +456,7 @@
     <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
       <button
         class="px-2 py-1 aria-disabled:opacity-40 aria-disabled:cursor-default"
-        class:bg-surface-active={_scopeShown === "frame"}
+        class:ui-on={_scopeShown === "frame"}
         aria-disabled={_onRef}
         title={_onRef ? "References have no per-frame transform" : "Transform this frame only"}
         onclick={() => {
@@ -382,13 +465,13 @@
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={_scopeShown === "layer"}
+        class:ui-on={_scopeShown === "layer"}
         title="Transform the whole layer"
         onclick={() => (appState.transformScope = "layer")}>Layer</button
       >
       <button
         class="px-2 py-1"
-        class:bg-surface-active={_scopeShown === "group"}
+        class:ui-on={_scopeShown === "group"}
         class:opacity-40={!_groupedActive}
         class:cursor-not-allowed={!_groupedActive}
         aria-disabled={!_groupedActive}
@@ -403,9 +486,12 @@
       >
     </div>
   {:else if appState.tool === "deform" || appState.tool === "pose"}
-    {#if paintBlock}
-      <span class="text-xs text-amber-500">{editBlockLabel(paintBlock)}</span>
-    {:else if appState.tool === "deform"}
+    <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
+         and the status bar says it a third time — this branch was the only place that repeated it,
+         written as "swap the instructions for the reason" without noticing the overlay. The
+         instructions are gated on NOT blocked, or a hidden layer would be told to drag handles it
+         cannot move. -->
+    {#if !paintBlock && appState.tool === "deform"}
       <span class="text-xs text-text-muted"
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
       >

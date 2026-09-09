@@ -14,6 +14,12 @@ export function editBlockLabel(block: LayerEditBlock): string {
       return "Layer locked — unlock it to edit";
     case "hidden":
       return "Layer hidden — show it to edit";
+    // Named separately because the FIX is a different control. Saying "Layer hidden" for a layer
+    // whose own eye is already on sends you to toggle something that changes nothing.
+    case "group-locked":
+      return "Group locked — unlock the group to edit";
+    case "group-hidden":
+      return "Group hidden — show the group to edit";
     case "not-draw":
       return "Switch to a drawing layer to edit";
     case "not-layer-row":
@@ -23,10 +29,12 @@ export function editBlockLabel(block: LayerEditBlock): string {
 
 export interface HintContext {
   tool: string;
-  /** Active layer is a locked drawing layer → every content op silently refuses. */
-  locked: boolean;
-  /** Active layer is hidden → content ops refuse too (you can't see what you'd be editing). */
-  hiddenLayer: boolean;
+  /** Why the active layer refuses content ops, or null when it accepts them. ONE field rather than
+   *  a `locked` and a `hiddenLayer` boolean: those two were computed here from `isLayerLocked` /
+   *  `isLayerVisible`, which fold a group's flags into the layer's, so the hint could not tell a
+   *  hidden layer from a hidden group and said "Layer hidden" for both. Passing the reason itself
+   *  means the caller cannot re-derive it differently from `whyNotEditable`. */
+  editBlock: LayerEditBlock | null;
   /** Active layer is a reference (or otherwise not a drawing). Pixel tools refuse; transform,
    *  select, and eyedropper still do something. */
   notDraw: boolean;
@@ -88,8 +96,8 @@ export function contextHint(c: HintContext): string {
     if (c.tool === "transform" && c.groupTransformBlock === "no-draw-member")
       return "This group has no drawing layer to transform";
   }
-  if (c.locked) return editBlockLabel("locked");
-  if (c.hiddenLayer) return editBlockLabel("hidden");
+  if (c.editBlock && c.editBlock !== "not-draw" && c.editBlock !== "not-layer-row")
+    return editBlockLabel(c.editBlock);
   if (
     c.notDraw &&
     (c.tool === "brush" ||

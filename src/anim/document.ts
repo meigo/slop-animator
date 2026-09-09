@@ -299,12 +299,28 @@ export function isLayerEditable(layer: Layer, groups: LayerGroup[]): layer is Dr
  *  IS an unlocked drawing layer, so "switch to a drawing layer" described a state that was not
  *  true, and with the Transform tool on the audio row it misdirected (a REFERENCE row works fine).
  */
-export type LayerEditBlock = "locked" | "hidden" | "not-draw" | "not-layer-row";
+export type LayerEditBlock =
+  | "locked"
+  | "hidden"
+  | "group-locked"
+  | "group-hidden"
+  | "not-draw"
+  | "not-layer-row";
 
 export function whyNotEditable(layer: Layer, groups: LayerGroup[]): LayerEditBlock | null {
   if (layer.kind !== "draw") return "not-draw";
-  if (isLayerLocked(layer, groups)) return "locked";
-  if (!isLayerVisible(layer, groups)) return "hidden";
+  // Deliberately NOT isLayerLocked/isLayerVisible: those fold the group's flag into the layer's,
+  // which is right for "can this be edited" and wrong for "why not". Collapsing both into
+  // "locked"/"hidden" made a visible layer inside a hidden GROUP report "Layer hidden — show it to
+  // edit", so the message named a control that does nothing — the layer's eye is already on and the
+  // group's is the one that is off. Reported as the canvas warning "still showing" after selecting
+  // a visible layer; it was not stale, it was the wrong reason with the wrong fix attached.
+  // The layer's own flag wins when both apply: it is the nearer of the two fixes.
+  const g = groupOf(layer, groups);
+  if (layer.locked) return "locked";
+  if (g?.locked) return "group-locked";
+  if (!layer.visible) return "hidden";
+  if (g && !g.visible) return "group-hidden";
   return null;
 }
 

@@ -255,7 +255,6 @@
 
   onMount(async () => {
     applyPreferences(loadPreferences());
-    document.documentElement.classList.toggle("dark", state.theme === "dark");
     try {
       const restored = await loadAutosave(DPR);
       if (restored) {

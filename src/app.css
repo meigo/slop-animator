@@ -1,58 +1,85 @@
 @import "tailwindcss";
 
+/* ONE palette. The app was light-first with a `.dark` class until 2026-09-08; the light theme was
+   removed because nobody used it and it was the single biggest source of friction in aligning with
+   the other slop apps — every token was two decisions and two contrast checks against two different
+   grounds (`warn` genuinely needed two values: amber-700 is 3.32:1 on dark, amber-500 is 2.15:1 on
+   white), and `SLOP-TIMELINE-UI.md` had to carry a carve-out for this app alone. Dark-only makes it
+   an ordinary member of the family: the roles ARE the family's roles and the values ARE its hexes.
+
+   The ARTWORK is unaffected by any of this — the paper is `project.bgColor`, painted in render.ts,
+   so a white page stays white on dark chrome.
+
+   The ramp is taken VERBATIM from SLOP-TIMELINE-UI.md §1: the same hexes slop-audio-editor and
+   slop-video-compositor use. It is Tailwind zinc's faint cool cast, NOT neutral grey, and that is
+   the point — over a whole toolbar or timeline, neutral vs faintly tinted is easy to tell apart
+   even at +4 blue over red, which is why the family chose a cast rather than `neutral`.
+
+   Adopting `line` exactly makes DIVIDERS FAINTER than they were: 1.10:1 over the panel where
+   #383838 was 1.42:1. That is the family's deliberate "only slightly lighter than what it divides";
+   if it proves too subtle, lift `--color-border` alone rather than the whole ramp.
+
+   The token NAMES stay this app's own (surface / border / text-secondary rather than panel / line /
+   muted) — renaming ~700 class usages buys nothing the values have not already bought. */
 @theme {
-  --color-surface: #ffffff;
-  --color-surface-hover: #f5f5f5;
-  --color-surface-active: #ebebeb;
-  --color-border: #e0e0e0;
-  --color-border-light: #f0f0f0;
-  --color-text: #222222;
-  --color-text-secondary: #666666;
-  --color-text-muted: #6b6b6b; /* 5.3:1 on white — #999 was 2.85:1, unreadable */
-  --color-canvas-bg: #f5f5f5;
-  --color-accent: #222222;
-  --color-accent-text: #ffffff;
-  --color-selection: #6688cc;
-  /* Timeline media clips (audio waveform block, video-ref block). NEUTRAL, and separated from the
-     chrome by VALUE rather than hue: the clip sits well below the ruler (surface-active) in light
-     and well above it in dark, far enough that no tint is needed. An earlier version was blue-grey,
-     on the reasoning that the greys BETWEEN surface and border are too close to read as a separate
-     object — true, which is why these values sit OUTSIDE that range rather than inside it. Staying
-     neutral also keeps clips from competing with the selection blue or the amber locked/hidden
-     state, and leaves the waveform the loudest thing in the lane.
-     `-dim` is the trimmed head/tail and the tail past the last frame; it is deliberately a long way
-     from `-clip` (roughly five steps) so trimmed regions read as OFF, not merely different.
+  --color-surface: #1e1e22; /* family `panel` */
+  /* Both are the family's single `raised`. Collapsing hover and active into one value is only
+     safe because active state is the accent — see `.ui-on` / `.ui-selected` below. */
+  --color-surface-hover: #2d2d33;
+  --color-surface-active: #2d2d33;
+  --color-border: #2e2e35; /* family `line` */
+  /* No family equivalent: a subtler divider than `line`, sitting between panel and line. */
+  --color-border-light: #26262b;
+  --color-text: #f4f4f5;
+  --color-text-secondary: #a1a1aa; /* zinc-400 — family `muted` */
+  /* A THIRD text level the family does not have; tinted to match and held at the contrast the
+     old value had — 4.86:1 on the panel, against #8a8a8a's 4.83:1 on the old panel. */
+  --color-text-muted: #8a8a93;
+  --color-canvas-bg: #101013; /* family `ground` */
+  /* THE accent — selection, active toggles, focus ring, filled primary buttons. Shared with
+     slop-audio-editor and slop-video-compositor (SLOP-TIMELINE-UI.md §2).
+     Until 2026-09-08 `accent` was #222/#e0e0e0 — a near-black/near-white INK colour, the opposite
+     of the family's meaning — and the blue lived in a separate `selection` token used in 5 places,
+     never for active state. Active state was `surface-active`, a lighter grey at 1.32:1 against
+     the panel: technically a change, visually nothing, and it made the whole app read as flat grey
+     next to the other two. The blue is 5.27:1 on the dark panel.
+     `--color-selection` is kept as an alias so nothing that names it breaks; prefer `accent`. */
+  --color-accent: #5b8cff;
+  --color-accent-hover: #7aa3ff;
+  /* What goes ON the accent fill. White is only 3.16:1 on this blue; near-black is 5.92:1 — and
+     the family's §6 says a filled toggle switches its label to `ground`. */
+  --color-accent-text: #121212;
+  --color-selection: #5b8cff;
+  /* Timeline media clips (audio waveform block, video-ref block) — the family's value: a dark
+     indigo sharing the ACCENT's hue, found by its BORDER (2.20:1 on the ground) rather than by its
+     fill (1.17:1). It replaced a NEUTRAL #474747 whose stated reason was that neutral "keeps clips
+     from competing with the selection blue" — reasoning written when this app had no accent in real
+     use, so it guarded against a blue that never appeared on screen. The new clip is also DARKER
+     than the old (1.17:1 against 2.02:1), which serves that note's other goal: the waveform stays
+     the loudest thing in the lane.
+     `-dim` is the trimmed head/tail and the tail past the last frame, and it must read as OFF. The
+     old value sat five steps below a mid-grey clip; against a clip this dark there is no room
+     below, so it goes to very nearly the ground — a trimmed region reads as empty lane, the same
+     message by the only route still available.
      Named media-clip, not clip — bg-clip-* is Tailwind's background-clip namespace. */
-  --color-media-clip: #d6d6d6;
-  --color-media-clip-dim: #f6f6f6;
-  --color-media-clip-border: #b8b8b8;
+  --color-media-clip: #172036;
+  --color-media-clip-dim: #13141a;
+  --color-media-clip-border: #384b75;
+  /* The caution colour: "here is why what you are about to do will not land" — a hidden or locked
+     layer, an edit that will be refused, eraser mode, a failed autosave. It was `text-amber-500`
+     hard-coded in 9 files. 7.76:1 on the panel. Its MEANING deliberately differs from the family's
+     `warn` (session-only state that never reaches an export) — see the note in SLOP-TIMELINE-UI.md.
+     While this app still had a light theme this token needed a second value, amber-700, because
+     amber-500 is only 2.15:1 on white; that is one of the costs the light theme was carrying. */
+  --color-warn: #f59e0b;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
-   BROWSER, not by our CSS — without color-scheme they stay in the light palette even in dark mode.
-   accent-color tints checkboxes/radios to the app's selection blue instead of the OS default. */
+   BROWSER, not by our CSS — without `color-scheme: dark` they keep the OS LIGHT palette on this
+   dark ground. accent-color tints checkboxes/radios to the app's blue instead of the OS default. */
 :root {
-  color-scheme: light;
-  accent-color: var(--color-selection);
-}
-
-.dark {
   color-scheme: dark;
-  --color-surface: #1e1e1e;
-  --color-surface-hover: #282828;
-  --color-surface-active: #333333;
-  --color-border: #383838;
-  --color-border-light: #2a2a2a;
-  --color-text: #e0e0e0;
-  --color-text-secondary: #999999;
-  --color-text-muted: #8a8a8a; /* 4.7:1 on #1e1e1e — #666 was 2.8:1, unreadable */
-  --color-canvas-bg: #121212;
-  --color-accent: #e0e0e0;
-  --color-accent-text: #1e1e1e;
-  --color-selection: #6688cc;
-  --color-media-clip: #474747;
-  --color-media-clip-dim: #242424;
-  --color-media-clip-border: #5c5c5c;
+  accent-color: var(--color-selection);
 }
 
 html,
@@ -119,6 +146,36 @@ textarea,
   user-select: text;
 }
 
+/* THE on-state, defined ONCE — SLOP-TIMELINE-UI.md §6 ("one idiom per app, everywhere").
+   Two classes because they mark two different things: `.ui-on` is a TOGGLE or tool that is on;
+   `.ui-selected` is a ROW that is the current target. Filling a whole layer row with solid accent
+   would shout, and the family expresses selection on an object by its EDGE, not its fill.
+
+   Why plain CSS and not `class:bg-accent` + `class:text-accent-text` in the markup: every shared
+   button constant in this app already sets a text colour (`text-text-secondary` in Toolbar,
+   Playbar and Timeline; `text-text` in TimelineSelectionBar), and a `class:` directive layering a
+   second colour utility over it is decided by the order Tailwind EMITS them, not by the markup —
+   the exact defect §6 records as "a loop button styled that way looked completely dead". These
+   rules sit OUTSIDE any `@layer`, and unlayered declarations beat layered ones in the cascade
+   whatever their order, so the on-state cannot lose that race. It also means a future toggle gets
+   the behaviour by naming one class.
+
+   Before 2026-09-08 the on-state was `bg-surface-active` — #333 on a #1e1e1e panel, 1.32:1, so
+   "active" was technically a change and visually nothing. The accent is 5.27:1. */
+.ui-on {
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+.ui-on:hover {
+  background-color: var(--color-accent-hover);
+}
+/* Tint plus a left edge. `box-shadow: inset` rather than a border so the row's geometry does not
+   change when it becomes selected (§5: state must not move the layout). */
+.ui-selected {
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
 /* SortableJS drag states */
 .sortable-ghost {
   opacity: 0.4;
@@ -128,24 +185,27 @@ textarea,
   background: var(--color-surface-hover);
 }
 
-/* Range input — thin track, small round thumb */
+/* Range inputs — SLOP-TIMELINE-UI.md §6: a 4px track with a 12px round thumb, and the filled
+   portion rebuilt as a gradient because `appearance: none` (the only way to size the thumb, which
+   the browser draws) also loses the fill the browser drew for free. Two stops rather than one so a
+   bipolar control could fill outward from its centre; `sliderFill()` supplies the percentages.
+   The fill is the accent MIXED 50% into the track, not the accent itself: at full strength the bar
+   competes with the thumb, which is the thing you actually aim at. Mixed toward the track rather
+   than made translucent, so it does not depend on what sits behind the control.
+   Any slider without the vars still renders — it just shows an empty track. */
 input[type="range"] {
+  --slider-fill: color-mix(in srgb, var(--color-accent) 50%, var(--color-surface-hover));
   -webkit-appearance: none;
   appearance: none;
-  height: 18px;
-  background: transparent;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-surface-hover) 0 var(--fill-from, 0%),
+    var(--slider-fill) var(--fill-from, 0%) var(--fill-to, 0%),
+    var(--color-surface-hover) var(--fill-to, 0%) 100%
+  );
   cursor: pointer;
-}
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 1.5px;
-  background: var(--color-border);
-}
-input[type="range"]::-moz-range-track {
-  height: 3px;
-  border-radius: 1.5px;
-  background: var(--color-border);
-  border: none;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -153,17 +213,20 @@ input[type="range"]::-webkit-slider-thumb {
   height: 12px;
   border-radius: 50%;
   background: var(--color-accent);
-  border: 2px solid var(--color-surface);
-  margin-top: -4.5px;
-  box-shadow: 0 0 0 1px var(--color-border);
+  border: none;
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+  border: none;
 }
 input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: var(--color-accent);
-  border: 2px solid var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-border);
+  border: none;
 }
 
 /* Pressure curve popup — position:fixed so it escapes the ToolOptions bar's overflow clip;

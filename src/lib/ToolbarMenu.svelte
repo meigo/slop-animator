@@ -11,7 +11,7 @@
 <div class="relative shrink-0" use:clickOutside={close}>
   <button
     class="h-8 px-2 rounded flex items-center gap-1 text-sm text-text-secondary hover:bg-surface-hover shrink-0"
-    class:bg-surface-active={open}
+    class:ui-on={open}
     onclick={() => (open = !open)}
   >
     {label}<span class="text-[10px] opacity-70">▾</span>
