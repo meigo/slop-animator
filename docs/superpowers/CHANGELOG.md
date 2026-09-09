@@ -4350,3 +4350,33 @@ more than the 45px: there is now one width to check rather than one per brush.
 **VERIFIED in Chrome** across smooth / ink / calligraphy / pencil: all end at 910, all on a single
 row, Smooth reachable in the gear under Stream with its value readout. Owed the usual iPad eyeball
 for the touch feel of the 24px squares.
+
+**The blocked-edit reason was shown twice on the deform/pose tools (2026-09-09).** Reported from a
+screenshot: *"is the double warning on the canvas needed?"* It was not.
+
+Two independent captions, written for different reasons and never compared. `Canvas.svelte`'s stage
+overlay fires for ANY blocked tool, and its own comment records why it lives on the stage rather
+than in the options bar — an inline span there shoved Size/Press sideways. `ToolOptions.svelte`'s
+was inside the `deform`/`pose` branch only, written as "swap this tool's instructions for the
+reason" without noticing the overlay already said it. So every other tool showed the message once
+and deform/pose showed it twice, plus the status bar's copy at the bottom.
+
+The ToolOptions one is removed; the stage overlay is the keeper, since it covers every tool and sits
+where the gesture would have happened. One wrinkle that would have bitten a careless deletion: the
+branch read `{#if paintBlock} reason {:else if deform} instructions`, so removing just the reason
+would have fallen through to telling a hidden layer to "drag the grid handles on the canvas". The
+instructions are now gated on NOT blocked, and the bar simply shows nothing there.
+
+`editBlockLabel` stays imported — five tooltips still use it.
+
+**A measurement error worth recording, because it nearly caused a second unnecessary edit.** A DOM
+sweep for the string reported THREE visible copies, the extra one in `SelectionActions.svelte`. It
+is not visible: that element computes `opacity: 1` while its parent `.selection-actions-panel` sits
+at `opacity: 0`, and opacity does not inherit as a computed value, so checking the leaf says
+"visible" when the subtree is not. **Check the ancestor chain, not the element, before calling
+something visible.** That caption is correct as it stands — it appears only when the panel is up,
+beside the Free transform / Distort / Mesh buttons it explains, which is a different question from
+"why won't the canvas take a stroke".
+
+Verified in Chrome in the exact reported state (hidden layer, deform tool): the options row is empty
+and one caption remains on the stage, with the status bar's persistent copy at the bottom.

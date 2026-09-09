@@ -486,9 +486,12 @@
       >
     </div>
   {:else if appState.tool === "deform" || appState.tool === "pose"}
-    {#if paintBlock}
-      <span class="text-xs text-warn">{editBlockLabel(paintBlock)}</span>
-    {:else if appState.tool === "deform"}
+    <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
+         and the status bar says it a third time — this branch was the only place that repeated it,
+         written as "swap the instructions for the reason" without noticing the overlay. The
+         instructions are gated on NOT blocked, or a hidden layer would be told to drag handles it
+         cannot move. -->
+    {#if !paintBlock && appState.tool === "deform"}
       <span class="text-xs text-text-muted"
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
       >
