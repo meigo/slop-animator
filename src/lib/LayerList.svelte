@@ -571,9 +571,17 @@
        layer-ish is selected while the audio lane is, and one click restores it. The draw target does
        not go missing: the status bar names the active layer independently of any highlight. -->
   {@const active = isRowSelected(layer.id)}
+  <!-- `pl-[13px]` on a GROUP MEMBER, and deliberately on this element rather than on the
+       `.group-members` container that used to carry it. An inset `box-shadow` paints at the BORDER
+       box, which padding does not move — so the row's content indents while its `.ui-selected` bar
+       stays at x=0, landing on the group rail the block draws there. Put the same 13px on the
+       container instead and the bar moves with it, which is what made a selected member draw a
+       second line beside the rail. Content lands at 13 + the inner `p-1`, exactly where the
+       container's padding used to put it, so nothing moved. -->
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
+    class:pl-[13px]={layer.groupId != null}
     class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
@@ -913,7 +921,30 @@
             seg.group,
             appState.project.layers,
           )}
-          <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
+          <!-- The group rail: ONE 2px line at x=0, running the WHOLE block — header, detail strip
+               and members — describing group relation, with the ACCENT segment being whichever row
+               inside it is selected. Asked for in exactly those terms: "try not indent the line,
+               distinction is made by the color — whole line describes group relation and accent
+               color selection."
+               Three positions were tried before this one, and each failed for a reason worth keeping.
+               A 1px `border-l` on `.group-members` at x=0 was collinear with the header's 2px
+               `.ui-selected` bar, so the edge changed THICKNESS partway down. Inset to x=6 it cleared
+               that but ran parallel to a selected MEMBER's own bar at 13. Moved to x=13 at 2px it
+               matched the member bars but no longer met the header's, which is at 0.
+               x=0 at 2px is the only position where every bar in the block already paints: the
+               header's, the detail strip's, and — once the members' indent moves off the container
+               and onto the ROWS, below — each member's. Same column, same width, so the line never
+               doubles and never steps; only its colour changes.
+               A BACKGROUND, not a child and not a wrapper: the members are a SortableJS container and
+               a stray child would be treated as a draggable row (gotcha #2). Nothing in the block
+               paints an opaque background of its own — only hovers and translucent tints — so the
+               rail shows through, and a selected row's 2px inset accent covers exactly its stretch of
+               it. -->
+          <div
+            class="group-block border-b border-border-light"
+            style="background-image: linear-gradient(var(--rail), var(--rail)); background-size: 2px 100%; background-position: 0 0; background-repeat: no-repeat; --rail: color-mix(in srgb, var(--color-text-muted) 45%, transparent)"
+            data-group-id={seg.group.id}
+          >
             <div
               class="flex items-center gap-1 p-1 hover:bg-surface-hover"
               class:ui-selected={groupLit}
@@ -1032,18 +1063,10 @@
                 </span>
               </div>
             {/if}
-            <!-- The group spine, the panel's half of it. Nested rows mean one `border-l` here does
-                 what the timeline needs a per-row segment for; keep the two LOOKS in step, not the
-                 code. `accent` while this is the group being worked on (the same `groupDetail` the
-                 detail strip uses), a neutral hairline otherwise — never `.ui-selected`, which means
-                 "this ROW is selected" and would claim every member was. -->
-            <div
-              class="group-members pl-3 border-l {groupDetail
-                ? 'border-accent'
-                : 'border-text-muted/50'}"
-              class:hidden={seg.group.collapsed}
-              use:membersSortable
-            >
+            <!-- No padding here any more: a member's indent lives on the ROW (see `layerRow`), so
+                 the row's border box starts at x=0 and its `.ui-selected` bar lands on the block's
+                 rail instead of 13px inboard of it. -->
+            <div class="group-members" class:hidden={seg.group.collapsed} use:membersSortable>
               {#each seg.layers as layer (layer.id)}
                 {@render layerRow(layer)}
               {/each}

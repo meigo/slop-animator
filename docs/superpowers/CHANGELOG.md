@@ -4925,3 +4925,42 @@ class of row and the question does not arise.
 
 Measured after: `Group 1` 12, its `Transform`/`Opacity` 30, members 24, `Layer 2`'s `Opacity` 30, refs
 and audio 12; spine 19-20, nearest glyph edge 32.
+
+**The layer panel's group rail: one line at the edge, colour carrying the meaning (2026-09-09).**
+Asked as *"layer panel, are the accent bar and spine line rendered correctly here?"* — no — then
+*"that double line solution feels distracting"* — and finally the design itself: *"try not indent the
+line, distinction is made by the color — whole line describes group relation and accent color
+selection."*
+
+**Four positions, and each failure narrowed the answer to one:**
+
+| position | what broke |
+| --- | --- |
+| 1px `border-l` on `.group-members`, x=0 | collinear with the header's 2px `.ui-selected` bar, so the edge changed THICKNESS partway down |
+| inset to x=6 | cleared the header's bar, ran parallel to a selected MEMBER's bar at 13 |
+| x=13, 2px | matched the member bars, no longer met the header's, which is at 0 |
+| **x=0, 2px, whole block** | nothing — every bar in the block already paints there |
+
+**x=0 at 2px is the only column every bar in the block shares** — the header's, the detail strip's,
+and each member's. Same column, same width, so the line never doubles and never steps; only its colour
+changes. Neutral says "these rows are one group"; accent says "this row is selected".
+
+**The move that made it work is where the members' indent lives.** It was `pl-[13px]` on the
+`.group-members` container, which pushes each row's BORDER BOX to 13 and takes its inset bar with it.
+It is now `pl-[13px]` on the ROW — an inset `box-shadow` paints at the border box, which padding does
+not move, so the content indents while the bar stays at 0. Content lands at 13 + the row's inner `p-1`
+= 17, exactly where it was, so nothing moved.
+
+**Drawn as a background on `.group-block`**, not a border and not a child: the members are a SortableJS
+container, so a stray child would be treated as a draggable row (gotcha #2 — the reorder path that
+already cost real debugging). Nothing in the block paints an opaque background of its own, only hovers
+and translucent tints, so the rail shows through and a selected row's accent covers exactly its
+stretch.
+
+**The timeline spine is unchanged and still accent-when-active**, which is geometry rather than
+inconsistency: there the gutter rows are full-bleed, so their bars sit at 0 and the spine at 19 never
+shares a column with them.
+
+Measured after: rail `0px 0px` / `2px 100%`; header box at 0; selected member box at 0 with a 2px inset
+accent shadow; member content (drag grip) at 17, unchanged. Verified with a member selected and with
+the group selected.
