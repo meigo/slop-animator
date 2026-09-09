@@ -140,16 +140,33 @@ describe("transformAt", () => {
 });
 
 describe("track mutations", () => {
-  it("createTransformTrack seeds one key at frame 0 with the static value", () => {
-    const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 });
-    expect(t.keys).toEqual([{ frame: 0, v: T(9) }]);
+  it("createTransformTrack seeds one key AT THE GIVEN FRAME with the static value", () => {
+    // Seeded where the playhead is, not at 0. Turning animation on at frame 40 used to drop the
+    // first key at frame 1, so the artist's first drag invented a 40-frame tween across frames
+    // they had never visited. `resolveTrack` returns the first key's value for every frame at or
+    // before it, so a key anywhere is still a visual no-op at the moment it is created.
+    const t = createTransformTrack(T(9), { x: 1, y: 2, w: 3, h: 4 }, 40);
+    expect(t.keys).toEqual([{ frame: 40, v: T(9) }]);
     expect(t.box).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  });
+
+  it("createTransformTrack still seeds frame 0 when the playhead is there", () => {
+    expect(createTransformTrack(T(9), null, 0).keys).toEqual([{ frame: 0, v: T(9) }]);
+  });
+
+  it("a track seeded away from 0 holds its value backwards to the start", () => {
+    // This is what makes seeding at the playhead safe: nothing before the key renders differently.
+    const t = createTransformTrack(T(9), null, 40);
+    const pick = (f: number) => resolveTrack(t, f, (a) => a);
+    expect(pick(0)).toEqual(T(9));
+    expect(pick(39)).toEqual(T(9));
+    expect(pick(40)).toEqual(T(9));
   });
 
   it("createTransformTrack copies the transform and the box", () => {
     const src = T(9);
     const box = { x: 1, y: 2, w: 3, h: 4 };
-    const t = createTransformTrack(src, box);
+    const t = createTransformTrack(src, box, 0);
     expect(t.keys[0].v).not.toBe(src);
     expect(t.box).not.toBe(box);
   });

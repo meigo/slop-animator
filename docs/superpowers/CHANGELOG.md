@@ -2564,7 +2564,8 @@ nt)` instead of writing `layer.transform` directly — auto-key is therefore not
 > row already uses for the same reason.
 > **Owed a browser pass** (Tasks 1-8 are build+review-verified per project convention; canvas/DOM has no
 > node harness): Animate on a static layer starts a track at frame 0 and a first drag elsewhere tweens
-> cleanly; scrubbing between keys shows the interpolated pose; Stop animating bakes the ON-SCREEN value
+> cleanly; **[SUPERSEDED 2026-09-09 — tracks now seed at the PLAYHEAD, not frame 0. See `Animating a
+> property seeds its first key at the playhead` at the end of this file.]** scrubbing between keys shows the interpolated pose; Stop animating bakes the ON-SCREEN value
 > (not the pre-animation one); Delete key on the last remaining key is a no-op; Hold vs Linear and
 > `sampleEvery` visibly change playback; Apply/Reset on an animated layer refuse with the "Layer is
 > animated" hint and leave the track untouched; the status bar names the frame a drag will key, and
@@ -4464,3 +4465,40 @@ was written believing the toolbar already did this. It did not, until now.
 | hidden layer | **3/3** (was 0) | "Brush — Layer hidden — show it to edit" |
 | visible layer in a hidden group | **3/3** | "Brush — Group hidden — show the group to edit" |
 | group row | 3/3 | "Brush — Select a layer row to edit" |
+
+**Animating a property seeds its first key at the playhead, not frame 0 (2026-09-09).** Asked as a
+question — *"when i start to animate transform or opacity, the keyframes are added to frame 1 instead
+of current frame. Is this by design?"* It was by design, and the design was wrong.
+
+All four entry points (`animateLayer`, `animateLayerOpacity`, `animateGroup`, `animateGroupOpacity`)
+seeded `keys: [{ frame: 0, … }]` regardless of where the artist was working. The original rationale
+is sound as far as it goes: `resolveTrack` returns the first key's value for every frame at or before
+it, so seeding frame 0 with the current value makes enabling animation a visual no-op, and a first
+drag at frame N then gives a tween from the start for free.
+
+**The cost is what got reported.** Enable animation at frame 40 and the key lands at 1 — not where
+you are. The first drag then invents a 40-frame tween across frames never visited. That is motion the
+artist did not ask for, in an app whose whole premise is that you work AT a frame.
+
+**Seeding at the playhead is equally safe and strictly more predictable.** It is *also* a visual
+no-op at the moment of creation, for the same `resolveTrack` reason — a lone key holds its value
+backwards to frame 0 — so nothing on screen changes either way. The only difference is where the key
+lands and what the first drag produces, and the playhead is where the artist's attention already is.
+This is also what After Effects and Flash do.
+
+`createTransformTrack(t, box, frame)` takes the frame as a REQUIRED third argument rather than
+defaulting to 0: a default would let a future call site silently reintroduce the old behaviour, and
+there are only two callers. The two opacity seeds are inline and take `state.playhead` directly;
+`animateGroupOpacity` also now reads `groupOpacityAt(g, state.playhead)` rather than
+`groupOpacityAt(g, 0)` — same value today, since a group with no track resolves statically, but the
+two should not disagree about which frame they describe.
+
+Three tests, written first and watched fail (`expected [{frame: 0}] to deeply equal [{frame: 40}]`),
+covering the seed frame, the frame-0 case still working, and the safety property that a track seeded
+at 40 resolves to the same value at frames 0, 39 and 40.
+
+**Verified in Chrome** across all four entry points: playhead 6, keys at 6/6/6/6, and the render
+identical before and at the key. A note on the verification, because the first two attempts were
+wrong and looked like a bug: setting the playhead to 17 and 23 on a **10-frame** project put it out
+of range, and the first structural commit legitimately clamped it back to 9 — which read as
+"animateLayer moves the playhead". It does not. The probe was invalid, not the code.
