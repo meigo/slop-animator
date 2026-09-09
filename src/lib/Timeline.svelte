@@ -128,7 +128,15 @@
     videoClipOriginOffset,
   } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
-  import { columnAtX, lengthAtX, moveCancelPx, planCellPointer } from "./timeline-grid";
+  import {
+    columnAtX,
+    lengthAtX,
+    moveCancelPx,
+    planCellPointer,
+    MIN_CELL_W,
+    MAX_CELL_W,
+    clampTimelineCellW,
+  } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs } from "./timeline-glyphs";
   import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
@@ -2156,6 +2164,18 @@
 
     <span class="mx-3 h-5 w-px bg-border"></span>
     <Playbar variant="settings" />
+    <label class="flex items-center gap-1 text-xs text-text-secondary" title="Frame width">
+      <input
+        type="range"
+        min={MIN_CELL_W}
+        max={MAX_CELL_W}
+        step="2"
+        class="w-20"
+        value={appState.timelineCellW}
+        oninput={(e) => (appState.timelineCellW = clampTimelineCellW(+e.currentTarget.value))}
+        style={sliderFill(appState.timelineCellW, MIN_CELL_W, MAX_CELL_W)}
+      />
+    </label>
   </div>
 
   <!-- aligned grid: ruler + layer rows share one column geometry; a single playhead line spans them -->
