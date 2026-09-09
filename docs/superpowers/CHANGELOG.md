@@ -4982,3 +4982,18 @@ the slider's own `title` — "Group opacity", or the animated / locked-member-pi
 Consistency was the deciding argument rather than clutter: labelling exactly one of the panel's
 sliders makes the other two look like an oversight. The alternative — label them all, including a
 layer's `100` and `1.0` — was offered and declined.
+
+**The group opacity slider aligns with the drag handle, like the layer ones (2026-09-09).** Reported as
+*"left edge of the slider should align with the left edge of drag handle, like layer sliders do"* —
+and the 4px came from a detail worth writing down.
+
+The group's detail strip used `px-1` (4px), which aligns with the drag grip's BOX. But `GripVertical`
+draws its dots INSET inside a 14px box, so the visible handle starts ~4px further in — which is why
+the layer row's own detail strip uses `pl-2` (8px). Aligning to the box aligns to nothing you can see.
+
+The group strip now carries `pl-2 pr-1 pb-1`, character for character the layer strip's, so the two
+line up by construction rather than by coincidence; if one changes the other must.
+
+Measured after: group grip box at 4 and its slider at 8; member grip box at 17 and its slider at 21 —
+**+4 in both cases**, the same relationship rather than the same number, which is the thing that has to
+hold when the rows sit at different indents.

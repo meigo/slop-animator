@@ -1026,8 +1026,15 @@
               {@const gOpNow = groupOpacityAt(seg.group, gOpFrame)}
               {@const gOpPinned =
                 !!gOpTrack && groupHasLockedLayer(seg.group, appState.project.layers)}
+              <!-- `pl-2 pr-1 pb-1`, character for character the LAYER row's detail strip
+                   (`layerRow` Row 2), so the two line up by construction rather than by coincidence.
+                   It was `px-1` (4px), which aligns with the drag grip's BOX — but `GripVertical`
+                   draws its dots inset inside a 14px box, so the visible handle starts at ~8px and
+                   the group's slider sat 4px left of every layer's. Reported as "left edge of the
+                   slider should align with the left edge of drag handle, like layer sliders do".
+                   If Row 2's padding ever changes, this must change with it. -->
               <div
-                class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 text-text-secondary"
+                class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary"
                 class:ui-selected={groupLit}
               >
                 <span
