@@ -5015,3 +5015,39 @@ still appears where the name is. Verified: clicking Rename in the strip puts a f
 
 The side benefit is that the group name gets the full row to truncate into, which matters on a
 drag-resizable panel that defaults to 224px.
+
+**Icons in front of the sliders (2026-09-09).** Asked as *"or could we use suitable icons in front of
+sliders?"* — after the text-label option was declined. `Blend` for opacity, `Waves` for boil; `Waves`
+is already the boil glyph on the timeline's own boil button, so it is a reuse rather than a new
+symbol. Both sit INSIDE the existing title wrapper, so the icon carries the same tooltip on desktop.
+
+**The reason this is worth real estate is iPad.** `title` tooltips are mouse-only — a documented
+gotcha in this project — so on the app's primary device the only thing distinguishing a layer's two
+sliders was that one reads "100" and the other "1.0". The icons are the first identification that
+works with a Pencil.
+
+**Measured cost, before building it: 5px.** The layer strip had exactly 5px of headroom at the default
+224px panel (189px used of 194px available), and the comment above it records the tuning — *"sizes are
+tuned so a DRAW layer stays on one line at the default width"*. Two icons at 13px plus their gaps is
+~42px, so this necessarily wraps. It does: the strip goes 20px → 40px, and a selected draw layer's row
+65px instead of 45px. One line again at **≥288px**; still one line at 224px for the GROUP strip, which
+has only one slider.
+
+**Wrapping exposed a pre-existing bug, which is the part worth keeping.** Opacity's slider and readout
+share a wrapper *"so they can never wrap apart"*; boil's were three loose children. The moment the
+strip took a second line, the boil slider wrapped away from its own value and read as broken. Boil now
+has the same wrapper, so the strip breaks BETWEEN opacity and boil — a seam that means something — and
+each line carries its own icon, slider and number. That is arguably better than the cramped single
+line it replaces.
+
+**And then the sliders paid for it** (*"we could shorten sliders a bit in layers panel"*), so the
+default width keeps its one-line layout instead of the panel default having to move. Sliders `w-12` →
+`w-10` (48 → 40px) and every gap in the strip 8 → 4px, applied to all three sliders so the group's
+still matches a layer's. That is 231px of content down to **191px against 194px available** — one line
+again at 224, with 3px spare where there used to be 5.
+
+The arithmetic, since the next person to add a control here will need it: each slider group is
+`icon 13 + gap 4 + slider 40 + gap 4 + readout 24 = 85`, and the strip is `85 + 4 + 85 + 4 + pencil 13
+= 191`. The binding case is a GROUP MEMBER, which is 13px narrower than a top-level layer because of
+its indent. Overflow is still a wrap rather than a clip, so being wrong here costs a line, not a
+control.

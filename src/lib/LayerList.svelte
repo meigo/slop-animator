@@ -11,10 +11,12 @@
     Eye,
     EyeOff,
     GripVertical,
+    Blend,
     Pencil,
     Link,
     FolderPlus,
     Ungroup,
+    Waves,
     ChevronDown,
     ChevronRight,
     Image,
@@ -665,22 +667,28 @@
            and this row keeps gaining controls, so wrap is what makes both safe — a narrower panel
            takes another line instead of clipping. Sizes are tuned so a DRAW layer stays on one line
            at the default width; a video ref flows onto a second. -->
-      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary">
+      <div class="flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary">
         <!-- Slider + readout share one wrapper so they can never wrap apart — and so the title can
              live on an element that still receives pointer events when the slider itself is made
              inert, the same split ToolOptions' Ease control uses. -->
         <span
-          class="flex items-center gap-2"
+          class="flex items-center gap-1"
           title={opacityInert
             ? "Opacity — animated, and the layer is locked or hidden, so its keys can't be edited"
             : opacityTrack
               ? `Opacity — animated; a change keys frame ${opacityFrame + 1}`
               : "Opacity"}
         >
+          <!-- Identifies the slider WITHOUT text. On iPad `title` never appears (documented: tooltips
+               are mouse-only), so on this app's primary device the only thing telling opacity from
+               boil was that one reads "100" and the other "1.0". Inside the title wrapper on purpose,
+               so the icon carries the same tooltip on desktop. `Blend` for opacity, `Waves` for boil
+               — the latter is already the boil glyph on the timeline's own boil button. -->
+          <Blend size={13} class="shrink-0" />
           <input
             use:settleOnUnmount={layer.id}
             style={sliderFill(opacityNow, 0, 100)}
-            class="w-12 aria-disabled:opacity-40"
+            class="w-10 aria-disabled:opacity-40"
             class:pointer-events-none={opacityInert}
             aria-disabled={opacityInert}
             type="range"
@@ -733,21 +741,28 @@
           </button>
         {/if}
         {#if layer.kind === "draw"}
-          <input
-            class="w-12"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={layer.boilStrength}
-            oninput={bump}
-            onclick={(e) => e.stopPropagation()}
-            style={sliderFill(layer.boilStrength, 0, 1)}
-            title="Line boil strength (this layer)"
-          />
-          <span class="text-xs tabular-nums w-6 text-text-muted"
-            >{layer.boilStrength.toFixed(1)}</span
-          >
+          <!-- Icon + slider + readout in ONE wrapper, the same reason the opacity group has one:
+               "so they can never wrap apart". Boil was three loose children, which only became
+               visible once the icons pushed this strip past one line at the default 224px panel — the
+               boil slider wrapped away from its own value and read as broken. Grouped, the strip
+               breaks between opacity and boil, which is a seam that means something. -->
+          <span class="flex items-center gap-1" title="Line boil strength (this layer)">
+            <Waves size={13} class="shrink-0" />
+            <input
+              class="w-10"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={layer.boilStrength}
+              oninput={bump}
+              onclick={(e) => e.stopPropagation()}
+              style={sliderFill(layer.boilStrength, 0, 1)}
+            />
+            <span class="text-xs tabular-nums w-6 text-text-muted"
+              >{layer.boilStrength.toFixed(1)}</span
+            >
+          </span>
         {/if}
         <button
           class="text-text-secondary hover:text-text"
@@ -1020,11 +1035,11 @@
                    slider should align with the left edge of drag handle, like layer sliders do".
                    If Row 2's padding ever changes, this must change with it. -->
               <div
-                class="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 pb-1 text-text-secondary"
+                class="flex flex-wrap items-center gap-1 pl-2 pr-1 pb-1 text-text-secondary"
                 class:ui-selected={groupLit}
               >
                 <span
-                  class="flex items-center gap-2"
+                  class="flex items-center gap-1"
                   title={gOpPinned
                     ? "Group opacity — animated, and a locked member pins the group"
                     : gOpTrack
@@ -1038,10 +1053,11 @@
                        strip and the member's own opacity slider are a row apart — is already answered
                        three other ways: position, shape (a group strip has ONE slider, a layer's has
                        two plus a pencil), and this element's `title`. -->
+                  <Blend size={13} class="shrink-0" />
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
                     style={sliderFill(gOpNow, 0, 100)}
-                    class="w-12 aria-disabled:opacity-40"
+                    class="w-10 aria-disabled:opacity-40"
                     class:pointer-events-none={gOpPinned}
                     aria-disabled={gOpPinned}
                     type="range"
