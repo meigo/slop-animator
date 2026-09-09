@@ -128,7 +128,7 @@
     videoClipOriginOffset,
   } from "../anim/clip-layout";
   import { effectiveRange } from "../anim/playback";
-  import { columnAtX, lengthAtX, planCellPointer } from "./timeline-grid";
+  import { columnAtX, lengthAtX, moveCancelPx, planCellPointer } from "./timeline-grid";
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs } from "./timeline-glyphs";
   import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
@@ -1075,9 +1075,11 @@
   let pressFrame = -1;
 
   const LONG_PRESS_MS = 400;
-  // INVARIANT: EDGE_PX (resize hotspot, timeline-grid.ts) + MOVE_CANCEL_PX must stay < CELL_W/2,
-  // so a pending long-press can't let a resize cross a column boundary before it's cancelled.
-  const MOVE_CANCEL_PX = 6;
+  // INVARIANT: edgePx(CELL_W) + moveCancelPx(CELL_W) must stay < CELL_W/2, so a pending
+  // long-press can't let a resize cross a column boundary before it's cancelled. Both scale with
+  // the column now — a fixed 5 + 6 held only at the fixed 24px width (11 < 12, one pixel spare)
+  // and breaks below about 22px. `timeline-grid.test.ts` pins it across the zoom range.
+  const MOVE_CANCEL_PX = $derived(moveCancelPx(CELL_W));
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let pressStartX = 0;
   let pressStartY = 0;

@@ -100,3 +100,28 @@ describe("planCellPointer", () => {
     });
   });
 });
+
+import { edgePx, moveCancelPx } from "../lib/timeline-grid";
+
+describe("edgePx keeps the resize hotspot inside half a column", () => {
+  it("is the historical 5px at the default 24px column", () => {
+    expect(edgePx(24)).toBe(5);
+  });
+
+  it("never lets EDGE_PX + MOVE_CANCEL_PX reach half the column", () => {
+    // The invariant recorded at Timeline.svelte:1051, asserted as it is actually stated — BOTH
+    // thresholds against half the column, not edgePx alone. At 12px it is impossible with a fixed
+    // MOVE_CANCEL_PX of 6, which is exactly why the cancel threshold scales too (Step 3).
+    for (const w of [12, 16, 20, 24, 28, 32]) {
+      expect(edgePx(w) + moveCancelPx(w)).toBeLessThan(w / 2);
+    }
+  });
+
+  it("shrinks with the column rather than staying fixed", () => {
+    expect(edgePx(12)).toBeLessThan(edgePx(24));
+  });
+
+  it("never collapses to nothing", () => {
+    expect(edgePx(8)).toBeGreaterThanOrEqual(2);
+  });
+});

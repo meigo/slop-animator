@@ -6,7 +6,21 @@ export type CellPointer =
   | { kind: "move"; keyIndex: number }
   | { kind: "resize"; keyIndex: number };
 
-const EDGE_PX = 5; // hotspot width at a span's right edge
+/**
+ * Resize-hotspot half-width for a given column width. Was a fixed 5px, which held only because
+ * the column was a fixed 24: the invariant at Timeline.svelte:1051 requires
+ * `edgePx + moveCancelPx < cellW / 2`, and at 24 that is 5 + 6 = 11 < 12 — one pixel of margin.
+ * Below about 22px a fixed pair breaks it and a pending long-press can let a resize cross a column
+ * boundary before it is cancelled. Both thresholds therefore scale with the column.
+ */
+export function edgePx(cellW: number): number {
+  return Math.max(2, Math.min(5, Math.round(cellW * 0.2)));
+}
+
+/** Companion to `edgePx`: how far a pointer may travel before a pending long-press is cancelled. */
+export function moveCancelPx(cellW: number): number {
+  return Math.max(3, Math.min(6, Math.round(cellW * 0.25)));
+}
 
 /**
  * Classify a pointer-down at horizontal `offsetX` (px from the track's left edge):
@@ -30,7 +44,8 @@ export function planCellPointer(
     // dashes stop. Anchoring it at `cells.length` put it mid-run, with the span continuing past a
     // hotspot that could no longer be reached from the visible edge.
     const spanEnd = end >= cells.length ? Math.max(end, count) : end;
-    if (Math.abs(offsetX - spanEnd * cellW) <= EDGE_PX) return { kind: "resize", keyIndex: ki };
+    if (Math.abs(offsetX - spanEnd * cellW) <= edgePx(cellW))
+      return { kind: "resize", keyIndex: ki };
     if (frame === ki) return { kind: "move", keyIndex: ki };
   }
   return { kind: "seek", frame };
