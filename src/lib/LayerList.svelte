@@ -1038,7 +1038,13 @@
                       ? `Group opacity — animated; a change keys frame ${gOpFrame + 1}`
                       : "Group opacity"}
                 >
-                  <span class="text-xs text-text-muted">Group</span>
+                  <!-- No "Group" label. It repeated the bold `Group 1` on the row directly above,
+                       and it broke this panel's own convention: every other slider here is unlabelled
+                       because the strip sits UNDER the row it belongs to, which is what says whose it
+                       is. The one moment the two are genuinely adjacent — a member selected, so this
+                       strip and the member's own opacity slider are a row apart — is already answered
+                       three other ways: position, shape (a group strip has ONE slider, a layer's has
+                       two plus a pencil), and this element's `title`. -->
                   <input
                     use:settleGroupOpacityOnUnmount={seg.group.id}
                     style={sliderFill(gOpNow, 0, 100)}

@@ -4964,3 +4964,21 @@ shares a column with them.
 Measured after: rail `0px 0px` / `2px 100%`; header box at 0; selected member box at 0 with a 2px inset
 accent shadow; member content (drag grip) at 17, unchanged. Verified with a member selected and with
 the group selected.
+
+**The "Group" label comes off the group opacity slider (2026-09-09).** Asked as *"any reason for
+having Group label there?"* There was one, and it did not hold up.
+
+**The case for it:** the group's detail strip shows whenever the group OR one of its members is
+selected, so with a member selected the group's opacity slider sits one row above that member's own —
+and confusing them means fading the wrong thing.
+
+**Why it still goes:** it repeated the bold `Group 1` on the row directly above, two lines running,
+and it broke this panel's own convention — every other slider here is unlabelled, because the strip
+sits UNDER the row it belongs to and that is what says whose it is. The one adjacent moment is already
+answered three other ways: **position** (each strip under its own row, and the group's is not indented
+while a member's is), **shape** (a group strip has one slider; a layer's has two plus a pencil), and
+the slider's own `title` — "Group opacity", or the animated / locked-member-pinned variants.
+
+Consistency was the deciding argument rather than clutter: labelling exactly one of the panel's
+sliders makes the other two look like an oversight. The alternative — label them all, including a
+layer's `100` and `1.0` — was offered and declined.
