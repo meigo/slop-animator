@@ -4369,6 +4369,14 @@ instructions are now gated on NOT blocked, and the bar simply shows nothing ther
 
 `editBlockLabel` stays imported — five tooltips still use it.
 
+**PLACEMENT CONFIRMED 2026-09-09** — the user weighed moving it back to the options bar ("option bar
+feels more natural place") and, after the two fixes below made the message correct, settled on the
+stage: *"on canvas is ok"*. So this is a decision, not an unexamined default — do not move it back
+without a new reason. The bar option that was on the table was NOT the old code: it would have meant
+showing the reason there for EVERY tool in a fixed-height slot, since the version removed here only
+ever existed in the deform/pose branch and keeping it would have lost the message for brush, eraser,
+fill and transform.
+
 **A measurement error worth recording, because it nearly caused a second unnecessary edit.** A DOM
 sweep for the string reported THREE visible copies, the extra one in `SelectionActions.svelte`. It
 is not visible: that element computes `opacity: 1` while its parent `.selection-actions-panel` sits
