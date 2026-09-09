@@ -77,11 +77,15 @@
   --color-media-clip-border: #384b75;
   /* The caution colour: "here is why what you are about to do will not land" — a hidden or locked
      layer, an edit that will be refused, eraser mode, a failed autosave. It was `text-amber-500`
-     hard-coded in 9 files. 7.76:1 on the panel. Its MEANING deliberately differs from the family's
+     hard-coded in 9 files. Taken from slop-video-compositor 2026-09-09 when the family moved off
+     amber-500 (#f59e0b): there it paints wedges and toggles and read as too light and too loud, so
+     it dropped to the same hue at lower saturation and lightness. HERE it is text, not a fill, so
+     that reasoning does not transfer — but the swap is still an improvement on its own terms,
+     8.51:1 on the panel against amber-500's 7.74:1. Its MEANING deliberately differs from the family's
      `warn` (session-only state that never reaches an export) — see the note in SLOP-TIMELINE-UI.md.
      While this app still had a light theme this token needed a second value, amber-700, because
      amber-500 is only 2.15:1 on white; that is one of the costs the light theme was carrying. */
-  --color-warn: #f59e0b;
+  --color-warn: #d5b75d;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
