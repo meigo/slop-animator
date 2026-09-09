@@ -72,6 +72,7 @@
     insertFrameAllLayers,
     deleteFrameAllLayers,
     ensureDrawableKeyframe,
+    clearFrameIsNoOp,
     restoreCellTrack,
     setHoldSpan,
     holdSpanEnd,
@@ -1771,6 +1772,11 @@
   function clearFrame() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    // Already blank? Do nothing at all — no keyframe materialised out of a hold, no undo entry.
+    // Without this, clearing an already-empty frame kept stacking meaningless ◇ boundaries and
+    // undo steps. A hold over an INKED key is not caught by this: clearing there ends the run.
+    if (clearFrameIsNoOp(l.cells, appState.playhead, (c) => isCellEmpty(c, appState.version)))
+      return;
     liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
     const { canvas, materialized } = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const layerId = l.id; // resolved at restore time: `restoreStructure` can replace the layer object
@@ -2757,8 +2763,7 @@
                  an animated layer pays for it. The Spline glyph is what still says "animated" when
                  the rows are folded away. -->
             <button
-              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 text-text-secondary hover:text-text hover:bg-surface-hover"
-              class:bg-surface={!isRowSelected(layer.id)}
+              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
               class:ui-selected={isRowSelected(layer.id)}
               style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
               title={layer.tracksCollapsed
@@ -2791,7 +2796,7 @@
           <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
                column so every row aligns and the frame cells get a gap after the name. -->
           <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn border-r border-text-muted"
+            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             role="presentation"
@@ -2838,29 +2843,54 @@
               onpointercancel={(e) => rowUp(e, layer)}
               onpointerleave={rowLeave}
             >
-              <!-- Selection first, UNDER the spans: a selected frame tints the lane, and the ink
-                   drawn on it must stay legible. Per-frame because a marquee selects frames, not
-                   spans — a block can start and end mid-run. -->
+              <!-- Spans first, then the selection wash OVER them. Selection used to be a solid
+                   `bg-selection` block UNDERNEATH, so a span's border sat on a hard rectangle and the
+                   pair read as an outline rather than as a selected span. A translucent wash on top
+                   tints the lane and the span alike, which is what "these frames are selected"
+                   should look like. Per-frame because a marquee selects frames, not spans — a block
+                   can start and end mid-run. -->
+              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
+                {#if !s.blank}
+                  <!-- Blank keyframes are not drawn at all. A ◇ means "nothing from here", so the
+                       honest picture is an empty lane; drawing a faint outline for it made a
+                       boundary look like content and stacked into noise when several landed in a
+                       row. `computeTimelineSpans` still REPORTS them — it describes the track
+                       truthfully — the view just declines to paint them. -->
+                  <div
+                    class="pointer-events-none absolute inset-y-0.5 rounded-sm border bg-media-clip border-media-clip-border"
+                    style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
+                      s.startFrame +
+                      1) *
+                      CELL_W -
+                      4}px"
+                  >
+                    <!-- Flash's key marks: a filled dot on the span's first frame and a hollow one
+                         on its last. They are what tells a DRAWING span from a media clip — the two
+                         are deliberately the same colour, so the difference has to be content, not
+                         hue — and they restore the keyframe legibility that ◆ carried before spans.
+                         A one-frame span shows only the dot; a hollow mark on the same frame would
+                         claim a run that is not there. -->
+                    <span
+                      class="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-text"
+                      style="left: 3px"
+                    ></span>
+                    {#if s.endFrame > s.startFrame}
+                      <span
+                        class="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full border border-text"
+                        style="right: 3px"
+                      ></span>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
               {#each Array(appState.project.frameCount) as _, f (f)}
                 {#if inSelection(layer.id, f)}
                   <div
-                    class="pointer-events-none absolute top-0 h-6 bg-selection"
-                    style="left: {f * CELL_W}px; width: {CELL_W}px"
+                    class="pointer-events-none absolute inset-y-0 z-10"
+                    style="left: {f *
+                      CELL_W}px; width: {CELL_W}px; background: color-mix(in srgb, var(--color-selection) 35%, transparent)"
                   ></div>
                 {/if}
-              {/each}
-              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
-                <div
-                  class="pointer-events-none absolute top-1 h-4 rounded-sm border"
-                  class:bg-media-clip={!s.blank}
-                  class:border-media-clip-border={!s.blank}
-                  class:border-border={s.blank}
-                  style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
-                    s.startFrame +
-                    1) *
-                    CELL_W -
-                    4}px"
-                ></div>
               {/each}
             </div>
           {:else}
@@ -2899,7 +2929,7 @@
                 <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
                 <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
                 <div
-                  class="absolute inset-y-0 box-border cursor-grab overflow-hidden border border-media-clip-border bg-media-clip"
+                  class="absolute inset-y-0.5 box-border cursor-grab overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
                   style="left: {keptLeft}px; width: {kept.spanFrames *
                     CELL_W}px; touch-action: none"
                   role="presentation"
@@ -2964,7 +2994,7 @@
                    row's clip hangs past the end, which says nothing about this image. -->
               {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
               <div
-                class="relative box-border h-6 overflow-hidden border bg-media-clip text-xs/6 text-text"
+                class="relative my-0.5 box-border h-5 overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
                 class:border-media-clip-border={span !== null}
                 class:cursor-grab={span !== null}
                 class:border-dashed={span === null}
