@@ -130,9 +130,20 @@
        Copy/Cut/Paste/Delete scrubbed the playhead instead. Reachable immediately whenever a
        selection is taller than the viewport, since the fallback placement is `viewTop + 2`, which is
        exactly the ruler's band. -->
+  <!-- A floating toolbar has to read as ON TOP of whatever it covers, and here that is two very
+     different grounds: the empty lane and a keyframe span. Neither FILL solves it — bg-surface is
+     1.14:1 on the lane and 1.39:1 on a span, and `raised` just swaps those round — so the
+     separation comes from the EDGE and the shadow instead. `text-muted` reads against all three
+     (5.55 lane / 3.50 span / 4.86 against its own fill) and is already this file's neighbour
+     idiom: the timeline gutter divider uses the same border colour. rounded-lg + shadow-lg match
+     the app's other popovers (SelectionActions, the brush gear panel), which this one did not.
+       The shadow needs an explicit COLOUR: Tailwind's default is black at 10% alpha, which is tuned
+       for a light UI and is invisible over a near-black lane. `.curve-popup` in app.css already
+       works around this with rgba(0,0,0,0.3); shadow-black/60 is the utility spelling of the same
+       fix. -->
   <div
     bind:this={barEl}
-    class="absolute z-45 flex items-center gap-0.5 rounded border border-border bg-surface px-1 py-0.5 shadow"
+    class="absolute z-45 flex items-center gap-0.5 rounded-lg border border-text-muted bg-surface px-1 py-0.5 shadow-lg shadow-black/60"
     style="left: {x}px; top: {y}px;"
     role="toolbar"
     aria-label="Selection actions"
