@@ -2491,7 +2491,7 @@
           style="min-width: {stripMinW}px"
         >
           <div
-            class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
+            class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:ui-selected={groupLit}
             class:text-text={groupLit}
@@ -2619,7 +2619,7 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[30px] text-left hover:bg-surface-hover {spec.selected
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[26px] text-left hover:bg-surface-hover {spec.selected
                 ? 'text-text-secondary'
                 : 'text-text-muted/80'}"
               class:group-rail={spec.groupId != null}
@@ -2661,7 +2661,9 @@
                    12px against the layer rows' 13px: near enough to sit in the same optical column,
                    small enough that this row still reads as subordinate to the one above it. -->
               <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
-                   glyph has to line up with the GROUP LABEL's left edge, and centring a 12px icon in
+                   glyph has to line up with the GROUP LABEL's left edge (26px = the header's `pl-2`
+                   plus its chevron and gap; every number here is derived from that base padding, so
+                   changing it moves all of them), and centring a 12px icon in
                    a 14px slot put its ink 1px right of it — close enough to read as a miss. Starting
                    it at the padding edge makes the alignment exact and independent of the icon's
                    width, so swapping the glyph cannot silently break it. The slot keeps its `w-3.5`,
@@ -2803,9 +2805,9 @@
           style="min-width: {stripMinW}px"
         >
           <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 text-left hover:bg-surface-hover"
             class:group-rail={layer.groupId != null}
-            class:pl-[30px]={layer.groupId != null}
+            class:pl-[26px]={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
             class:text-text={isRowSelected(layer.id)}

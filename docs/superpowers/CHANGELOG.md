@@ -5167,3 +5167,19 @@ these labels reads as subordinate while keeping 4.86:1. It was not done here bec
 was asked for and these rows are secondary chrome rather than something you must read to work safely
 (unlike the blocked-edit caption fixed earlier today, which was raised from 3.43:1 to 8.51:1 for
 exactly that reason). Recording the option so the choice is visible rather than implicit.
+
+**Gutter items lose 4px of left padding (2026-09-09).** Asked as *"decrease a bit left padding of
+gutter items"*: `pl-3` → `pl-2` (12 → 8px).
+
+**Four places had to move, not one.** Every other indent in the gutter is DERIVED from that base — the
+property glyph aligns with the group's label, which is `base + chevron + gap`, and a grouped row's
+label aligns with the property row's. So the base padding went 12 → 8 on the group header, the layer
+row and the audio lane's label, and the derived indent went 30 → 26 on both track rows and grouped
+layers. Change one without the others and the two alignments set minutes earlier silently break.
+
+Measured after: base rows at 8, group label 26, property glyph 26 (still exactly on the label), and
+every in-group label at 44. Audio lane at 8, matching. The rail is unaffected — it is at x=0 and
+padding does not move it, which is the same property that lets a member's selection bar sit on it.
+
+The derivation is now written into the comment on the track row's glyph slot, so the next person to
+change the base padding finds out that three other numbers depend on it.
