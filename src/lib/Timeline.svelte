@@ -2346,7 +2346,10 @@
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
              and is where a transform track would live. -->
-        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+        <div
+          class="flex w-max items-center border-b border-border"
+          style="min-width: {stripMinW}px"
+        >
           <div
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
@@ -2467,7 +2470,10 @@
             return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
           })}
           {@const readOnly = spec.readOnly}
-          <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+          <div
+            class="flex w-max items-center border-b border-border"
+            style="min-width: {stripMinW}px"
+          >
             <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
                  Transform scope at it — without switching the TOOL, so glancing at a track mid-
                  brush does not yank you out of drawing. A layer-owned track also lights its
@@ -2633,7 +2639,10 @@
       {:else}
         {@const layer = row.layer}
         {@const animated = isLayerAnimated(layer)}
-        <div class="flex w-max items-center" style="min-width: {stripMinW}px">
+        <div
+          class="flex w-max items-center border-b border-border"
+          style="min-width: {stripMinW}px"
+        >
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 px-1 text-left hover:bg-surface-hover"
             class:pl-4={layer.groupId != null}
@@ -2751,7 +2760,7 @@
           {#if layer.kind === "draw"}
             {@const glyphs = glyphsFor(layer, appState.version)}
             <div
-              class="relative flex select-none border-b border-border"
+              class="relative flex select-none"
               style="touch-action: none; cursor: {rowCursor}"
               class:opacity-100={isRowSelected(layer.id)}
               class:opacity-70={!isRowSelected(layer.id)}
