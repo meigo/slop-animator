@@ -5097,3 +5097,29 @@ with a group MEMBER selected, which is the binding case.
 Worth stating plainly: the opacity slider has now gone 48 → 40 → 36px across three requests in one
 session. It is still a drag target on a Pencil-first app, and if it starts to feel cramped the honest
 fix is a wider default panel, not a fourth trim.
+
+**The timeline gutter takes the panel's single-line rail (2026-09-09).** Asked as *"now let's take the
+same single line concept and use it in timeline gutter as well"*. The two surfaces now share one idea
+AND one CSS class (`.group-rail`), rather than two implementations of a similar-looking thing.
+
+**What it replaces:** a 1px hairline at x=19 that went accent whenever the group was active. That
+worked, but it said the same thing twice — the rail lit AND the selected row's bar lit — and it needed
+its own colour logic (`groupDetailShown`), its own snippet, and an absolutely-positioned span per row.
+All three are gone: the rail is a class on the sticky label, and the label is where `.ui-selected`
+already paints.
+
+**This supersedes the chevron alignment** requested earlier the same day (*"align expand arrow and the
+group spine line horizontally"* → 19px, the chevron's centre). The single-line concept requires the
+rail to share the selection bar's column, and in the gutter those rows are FULL-BLEED, so that column
+is x=0. The two requests cannot both hold; the newer one wins and the older is recorded here rather
+than silently dropped.
+
+**Layering is the same trick as the panel**, and works for the same reason: the rail is a
+background-IMAGE and the labels' `bg-surface` / `hover:bg-surface-hover` are background-COLOUR, so the
+rail paints above them and survives a hover; `.ui-selected`'s inset shadow paints above both and lights
+its own segment.
+
+Measured after: every row in the group — header, its two track rows, four members, a member's track
+row — reports `0px 0px / 2px 100%` with its label at x=0, and only the selected row carries the 2px
+accent inset. The audio row, outside the group, has no rail. `groupDetailShown`'s import went with the
+snippet; it is no longer needed here.

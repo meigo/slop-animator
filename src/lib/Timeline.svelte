@@ -120,7 +120,7 @@
     type ReferenceLayer,
     type Cell,
   } from "../anim/document";
-  import { groupDetailShown, groupHeaderSelected } from "../anim/active-row";
+  import { groupHeaderSelected } from "../anim/active-row";
   import {
     videoClipLayout,
     offsetAfterClipDrag,
@@ -1866,39 +1866,6 @@
   );
 </script>
 
-<!-- The group spine: a hairline down the gutter marking which rows belong to one group.
-     Drawn PER ROW because the timeline's rows are a flat list (the layer panel nests them, so there
-     the same effect is one `border-l` on `.group-members`); consecutive rows stack their segments
-     into one continuous line from under the group header past its last nested track.
-     `-bottom-px` bleeds it over the row's own `border-b`, or the line breaks at every boundary.
-     NOT the accent bar extended down the members, which was the first idea: that bar is
-     `.ui-selected` and means "this row is selected". Spending it on unselected rows would give
-     accent two meanings — the exact tangle we removed when three elements per row each drew their
-     own bar — and it would only show while the GROUP row was selected, which is when you need it
-     least. Select a member and the extent would vanish, though that is when "which group am I in?"
-     is the live question. So: a neutral hairline always, `accent` while the group is the one being
-     worked on. The neutral colour is `text-muted` at 50%, NOT `border`: this file already hit that
-     wall on the ruler ticks — `border` and `surface` sit ~1.02:1 apart on the family ramp, so a 1px
-     `border` hairline on a `surface` row is invisible, which is the whole job undone.
-     19px is the group chevron's CENTRE, not a round number: the header's label starts at `pl-3`
-     (12px) and the chevron button is `w-3.5` (14px), so 12 + 14/2 = 19. Aligning the two makes the
-     chevron read as the bracket's head — the control that opens the block sits on the line that
-     shows how far it reaches. Move either the padding or the chevron's width and this must follow. `groupDetailShown` is that question already answered and already tested — the group
-     is the working target, or one of its members is the selected row (a member's TRACK row counts,
-     since `layerRowSelected` resolves a layer-owned track to its owner). -->
-{#snippet groupSpine(groupId: number | null)}
-  {#if groupId != null}
-    {@const lit = groupDetailShown(appState.activeRow, groupId, appState.project.layers)}
-    <span
-      class="pointer-events-none absolute top-0 -bottom-px left-[19px] w-px"
-      class:bg-accent={lit}
-      class:bg-text-muted={!lit}
-      class:opacity-50={!lit}
-      role="presentation"
-    ></span>
-  {/if}
-{/snippet}
-
 <svelte:window onresize={onWindowResize} />
 
 <div
@@ -2524,7 +2491,7 @@
           style="min-width: {stripMinW}px"
         >
           <div
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
+            class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 hover:bg-surface-hover"
             class:bg-surface={!groupLit}
             class:ui-selected={groupLit}
             class:text-text={groupLit}
@@ -2653,6 +2620,7 @@
                  owner via `isRowSelected`; a group track does not light a member. -->
             <button
               class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[30px] text-left hover:bg-surface-hover"
+              class:group-rail={spec.groupId != null}
               class:bg-surface={!spec.selected}
               class:ui-selected={spec.selected}
               class:text-text-secondary={spec.selected}
@@ -2680,7 +2648,6 @@
                 spec.select();
               }}
             >
-              {@render groupSpine(spec.groupId)}
               <!-- The type slot, which layer rows reserve and reference layers fill with a Film /
                    Image glyph. A property row fills it with `GitCommitHorizontal` — a key on a
                    line, which is literally what the strip draws for this row. It was blank until
@@ -2831,6 +2798,7 @@
         >
           <button
             class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-3 text-left hover:bg-surface-hover"
+            class:group-rail={layer.groupId != null}
             class:pl-6={layer.groupId != null}
             class:bg-surface={!isRowSelected(layer.id)}
             class:ui-selected={isRowSelected(layer.id)}
@@ -2846,7 +2814,6 @@
             onpointercancel={touchPanUp}
             onclick={() => setActiveLayer(layer.id)}
           >
-            {@render groupSpine(layer.groupId ?? null)}
             <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
