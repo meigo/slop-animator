@@ -4546,3 +4546,31 @@ node-testable surface and no test change (1117 still green, build 0/0).
 **Verified in Chrome** on a hand-built track — inked key at 1 holding to 4, blank key at 5, inked key
 at 8 holding to 10, blank key at 11 — with the hollow diamonds landing on 5 and 11, the spans ending
 at 4 and 10, and the filled diamond still centred under the playhead.
+
+**Only a blank key splits a run (2026-09-09).** Asked for immediately after the diamond move, with the
+reasoning attached: *"it might not be technically correct but — a span could not be split between
+keyframes with content, only blank keys could do it. So continuous logic units would form, as usually
+it's about a specific object what is animated and blank frame will end that."*
+
+That is right, and it is also what Flash does. `computeTimelineSpans` used to break a run at every
+key, so a character drawn on 1s rendered as a row of disconnected one-frame blocks — the screenshot
+that prompted this shows three adjacent keys reading as three separate objects. But those frames ARE
+one thing: one drawing being animated. The frame that ends it is the `◇`, which is also the frame the
+artist reaches for when they want it ended.
+
+**Adjacent keys now share one span and are told apart by their marks, not by gaps.** A filled diamond
+lands on EVERY keyframe inside the run instead of only its first; the run is ended by a blank key or
+by running out of content, and by nothing else. `TimelineSpan` gains `keyFrames: number[]` — always
+non-empty for a content span (a run starts at a key), always empty for a blank one. The renderer
+`{#each}`es it.
+
+This **supersedes** the spec's "back-to-back keys are separate spans, not one run", and that test is
+inverted in place with a comment saying why, rather than deleted — the old rule was deliberate, so a
+future reader should find the reversal, not a silent gap. Ten tests, the nine new expectations written
+first and watched fail (`expected [{…(2)}] to deeply equal [{…(3)}]`), including the two cases that
+pin the new rule: a blank key SPLITS what would otherwise be one run, and back-to-back blank keys stay
+separate one-frame spans.
+
+**Verified in Chrome** on a track built to match the reported screenshot — a held key at 1, blank key
+at 5, three keys on 1s at 7/8/9, blank key at 10, then a key at 12 holding to the end. The three keys
+render as one block carrying three diamonds; the two blank keys carry the hollow ones.

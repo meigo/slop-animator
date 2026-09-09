@@ -2886,22 +2886,29 @@
                       CELL_W -
                       4}px"
                   >
-                    <!-- Flash's key mark: a filled diamond on the span's first frame. It is what
-                         tells a DRAWING span from a media clip — the two are deliberately the same
-                         colour, so the difference has to be content, not hue — and it restores the
-                         keyframe legibility that ◆ carried before spans.
-                         CENTRED ON THE FRAME CELL, not on the span's edges, so it lines up with the
-                         playhead (which sits at frame*CELL_W + CELL_W/2) and with the transform/
-                         opacity keys, which already anchor there. The span itself starts 2px into
-                         the frame, hence the -2. Same `size-2` diamond as those property keys too:
-                         three kinds of key mark at three sizes read as three unrelated things.
-                         The span's right EDGE is where the run ends; it needs no mark of its own.
+                    <!-- Flash's key marks: a filled diamond on EVERY keyframe inside the run.
+                         They are what tells a DRAWING span from a media clip — the two are
+                         deliberately the same colour, so the difference has to be content, not hue —
+                         and they restore the keyframe legibility that ◆ carried before spans.
+                         A run is only ended by a blank key, so adjacent keys share one block and are
+                         told apart by their marks. Splitting the block at each key instead made a
+                         character drawn on 1s read as a row of disconnected objects, when those
+                         frames are one animated thing; the blank key is what ends it, which is also
+                         the frame the artist reaches for to end a run.
+                         CENTRED ON THE FRAME CELL, not on the block's edges, so they line up with
+                         the playhead (which sits at frame*CELL_W + CELL_W/2) and with the transform/
+                         opacity keys, which already anchor there. The block itself starts 2px into
+                         its first frame, hence the -2. Same `size-2` diamond as those property keys
+                         too: three kinds of key mark at three sizes read as three unrelated things.
+                         The block's right EDGE is where the run ends; it needs no mark of its own.
                          Where a run ends because a blank key follows, that key carries the hollow
                          diamond above — on its own frame, which is the one you can actually grab. -->
-                    <span
-                      class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
-                      style="left: {CELL_W / 2 - 2}px"
-                    ></span>
+                    {#each s.keyFrames as kf (kf)}
+                      <span
+                        class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
+                        style="left: {(kf - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
+                      ></span>
+                    {/each}
                   </div>
                 {/if}
               {/each}
