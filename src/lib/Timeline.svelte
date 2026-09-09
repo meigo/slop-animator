@@ -2420,12 +2420,20 @@
               2}px; top: 24px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
         ></div>
       {/if}
-      <!-- tabindex=-1, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
-           no capability — it only added a stray stop and a click focus ring. role/aria stay so
-           assistive tech can still read the ruler in browse mode. -->
+      <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
+           no capability — it only added a stray stop. The tabindex CANNOT go entirely, even though
+           `rulerKey` duplicates those same four global keys: `role="slider"` is an interactive role
+           and svelte-check fails the build without one (a11y_interactive_supports_focus). role/aria
+           stay so assistive tech reads the ruler and its current frame.
+           `.ruler-no-ring` is why it does not flash a focus ring: `-1` keeps it out of the tab order
+           but a POINTER can still focus it, and Chrome promotes a pointer-focused element to
+           `:focus-visible` on the next KEYPRESS — so dragging the playhead and then hitting Space to
+           play rang the whole ruler. Suppressing it costs nothing real: an element Tab cannot reach
+           can never receive keyboard focus, so the ring here could only ever have been a false
+           positive. -->
       <div
         bind:this={rulerEl}
-        class="flex cursor-ew-resize select-none bg-surface-active"
+        class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
         style="touch-action: none"
         role="slider"
         tabindex="-1"

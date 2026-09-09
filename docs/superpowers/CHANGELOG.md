@@ -5241,3 +5241,30 @@ a BACKGROUND tab changes the property but fires no `scroll` event, so the handle
 appeared not to hide. Confirmed by counting events: 0 fired across two assignments. Dispatching
 `new Event('scroll')` exercises the handler. Third harness trap this session, after rAF never firing
 and a post-HMR dynamic import resolving to a detached module.
+
+**The ruler stops flashing a focus ring (2026-09-09).** Reported as *"when dragging the playhead and
+using space to start the playback the focus rect is shown"*, with the good question attached: *"does
+the ruler need it at all?"*
+
+**Mechanism.** The ruler is `role="slider"` with `tabindex="-1"`. `-1` keeps it out of the tab order
+but a POINTER can still focus it, and Chrome promotes a pointer-focused element to `:focus-visible` on
+the next KEYPRESS — so scrubbing and then hitting Space to play rang the whole ruler.
+
+**Nearly removed it, and svelte-check said no.** `rulerKey` handles ←/→/Home/End, the exact four keys
+`App.svelte` already handles globally, and has to `stopPropagation` so they do not fire twice — so on
+capability grounds the tabindex earns nothing. But `role="slider"` is an INTERACTIVE role, and
+`a11y_interactive_supports_focus` fails the build without a tabindex. The role is what makes assistive
+tech announce the scrubber and its current frame, so it stays, and the tabindex stays with it.
+
+**So the ring goes instead, and that is not a compromise.** An element Tab cannot reach can never
+receive genuine keyboard focus, so a ring on it is always a false positive — it can only ever be
+triggered by a pointer press followed by a key. `.ruler-no-ring:focus-visible { outline: none }`,
+unlayered on purpose: the global `:focus-visible` rule is unlayered too, and a Tailwind
+`focus-visible:outline-none` would sit in `@layer utilities` and LOSE to it — this file's documented
+cascade gotcha.
+
+**Not reproduced synthetically, and worth saying so.** A scripted click + drag + Space left
+`document.activeElement` on `body` and no outline anywhere, including after clicking a button first,
+so the harness does not deliver focus the way a real pointer does. The fix targets the mechanism
+identified from the markup, not a reproduction — the one thing to confirm on the device is that
+dragging the playhead and pressing Space no longer rings the ruler.

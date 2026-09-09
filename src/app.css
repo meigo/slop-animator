@@ -336,6 +336,18 @@ input[type="range"]::-moz-range-thumb {
   outline-offset: -2px;
 }
 
+/* The timeline ruler, and only it. It carries `role="slider"` + `tabindex="-1"`: the role is what
+   makes assistive tech announce the scrubber and its current frame, and svelte-check requires an
+   interactive role to have a tabindex. But `-1` keeps it out of the tab order while still letting a
+   POINTER focus it — and Chrome promotes a pointer-focused element to `:focus-visible` on the next
+   keypress, so dragging the playhead and then pressing Space to play rang the entire ruler.
+   An element Tab cannot reach can never receive genuine keyboard focus, so a ring here is always a
+   false positive. Unlayered on purpose: the `:focus-visible` rule above is unlayered too, and a
+   Tailwind `focus-visible:outline-none` sits in `@layer utilities`, which would LOSE to it. */
+.ruler-no-ring:focus-visible {
+  outline: none;
+}
+
 /* Rotate handle. CSS has no rotate cursor, so this is an inline SVG: a ~290° arc with a tangential
    arrowhead, drawn white-under-black (the marquee's trick) so it reads on ink and on paper alike.
    The arc runs CLOCKWISE and ends at 12 o'clock, so the arrowhead must point +x — INTO the gap it
