@@ -19,7 +19,8 @@
 | What repeats? | **Drawings only.** Transform/opacity tracks play straight through. |
 | How is the target set? | **Relative offset**: "jump back N frames". Survives moving the loop. No absolute mode. |
 | What ends a loop? | **The next key** (any `key` cell, inked or blank, or another loop). |
-| Drawing on a repeated frame? | **Creates a key there** (a copy of what is on screen), which ends the loop at that frame. Undo restores it. |
+| Editing inside the loop's region? | **Not available.** Frames the loop plays are read-only: no drawing, no Frame-scope transform. *(Supersedes the earlier answer "drawing creates a key and ends the loop".)* |
+| Creating or moving a key into the region? | **Allowed, and it ends the loop there** — the next-key rule. The loop key and its repeats before that point stay. |
 | Where does the loop live? | **A new cell kind** (approach A), so every cell splice carries it. Layer-level markers (approach B) were rejected: ~15 cell-moving ops would each need marker-shifting code, and every miss is a silent drift. Baking repeats into real cells was rejected: no live, adjustable loop, and duplicated PNGs. |
 
 ## 1. Model
@@ -132,32 +133,35 @@ track  [◆━━━━━━━◆━━━━━━━◆━━━━━━━
   binds `pointercancel` (gotcha #10, and the settle-on-cancel rule from gotcha #6).
 - **Moving a loop key** works like moving a key (`moveKeyframe` and `planCellPointer`'s "move"
   accept `loop` as well as `key`). `back` is unchanged, re-clamped to `1…newL`; a move to frame 0 is
-  refused. **Resizing** a loop's trailing edge sets its region length exactly as a key's hold span
+  refused. A key **cannot be dropped onto the loop key's frame** (that drop is refused, not
+  swapped); dropped anywhere later in the region, it lands and ends the loop there. **Resizing** a loop's trailing edge sets its region length exactly as a key's hold span
   (`setHoldSpan` accepts `loop` too).
 - **Block move, copy, paste, frame insert/delete** carry loop cells because they splice cells.
 - No keyboard shortcut in this phase (`L` is free if one is wanted later).
 
 ## 3. Editing, frame tools, onion
 
-**Editing on a repeat frame** (any frame in a loop's region, the loop frame included):
+**A loop's region is read-only for editing** (any frame from the loop key up to the key that ends
+it). A pure predicate, `isLoopFrame(cells, f)`, gates the canvas:
 
-- Draw, erase, fill, paste and the selection/deform/pose lifts all go through
-  `ensureDrawableKeyframe`, which on a repeat frame materialises a key **cloned from
-  `resolveDisplayKey`** (with its transform). That key ends the loop there. The cell change rides
-  in the stroke's undo entry, as today.
-- On the loop frame itself this replaces the loop cell, so the loop is removed entirely (zero
-  repeats, the new key then holds). Undo restores it.
-- Eyedropper reads the displayed drawing.
-- **Transform, Frame scope** on a repeat frame edits the **source** key's transform, the same thing
-  Frame scope does on any hold: every frame showing that drawing moves together. It does not create
-  a key.
+- **Blocked:** draw, erase, fill, paste into the canvas, the selection/deform/pose lifts, and
+  Transform in **Frame** scope. They show the existing blocked-edit caption (the one used for
+  hidden/locked layers) reading *"Frame 12 repeats frame 4 — edit it there"*, naming the source
+  frame from `displayFrame`.
+- **Still available:** the eyedropper (reads the displayed drawing), making a marquee selection and
+  copying it, and Transform in **Layer** or **Group** scope — those move the whole layer, repeats
+  included, which is how a looping character is moved across the screen.
+- As defence in depth, `ensureDrawableKeyframe` clones from `resolveDisplayKey` rather than the
+  raw hold, so any path that reaches it past the gate still copies the drawing on screen.
 
 **Frame tools on a repeat frame:**
 
 | Tool | Behaviour |
 |---|---|
-| Insert keyframe (F6) / Duplicate | clones the displayed drawing into a new key after the frame |
-| Clear frame | no-op if the frame shows nothing (`clearFrameIsNoOp` checks the displayed key); otherwise materialises a blank key (ends the loop into blank) |
+| Insert keyframe (F6) / Duplicate | clones the displayed drawing into a new key after the frame — creating a key, so it ends the loop there |
+| Insert blank keyframe (F7) | inserts a blank key after the frame, ending the loop there |
+| Paste frames (block paste) | writes keys into the region, ending the loop at the first one |
+| Clear frame | **blocked** (it edits the drawing shown), same caption as above |
 | Set hold on the loop key | removes the loop |
 | Insert hold / Delete frame in the region | makes the region one frame longer / shorter |
 
@@ -224,15 +228,17 @@ Pure logic, Vitest (node):
   splices; floor at 1; loop deleted by the splice.
 - Glyphs/spans: `"↺"` glyph; ghost spans and diamonds; blank keys replayed; the solid span resuming
   at the ending key.
-- Editing ops on repeat frames: `ensureDrawableKeyframe` clones the displayed drawing and ends the
-  loop; drawing on L removes the loop; `insertKeyframe`; `clearFrameIsNoOp`; `moveKeyframe` and
-  `setHoldSpan` with loop cells; default `back`.
+- `isLoopFrame`: the loop key frame, holds in its region, the ending key (false), frames past the
+  stored track in a trailing region, frames before the loop (false).
+- Ops on repeat frames: `ensureDrawableKeyframe` clones the displayed drawing; `insertKeyframe` /
+  `insertBlankKeyframe` end the loop at the new key; `moveKeyframe` into the region ends the loop
+  and onto the loop key is refused; `moveKeyframe` and `setHoldSpan` on loop cells; default `back`.
 - Onion keyframe list inside a loop.
 - `copyBlock` with a leading repeat frame; `planMergeDown` baking a loop.
 - Save round trip via the serializer's encode/decode path, as far as it runs in node.
 
 Owed after tests: a browser and iPad pass on the arrow, ghosts, arrowhead drag, Loop button,
-editing on repeat frames, onion inside a loop, and an export containing a loop.
+the blocked-edit caption on repeat frames, onion inside a loop, and an export containing a loop.
 
 ## Out of scope
 
