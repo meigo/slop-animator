@@ -17,7 +17,7 @@
   import {
     transformBaseRect,
     cellTransform,
-    resolvedKeyCell,
+    frameEditKeyCell,
     groupOf,
     groupHasLockedLayer,
     isLayerEditable,
@@ -200,7 +200,7 @@
     }
 
     if (l.kind === "draw" && appState.transformScope === "frame") {
-      const rk = resolvedKeyCell(l, frame);
+      const rk = frameEditKeyCell(l, frame);
       if (!rk) return null;
       const outer: ComposeStep[] = [
         { base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, frame) },

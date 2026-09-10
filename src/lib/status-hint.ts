@@ -27,6 +27,12 @@ export function editBlockLabel(block: LayerEditBlock): string {
   }
 }
 
+/** Canvas caption for a frame a loop key plays: read-only, and the frame to go to instead.
+ *  Frames are 0-based in, 1-based out (the ruler's numbering). */
+export function loopEditLabel(frame: number, source: number): string {
+  return `Frame ${frame + 1} repeats frame ${source + 1} — edit it there`;
+}
+
 export interface HintContext {
   tool: string;
   /** Why the active layer refuses content ops, or null when it accepts them. ONE field rather than

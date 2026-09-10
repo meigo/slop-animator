@@ -54,7 +54,7 @@
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
   import LayerBoundsHint from "./LayerBoundsHint.svelte";
-  import { editBlockLabel } from "./status-hint";
+  import { editBlockLabel, loopEditLabel } from "./status-hint";
   import {
     transformBaseRect,
     isIdentityTransform,
@@ -62,6 +62,9 @@
     cellTransform,
     resolvedKeyCell,
     resolvedDisplayKeyCell,
+    isLoopFrame,
+    displayFrame,
+    frameEditKeyCell,
     cloneCanvas,
     groupOf,
     groupHasLockedLayer,
@@ -504,9 +507,14 @@
     ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
   }
 
+  /** The active drawing layer's current frame is played by a loop key: read-only (spec §3). */
+  function onLoopFrame(layer: Layer): boolean {
+    return layer.kind === "draw" && isLoopFrame(layer.cells, appState.playhead);
+  }
+
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return;
+    if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return;
     const W = appState.project.width,
       H = appState.project.height;
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -591,7 +599,8 @@
     const layer = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(layer, appState.project.groups)
+      !isLayerEditable(layer, appState.project.groups) ||
+      onLoopFrame(layer)
     )
       return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
@@ -913,7 +922,7 @@
       // `RefTransformGizmo.transformTarget` already pairs them, so the two must not disagree.)
       base = groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version);
     } else if (isDraw && scope === "frame") {
-      frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
+      frameRk = frameEditKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
         if (done) {
           finishTransformDragUndo();
@@ -1323,7 +1332,7 @@
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
-      if (!isLayerEditable(layer, appState.project.groups)) return;
+      if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return;
       const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCanvas = mk.canvas;
       strokeLayer = layer;
@@ -1520,7 +1529,7 @@
     // ◆ on a hold, while ToolOptions had Cut/Paste/Delete dimmed one bar away.
     if (workingTarget(appState.activeRow).kind !== "layer") return false;
     const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return false;
+    if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return false;
     const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const canvas = mk.canvas;
     selLayer = layer;
@@ -1558,7 +1567,7 @@
   function drawableTarget(): DrawingLayer | null {
     if (workingTarget(appState.activeRow).kind !== "layer") return null;
     const layer = activeLayer();
-    return isLayerEditable(layer, appState.project.groups) ? layer : null;
+    return isLayerEditable(layer, appState.project.groups) && !onLoopFrame(layer) ? layer : null;
   }
 
   function activeDrawableCtx(): {
@@ -1681,7 +1690,8 @@
     const al = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(al, appState.project.groups)
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
     )
       return;
     // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
@@ -1817,7 +1827,8 @@
     const al = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(al, appState.project.groups)
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
     )
       return;
     // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
@@ -2270,11 +2281,12 @@
     const groups = appState.project.groups;
     const wt = workingTarget(appState.activeRow);
     if (PIXEL_TOOLS.includes(appState.tool))
-      return wt.kind !== "layer" || !isLayerEditable(l, groups);
+      return wt.kind !== "layer" || !isLayerEditable(l, groups) || onLoopFrame(l);
     if (appState.tool === "transform")
       return (
         wt.kind === "audio" ||
-        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups))
+        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups)) ||
+        (wt.kind === "layer" && appState.transformScope === "frame" && onLoopFrame(l))
       );
     return false;
   });
@@ -2290,8 +2302,11 @@
     if (appState.playback.isPlaying) return null;
     if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
     const block = whyNotEditable(activeLayer(), appState.project.groups);
-    if (!block || block === "not-draw") return null;
-    return editBlockLabel(block);
+    if (block && block !== "not-draw") return editBlockLabel(block);
+    const l = activeLayer();
+    if (l.kind === "draw" && onLoopFrame(l))
+      return loopEditLabel(appState.playhead, displayFrame(l.cells, appState.playhead));
+    return null;
   });
 </script>
 
