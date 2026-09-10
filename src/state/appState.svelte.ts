@@ -777,7 +777,9 @@ export function duplicateLayer(id: number) {
               transform: c.transform ? { ...c.transform } : undefined, // keep per-cell transforms
               transformBox: c.transformBox ? { ...c.transformBox } : c.transformBox,
             }
-          : { kind: "hold" },
+          : c.kind === "loop"
+            ? { kind: "loop", back: c.back }
+            : { kind: "hold" },
     );
     layers.splice(idx + 1, 0, dup);
     setActiveLayer(dup.id);

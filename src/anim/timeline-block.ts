@@ -19,6 +19,7 @@ export interface CellBlock {
 /** Deep-clone a cell: fresh canvas + cloned transform/transformBox (never share refs). */
 export function cloneCell(cell: Cell, ops: CanvasOps): Cell {
   if (cell.kind === "hold") return { kind: "hold" };
+  if (cell.kind === "loop") return { kind: "loop", back: cell.back };
   const out: Cell = { kind: "key", canvas: ops.clone(cell.canvas) };
   if (cell.transform) out.transform = { ...cell.transform };
   if (cell.transformBox !== undefined)

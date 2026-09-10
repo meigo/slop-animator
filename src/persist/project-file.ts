@@ -38,7 +38,7 @@ export interface DrawingLayerJson {
   opacity: number;
   boilStrength: number;
   groupId: number | null;
-  cells: ("key" | "hold")[];
+  cells: ("key" | "hold" | "loop")[];
   transform: RefTransform;
   tracks?: LayerTracks;
   /** Are the layer's property rows folded away in the timeline? Optional and additive: absent =

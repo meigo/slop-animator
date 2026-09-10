@@ -7,7 +7,10 @@ export type Cell =
       transform?: RefTransform;
       transformBox?: { x: number; y: number; w: number; h: number } | null;
     }
-  | { kind: "hold" };
+  | { kind: "hold" }
+  /** Loop key: from this frame on, replay the `back` frames before it, until the next non-hold
+   *  cell. `1 <= back <= its own index`. See docs/superpowers/specs/2026-09-10-loop-keys-design.md. */
+  | { kind: "loop"; back: number };
 
 /** Line-boil settings, persisted per project. */
 export interface BoilConfig {
@@ -503,6 +506,80 @@ export function resolveKeyframeIndex(cells: Cell[], frame: number): number | nul
   return null;
 }
 
+/** The frame a loop at `loopFrame` replays at `f` (f >= loopFrame): one step, no recursion. */
+export function loopSourceFrame(loopFrame: number, back: number, f: number): number {
+  return loopFrame - back + ((f - loopFrame) % back);
+}
+
+/** Nearest index <= min(frame, len-1) whose cell is not a hold, or -1. */
+function boundaryAt(cells: Cell[], frame: number): number {
+  if (frame < 0 || cells.length === 0) return -1;
+  let i = Math.min(frame, cells.length - 1);
+  while (i >= 0 && cells[i].kind === "hold") i--;
+  return i;
+}
+
+/**
+ * The frame whose drawing is ON SCREEN at `frame`, through any loop keys. Identity outside loop
+ * regions. Recurses (as a loop) because a replayed frame can itself sit in an earlier loop's region;
+ * every step lands strictly before the loop that produced it, so it terminates.
+ * Display readers (render, onion, export, eyedropper…) go through this; structural code must not.
+ */
+export function displayFrame(cells: Cell[], frame: number): number {
+  let f = frame;
+  for (;;) {
+    const i = boundaryAt(cells, f);
+    if (i < 0) return f;
+    const c = cells[i];
+    if (c.kind !== "loop") return f;
+    f = loopSourceFrame(i, Math.max(1, c.back), f);
+  }
+}
+
+/** The key index whose drawing is on screen at `frame` (null = nothing). */
+export function resolveDisplayKey(cells: Cell[], frame: number): number | null {
+  return resolveKeyframeIndex(cells, displayFrame(cells, frame));
+}
+
+/** Is `frame` played by a loop key (the loop frame itself through the frame before the next key)? */
+export function isLoopFrame(cells: Cell[], frame: number): boolean {
+  const i = boundaryAt(cells, frame);
+  return i >= 0 && cells[i].kind === "loop";
+}
+
+/** Frames where the drawing on screen changes — onion keyframe mode's list. Outside loops this is
+ *  exactly the key frames; inside a loop it is the replayed keys. */
+export function displayKeyChangeFrames(cells: Cell[], frameCount: number): number[] {
+  const out: number[] = [];
+  let prev: number | null = null;
+  for (let f = 0; f < frameCount; f++) {
+    const ki = resolveDisplayKey(cells, f);
+    if (ki !== null && ki !== prev) out.push(f);
+    prev = ki;
+  }
+  return out;
+}
+
+export interface LoopRegion {
+  frame: number; // the loop key
+  back: number;
+  end: number; // EXCLUSIVE: the next non-hold cell, or frameCount
+}
+
+/** Every loop key and the frames it plays, clipped to the document. */
+export function loopRegions(cells: Cell[], frameCount: number): LoopRegion[] {
+  const out: LoopRegion[] = [];
+  for (let i = 0; i < cells.length && i < frameCount; i++) {
+    const c = cells[i];
+    if (c.kind !== "loop") continue;
+    let end = i + 1;
+    while (end < cells.length && cells[end].kind === "hold") end++;
+    if (end >= cells.length) end = frameCount;
+    out.push({ frame: i, back: c.back, end: Math.min(end, frameCount) });
+  }
+  return out;
+}
+
 /** A key cell's own transform (identity when absent / not a key). */
 export function cellTransform(cell: Cell): RefTransform {
   return cell.kind === "key" && cell.transform ? cell.transform : IDENTITY_TRANSFORM;
@@ -910,6 +987,25 @@ export function resolvedKeyCell(
   return cell.kind === "key" ? { cell, index: ki } : null;
 }
 
+/** `resolvedKeyCell` through the loop remap: the key cell on screen at `frame`. */
+export function resolvedDisplayKeyCell(
+  layer: DrawingLayer,
+  frame: number,
+): { cell: Extract<Cell, { kind: "key" }>; index: number } | null {
+  const ki = resolveDisplayKey(layer.cells, frame);
+  if (ki === null) return null;
+  const cell = layer.cells[ki];
+  return cell.kind === "key" ? { cell, index: ki } : null;
+}
+
+/** The key a Frame-scope edit at `frame` targets — none inside a loop region, which is read-only. */
+export function frameEditKeyCell(
+  layer: DrawingLayer,
+  frame: number,
+): { cell: Extract<Cell, { kind: "key" }>; index: number } | null {
+  return isLoopFrame(layer.cells, frame) ? null : resolvedKeyCell(layer, frame);
+}
+
 /** With holds-only boil, a frame that IS its own keyframe renders crisp (un-boiled). */
 export function isCrispFrame(cells: Cell[], frame: number, holdsOnly: boolean): boolean {
   return holdsOnly && cells[frame]?.kind === "key";
@@ -1033,7 +1129,7 @@ export function countKeyframesPastLengthIn(layers: Layer[], n: number): number {
   for (const layer of layers) {
     if (layer.kind !== "draw") continue;
     for (let i = n; i < layer.cells.length; i++) {
-      if (layer.cells[i].kind === "key") count++;
+      if (layer.cells[i].kind !== "hold") count++; // a loop key is dropped too
     }
   }
   return count;
