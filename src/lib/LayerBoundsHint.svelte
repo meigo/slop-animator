@@ -8,7 +8,7 @@
     groupOf,
     groupTransformAt,
     cellTransform,
-    resolvedKeyCell,
+    resolvedDisplayKeyCell,
     transformAt,
   } from "../anim/document";
   import { forwardChain, type ComposeStep } from "../core/ref-transform";
@@ -46,7 +46,7 @@
     const W = appState.project.width,
       H = appState.project.height;
     const g = groupOf(l, appState.project.groups);
-    const rk = resolvedKeyCell(l, appState.playhead);
+    const rk = resolvedDisplayKeyCell(l, appState.playhead);
     // Inner-to-outer, matching the render's compose order (gotcha #4).
     const steps: ComposeStep[] = [];
     if (rk)

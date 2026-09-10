@@ -1,5 +1,6 @@
 import {
   resolveKeyframeIndex,
+  resolveDisplayKey,
   refreshLength,
   copyKeyframe,
   withTrackKeys,
@@ -46,7 +47,7 @@ function clampIndex(layer: DrawingLayer, frame: number): number {
  */
 export function insertKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
   const at = clampIndex(layer, after);
-  const ki = resolveKeyframeIndex(layer.cells, at);
+  const ki = resolveDisplayKey(layer.cells, at);
   const src = ki === null ? null : layer.cells[ki];
   const canvas = src && src.kind === "key" ? ops.clone(src.canvas) : ops.create();
   layer.cells.splice(at + 1, 0, { kind: "key", canvas });
@@ -77,7 +78,7 @@ export function clearFrameIsNoOp(
   frame: number,
   isEmpty: (canvas: HTMLCanvasElement) => boolean,
 ): boolean {
-  const ki = resolveKeyframeIndex(cells, frame);
+  const ki = resolveDisplayKey(cells, frame);
   if (ki === null) return true; // nothing resolves here yet — the lane is empty
   const cell = cells[ki];
   return cell.kind !== "key" || isEmpty(cell.canvas);
@@ -147,7 +148,7 @@ export function ensureDrawableKeyframe(
   // frame to the end of the animation.
   while (layer.cells.length <= frame) layer.cells.push({ kind: "hold" });
 
-  const ki = resolveKeyframeIndex(layer.cells, frame);
+  const ki = resolveDisplayKey(layer.cells, frame);
   const held = ki === null ? null : layer.cells[ki];
   const canvas = held && held.kind === "key" ? ops.clone(held.canvas) : ops.create();
   const neu: Cell = { kind: "key", canvas };

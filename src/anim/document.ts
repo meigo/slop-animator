@@ -1008,7 +1008,8 @@ export function frameEditKeyCell(
 
 /** With holds-only boil, a frame that IS its own keyframe renders crisp (un-boiled). */
 export function isCrispFrame(cells: Cell[], frame: number, holdsOnly: boolean): boolean {
-  return holdsOnly && cells[frame]?.kind === "key";
+  // Through the loop remap: a key drawing replayed by a loop is crisp on every pass.
+  return holdsOnly && cells[displayFrame(cells, frame)]?.kind === "key";
 }
 
 export type FrameOp =
@@ -1030,7 +1031,7 @@ export function buildFrameDrawList(
     const g = groupOf(layer, project.groups);
     const opacity = (opacityAt(layer, frame) * groupOpacityAt(g, frame)) / 100;
     if (layer.kind === "draw") {
-      const ki = resolveKeyframeIndex(layer.cells, frame);
+      const ki = resolveDisplayKey(layer.cells, frame);
       if (ki === null) continue;
       ops.push({
         kind: "draw",

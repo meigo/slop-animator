@@ -61,6 +61,7 @@
     isSameTransform,
     cellTransform,
     resolvedKeyCell,
+    resolvedDisplayKeyCell,
     cloneCanvas,
     groupOf,
     groupHasLockedLayer,
@@ -127,7 +128,7 @@
     if (layer.kind !== "draw") return layerComposeSteps(layer);
     const W = appState.project.width,
       H = appState.project.height;
-    const rk = resolvedKeyCell(layer, appState.playhead);
+    const rk = resolvedDisplayKeyCell(layer, appState.playhead);
     const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
     const cellBox = rk
       ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
@@ -1453,7 +1454,7 @@
     if (!selection?.rect) return null;
     const al = activeLayer();
     if (al.kind !== "draw") return null;
-    const rk = resolvedKeyCell(al, appState.playhead);
+    const rk = resolvedDisplayKeyCell(al, appState.playhead);
     if (!rk) return null;
     const W = appState.project.width;
     const H = appState.project.height;

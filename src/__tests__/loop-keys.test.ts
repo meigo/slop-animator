@@ -10,8 +10,12 @@ import {
   loopRegions,
   loopSourceFrame,
   countKeyframesPastLengthIn,
+  buildFrameDrawList,
+  isCrispFrame,
+  createProject,
 } from "../anim/document";
 import { cloneCell } from "../anim/timeline-block";
+import { ensureDrawableKeyframe, insertKeyframe, clearFrameIsNoOp } from "../anim/timeline";
 import type { CanvasOps } from "../anim/timeline";
 
 let tag = 0;
@@ -141,5 +145,46 @@ describe("loop cells in existing helpers", () => {
   });
   it("countKeyframesPastLengthIn counts loop keys too", () => {
     expect(countKeyframesPastLengthIn([dl([k(), k(), lp(1), h()])], 1)).toBe(2);
+  });
+});
+
+describe("display readers honour loops", () => {
+  it("buildFrameDrawList draws the replayed key", () => {
+    const p = createProject();
+    p.layers = [dl([k(), k(), lp(2), h()])];
+    p.frameCount = 4;
+    expect(buildFrameDrawList(p, 3)).toEqual([
+      { kind: "draw", layerId: 1, keyframeIndex: 1, opacity: 100 },
+    ]);
+  });
+  it("isCrispFrame: a replayed key frame is crisp with holds-only boil", () => {
+    const cells = [k(), h(), lp(2), h()];
+    expect(isCrispFrame(cells, 2, true)).toBe(true); // shows frame 0, a key
+    expect(isCrispFrame(cells, 3, true)).toBe(false); // shows frame 1, a hold
+  });
+  it("ensureDrawableKeyframe on a repeat frame clones the drawing on screen", () => {
+    const a = k();
+    const b = k();
+    const layer = dl([a, b, lp(2), h()]);
+    const { canvas } = ensureDrawableKeyframe(layer, 3, fakeOps);
+    expect((canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(
+      (b as unknown as { canvas: { __id: number } }).canvas.__id,
+    );
+  });
+  it("insertKeyframe after a repeat frame clones the displayed drawing", () => {
+    const a = k();
+    const layer = dl([a, k(), lp(2), h()]);
+    insertKeyframe(layer, 2, fakeOps); // frame 2 shows frame 0 = a
+    const neu = layer.cells[3] as Extract<Cell, { kind: "key" }>;
+    expect((neu.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(
+      (a as unknown as { canvas: { __id: number } }).canvas.__id,
+    );
+  });
+  it("clearFrameIsNoOp reads the displayed key", () => {
+    const empty = { kind: "key", canvas: { __id: -1, empty: true } } as unknown as Cell;
+    const cells = [k(), empty, lp(2), h()];
+    const isEmpty = (c: HTMLCanvasElement) => !!(c as unknown as { empty?: boolean }).empty;
+    expect(clearFrameIsNoOp(cells, 3, isEmpty)).toBe(true); // shows the blank key
+    expect(clearFrameIsNoOp(cells, 2, isEmpty)).toBe(false); // shows the inked key
   });
 });

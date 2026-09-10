@@ -1,5 +1,5 @@
 import type { Project, LayerGroup } from "../anim/document";
-import { resolveKeyframeIndex } from "../anim/document";
+import { resolveDisplayKey } from "../anim/document";
 
 // Cheap "does this keyframe have any ink?" test for the timeline display.
 // A full-resolution scan per cell would be far too expensive to run every render, so we
@@ -130,7 +130,7 @@ export function groupContentBoxLogical(
     maxY = -Infinity;
   for (const layer of project.layers) {
     if (layer.kind !== "draw" || layer.groupId !== group.id) continue;
-    const ki = resolveKeyframeIndex(layer.cells, frame);
+    const ki = resolveDisplayKey(layer.cells, frame);
     if (ki === null) continue;
     const cell = layer.cells[ki];
     if (cell.kind !== "key") continue;
