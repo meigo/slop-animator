@@ -5565,6 +5565,9 @@ export, eyedropper, bounds, thumbnails, merge-down) or a **structural reader** (
 hit-testing, span resize, key move, splice ops). Property tracks (transform/opacity) are unaffected —
 they play straight through the remap, keyed to the real frame.
 
+> **SUPERSEDED in part (2026-09-10)** — the arrow's look (red, arrowhead geometry, handle strip) changed;
+> see **Loop arrow restyled after Moho** below. The behaviour described here still holds.
+
 **Timeline.** A red loop mark on the loop key, a red back-arrow along the row top pointing from the
 loop key to the first replayed frame, and ghosted (35% opacity) repeats up to the key that ends the
 loop. The arrowhead is draggable to resize the cycle — press-relative mapping, so a Pencil tap
@@ -5612,3 +5615,28 @@ Apple Pencil; a finger press starting on the arrowhead (known from the handle's 
 12px-strip finger press doesn't pan, same shape as the play-range handles); the Loop toolbar button;
 the blocked-edit caption on a loop frame; onion skins stepping through a loop; and an MP4/WebM or PSD
 export that contains a loop.
+
+**Loop arrow restyled after Moho (2026-09-10).** Asked with a Moho screenshot as *"move up to the top
+edge and make it stepped up and down in the edges. the loop icon - would be interesting to rotate it 45d
+to match a diamond shape of other keys"*, then refined over four rounds of screenshots.
+
+- **Shape.** One SVG: a 1px line along the row's TOP edge that steps down onto the loop key at its
+  right end; at its left end a right-angled arrowhead (12px wide, 6px deep) hangs straight off the line
+  and stops at the top of the first replayed frame's key mark. A tip reaching into the diamond was tried
+  and rejected: it cut across the diamond's white outline and read as neither.
+- **Centring.** Both ends sit on frame centres, where the key marks are. The line is drawn at x = 4 in
+  a box placed at centre − 4; x = 4.5 had put it half a pixel (one device pixel on 2x screens) right of
+  the diamond, which was visible.
+- **Colour.** New `--color-loop` (teal, `#2dd4bf`) for the arrow, the loop mark and the drag badge.
+  The first version used `danger`, but the playhead is that red and crosses the arrow; gold is the
+  play-range markers and blue the spans, so teal is the one hue the timeline does not already use.
+  README and CLAUDE.md now say "teal back-arrow".
+- **Loop mark** rotated 45° so it reads as a key alongside the diamonds.
+- **Handle.** The arrowhead handle is now a 16×8px TOP strip over the target frame's centre, not a
+  full-height 12px strip on the column boundary: the arrowhead now sits over a key mark, and a
+  full-height handle would have swallowed presses on that key. Verified in desktop Chrome: dragging the
+  arrowhead still sets the cycle (one ⌘Z restores it), and clicking the diamond under it still selects
+  the key.
+
+**Owed an iPad pass:** whether an 8px-tall strip is comfortable to grab with the Pencil (it can be made
+taller), and the arrow's look on device.
