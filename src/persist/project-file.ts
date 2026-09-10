@@ -581,7 +581,10 @@ export async function loadProjectBlob(
     for (let i = 0; i < lj.cells.length; i++) {
       if (lj.cells[i] === "loop") {
         // Clamp: `back` can only reach frames that exist before the loop. Frame 0 has none.
-        const back = Math.min(i, Math.max(1, Math.floor(lj.loopBacks?.[i] ?? 1)));
+        // A non-numeric loopBacks value (malformed save) falls back to 1 rather than NaN, which
+        // would survive the clamp and later crash displayFrame.
+        const raw = Number(lj.loopBacks?.[i]);
+        const back = Number.isFinite(raw) ? Math.min(i, Math.max(1, Math.floor(raw))) : 1;
         cells.push(i === 0 ? { kind: "hold" } : { kind: "loop", back });
         continue;
       }

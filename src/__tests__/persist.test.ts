@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { unzipSync, strFromU8 } from "fflate";
+import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
 import {
   setMinLayerId,
   createDrawingLayer,
@@ -797,5 +797,18 @@ describe("loop keys", () => {
       { kind: "loop", back: 2 },
       { kind: "hold" },
     ]);
+  });
+  it("a non-numeric loopBacks value falls back to 1 instead of crashing on NaN", async () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold(), loop(2), hold()];
+    project.frameCount = 4;
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    json.layers[0].loopBacks = { 2: "x" };
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    const corrupted = new Blob([zipSync(zip)], { type: "application/zip" });
+    const loaded = await loadProjectBlob(corrupted, 1);
+    expect((loaded.layers[0] as DrawingLayer).cells[2]).toEqual({ kind: "loop", back: 1 });
   });
 });

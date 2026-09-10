@@ -301,3 +301,10 @@ disagree.
    refusal — not the canvas caption.
 5. Ghost spans are a separate array from the solid spans (no `ghost` field on `TimelineSpan`). A
    ghost content span may have empty `keyFrames` (a replayed pass that starts on a held frame).
+6. A loop cell that a block move/paste lands on frame 0 becomes a hold (`normalizeLoopCell`): there
+   is nothing before frame 0 to repeat. This supersedes §2's "a move to frame 0 is refused"; the
+   change is undoable like any block op.
+7. Copying a block whose FIRST frame is the loop key copies the drawing on screen there (a key), not
+   the loop — the clipboard stays self-contained, since the loop's `back` would point outside the
+   copied block. A loop cell elsewhere in the copied block is copied as a loop. Block MOVE keeps a
+   leading loop as a loop (it moves in place with its cycle).

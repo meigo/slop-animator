@@ -97,6 +97,11 @@ describe("displayFrame", () => {
   it("back may equal the loop frame", () => {
     expect(map([k(), h(), lp(2), h()], 4)).toEqual([0, 1, 0, 1]);
   });
+  it("a malformed (NaN) back is treated as 1, not left to crash the remap", () => {
+    expect(
+      Number.isFinite(displayFrame([k(), h(), { kind: "loop", back: NaN } as Cell, h()], 3)),
+    ).toBe(true);
+  });
 });
 
 describe("resolveDisplayKey / resolvedDisplayKeyCell", () => {

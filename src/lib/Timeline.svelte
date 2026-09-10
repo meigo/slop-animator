@@ -3321,6 +3321,8 @@
                   tabindex="-1"
                   aria-label="Loop length"
                   aria-valuenow={r.back}
+                  aria-valuemin={1}
+                  aria-valuemax={r.frame}
                   onpointerdown={(e) => loopHandleDown(e, layer, r)}
                   onpointermove={(e) => loopHandleMove(e, layer)}
                   onpointerup={(e) => loopHandleUp(e)}

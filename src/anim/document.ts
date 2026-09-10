@@ -536,7 +536,7 @@ export function displayFrame(cells: Cell[], frame: number): number {
     if (i < 0) return f;
     const c = cells[i];
     if (c.kind !== "loop") return f;
-    f = loopSourceFrame(i, Math.max(1, c.back), f);
+    f = loopSourceFrame(i, c.back >= 1 ? c.back : 1, f);
   }
 }
 
@@ -554,6 +554,12 @@ export function isLoopFrame(cells: Cell[], frame: number): boolean {
 /** Frames where the drawing on screen changes — onion keyframe mode's list. Outside loops this is
  *  exactly the key frames; inside a loop it is the replayed keys. */
 export function displayKeyChangeFrames(cells: Cell[], frameCount: number): number[] {
+  // Loop-free tracks (the common case; onion keyframe mode recomposites on every frame while it's
+  // on) don't need the per-frame remap below — a key frame's displayed drawing always changes
+  // there, so the raw key list is exactly the same answer in one O(n) pass instead of O(n * hold).
+  if (!cells.some((c) => c.kind === "loop")) {
+    return cells.flatMap((c, i) => (c.kind === "key" && i < frameCount ? [i] : []));
+  }
   const out: number[] = [];
   let prev: number | null = null;
   for (let f = 0; f < frameCount; f++) {
