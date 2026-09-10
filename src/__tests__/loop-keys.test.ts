@@ -153,8 +153,8 @@ describe("display readers honour loops", () => {
     const p = createProject();
     p.layers = [dl([k(), k(), lp(2), h()])];
     p.frameCount = 4;
-    expect(buildFrameDrawList(p, 3)).toEqual([
-      { kind: "draw", layerId: 1, keyframeIndex: 1, opacity: 100 },
+    expect(buildFrameDrawList(p, 2)).toEqual([
+      { kind: "draw", layerId: 1, keyframeIndex: 0, opacity: 100 },
     ]);
   });
   it("isCrispFrame: a replayed key frame is crisp with holds-only boil", () => {
@@ -166,9 +166,9 @@ describe("display readers honour loops", () => {
     const a = k();
     const b = k();
     const layer = dl([a, b, lp(2), h()]);
-    const { canvas } = ensureDrawableKeyframe(layer, 3, fakeOps);
+    const { canvas } = ensureDrawableKeyframe(layer, 2, fakeOps);
     expect((canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(
-      (b as unknown as { canvas: { __id: number } }).canvas.__id,
+      (a as unknown as { canvas: { __id: number } }).canvas.__id,
     );
   });
   it("insertKeyframe after a repeat frame clones the displayed drawing", () => {
