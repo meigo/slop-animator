@@ -3295,34 +3295,37 @@
               {#each loopsFor(layer, appState.version).ghosts as s (s.startFrame)}
                 {@render spanMarks(s, true)}
               {/each}
-              <!-- Loop keys: Moho's cycle arrow. A red line along the row's TOP EDGE, stepped down at both ends:
-                   down onto the loop key at its right end, and down into an arrowhead whose tip reaches the row's
-                   vertical centre (the key mark) over the first frame it replays at its left end — both ends land on frame CENTRES, where the key marks sit. One SVG so
-                   the corners join. The loop mark on the key is rotated 45° to read as a key (the diamonds).
-                   The arrowhead is the handle for `back`; it is a TOP strip only, so a press lower in that column
-                   still reaches the key mark beneath it. z-11/12: above the selection wash (z-10), below the
-                   sticky gutter (z-20). -->
+              <!-- Loop keys: Moho's cycle arrow. A line along the row's TOP EDGE, stepped down at both ends:
+                   down onto the loop key at its right end, and into a small arrowhead that stops just ABOVE the
+                   key mark of the first frame it replays (a tip reaching into the diamond cut across its white
+                   outline and disappeared). Both ends sit on frame CENTRES, exactly: x = 4 in a box placed at
+                   centre - 4, so the 1px line is centred on the diamond on 2x screens (x = 4.5 drew it half a
+                   pixel right). One SVG so the corners join. Own colour, `loop` (teal) — not the playhead's
+                   red, which it would otherwise cross and be mistaken for. The loop mark on the key is rotated
+                   45° to read as a key, like the diamonds. The arrowhead is the handle for `back`; it is a TOP
+                   strip only, so a press lower in that column still reaches the key mark beneath it. z-11/12:
+                   above the selection wash (z-10), below the sticky gutter (z-20). -->
               {#each loopsFor(layer, appState.version).regions as r (r.frame)}
                 {@const tipX = (r.frame - r.back) * CELL_W + CELL_W / 2}
                 {@const tailX = r.frame * CELL_W + CELL_W / 2}
                 {@const w = tailX - tipX}
                 <svg
-                  class="pointer-events-none absolute top-0 z-11 overflow-visible text-danger"
+                  class="pointer-events-none absolute top-0 z-11 overflow-visible text-loop"
                   style="left: {tipX - 4}px"
                   width={w + 8}
-                  height="12"
+                  height="8"
                   aria-hidden="true"
                 >
                   <polyline
-                    points="4.5,7 4.5,0.5 {w + 4.5},0.5 {w + 4.5},5"
+                    points="4,1.5 4,0.5 {w + 4},0.5 {w + 4},5"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1"
                   />
-                  <polygon points="1.5,7 7.5,7 4.5,12" fill="currentColor" />
+                  <polygon points="1,1.5 7,1.5 4,5.5" fill="currentColor" />
                 </svg>
                 <span
-                  class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-danger"
+                  class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-loop"
                   style="left: {tailX}px"><Repeat size={12} /></span
                 >
                 <span
@@ -3342,7 +3345,7 @@
                 ></span>
                 {#if loopDrag && loopDrag.layerId === layer.id && loopDrag.frame === r.frame}
                   <span
-                    class="pointer-events-none absolute top-0 z-12 rounded-sm bg-danger px-1 text-[10px]/[14px] text-accent-text"
+                    class="pointer-events-none absolute top-0 z-12 rounded-sm bg-loop px-1 text-[10px]/[14px] text-accent-text"
                     style="left: {tipX + 8}px">↺ {r.back}</span
                   >
                 {/if}
