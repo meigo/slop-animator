@@ -30,10 +30,52 @@ export interface CanvasOps {
   clone(src: HTMLCanvasElement): HTMLCanvasElement;
 }
 
+/**
+ * Keep every loop's cycle on the same drawings after cells were spliced in or out. Call AFTER the
+ * splice: `delta > 0` = `delta` cells inserted at `at`; `delta < 0` = `-delta` removed from `at`.
+ * An edit INSIDE a cycle `[L-back, L-1]` grows/shrinks `back` rather than moving the cycle — the
+ * same rule `shiftSpan` applies to reference ranges. Inserting at the cycle's first frame puts the
+ * new frames BEFORE it; inserting at the loop frame puts them at its end, inside. Replaces cells,
+ * never mutates them (gotcha #8).
+ */
+export function rippleLoopBacks(cells: Cell[], at: number, delta: number): void {
+  if (delta === 0) return;
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    if (c.kind !== "loop") continue;
+    let back = c.back;
+    if (delta > 0) {
+      if (i < at + delta) continue; // before the insert, or one of the inserted cells
+      const L = i - delta;
+      if (L - back < at) back += delta;
+    } else {
+      const n = -delta;
+      if (i < at) continue;
+      const L = i + n;
+      const s = L - back;
+      back = Math.max(1, back - Math.max(0, Math.min(at + n, L) - Math.max(at, s)));
+    }
+    if (i === 0) {
+      cells[i] = { kind: "hold" }; // nothing before frame 0 to repeat
+      continue;
+    }
+    back = Math.min(back, i);
+    if (back !== c.back) cells[i] = { kind: "loop", back };
+  }
+}
+
+/** A loop cell written at `frame`: `back` clamped to what exists before it; frame 0 → hold. */
+export function normalizeLoopCell(cell: Cell, frame: number): Cell {
+  if (cell.kind !== "loop") return cell;
+  if (frame <= 0) return { kind: "hold" };
+  return cell.back > frame ? { kind: "loop", back: frame } : cell;
+}
+
 /** Insert a hold AFTER `after` on this layer, extending the current held span by one frame. */
 export function addFrame(layer: DrawingLayer, after: number): void {
   const at = clampIndex(layer, after);
   layer.cells.splice(at + 1, 0, { kind: "hold" });
+  rippleLoopBacks(layer.cells, at + 1, 1);
 }
 
 /** Clamp a target index to the last existing cell so "after current" always lands inside the track. */
@@ -51,12 +93,14 @@ export function insertKeyframe(layer: DrawingLayer, after: number, ops: CanvasOp
   const src = ki === null ? null : layer.cells[ki];
   const canvas = src && src.kind === "key" ? ops.clone(src.canvas) : ops.create();
   layer.cells.splice(at + 1, 0, { kind: "key", canvas });
+  rippleLoopBacks(layer.cells, at + 1, 1);
 }
 
 /** Insert an empty keyframe AFTER `after`, shifting later cells right. ("Insert blank keyframe" / F7.) */
 export function insertBlankKeyframe(layer: DrawingLayer, after: number, ops: CanvasOps): void {
   const at = clampIndex(layer, after);
   layer.cells.splice(at + 1, 0, { kind: "key", canvas: ops.create() });
+  rippleLoopBacks(layer.cells, at + 1, 1);
 }
 
 /**
@@ -99,6 +143,7 @@ export function deleteFrame(layer: DrawingLayer, frame: number): void {
   if (layer.cells.length <= 1) return;
   if (frame < 0 || frame >= layer.cells.length) return;
   layer.cells.splice(frame, 1);
+  rippleLoopBacks(layer.cells, frame, -1);
 }
 
 /** The cell track on either side of a materialisation, so a caller's undo can put it back.
@@ -346,6 +391,7 @@ export function insertFrameAllLayers(project: Project, at: number): void {
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
     const idx = Math.max(0, Math.min(at, layer.cells.length));
     layer.cells.splice(idx, 0, { kind: "hold" });
+    rippleLoopBacks(layer.cells, idx, 1);
   }
   rippleDocumentFrames(project, at, 1);
   refreshLength(project);
@@ -359,6 +405,7 @@ export function deleteFrameAllLayers(project: Project, at: number): void {
     if (layer.cells.length <= 1) continue;
     if (at < 0 || at >= layer.cells.length) continue;
     layer.cells.splice(at, 1);
+    rippleLoopBacks(layer.cells, at, -1);
   }
   rippleDocumentFrames(project, at, -1);
   refreshLength(project);
@@ -374,15 +421,15 @@ export function holdSpanEnd(layer: DrawingLayer, keyFrame: number): number {
 }
 
 /**
- * Set how many frames the keyframe at `keyFrame` occupies before the next key (its hold span).
- * `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
+ * Set how many frames the keyframe (or loop key) at `keyFrame` occupies before the next key (its
+ * hold span). `span` is the total cell count owned by this key (key + trailing holds), floored at 1.
  * Growing inserts holds at the span boundary (pushing following keys right); shrinking removes
  * trailing holds of this span only (pulling following keys left) — it never deletes another key.
- * No-op if `keyFrame` is not a key.
+ * No-op if `keyFrame` is a hold (a loop key owns a region exactly like a key owns its holds).
  */
 export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number): void {
   if (keyFrame < 0 || keyFrame >= layer.cells.length) return;
-  if (layer.cells[keyFrame].kind !== "key") return;
+  if (layer.cells[keyFrame].kind === "hold") return;
 
   const desired = Math.max(1, Math.floor(span));
   const next = holdSpanEnd(layer, keyFrame);
@@ -395,8 +442,10 @@ export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number)
       () => ({ kind: "hold" }) as Cell,
     );
     layer.cells.splice(keyFrame + current, 0, ...holds);
+    rippleLoopBacks(layer.cells, keyFrame + current, desired - current);
   } else {
     layer.cells.splice(keyFrame + desired, current - desired);
+    rippleLoopBacks(layer.cells, keyFrame + desired, desired - current);
   }
 }
 

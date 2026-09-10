@@ -14,8 +14,23 @@ import {
   isCrispFrame,
   createProject,
 } from "../anim/document";
-import { cloneCell } from "../anim/timeline-block";
-import { ensureDrawableKeyframe, insertKeyframe, clearFrameIsNoOp } from "../anim/timeline";
+import {
+  cloneCell,
+  pasteBlockInsert,
+  pasteBlockOverwrite,
+  copyBlock,
+  moveBlockFrames,
+} from "../anim/timeline-block";
+import {
+  ensureDrawableKeyframe,
+  insertKeyframe,
+  clearFrameIsNoOp,
+  rippleLoopBacks,
+  normalizeLoopCell,
+  insertFrameAllLayers,
+  deleteFrameAllLayers,
+  setHoldSpan,
+} from "../anim/timeline";
 import type { CanvasOps } from "../anim/timeline";
 
 let tag = 0;
@@ -186,5 +201,143 @@ describe("display readers honour loops", () => {
     const isEmpty = (c: HTMLCanvasElement) => !!(c as unknown as { empty?: boolean }).empty;
     expect(clearFrameIsNoOp(cells, 3, isEmpty)).toBe(true); // shows the blank key
     expect(clearFrameIsNoOp(cells, 2, isEmpty)).toBe(false); // shows the inked key
+  });
+});
+
+const backAt = (cells: Cell[], i: number) => (cells[i] as { back: number }).back;
+function splice(cells: Cell[], at: number, ins: number, del = 0): Cell[] {
+  const out = cells.slice();
+  out.splice(at, del, ...Array.from({ length: ins }, h));
+  return out;
+}
+
+describe("rippleLoopBacks", () => {
+  const base = () => [k(), k(), k(), lp(3), h()];
+  it("insert inside the cycle grows back", () => {
+    const c = splice(base(), 1, 1);
+    rippleLoopBacks(c, 1, 1);
+    expect(backAt(c, 4)).toBe(4);
+  });
+  it("insert at the cycle start lands before it: back unchanged", () => {
+    const c = splice(base(), 0, 1);
+    rippleLoopBacks(c, 0, 1);
+    expect(backAt(c, 4)).toBe(3);
+  });
+  it("insert at the loop frame lands at the cycle's end: back grows", () => {
+    const c = splice(base(), 3, 1);
+    rippleLoopBacks(c, 3, 1);
+    expect(backAt(c, 4)).toBe(4);
+  });
+  it("insert after the loop leaves it alone", () => {
+    const c = splice(base(), 4, 1);
+    rippleLoopBacks(c, 4, 1);
+    expect(backAt(c, 3)).toBe(3);
+  });
+  it("multi-cell insert grows back by the count", () => {
+    const c = splice([k(), k(), lp(2)], 1, 3);
+    rippleLoopBacks(c, 1, 3);
+    expect(backAt(c, 5)).toBe(5);
+  });
+  it("delete inside the cycle shrinks back", () => {
+    const c = splice(base(), 1, 0, 1);
+    rippleLoopBacks(c, 1, -1);
+    expect(backAt(c, 2)).toBe(2);
+  });
+  it("delete before the cycle leaves back alone", () => {
+    const c = splice([k(), k(), k(), k(), lp(2)], 0, 0, 1);
+    rippleLoopBacks(c, 0, -1);
+    expect(backAt(c, 3)).toBe(2);
+  });
+  it("back floors at 1", () => {
+    const c = splice([k(), k(), lp(1)], 1, 0, 1);
+    rippleLoopBacks(c, 1, -1);
+    expect(backAt(c, 1)).toBe(1);
+  });
+  it("a loop shifted to frame 0 becomes a hold", () => {
+    const c = splice([k(), lp(1)], 0, 0, 1);
+    rippleLoopBacks(c, 0, -1);
+    expect(c[0]).toEqual({ kind: "hold" });
+  });
+  it("replaces the loop cell, never mutates it (gotcha #8)", () => {
+    const loop = lp(3);
+    const c = splice([k(), k(), k(), loop], 1, 1);
+    rippleLoopBacks(c, 1, 1);
+    expect(loop).toEqual({ kind: "loop", back: 3 });
+    expect(c[4]).not.toBe(loop);
+  });
+});
+
+describe("normalizeLoopCell", () => {
+  it("clamps back to the landing frame, and frame 0 becomes a hold", () => {
+    expect(normalizeLoopCell(lp(5), 2)).toEqual({ kind: "loop", back: 2 });
+    expect(normalizeLoopCell(lp(5), 0)).toEqual({ kind: "hold" });
+    const ok = lp(2);
+    expect(normalizeLoopCell(ok, 4)).toBe(ok);
+  });
+});
+
+describe("splice ops ripple loops", () => {
+  it("insertFrameAllLayers inside a cycle grows back", () => {
+    const p = createProject();
+    p.layers = [dl([k(), k(), lp(2), h()])];
+    insertFrameAllLayers(p, 1);
+    expect(backAt((p.layers[0] as DrawingLayer).cells, 3)).toBe(3);
+  });
+  it("deleteFrameAllLayers inside a cycle shrinks back", () => {
+    const p = createProject();
+    p.layers = [dl([k(), k(), k(), lp(3), h()])];
+    deleteFrameAllLayers(p, 1);
+    expect(backAt((p.layers[0] as DrawingLayer).cells, 2)).toBe(2);
+  });
+  it("setHoldSpan growing a key inside the cycle grows back", () => {
+    const layer = dl([k(), k(), lp(2), h()]);
+    setHoldSpan(layer, 1, 3); // key at 1 now owns 3 frames: loop moves to 4
+    expect(layer.cells[4]).toEqual({ kind: "loop", back: 4 });
+  });
+  it("setHoldSpan on a loop cell sets its region length", () => {
+    const layer = dl([k(), lp(1), h(), k()]);
+    setHoldSpan(layer, 1, 4);
+    expect(layer.cells.map((c) => c.kind)).toEqual(["key", "loop", "hold", "hold", "hold", "key"]);
+  });
+});
+
+describe("block ops and loops", () => {
+  function project(cells: Cell[]) {
+    const p = createProject();
+    p.layers = [dl(cells)];
+    return p;
+  }
+  it("pasteBlockInsert ripples a loop after the paste point", () => {
+    const p = project([k(), k(), lp(2), h()]);
+    pasteBlockInsert(p, { cols: 1, rows: 1, columns: [[k()]] }, 1, 1, fakeOps);
+    expect(backAt((p.layers[0] as DrawingLayer).cells, 3)).toBe(3);
+  });
+  it("a pasted loop landing at frame 0 becomes a hold; back is clamped", () => {
+    const p = project([k(), h(), h(), h()]);
+    pasteBlockOverwrite(p, { cols: 1, rows: 2, columns: [[lp(3), lp(9)]] }, 1, 0, fakeOps);
+    const cells = (p.layers[0] as DrawingLayer).cells;
+    expect(cells[0]).toEqual({ kind: "hold" });
+    expect(cells[1]).toEqual({ kind: "loop", back: 1 });
+  });
+  it("copyBlock's leading repeat frame copies the drawing on screen", () => {
+    const a = k();
+    const p = project([a, k(), lp(2), h()]);
+    const block = copyBlock(p, [1], 2, 2, fakeOps); // frame 2 shows a
+    const c0 = block.columns[0][0] as Extract<Cell, { kind: "key" }>;
+    expect((c0.canvas as unknown as { __cloneOf: number }).__cloneOf).toBe(
+      (a as unknown as { canvas: { __id: number } }).canvas.__id,
+    );
+  });
+  it("moving a repeat-frame hold to a frame showing a different drawing materialises it", () => {
+    const a = k();
+    const p = project([a, k(), lp(2), h(), h()]);
+    moveBlockFrames(p, [1], 4, 4, 1, fakeOps); // frame 4 shows a; frame 5 would show b
+    const cells = (p.layers[0] as DrawingLayer).cells;
+    expect(cells[5].kind).toBe("key"); // a key in the region ends the loop there
+  });
+  it("moving it to a frame showing the same drawing keeps it a hold", () => {
+    const p = project([k(), k(), lp(2), h(), h()]);
+    moveBlockFrames(p, [1], 4, 4, 2, fakeOps); // 4 shows a; 6 shows a too
+    expect((p.layers[0] as DrawingLayer).cells[6].kind).toBe("hold");
   });
 });
