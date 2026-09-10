@@ -5492,3 +5492,6 @@ in −3 → 2–14; drag out +5 → 2–19; tap in → playhead 2, range unchang
 clamped. Then a REAL mouse drag of the in-handle: range 5 → 2 and the playhead stayed at 0 — the handle
 took the press and the ruler did not scrub. The store import was round-trip-checked first this time.
 **Owed: a Pencil drag on the iPad.**
+
+**iPad verification, 2026-09-10: draggable play-range markers — PASSED.** Dragging a marker with the
+Pencil moves it on the device, closing the one item the entry above left owed.
