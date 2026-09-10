@@ -1643,8 +1643,21 @@
     frame: number;
     startBack: number;
     back: number;
+    pressCol: number;
     undo: ReturnType<typeof beginStructuralEdit>;
-  } | null = $state(null);
+    // Raw, not deep `$state`: it holds the undo snapshot, which must stay the plain object history
+    // stores (gotcha #11). Only the badge's `{#if}` reads it, and only layerId/frame.
+  } | null = $state.raw(null);
+
+  /** Column under the pointer, in the handle's row (its parent). */
+  function loopHandleCol(e: PointerEvent): number {
+    const row = (e.currentTarget as HTMLElement).parentElement!;
+    return columnAtX(
+      e.clientX - row.getBoundingClientRect().left,
+      CELL_W,
+      appState.project.frameCount,
+    );
+  }
 
   function loopHandleDown(e: PointerEvent, layer: DrawingLayer, r: LoopRegion) {
     e.stopPropagation(); // the row's own handlers must not also start a gesture (gotcha #12)
@@ -1656,6 +1669,7 @@
       frame: r.frame,
       startBack: r.back,
       back: r.back,
+      pressCol: loopHandleCol(e),
       undo: beginStructuralEdit(),
     };
     transformDragGuard.settle = settleLoopDrag;
@@ -1663,16 +1677,13 @@
   function loopHandleMove(e: PointerEvent, layer: DrawingLayer) {
     e.stopPropagation();
     if (!loopDrag || loopDrag.layerId !== layer.id) return;
-    const row = (e.currentTarget as HTMLElement).parentElement!;
-    const col = columnAtX(
-      e.clientX - row.getBoundingClientRect().left,
-      CELL_W,
-      appState.project.frameCount,
-    );
-    const back = Math.max(1, Math.min(loopDrag.frame, loopDrag.frame - col));
+    // Press-relative: the handle straddles a column boundary, so an absolute column would jump
+    // `back` by one on a pen tap in its left half. Only a column CHANGE since the press moves it.
+    const delta = loopHandleCol(e) - loopDrag.pressCol;
+    const back = Math.max(1, Math.min(loopDrag.frame, loopDrag.startBack - delta));
     if (back === loopDrag.back) return;
     setLoopBack(layer, loopDrag.frame, back);
-    loopDrag.back = back;
+    loopDrag.back = back; // plain mutation is fine on the raw object: nothing reactive reads `back`
     bump();
   }
   function loopHandleUp(e: PointerEvent) {
