@@ -361,7 +361,7 @@ export function canDuplicateLayer(layers: Layer[], id: number): boolean {
 }
 
 /** Why `mergeDown` would refuse, in the order it checks. */
-export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only" | "animated";
+export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only" | "animated" | "loop";
 
 export function whyNotMergeDown(
   layers: Layer[],
@@ -398,6 +398,10 @@ export function whyNotMergeDown(
     if (gUpper && isGroupAnimated(gUpper)) return "animated";
     if (gBelow && isGroupAnimated(gBelow)) return "animated";
   }
+  // A loop survives a merge only when the composite provably repeats; anything else would need every
+  // pass baked into its own canvas. The document length is the longest drawing layer (`documentLength`).
+  const frameCount = Math.max(1, ...layers.filter(isDrawingLayer).map((l) => l.cells.length));
+  if (!mergeLoopsOk(below.cells, upper.cells, frameCount)) return "loop";
   return null;
 }
 
@@ -578,6 +582,30 @@ export function loopRegions(cells: Cell[], frameCount: number): LoopRegion[] {
     out.push({ frame: i, back: c.back, end: Math.min(end, frameCount) });
   }
   return out;
+}
+
+/**
+ * Can merging these two cell tracks keep every loop? For each loop on either layer, the OTHER layer
+ * must show the same drawing at every frame of the loop's region as at the frame the loop replays
+ * there (ONE step, `loopSourceFrame` — merged cells replay one step at a time, and by induction the
+ * earlier frame's composite is already right). Then the composite repeats and the merged layer can
+ * carry the loop. Otherwise merging would have to bake every pass into its own document-size canvas
+ * (~33 MB each at 1920×1080 on a 2× iPad), which is why `whyNotMergeDown` refuses instead.
+ */
+export function mergeLoopsOk(below: Cell[], upper: Cell[], frameCount: number): boolean {
+  const pairs: [Cell[], Cell[]][] = [
+    [upper, below],
+    [below, upper],
+  ];
+  for (const [x, y] of pairs) {
+    for (const r of loopRegions(x, frameCount)) {
+      for (let f = r.frame; f < r.end; f++) {
+        const t = loopSourceFrame(r.frame, r.back, f);
+        if (resolveDisplayKey(y, f) !== resolveDisplayKey(y, t)) return false;
+      }
+    }
+  }
+  return true;
 }
 
 /** A key cell's own transform (identity when absent / not a key). */

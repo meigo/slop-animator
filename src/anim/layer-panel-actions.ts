@@ -24,6 +24,7 @@ const MERGE_REASON: Record<MergeDownBlock, string> = {
   "not-drawing": "only drawing layers can be merged",
   "read-only": "a layer is locked or hidden",
   animated: "a layer is animated — Stop animating first",
+  loop: "a loop repeats over frames that change on the other layer — end the loop first",
 };
 
 const SELECT_LAYER = "select a layer first";

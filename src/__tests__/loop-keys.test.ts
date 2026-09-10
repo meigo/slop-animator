@@ -13,6 +13,8 @@ import {
   buildFrameDrawList,
   isCrispFrame,
   createProject,
+  mergeLoopsOk,
+  whyNotMergeDown,
 } from "../anim/document";
 import {
   cloneCell,
@@ -30,6 +32,7 @@ import {
   insertFrameAllLayers,
   deleteFrameAllLayers,
   setHoldSpan,
+  planMergeDown,
 } from "../anim/timeline";
 import type { CanvasOps } from "../anim/timeline";
 
@@ -339,5 +342,38 @@ describe("block ops and loops", () => {
     const p = project([k(), k(), lp(2), h(), h()]);
     moveBlockFrames(p, [1], 4, 4, 2, fakeOps); // 4 shows a; 6 shows a too
     expect((p.layers[0] as DrawingLayer).cells[6].kind).toBe("hold");
+  });
+});
+
+describe("merge down with loops", () => {
+  it("passes when the other layer is static across the loop", () => {
+    expect(mergeLoopsOk([k()], [k(), k(), lp(2), h(), h()], 5)).toBe(true);
+  });
+  it("fails when the other layer changes inside the loop's region", () => {
+    expect(mergeLoopsOk([k(), h(), h(), k()], [k(), k(), lp(2), h()], 4)).toBe(false);
+  });
+  it("passes when both layers loop in step", () => {
+    expect(mergeLoopsOk([k(), k(), lp(2)], [k(), k(), lp(2)], 6)).toBe(true);
+  });
+  it("checks loops on the LOWER layer too", () => {
+    expect(mergeLoopsOk([k(), k(), lp(2), h()], [k(), h(), h(), k()], 4)).toBe(false);
+  });
+  it("planMergeDown carries the loop, holds its region, keys outside", () => {
+    const plan = planMergeDown([k()], [k(), k(), lp(2), h(), h()]);
+    expect(plan.map((p) => p.kind)).toEqual(["key", "key", "loop", "hold", "hold"]);
+    expect(plan[2]).toEqual({ kind: "loop", back: 2 });
+  });
+  it("planMergeDown keys the frame where the loop ends", () => {
+    const plan = planMergeDown([k()], [k(), k(), lp(2), h(), k()]);
+    expect(plan.map((p) => p.kind)).toEqual(["key", "key", "loop", "hold", "key"]);
+  });
+  it("planMergeDown is unchanged without loops", () => {
+    expect(planMergeDown([k(), h()], [h(), k()]).map((p) => p.kind)).toEqual(["key", "key"]);
+  });
+  it("whyNotMergeDown refuses a loop that can't be kept", () => {
+    const below = dl([k(), h(), h(), k()], 1);
+    const upper = dl([k(), k(), lp(2), h()], 2);
+    expect(whyNotMergeDown([below, upper], [], 2)).toBe("loop");
+    expect(whyNotMergeDown([dl([k()], 1), upper], [], 2)).toBeNull();
   });
 });

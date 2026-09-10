@@ -1,6 +1,6 @@
 import {
-  resolveKeyframeIndex,
   resolveDisplayKey,
+  isLoopFrame,
   refreshLength,
   copyKeyframe,
   withTrackKeys,
@@ -503,9 +503,11 @@ export function moveKeyframe(layer: DrawingLayer, from: number, to: number): voi
   }
 }
 
-/** One merged cell: a hold, or a keyframe carrying the resolved below+upper canvases to composite. */
+/** One merged cell: a hold, a carried loop, or a keyframe carrying the resolved below+upper
+ *  canvases to composite. */
 export type MergePlan =
   | { kind: "hold" }
+  | { kind: "loop"; back: number }
   | { kind: "key"; below: HTMLCanvasElement | null; upper: HTMLCanvasElement | null };
 
 /**
@@ -515,21 +517,31 @@ export type MergePlan =
  * A layer that simply runs out of cells keeps holding its last key — same rule as render.
  * Each keyframe carries the canvas each layer shows there (or null if blank) to composite.
  * Length = the longer layer; leading all-blank frames stay holds.
+ * Loops are carried, never baked — call only when `mergeLoopsOk` holds.
  */
 export function planMergeDown(belowCells: Cell[], upperCells: Cell[]): MergePlan[] {
   const len = Math.max(belowCells.length, upperCells.length);
   const plan: MergePlan[] = [];
-  // Previous frame's (below, upper) resolved keyframe indices. Start at (null, null) = "blank",
-  // so a leading blank frame is an unchanged hold and the first content frame becomes a key.
+  // Previous frame's DISPLAYED key on each layer. (null, null) = "blank", so a leading blank frame
+  // is an unchanged hold and the first content frame becomes a key.
   let prevB: number | null = null;
   let prevU: number | null = null;
   for (let f = 0; f < len; f++) {
-    const bki = resolveKeyframeIndex(belowCells, f);
-    const uki = resolveKeyframeIndex(upperCells, f);
+    const bki = resolveDisplayKey(belowCells, f);
+    const uki = resolveDisplayKey(upperCells, f);
     const changed = bki !== prevB || uki !== prevU;
     prevB = bki;
     prevU = uki;
-    if (!changed) {
+    const uc = upperCells[f];
+    const bc = belowCells[f];
+    if (uc?.kind === "loop" || bc?.kind === "loop") {
+      plan.push({
+        kind: "loop",
+        back: uc?.kind === "loop" ? uc.back : (bc as { back: number }).back,
+      });
+      continue;
+    }
+    if (!changed || isLoopFrame(belowCells, f) || isLoopFrame(upperCells, f)) {
       plan.push({ kind: "hold" });
       continue;
     }

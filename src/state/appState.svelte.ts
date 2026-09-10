@@ -1355,6 +1355,7 @@ export function mergeDown(id: number) {
     bakeLayerTransform(upper);
     bakeLayerTransform(below);
     below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
+      if (p.kind === "loop") return { kind: "loop", back: p.back };
       if (p.kind === "hold") return { kind: "hold" };
       const canvas = canvasOps.create();
       const ctx = canvas.getContext("2d")!;
