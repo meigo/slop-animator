@@ -5445,3 +5445,8 @@ Identified by id (the two newest, adjacent, active), removed with two `undo()`s,
 the third detached-store trap and the first on a FRESH load. The reliable recipe: find the URL the page
 actually uses, `performance.getEntriesByType('resource')` filtered on `appState.svelte`, and import
 exactly that.
+
+**iPad verification, 2026-09-10: new-layer placement — PASSED.** Selecting a group's header row and
+adding a layer lands it at root just above the group, confirmed on the device. Still NOT confirmed,
+and carried forward rather than assumed: the rightward Pencil block-drag from the 2026-09-09
+`resolveGlyphHolds` fix, whose only evidence remains the failing-then-passing test.
