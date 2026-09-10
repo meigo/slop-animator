@@ -5,6 +5,7 @@ import {
   effectiveRange,
   withRangeIn,
   withRangeOut,
+  withRangeEdgeAt,
   snapPlayheadToRange,
 } from "../anim/playback";
 
@@ -131,5 +132,32 @@ describe("snapPlayheadToRange", () => {
   });
   it("returns start when after the range", () => {
     expect(snapPlayheadToRange(8, 3, 6)).toBe(3);
+  });
+});
+
+describe("withRangeEdgeAt — dragging ONE edge of the play range", () => {
+  // CLAMP, never swap and never push. The buttons (`withRangeIn/Out`) push the other point along,
+  // which is right for "set at the playhead"; under a DRAG, pushing or swapping would move the handle
+  // you are not holding, or flip which one is under the pointer mid-gesture. Same rule as the
+  // compositor's `draggedPlayRange`.
+  it("moves the held edge and leaves the other alone", () => {
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "in", 3, 30)).toEqual({ in: 3, out: 10 });
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "out", 14, 30)).toEqual({ in: 5, out: 14 });
+  });
+
+  it("stops at the other edge instead of pushing it or swapping", () => {
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "in", 14, 30)).toEqual({ in: 10, out: 10 });
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "out", 2, 30)).toEqual({ in: 5, out: 5 });
+  });
+
+  it("clamps to the document", () => {
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "in", -4, 30)).toEqual({ in: 0, out: 10 });
+    expect(withRangeEdgeAt({ in: 5, out: 10 }, "out", 500, 30)).toEqual({ in: 5, out: 29 });
+  });
+
+  // The stored range can outlive a shortened animation; `effectiveRange` clamps it on read, and a
+  // drag must start from what is on screen, not from the stale stored number.
+  it("starts from the effective range when the stored one runs past the document", () => {
+    expect(withRangeEdgeAt({ in: 5, out: 99 }, "in", 7, 30)).toEqual({ in: 7, out: 29 });
   });
 });

@@ -30,6 +30,7 @@
   } from "../anim/row-layout";
   import { animationBar } from "../anim/animation-bar";
   import {
+    dragPlayRangeEdge,
     state as appState,
     canvasOps,
     activeLayer,
@@ -978,6 +979,64 @@
       return;
     }
     settleLenDrag();
+  }
+
+  // Play-range handles: drag an edge to move it. SESSION state (`state.playback`), so no undo
+  // bracket and no project write — the range bounds playback and never reaches an export.
+  // Same shape as the length handle above it: pointer capture on the handle itself, finger pans /
+  // Pencil and mouse edit, edge auto-scroll while dragging past the viewport. The handles are
+  // SIBLINGS of `rulerEl`, not children, so a press on one never reaches `rulerDown` — no flag
+  // needed to stop the ruler scrubbing underneath.
+  let playRangeDrag: {
+    edge: "in" | "out";
+    pointerId: number;
+    startX: number;
+    moved: boolean;
+  } | null = null;
+  function rangeHandleDown(e: PointerEvent, edge: "in" | "out") {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      touchPanDown(e); // finger navigates, pen/mouse edits
+      return;
+    }
+    playRangeDrag = { edge, pointerId: e.pointerId, startX: e.clientX, moved: false };
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    startEdgeScroll(rangeHandleMoveAt, "range");
+  }
+  function rangeHandleMove(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanMove(e);
+      return;
+    }
+    if (!playRangeDrag || e.pointerId !== playRangeDrag.pointerId) return;
+    edgePointerX = e.clientX;
+    edgePointerY = e.clientY;
+    rangeHandleMoveAt(e.clientX);
+  }
+  /** Positional, so the edge-scroll tick can re-apply it while the pointer sits still past an edge.
+   *  Tracks the nearest column BOUNDARY, like the span-resize handle: an in-edge at boundary b means
+   *  the range starts at frame b; an out-edge at b means it ends at frame b − 1. A press that has not
+   *  travelled MOVE_CANCEL_PX yet is still a tap. */
+  function rangeHandleMoveAt(clientX: number) {
+    if (!playRangeDrag || !rulerEl) return;
+    if (!playRangeDrag.moved && Math.abs(clientX - playRangeDrag.startX) <= MOVE_CANCEL_PX) return;
+    playRangeDrag.moved = true;
+    const b = Math.max(0, Math.round((clientX - rulerEl.getBoundingClientRect().left) / CELL_W));
+    dragPlayRangeEdge(playRangeDrag.edge, playRangeDrag.edge === "in" ? b : b - 1);
+  }
+  function rangeHandleUp(e: PointerEvent) {
+    if (e.pointerType === "touch") {
+      touchPanUp();
+      return;
+    }
+    const d = playRangeDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    playRangeDrag = null;
+    stopEdgeScroll("range");
+    // A tap, not a drag: seek to the edge — what the ruler under it would have done, and what the
+    // compositor's handles do.
+    if (!d.moved && playRange) go(d.edge === "in" ? playRange.start : playRange.end);
   }
 
   // Gutter name-column resize. Unlike the panel's grip this one is NOT inverted: the gutter is on
@@ -2292,6 +2351,21 @@
         1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W - 1}px {4 *
         CELL_W}px, transparent {4 * CELL_W}px {5 * CELL_W}px);"
     ></div>
+    <!-- play-range lines: the tracks' part of each 1px warn line (the ruler draws its own slice,
+         because the ruler is opaque). Just INSIDE the range at both ends, so the lines and the ruler's
+         wash agree on which frames are in it. Decoration only; the handles in the ruler are what you
+         drag. Before the playhead in the DOM at the same z, so the playhead — the only red, the thing
+         you must find — always paints over them. -->
+    {#if playRange}
+      <div
+        class="pointer-events-none absolute inset-y-0 z-10 w-px"
+        style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
+      ></div>
+      <div
+        class="pointer-events-none absolute inset-y-0 z-10 w-px"
+        style="left: {GUTTER_W + (playRange.end + 1) * CELL_W - 1}px; background: var(--color-warn)"
+      ></div>
+    {/if}
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
@@ -2368,35 +2442,47 @@
       >
       </span>
       {#if playRange}
-        <!-- Play-range edges: a `warn` line + a triangle pointing INTO the range (slop-compositor /
-             iClone refs). Decoration only — pointer-events-none so ruler scrubbing is unaffected.
+        <!-- Play-range handles: the wedge, the ruler's slice of the 1px line, and a 12px grab strip
+             straddling the boundary so a thin line is still grabbable. The rest of each line runs
+             down through the tracks from the scroller (see "play-range lines" there): the ruler is
+             opaque and paints over anything the scroller draws beneath it.
              WARN, not accent, and the distinction is the family's whole reason for having a second
              accent (SLOP-TIMELINE-UI.md §6): `accent` means state that is part of the document and
              reaches a render; `warn` means session-only monitoring that never does. This range only
              bounds PLAYBACK — it lives on `state.playback`, is not written to the project file, and
-             the export never reads it — so painting it in the selection colour claimed it affects
-             the output. It does not. The wash also drops 28% -> 15%, matching the compositor: a
-             heavy band reads as a clip and competes with the media it sits over. -->
-        <div
-          class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
-          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
-        >
+             the export never reads it.
+             The wedges are right-angled and point INTO the range, so they differ from the playhead's
+             symmetric head in SHAPE — red against amber is the worst pair for the common colour
+             blindnesses. Was 2px and ruler-height only (`h-6`, which went stale when the ruler became
+             29px); now 1px and full height, as asked 2026-09-10. -->
+        {#each [{ edge: "in" as const, x: playRange.start * CELL_W }, { edge: "out" as const, x: (playRange.end + 1) * CELL_W }] as h (h.edge)}
           <div
-            class="absolute top-0 left-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-right: 5px solid transparent"
-          ></div>
-        </div>
-        <div
-          class="absolute top-0 z-10 h-6 w-0.5 pointer-events-none"
-          style="left: {GUTTER_W +
-            (playRange.end + 1) * CELL_W -
-            2}px; background: var(--color-warn)"
-        >
-          <div
-            class="absolute top-0 right-0.5"
-            style="width: 0; height: 0; border-top: 5px solid var(--color-warn); border-left: 5px solid transparent"
-          ></div>
-        </div>
+            class="absolute inset-y-0 z-10 w-3 cursor-ew-resize hover:bg-text/10"
+            style="left: {GUTTER_W + h.x - 6}px; touch-action: none"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Play-range {h.edge}-point — drag to move"
+            title="Play-range {h.edge}-point — drag to move, tap to seek"
+            onpointerdown={(e) => rangeHandleDown(e, h.edge)}
+            onpointermove={rangeHandleMove}
+            onpointerup={rangeHandleUp}
+            onpointercancel={rangeHandleUp}
+          >
+            <span
+              class="pointer-events-none absolute inset-y-0 w-px"
+              style="left: {h.edge === 'in' ? 6 : 5}px; background: var(--color-warn)"
+            ></span>
+            <span
+              class="pointer-events-none absolute top-0"
+              style="left: {h.edge === 'in'
+                ? 6
+                : 1}px; width: 0; height: 0; border-top: 5px solid var(--color-warn); {h.edge ===
+              'in'
+                ? 'border-right'
+                : 'border-left'}: 5px solid transparent"
+            ></span>
+          </div>
+        {/each}
       {/if}
       <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names.

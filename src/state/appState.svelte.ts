@@ -122,7 +122,13 @@ import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
-import { Playback, effectiveRange, withRangeIn, withRangeOut } from "../anim/playback";
+import {
+  Playback,
+  effectiveRange,
+  withRangeEdgeAt,
+  withRangeIn,
+  withRangeOut,
+} from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
 import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
 import {
@@ -2106,6 +2112,16 @@ export function setPlayRangeIn() {
 /** Set the play range's out-point to the current playhead (session-only, not undoable). */
 export function setPlayRangeOut() {
   state.playback.range = withRangeOut(state.playback.range, state.playhead);
+}
+/** Move ONE edge of the play range under a drag of its ruler handle (session-only, not undoable).
+ *  Clamps at the other edge rather than pushing it — see `withRangeEdgeAt`. */
+export function dragPlayRangeEdge(edge: "in" | "out", frame: number) {
+  state.playback.range = withRangeEdgeAt(
+    state.playback.range,
+    edge,
+    frame,
+    state.project.frameCount,
+  );
 }
 /** Clear the play range (back to full-timeline playback). */
 export function clearPlayRange() {

@@ -5450,3 +5450,45 @@ exactly that.
 adding a layer lands it at root just above the group, confirmed on the device. Still NOT confirmed,
 and carried forward rather than assumed: the rightward Pencil block-drag from the 2026-09-09
 `resolveGlyphHolds` fix, whose only evidence remains the failing-then-passing test.
+
+**Play-range markers: thin, full-height, and draggable (2026-09-10).** Asked as *"update range markers
+— lines should reach the bottom and be thinner. also adjustable by dragging"*.
+
+**Lines.** 1px (was 2px) and full height through the tracks (was ruler-only — and that `h-6` had gone
+stale when the ruler became 29px, so they stopped short even of the ruler's own bottom). Drawn in two
+parts because the ruler is opaque and paints over anything the scroller draws beneath it: each handle
+carries the ruler's slice, and the scroller carries the rest. Both lines sit just INSIDE the range at
+either end, so they agree with the ruler's wash on which frames are in it. They come before the
+playhead in the DOM at the same z, so the red playhead — the only red, the thing you must find —
+always paints over them.
+
+**Handles.** A 12px grab strip straddling each boundary in the ruler, so a 1px line is still
+grabbable. The wedges are unchanged — right-angled and pointing into the range, so they differ from
+the playhead's symmetric head in SHAPE, the family's colour-blindness rule. The strips are SIBLINGS of
+`rulerEl`, not children, so a press on one never reaches `rulerDown`; unlike the length handle (a
+child, which needs `lenDrag` to stop the scrub) no flag is needed.
+
+**Drag semantics, all from precedent rather than invention:**
+
+- **Clamp, never push or swap** — `withRangeEdgeAt` in `playback.ts`, the rule slop-video-compositor's
+  `draggedPlayRange` already uses. The buttons' `withRangeIn/Out` PUSH the other point along, which is
+  right for "set at the playhead"; under a drag, pushing moves the handle you are not holding and
+  swapping flips which one is under the pointer. Dragging in past out stops at out (a one-frame range is
+  valid). Four tests written first and watched fail; it starts from the EFFECTIVE range, so a stored
+  range that outlived a shortened animation drags from what is on screen.
+- **Boundary-snapped**, like the span-resize handle: an in-edge at boundary b starts the range at b, an
+  out-edge at b ends it at b − 1.
+- **A tap seeks** to the edge — the compositor's behaviour, and what the ruler under it would have done.
+- **Finger pans, Pencil and mouse drag**, matching the ruler and the length handle. Edge auto-scroll
+  while dragging past the viewport. Session state, so no undo entry.
+
+The build caught a collision on the way: `rangeDrag` already existed in `Timeline.svelte` for dragging
+a reference clip's start/end, and the new one had reused the name. Renamed to `playRangeDrag` inside the
+new block only.
+
+**Verified.** Geometry measured at `cellW` 12 for range 5–14: lines 1px, 333.6 of 334px tall, at x 60
+and 179 from frame 0 (5 × 12, and 15 × 12 − 1). Synthetic pointer sequence against the live store: drag
+in −3 → 2–14; drag out +5 → 2–19; tap in → playhead 2, range unchanged; drag in past out → **19–19**,
+clamped. Then a REAL mouse drag of the in-handle: range 5 → 2 and the playhead stayed at 0 — the handle
+took the press and the ruler did not scrub. The store import was round-trip-checked first this time.
+**Owed: a Pencil drag on the iPad.**

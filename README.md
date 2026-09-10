@@ -37,6 +37,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   property row is selected, so the two keying strips are never on screen together
 - Playback and timeline tools share one bar above the ruler (play, In/Out, add/clear/delete
   frame on the left; onion, boil, and fps/length on the right)
+- A play range set with In/Out shows as two thin markers running the full height of the timeline — drag either one to adjust it, tap one to jump there. It bounds playback only and never reaches an export
 - A drawing key is created by drawing on a hold. The timeline bar adds a frame
   (a hold on every layer, same as growing the length), blanks the current key,
   or deletes a frame — not insert / duplicate / hold
