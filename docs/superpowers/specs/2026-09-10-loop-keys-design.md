@@ -21,6 +21,7 @@
 | What ends a loop? | **The next key** (any `key` cell, inked or blank, or another loop). |
 | Editing inside the loop's region? | **Not available.** Frames the loop plays are read-only: no drawing, no Frame-scope transform. *(Supersedes the earlier answer "drawing creates a key and ends the loop".)* |
 | Creating or moving a key into the region? | **Allowed, and it ends the loop there** — the next-key rule. The loop key and its repeats before that point stay. |
+| Merge down with a loop? | **Keep the loop when the merge provably repeats; otherwise refuse.** Never bake (memory; see §4). |
 | Where does the loop live? | **A new cell kind** (approach A), so every cell splice carries it. Layer-level markers (approach B) were rejected: ~15 cell-moving ops would each need marker-shifting code, and every miss is a silent drift. Baking repeats into real cells was rejected: no live, adjustable loop, and duplicated PNGs. |
 
 ## 1. Model
@@ -72,8 +73,7 @@ Every current `resolveKeyframeIndex`/`resolvedKeyCell` call site (≈40, in `doc
 `kind` check (≈34 in 10 files) is classified as one of:
 
 - **Display readers → go through the remap.** Render (2D and boil paths), onion, video export, PSD
-  export, eyedropper, `contentBounds`/ink caches, layer thumbnails, the bounds hint, merge-down, the
-  transform gizmo's Frame scope, and boil's holds-only **crisp** check (`isCrispFrame` asks whether
+  export, eyedropper, `contentBounds`/ink caches, layer thumbnails, the bounds hint, merge-down, and boil's holds-only **crisp** check (`isCrispFrame` asks whether
   the *remapped* frame is a key, so a key drawing is crisp on every pass, not only the first). Boil
   noise stays keyed to real time, so repeats keep boiling rather than replaying identical noise.
 - **Structural readers → raw cells.** Timeline hit-testing, span resize, key move, `holdSpanEnd`
@@ -214,8 +214,30 @@ Block move and key move only overwrite cells, so they don't call it. The cells i
   repeat frame copies the displayed drawing as its first key.
 - Loop cells inside a copied block stay loops. `back` is relative, so they keep their offset at the
   destination, re-clamped to `1…L`.
-- `planMergeDown` plans from displayed keys, so merging a looping layer **bakes** the repeats into
-  real keys. The layer below does not loop, so this is the only correct result.
+- **Merge down keeps loops when it can, and otherwise refuses — it never bakes repeats.** Baking
+  would turn every pass into a real drawing, and each is a document-size canvas at device pixel
+  ratio (1920×1080 on a 2× iPad ≈ 33 MB): an 8-drawing cycle repeating 10 times is ~2.6 GB, far
+  past what an iPad tab survives. Sharing one canvas between cells is not an option, because
+  drawing edits canvas pixels in place.
+
+  **The condition.** For every loop cell in either layer X, at L with region R (L up to X's next
+  non-hold cell, or the document end), the _other_ layer Y must show the same drawing at each frame
+  of R as at the frame X replays there:
+  `resolveDisplayKey(Y, f) === resolveDisplayKey(Y, displayFrame(X, f))` for all f in R. Then the
+  composite at f equals the composite at the replayed frame, so the merged layer can loop too. The
+  common case, a cycle merged onto a layer that is blank or static across the loop, always passes.
+  Both layers looping in step passes as well.
+
+  **The merged cells**, when every loop passes (`planMergeDown` gains a `loop` plan entry):
+  - a `loop` cell, with the same `back`, at every frame where either layer has one (if both do at
+    the same frame, the upper layer's `back`);
+  - elsewhere inside either layer's loop region: `hold`;
+  - outside all regions: a `key` wherever either layer's **displayed** key changes, as today.
+
+  **When any loop fails**, the merge is refused with the blocked-edit caption: _"Can't merge: the
+  loop on Walk repeats over changing frames below — end the loop first"_ (naming the layer; "below"
+  or "above" as appropriate). Nothing changes and no undo entry is pushed. To get a baked result on
+  purpose, end the loop first.
 
 ## Testing
 
@@ -234,7 +256,10 @@ Pure logic, Vitest (node):
   `insertBlankKeyframe` end the loop at the new key; `moveKeyframe` into the region ends the loop
   and onto the loop key is refused; `moveKeyframe` and `setHoldSpan` on loop cells; default `back`.
 - Onion keyframe list inside a loop.
-- `copyBlock` with a leading repeat frame; `planMergeDown` baking a loop.
+- `copyBlock` with a leading repeat frame.
+- Merge down: the loop condition (static below passes; a key or a changing hold below inside the
+  region fails; both layers looping in step passes); the merged plan (loop cells carried with their
+  `back`, holds inside regions, keys outside); a failing loop yields a refusal and no plan.
 - Save round trip via the serializer's encode/decode path, as far as it runs in node.
 
 Owed after tests: a browser and iPad pass on the arrow, ghosts, arrowhead drag, Loop button,
