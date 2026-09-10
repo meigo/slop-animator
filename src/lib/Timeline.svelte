@@ -3295,16 +3295,19 @@
               {#each loopsFor(layer, appState.version).ghosts as s (s.startFrame)}
                 {@render spanMarks(s, true)}
               {/each}
-              <!-- Loop keys: Moho's cycle arrow. A line along the row's TOP EDGE that steps down onto the loop
-                   key at its right end; at its left end an arrowhead hangs straight off the line (base flush with
-                   it, 8px wide) and stops at the top of the key mark of the first frame it replays (a tip reaching
-                   into the diamond cut across its white outline and disappeared). Both ends sit on frame CENTRES,
-                   exactly: x = 4 in a box placed at centre - 4, so the 1px line is centred on the diamond on 2x
-                   screens (x = 4.5 drew it half a pixel right). One SVG so the corners join. Own colour, `loop`
-                   (teal) — not the playhead's red, which it would otherwise cross and be mistaken for. The loop
-                   mark on the key is rotated 45° to read as a key, like the diamonds. The arrowhead is the handle
-                   for `back`; it is a TOP strip only, so a press lower in that column still reaches the key mark
-                   beneath it. z-11/12: above the selection wash (z-10), below the sticky gutter (z-20). -->
+              <!-- Loop keys: Moho's cycle arrow. A line along the row's TOP EDGE that steps down
+                   onto the loop key at its right end; at its left end an arrowhead hangs straight
+                   off the line (base flush with it; a right angle at the tip, 12px wide and 6px
+                   deep) and stops at the top of the key mark of the first frame it replays (a tip
+                   reaching into the diamond cut across its white outline and disappeared). Both
+                   ends sit on frame CENTRES, exactly: x = 4 in a box placed at centre - 4, so the
+                   1px line is centred on the diamond on 2x screens (x = 4.5 drew it half a pixel
+                   right). One SVG so the corners join. Own colour, `loop` (teal) — not the
+                   playhead's red, which it would otherwise cross and be mistaken for. The loop mark
+                   on the key is rotated 45° to read as a key, like the diamonds. The arrowhead is
+                   the handle for `back`; it is a TOP strip only, so a press lower in that column
+                   still reaches the key mark beneath it. z-11/12: above the selection wash (z-10),
+                   below the sticky gutter (z-20). -->
               {#each loopsFor(layer, appState.version).regions as r (r.frame)}
                 {@const tipX = (r.frame - r.back) * CELL_W + CELL_W / 2}
                 {@const tailX = r.frame * CELL_W + CELL_W / 2}
@@ -3322,7 +3325,7 @@
                     stroke="currentColor"
                     stroke-width="1"
                   />
-                  <polygon points="0,0 8,0 4,6.5" fill="currentColor" />
+                  <polygon points="-2,0 10,0 4,6" fill="currentColor" />
                 </svg>
                 <span
                   class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-loop"
