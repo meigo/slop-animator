@@ -165,3 +165,83 @@ describe("computeOnionFrames — keyframe mode", () => {
     expect(byFrame[5]).toBeGreaterThan(byFrame[4]);
   });
 });
+
+describe("computeOnionFrames — within a play range", () => {
+  // Frames and kinds only; opacity is checked once below and is unchanged by bounds.
+  const fk = (r: ReturnType<typeof computeOnionFrames>) =>
+    r.map(({ frame, kind }) => ({ frame, kind }));
+
+  // Loop OFF: the range plays once, so ghosts come only from inside it — frames outside the range
+  // are not part of what is being animated.
+  it("confines ghosts to the range when not looping", () => {
+    const b = { start: 5, end: 12, wrap: false };
+    expect(fk(computeOnionFrames(5, 30, 2, 2, undefined, b))).toEqual([
+      { frame: 7, kind: "next" },
+      { frame: 6, kind: "next" },
+    ]);
+    expect(fk(computeOnionFrames(12, 30, 2, 2, undefined, b))).toEqual([
+      { frame: 10, kind: "prev" },
+      { frame: 11, kind: "prev" },
+    ]);
+  });
+
+  // Loop ON: the seam is where a cycle has to match, so the ghosts wrap exactly as playback does —
+  // at the in-point the previous drawings are the END of the range, at the out-point the next ones
+  // are its START.
+  it("wraps ghosts across the seam when looping", () => {
+    const b = { start: 5, end: 12, wrap: true };
+    expect(fk(computeOnionFrames(5, 30, 2, 2, undefined, b))).toEqual([
+      { frame: 11, kind: "prev" },
+      { frame: 12, kind: "prev" },
+      { frame: 7, kind: "next" },
+      { frame: 6, kind: "next" },
+    ]);
+    expect(fk(computeOnionFrames(12, 30, 2, 2, undefined, b))).toEqual([
+      { frame: 10, kind: "prev" },
+      { frame: 11, kind: "prev" },
+      { frame: 6, kind: "next" },
+      { frame: 5, kind: "next" },
+    ]);
+  });
+
+  it("keeps the step-distance fade when wrapping", () => {
+    const r = computeOnionFrames(5, 30, 2, 0, undefined, { start: 5, end: 12, wrap: true });
+    expect(r).toEqual([
+      { frame: 11, kind: "prev", opacity: ONION_BASE_OPACITY * 0.5 },
+      { frame: 12, kind: "prev", opacity: ONION_BASE_OPACITY * 1.0 },
+    ]);
+  });
+
+  // A range shorter than the ghost counts would otherwise reach the same frame from both sides — or
+  // the current frame itself. Nearest wins, alternating sides, and nothing is ghosted twice.
+  it("never ghosts a frame twice or the current frame in a short wrapped range", () => {
+    const b = { start: 5, end: 7, wrap: true };
+    expect(fk(computeOnionFrames(5, 30, 2, 2, undefined, b))).toEqual([
+      { frame: 7, kind: "prev" },
+      { frame: 6, kind: "next" },
+    ]);
+    expect(computeOnionFrames(5, 30, 3, 3, undefined, { start: 5, end: 5, wrap: true })).toEqual(
+      [],
+    );
+  });
+
+  // Working outside the range is not working on the cycle, so the range does not apply there.
+  it("ignores the range when the current frame is outside it", () => {
+    expect(
+      fk(computeOnionFrames(2, 30, 2, 2, undefined, { start: 5, end: 12, wrap: true })),
+    ).toEqual(fk(computeOnionFrames(2, 30, 2, 2)));
+  });
+
+  it("confines and wraps by KEYFRAMES too, so holds still don't use up a ghost", () => {
+    const keys = [0, 3, 6, 9, 14];
+    // Confined to [3, 9]: from the last drawing, the previous is 6 and nothing follows (14 is outside).
+    expect(fk(computeOnionFrames(9, 30, 1, 1, keys, { start: 3, end: 9, wrap: false }))).toEqual([
+      { frame: 6, kind: "prev" },
+    ]);
+    // Wrapped: at the first drawing of the cycle, the previous one is the cycle's LAST drawing.
+    expect(fk(computeOnionFrames(3, 30, 1, 1, keys, { start: 3, end: 9, wrap: true }))).toEqual([
+      { frame: 9, kind: "prev" },
+      { frame: 6, kind: "next" },
+    ]);
+  });
+});

@@ -1,11 +1,16 @@
 import {
   isLayerEditable,
-  resolvedKeyCell,
+  resolvedDisplayKeyCell,
   type Cell,
   type DrawingLayer,
   type Project,
 } from "./document";
-import { shiftLayerTrackKeys, type CanvasOps } from "./timeline";
+import {
+  shiftLayerTrackKeys,
+  rippleLoopBacks,
+  normalizeLoopCell,
+  type CanvasOps,
+} from "./timeline";
 
 /** A rectangular block of cells copied from the timeline. cols = layers (top-first),
  *  rows = frames (earliest-first). Every KEY canvas/transform is deep-cloned, and each column
@@ -19,6 +24,7 @@ export interface CellBlock {
 /** Deep-clone a cell: fresh canvas + cloned transform/transformBox (never share refs). */
 export function cloneCell(cell: Cell, ops: CanvasOps): Cell {
   if (cell.kind === "hold") return { kind: "hold" };
+  if (cell.kind === "loop") return { kind: "loop", back: cell.back };
   const out: Cell = { kind: "key", canvas: ops.clone(cell.canvas) };
   if (cell.transform) out.transform = { ...cell.transform };
   if (cell.transformBox !== undefined)
@@ -36,9 +42,9 @@ function writeColumn(layer: DrawingLayer, cells: Cell[], startFrame: number): vo
     const f = startFrame + r;
     if (f >= layer.cells.length) {
       while (layer.cells.length < f) layer.cells.push({ kind: "hold" });
-      layer.cells.push(cells[r]);
+      layer.cells.push(normalizeLoopCell(cells[r], f));
     } else {
-      layer.cells[f] = cells[r]; // replace, never mutate in place
+      layer.cells[f] = normalizeLoopCell(cells[r], f); // replace, never mutate in place
     }
   }
 }
@@ -80,7 +86,7 @@ export function copyBlock(
       const f = startFrame + r;
       if (r === 0 && materializeLeading) {
         // Materialize the leading cell into a self-contained KEY (resolve holds to their key).
-        const rk = resolvedKeyCell(layer, f);
+        const rk = resolvedDisplayKeyCell(layer, f);
         col.push(rk ? cloneCell(rk.cell, ops) : { kind: "key", canvas: ops.create() });
       } else {
         const cell = layer.cells[f];
@@ -138,8 +144,11 @@ export function pasteBlockInsert(
     if (!layer || !isLayerEditable(layer, project.groups)) continue; // non-editable: inert, column consumed
     const at = startFrame;
     while (layer.cells.length < at) layer.cells.push({ kind: "hold" });
-    const clones = block.columns[c].map((cell) => cloneCell(cell, ops));
+    const clones = block.columns[c].map((cell, r) =>
+      normalizeLoopCell(cloneCell(cell, ops), at + r),
+    );
     layer.cells.splice(at, 0, ...clones);
+    rippleLoopBacks(layer.cells, at, clones.length);
     // Shift this layer's own transform keys with its cells, for the same reason the per-layer frame
     // tools do: the track belongs to exactly the layer whose cells were just respliced, so there IS
     // one correct shift — and without it the drawings move while the motion stays put, a frame per
@@ -186,14 +195,6 @@ export function anyEditablePasteTarget(project: Project, topLayerId: number): bo
   });
 }
 
-/** The key a HOLD written at `frame` would show, given every cell before `frame` is already final.
- *  Clamp to the last cell so we don't pass a negative index; resolve holds past the track. */
-function keyShownBefore(layer: DrawingLayer, frame: number): Cell | null {
-  const at = Math.min(frame - 1, layer.cells.length - 1);
-  if (at < 0) return null;
-  return resolvedKeyCell(layer, at)?.cell ?? null;
-}
-
 /** Move the selected block by `delta` frames on its OWN layers (frames-only), overwriting the
  *  destination. Returns the applied delta after clamping so the earliest moved frame stays >= 0.
  *  Leading holds stay holds (unlike copy) so a mid-span drag does not duplicate the resolved key —
@@ -223,8 +224,9 @@ export function moveBlockFrames(
   for (const id of layerIds) {
     const layer = project.layers.find((l) => l.id === id);
     if (!layer || layer.kind !== "draw") continue;
-    if (layer.cells[startFrame]?.kind === "key") continue; // already self-contained
-    shown.set(id, resolvedKeyCell(layer, startFrame)?.cell ?? null);
+    const lead = layer.cells[startFrame];
+    if (lead?.kind === "key" || lead?.kind === "loop") continue; // already self-contained
+    shown.set(id, resolvedDisplayKeyCell(layer, startFrame)?.cell ?? null);
   }
   deleteBlock(project, layerIds, startFrame, endFrame); // vacate the source → holds
   let c = 0;
@@ -234,15 +236,17 @@ export function moveBlockFrames(
     // Locked row: consume the column (deleteBlock skipped it too, so its cells are untouched).
     if (isLayerEditable(layer, project.groups)) {
       const col = block.columns[c];
-      if (shown.has(id)) {
-        // The source is vacated and the write starts at `dest`, so everything before `dest` is now
-        // final — this is exactly what the moved hold would resolve to on arrival. Materialize only
-        // when that differs, so the mid-span case still moves a hold as a hold.
-        const src = shown.get(id)!;
-        if (keyShownBefore(layer, dest) !== src)
-          col[0] = src ? cloneCell(src, ops) : { kind: "key", canvas: ops.create() };
-      }
       writeColumn(layer, col, dest);
+      if (shown.has(id)) {
+        // The source is vacated and the column is now written, so everything at/after `dest` is
+        // final — read the display remap to see exactly what the moved hold resolves to on arrival
+        // (loop-aware; identical to the old check outside loops, where a hold at `dest` resolves to
+        // the key before it). Materialize only when that differs from what it showed before the
+        // move, so the mid-span case still moves a hold as a hold.
+        const src = shown.get(id)!;
+        if ((resolvedDisplayKeyCell(layer, dest)?.cell ?? null) !== src)
+          layer.cells[dest] = src ? cloneCell(src, ops) : { kind: "key", canvas: ops.create() };
+      }
     }
     c++;
   }

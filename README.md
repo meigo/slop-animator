@@ -43,7 +43,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   or deletes a frame — not insert / duplicate / hold
 - A hold continues until a **blank key** (◇). Running out of cells on a layer
   does not stop it — Clear is how a drawing ends
-- Onion skins — step by frames or by **keyframes** (holds don't use up a ghost)
+- **Loop keys** — a Moho-style loop key replays the drawings before it until the next key; shown
+  as a red back-arrow with ghosted repeats, drag the arrowhead to set the cycle
+- Onion skins — step by frames or by **keyframes** (holds don't use up a ghost). With a play range set they stay inside it, and when looping they wrap across the seam — so a cycle's last drawing shows while you draw its first
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
 
@@ -96,7 +98,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1139); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1226); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

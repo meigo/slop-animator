@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contextHint, editBlockLabel, type HintContext } from "../lib/status-hint";
+import { contextHint, editBlockLabel, loopEditLabel, type HintContext } from "../lib/status-hint";
 
 const base: HintContext = {
   tool: "brush",
@@ -203,5 +203,11 @@ describe("contextHint — animated layer", () => {
   // A hint for a gesture that currently does nothing is worse than none.
   it("still puts the locked refusal first", () => {
     expect(contextHint({ ...base, editBlock: "locked", animatedFrame: 12 })).toContain("locked");
+  });
+});
+
+describe("loopEditLabel", () => {
+  it("names the frame and the frame it repeats, 1-based", () => {
+    expect(loopEditLabel(11, 3)).toBe("Frame 12 repeats frame 4 — edit it there");
   });
 });

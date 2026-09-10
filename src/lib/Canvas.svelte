@@ -13,6 +13,7 @@
   } from "../core/fill";
   import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
+  import { effectiveRange } from "../anim/playback";
   import { ensureDrawableKeyframe, restoreCellTrack, type CellTrackChange } from "../anim/timeline";
   import {
     state as appState,
@@ -53,13 +54,17 @@
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
   import LayerBoundsHint from "./LayerBoundsHint.svelte";
-  import { editBlockLabel } from "./status-hint";
+  import { editBlockLabel, loopEditLabel } from "./status-hint";
   import {
     transformBaseRect,
     isIdentityTransform,
     isSameTransform,
     cellTransform,
     resolvedKeyCell,
+    resolvedDisplayKeyCell,
+    isLoopFrame,
+    displayFrame,
+    frameEditKeyCell,
     cloneCanvas,
     groupOf,
     groupHasLockedLayer,
@@ -126,7 +131,7 @@
     if (layer.kind !== "draw") return layerComposeSteps(layer);
     const W = appState.project.width,
       H = appState.project.height;
-    const rk = resolvedKeyCell(layer, appState.playhead);
+    const rk = resolvedDisplayKeyCell(layer, appState.playhead);
     const cellT = rk ? cellTransform(rk.cell) : IDENTITY;
     const cellBox = rk
       ? contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version)
@@ -445,6 +450,14 @@
         appState.activeLayerId,
         appState.version,
         ss,
+        // The play range confines the ghosts to it, and wraps them across the seam when looping —
+        // so a cycle's last drawing shows while you draw its first. See `computeOnionFrames`.
+        appState.playback.range
+          ? {
+              ...effectiveRange(appState.playback.range, appState.project.frameCount),
+              wrap: appState.playback.loop,
+            }
+          : undefined,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
@@ -494,9 +507,14 @@
     ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
   }
 
+  /** The active drawing layer's current frame is played by a loop key: read-only (spec §3). */
+  function onLoopFrame(layer: Layer): boolean {
+    return layer.kind === "draw" && isLoopFrame(layer.cells, appState.playhead);
+  }
+
   function doFill(pt: { x: number; y: number }) {
     const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return;
+    if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return;
     const W = appState.project.width,
       H = appState.project.height;
     const rk = resolvedKeyCell(layer, appState.playhead);
@@ -581,7 +599,8 @@
     const layer = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(layer, appState.project.groups)
+      !isLayerEditable(layer, appState.project.groups) ||
+      onLoopFrame(layer)
     )
       return;
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
@@ -903,7 +922,7 @@
       // `RefTransformGizmo.transformTarget` already pairs them, so the two must not disagree.)
       base = groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version);
     } else if (isDraw && scope === "frame") {
-      frameRk = resolvedKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
+      frameRk = frameEditKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
       if (!frameRk) {
         if (done) {
           finishTransformDragUndo();
@@ -1313,7 +1332,7 @@
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
       // move) keeps the whole stroke on the layer it started on.
       const layer = activeLayer();
-      if (!isLayerEditable(layer, appState.project.groups)) return;
+      if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return;
       const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
       strokeCanvas = mk.canvas;
       strokeLayer = layer;
@@ -1444,7 +1463,7 @@
     if (!selection?.rect) return null;
     const al = activeLayer();
     if (al.kind !== "draw") return null;
-    const rk = resolvedKeyCell(al, appState.playhead);
+    const rk = resolvedDisplayKeyCell(al, appState.playhead);
     if (!rk) return null;
     const W = appState.project.width;
     const H = appState.project.height;
@@ -1510,7 +1529,7 @@
     // ◆ on a hold, while ToolOptions had Cut/Paste/Delete dimmed one bar away.
     if (workingTarget(appState.activeRow).kind !== "layer") return false;
     const layer = activeLayer();
-    if (!isLayerEditable(layer, appState.project.groups)) return false;
+    if (!isLayerEditable(layer, appState.project.groups) || onLoopFrame(layer)) return false;
     const mk = ensureDrawableKeyframe(layer, appState.playhead, canvasOps);
     const canvas = mk.canvas;
     selLayer = layer;
@@ -1548,7 +1567,7 @@
   function drawableTarget(): DrawingLayer | null {
     if (workingTarget(appState.activeRow).kind !== "layer") return null;
     const layer = activeLayer();
-    return isLayerEditable(layer, appState.project.groups) ? layer : null;
+    return isLayerEditable(layer, appState.project.groups) && !onLoopFrame(layer) ? layer : null;
   }
 
   function activeDrawableCtx(): {
@@ -1671,7 +1690,8 @@
     const al = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(al, appState.project.groups)
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
     )
       return;
     // TEAR DOWN THE PREVIOUS LIFT FIRST — this ordering is load-bearing. `cancel()` reverts an
@@ -1807,7 +1827,8 @@
     const al = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
-      !isLayerEditable(al, appState.project.groups)
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
     )
       return;
     // Tear down the previous lift BEFORE materialising — same load-bearing ordering as enterDeform:
@@ -1991,10 +2012,24 @@
     let lastLayerId = appState.activeLayerId;
     let lastW = appState.project.width;
     let lastH = appState.project.height;
+    // The play range and the loop flag shape the onion ghosts (confined to the range, wrapped across
+    // its seam when looping — `computeOnionFrames`) but bump neither `version` nor the playhead, so
+    // this loop never noticed them: after an In/Out press, a handle drag, Clear, or the loop toggle,
+    // the ghosts stayed stale until something else redrew. Proven 2026-09-10 by hashing the canvas —
+    // identical before and after a real loop-button click, different after a forced repaint.
+    // IDENTITY on the range: every writer replaces the object (`withRangeIn/Out`, `withRangeEdgeAt`,
+    // clear → null), so this is exact and allocation-free on an idle frame. Only while onion is on —
+    // otherwise the range changes nothing on the canvas, and a handle drag would recomposite per step.
+    let lastRange = appState.playback.range;
+    let lastLoop = appState.playback.loop;
     const tick = () => {
       const dimsChanged = appState.project.width !== lastW || appState.project.height !== lastH;
       const changed =
-        dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead;
+        dimsChanged ||
+        appState.version !== lastVersion ||
+        appState.playhead !== lastPlayhead ||
+        (appState.onion.enabled &&
+          (appState.playback.range !== lastRange || appState.playback.loop !== lastLoop));
       // setActiveLayer only bumps the version in single-layer onion mode, so a layer switch needs
       // its own check — a stale chain would clip/clear the wrong region on the new layer.
       const layerChanged = appState.activeLayerId !== lastLayerId;
@@ -2013,6 +2048,8 @@
       if (changed) {
         lastVersion = appState.version;
         lastPlayhead = appState.playhead;
+        lastRange = appState.playback.range;
+        lastLoop = appState.playback.loop;
         syncReferenceVideos(
           appState.project,
           appState.playhead,
@@ -2244,11 +2281,12 @@
     const groups = appState.project.groups;
     const wt = workingTarget(appState.activeRow);
     if (PIXEL_TOOLS.includes(appState.tool))
-      return wt.kind !== "layer" || !isLayerEditable(l, groups);
+      return wt.kind !== "layer" || !isLayerEditable(l, groups) || onLoopFrame(l);
     if (appState.tool === "transform")
       return (
         wt.kind === "audio" ||
-        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups))
+        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups)) ||
+        (wt.kind === "layer" && appState.transformScope === "frame" && onLoopFrame(l))
       );
     return false;
   });
@@ -2264,8 +2302,11 @@
     if (appState.playback.isPlaying) return null;
     if (!toolBlocked || appState.selectionActive || appState.selectionFloating) return null;
     const block = whyNotEditable(activeLayer(), appState.project.groups);
-    if (!block || block === "not-draw") return null;
-    return editBlockLabel(block);
+    if (block && block !== "not-draw") return editBlockLabel(block);
+    const l = activeLayer();
+    if (l.kind === "draw" && onLoopFrame(l))
+      return loopEditLabel(appState.playhead, displayFrame(l.cells, appState.playhead));
+    return null;
   });
 </script>
 

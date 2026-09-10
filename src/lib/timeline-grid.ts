@@ -1,4 +1,4 @@
-import { resolveKeyframeIndex, type Cell } from "../anim/document";
+import type { Cell } from "../anim/document";
 
 /** What a pointer-down on a cell strip means. */
 export type CellPointer =
@@ -38,8 +38,8 @@ export function clampTimelineCellW(w: number): number {
 
 /**
  * Classify a pointer-down at horizontal `offsetX` (px from the track's left edge):
- * - near a keyframe span's right edge → resize that key's hold span
- * - on the keyframe cell itself → move that key
+ * - near a keyframe or loop key's span's right edge → resize that key's hold span
+ * - on the keyframe or loop key cell itself → move that key
  * - otherwise → seek to the column.
  */
 export function planCellPointer(
@@ -49,10 +49,14 @@ export function planCellPointer(
   count: number,
 ): CellPointer {
   const frame = columnAtX(offsetX, cellW, count);
-  const ki = resolveKeyframeIndex(cells, frame);
+  // The cell that owns this frame: the nearest KEY OR LOOP at/before it. A loop key owns its region
+  // exactly as a key owns its holds, so both are grabbable and both have a resizable trailing edge.
+  let ki: number | null = Math.min(frame, cells.length - 1);
+  while (ki >= 0 && cells[ki].kind === "hold") ki--;
+  if (ki < 0) ki = null;
   if (ki !== null) {
     let end = ki + 1; // exclusive end of this key's span
-    while (end < cells.length && cells[end].kind !== "key") end++;
+    while (end < cells.length && cells[end].kind === "hold") end++;
     // A TRAILING hold (no later key) runs visually to the document's last frame, not to the end of
     // the stored track — so on a layer shorter than the document the grab handle belongs where the
     // dashes stop. Anchoring it at `cells.length` put it mid-run, with the span continuing past a

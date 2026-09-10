@@ -1,0 +1,310 @@
+# Loop keys (Moho-style cycles) — design
+
+**Status:** draft for review · **Date:** 2026-09-10 · **Branch:** `feat/loop-keys` (off
+`feat/onion-respects-play-range`, which also touches `onion.ts` and `Canvas.svelte`'s recomposite)
+
+## The ask
+
+> "it could be great to have a real looping feature. In moho it's a specific key type that can jump
+> back and loop from specific frame or relative backwards offset. Last one could be probably more
+> flexible here. And some other type of key afterwards would end the loop. In moho it's visually
+> represented as a red line with arrow head going back from loop key to the first frame of loop."
+
+> "ghost of loop step could be displayed on track to easily determine later where the loop ends"
+
+## Decisions (settled in brainstorming)
+
+| Question | Answer |
+|---|---|
+| What repeats? | **Drawings only.** Transform/opacity tracks play straight through. |
+| How is the target set? | **Relative offset**: "jump back N frames". Survives moving the loop. No absolute mode. |
+| What ends a loop? | **The next key** (any `key` cell, inked or blank, or another loop). |
+| Editing inside the loop's region? | **Not available.** Frames the loop plays are read-only: no drawing, no Frame-scope transform. *(Supersedes the earlier answer "drawing creates a key and ends the loop".)* |
+| Creating or moving a key into the region? | **Allowed, and it ends the loop there** — the next-key rule. The loop key and its repeats before that point stay. |
+| Merge down with a loop? | **Keep the loop when the merge provably repeats; otherwise refuse.** Never bake (memory; see §4). |
+| Where does the loop live? | **A new cell kind** (approach A), so every cell splice carries it. Layer-level markers (approach B) were rejected: ~15 cell-moving ops would each need marker-shifting code, and every miss is a silent drift. Baking repeats into real cells was rejected: no live, adjustable loop, and duplicated PNGs. |
+
+## 1. Model
+
+```ts
+type Cell =
+  | { kind: "key"; canvas; transform?; transformBox? }
+  | { kind: "hold" }
+  | { kind: "loop"; back: number }; // NEW. 1 <= back <= its own frame index
+```
+
+A `loop` cell at frame **L** means: *from L on, replay frames `[L−back, L−1]`*. Its **region** is L
+plus the holds after it, and ends at the next non-hold cell (a key, blank key included, or another
+loop). A trailing region runs to the document end, like a trailing hold.
+
+- A loop may only be **placed** on a hold or past the layer's end, never on a key (that would
+  discard a drawing). Frame 0 cannot hold a loop (nothing before it to repeat).
+- A loop whose cycle precedes every key shows nothing, like a hold before the first key does.
+
+### The display remap
+
+One pure function in `src/anim/document.ts`:
+
+```
+displayFrame(cells, f):
+  i = nearest index <= min(f, cells.length − 1) whose cell is not a hold   (none → return f)
+  if cells[i] is a loop at L:
+      return displayFrame(cells, L − back + ((f − L) mod back))
+  return f
+```
+
+The recursion always lands strictly before L, so it terminates. A cycle that contains another
+loop's region resolves through it, so nesting needs no special case.
+
+`resolveDisplayKey(cells, f) = resolveKeyframeIndex(cells, displayFrame(cells, f))` answers
+**"which drawing is on screen at f"**, with a `resolvedDisplayKeyCell(layer, f)` companion to the
+existing `resolvedKeyCell`. `resolveKeyframeIndex` itself is unchanged and stays the raw, structural
+answer (it already skips anything that is not `kind === "key"`).
+
+Example: drawing on 2s with keys at 0/2/4/6, loop at 8 with `back = 8`. Frames 8–15 show 0–7,
+16–23 show 0–7 again, and so on until the next key.
+
+### Two kinds of reader
+
+Every current `resolveKeyframeIndex`/`resolvedKeyCell` call site (≈40, in `document.ts`,
+`onion.ts`, `timeline-block.ts`, `timeline.ts`, `psd-frame.ts`, `Canvas.svelte`,
+`LayerBoundsHint.svelte`, `LayerList.svelte`, `RefTransformGizmo.svelte`, `Timeline.svelte`,
+`cell-ink.ts`, `timeline-glyphs.ts`, `timeline-grid.ts`, `appState.svelte.ts`) and every direct
+`kind` check (≈34 in 10 files) is classified as one of:
+
+- **Display readers → go through the remap.** Render (2D and boil paths), onion, video export, PSD
+  export, eyedropper, `contentBounds`/ink caches, layer thumbnails, the bounds hint, merge-down, and boil's holds-only **crisp** check (`isCrispFrame` asks whether
+  the *remapped* frame is a key, so a key drawing is crisp on every pass, not only the first). Boil
+  noise stays keyed to real time, so repeats keep boiling rather than replaying identical noise.
+- **Structural readers → raw cells.** Timeline hit-testing, span resize, key move, `holdSpanEnd`
+  (which already stops at any non-hold, so a key's span ends at a loop), splice ops.
+
+The implementation plan carries the full per-site classification. A `kind === "hold"` or
+`kind !== "key"` test that meets a loop cell is the main correctness risk, because TypeScript does
+not flag it; each one gets looked at.
+
+Property tracks are unaffected. A per-cell transform comes along with whichever key is resolved.
+
+### Default `back`
+
+When a loop is added at L: back to the start of the content run containing L−1, i.e. that span's
+`startFrame` from `computeTimelineSpans`, so `back = L − startFrame`. On 1s or 2s this is "loop
+everything since the last blank key", usually the cycle just drawn. If L−1 is not in a content
+span (blank or empty), `back = 1`.
+
+## 2. Timeline
+
+```
+frame   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16
+            ◀━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                          red, 1px
+track  [◆━━━━━━━◆━━━━━━━◆━━━━━━━◆━━━━━━━]↺ [◇·······◇·······◇·······◇···]◆━━━
+       └──────── the cycle ───────────┘ │  └─ ghost repeats (faded) ──┘ │
+                                      loop key                     next key ends it
+```
+
+- **Loop key mark.** A red lucide `Repeat` icon (12px) on frame L, in the diamond's slot.
+  `computeTimelineGlyphs` emits a new glyph `"↺"` for a loop cell.
+- **Arrow.** A 1px `--color-danger` line along the top edge of the drawing layer's track row, from
+  frame L back to the left edge of frame `L − back`, ending in a small arrowhead. It uses the
+  playhead's red, so it reads as "time jumps". It is drawn on that row only (not on property rows,
+  other layers or group rows).
+- **Ghost repeats.** Across the loop's region after L, the track draws what the remap shows at
+  ~35% opacity: a faded span where the cycle shows ink, faded diamonds where the replayed frame is
+  a key, faded hollow diamonds for replayed blank keys. Implemented as spans carrying
+  `ghost: true` (a new field on `TimelineSpan`), derived from glyphs of the remapped frames.
+  Ghosts are **not interactive**: pointer on a ghost seeks, like an empty frame. The solid span
+  resumes at the key that ends the loop, so the loop's end is visible at a glance.
+
+### Interactions
+
+- **Loop button.** A lucide `Repeat` button in the timeline toolbar acts on the active drawing
+  layer at the playhead:
+
+  | Cell at the playhead | Button |
+  |---|---|
+  | hold, or past the layer's end | adds a loop with the default `back` |
+  | loop | removes it (becomes a hold) |
+  | key | disabled; tooltip "Loops go on a held frame — a key's drawing would be replaced" |
+  | locked layer / reference layer / frame 0 | disabled |
+
+  Each add/remove is one undo step.
+- **Arrowhead drag** sets `back`: snaps to frame columns, clamps to `1…L`, and shows a red badge
+  "↺ N" while dragging. One undo step per gesture, none for a no-move tap; `touch-action: none`;
+  binds `pointercancel` (gotcha #10, and the settle-on-cancel rule from gotcha #6).
+- **Moving a loop key** works like moving a key (`moveKeyframe` and `planCellPointer`'s "move"
+  accept `loop` as well as `key`). `back` is unchanged, re-clamped to `1…newL`; a move to frame 0 is
+  refused. A key **cannot be dropped onto the loop key's frame** (that drop is refused, not
+  swapped); dropped anywhere later in the region, it lands and ends the loop there. **Resizing** a loop's trailing edge sets its region length exactly as a key's hold span
+  (`setHoldSpan` accepts `loop` too).
+- **Block move, copy, paste, frame insert/delete** carry loop cells because they splice cells.
+- No keyboard shortcut in this phase (`L` is free if one is wanted later).
+
+## 3. Editing, frame tools, onion
+
+**A loop's region is read-only for editing** (any frame from the loop key up to the key that ends
+it). A pure predicate, `isLoopFrame(cells, f)`, gates the canvas:
+
+- **Blocked:** draw, erase, fill, paste into the canvas, the selection/deform/pose lifts, and
+  Transform in **Frame** scope. They show the existing blocked-edit caption (the one used for
+  hidden/locked layers) reading *"Frame 12 repeats frame 4 — edit it there"*, naming the source
+  frame from `displayFrame`.
+- **Still available:** the eyedropper (reads the displayed drawing), making a marquee selection and
+  copying it, and Transform in **Layer** or **Group** scope — those move the whole layer, repeats
+  included, which is how a looping character is moved across the screen.
+- As defence in depth, `ensureDrawableKeyframe` clones from `resolveDisplayKey` rather than the
+  raw hold, so any path that reaches it past the gate still copies the drawing on screen.
+
+**Frame tools on a repeat frame:**
+
+| Tool | Behaviour |
+|---|---|
+| Insert keyframe (F6) / Duplicate | clones the displayed drawing into a new key after the frame — creating a key, so it ends the loop there |
+| Insert blank keyframe (F7) | inserts a blank key after the frame, ending the loop there |
+| Paste frames (block paste) | writes keys into the region, ending the loop at the first one |
+| Clear frame | **blocked** (it edits the drawing shown), same caption as above |
+| Set hold on the loop key | removes the loop |
+| Insert hold / Delete frame in the region | makes the region one frame longer / shorter |
+
+**Structural edits inside a cycle adjust `back`.** After cells are inserted or removed, a loop
+whose cycle `[L−back, L−1]` the edit fell inside gets `back` changed to the cycle's new length
+(floor 1), so the arrow keeps pointing at the same drawing. Precisely, for a loop originally at L
+with cycle start `s = L − back`:
+
+- **insert k cells at index `at`:** if `s < at <= L`, then `back += k`. (Inserting at `s` puts the
+  new frames before the cycle; inserting at L puts them at its end, inside.)
+- **delete cells `[at, at+k)`** where the loop itself survives (`L >= at + k`): `back −=` the size
+  of the overlap of `[at, at+k)` with `[s, L)`, floored at 1.
+
+This mirrors the existing rule for reference/play-range spans (`shiftSpan`: a span that straddles
+an edit grows or shrinks instead of moving). One helper, `rippleLoopBacks`, is called by every op
+that inserts or removes cells: `addFrame`, `insertKeyframe`, `insertBlankKeyframe`, `deleteFrame`,
+`insertFrameAllLayers`, `deleteFrameAllLayers`, `setHoldSpan`, `pasteBlockInsert`, `deleteBlock`.
+Block move and key move only overwrite cells, so they don't call it. The cells it changes are
+**replaced**, never mutated (gotcha #8).
+
+**Onion skins.**
+
+- Frame mode: the ghost of f±k shows `resolveDisplayKey`, so repeats ghost correctly.
+- Keyframe mode: its key list becomes **frames where the displayed drawing changes** (identical to
+  raw keys outside loops; inside a loop, the replayed keys), so you see the cycle's poses.
+- Play-range bounds and the loop-seam wrap are untouched. The play range decides which frames
+  play; loop keys decide which drawing each frame shows. They are independent.
+
+## 4. Save, export, undo, copy/merge
+
+**Save format** — version stays 1, additive like `cellTransforms`:
+
+- `cells: ("key" | "hold" | "loop")[]`, plus an optional per-layer `loopBacks: { [frame]: back }`.
+- Load: `"loop"` → `{ kind: "loop", back }`, `back` defaulting to 1 when absent and clamped to
+  `1…i`. A loop at frame 0 loads as a hold.
+- Autosave shares the serializer.
+- A pre-loop build reads `"loop"` as a key with no PNG, i.e. a blank key: degraded, not a crash.
+  The deployed app is always current, so this is accepted.
+
+**Export.** Video (MP4/WebM) goes through render; PSD's `psd-frame.ts` switches to
+`resolveDisplayKey`. Both show loops.
+
+**Undo.** Add/remove, arrowhead drag and loop-key move are structural edits through the existing
+`beginStructuralEdit`/`commitStructuralEdit` pair, replacing cells rather than mutating them.
+`restoreStructure` already restores whole cell arrays.
+
+**Copy / paste / merge.**
+
+- `copyBlock`'s leading-cell materialisation resolves through the remap: a block starting on a
+  repeat frame copies the displayed drawing as its first key.
+- Loop cells inside a copied block stay loops. `back` is relative, so they keep their offset at the
+  destination, re-clamped to `1…L`.
+- **Merge down keeps loops when it can, and otherwise refuses — it never bakes repeats.** Baking
+  would turn every pass into a real drawing, and each is a document-size canvas at device pixel
+  ratio (1920×1080 on a 2× iPad ≈ 33 MB): an 8-drawing cycle repeating 10 times is ~2.6 GB, far
+  past what an iPad tab survives. Sharing one canvas between cells is not an option, because
+  drawing edits canvas pixels in place.
+
+  **The condition.** For every loop cell in either layer X, at L with region R (L up to X's next
+  non-hold cell, or the document end), the _other_ layer Y must show the same drawing at each frame
+  of R as at the frame X replays there:
+  `resolveDisplayKey(Y, f) === resolveDisplayKey(Y, displayFrame(X, f))` for all f in R. Then the
+  composite at f equals the composite at the replayed frame, so the merged layer can loop too. The
+  common case, a cycle merged onto a layer that is blank or static across the loop, always passes.
+  Both layers looping in step passes as well.
+
+  **The merged cells**, when every loop passes (`planMergeDown` gains a `loop` plan entry):
+  - a `loop` cell, with the same `back`, at every frame where either layer has one (if both do at
+    the same frame, the upper layer's `back`);
+  - elsewhere inside either layer's loop region: `hold`;
+  - outside all regions: a `key` wherever either layer's **displayed** key changes, as today.
+
+  **When any loop fails**, the merge is refused with the blocked-edit caption: _"Can't merge: the
+  loop on Walk repeats over changing frames below — end the loop first"_ (naming the layer; "below"
+  or "above" as appropriate). Nothing changes and no undo entry is pushed. To get a baked result on
+  purpose, end the loop first.
+
+## Testing
+
+Pure logic, Vitest (node):
+
+- `displayFrame` / `resolveDisplayKey`: basic cycle; trailing loop to the document end; frames
+  past the stored track; region ended by a key, a blank key, a second loop; nested cycles; loop
+  before any key; `back` equal to L.
+- `rippleLoopBacks`: insert/delete before, inside, at `s`, at L, and after the cycle; multi-cell
+  splices; floor at 1; loop deleted by the splice.
+- Glyphs/spans: `"↺"` glyph; ghost spans and diamonds; blank keys replayed; the solid span resuming
+  at the ending key.
+- `isLoopFrame`: the loop key frame, holds in its region, the ending key (false), frames past the
+  stored track in a trailing region, frames before the loop (false).
+- Ops on repeat frames: `ensureDrawableKeyframe` clones the displayed drawing; `insertKeyframe` /
+  `insertBlankKeyframe` end the loop at the new key; `moveKeyframe` into the region ends the loop
+  and onto the loop key is refused; `moveKeyframe` and `setHoldSpan` on loop cells; default `back`.
+- Onion keyframe list inside a loop.
+- `copyBlock` with a leading repeat frame.
+- Merge down: the loop condition (static below passes; a key or a changing hold below inside the
+  region fails; both layers looping in step passes); the merged plan (loop cells carried with their
+  `back`, holds inside regions, keys outside); a failing loop yields a refusal and no plan.
+- Save round trip via the serializer's encode/decode path, as far as it runs in node.
+
+Owed after tests: a browser and iPad pass on the arrow, ghosts, arrowhead drag, Loop button,
+the blocked-edit caption on repeat frames, onion inside a loop, and an export containing a loop.
+
+## Out of scope
+
+Absolute "jump to frame X" mode; a fixed repeat count ("loop 3 times"); ping-pong; loops on
+property tracks, groups or reference layers; a keyboard shortcut.
+
+## Docs
+
+README (Features bullet, test count), `docs/superpowers/CHANGELOG.md` entry, CLAUDE.md
+current-state paragraph and test count — in the same change.
+
+## Plan-time amendments (2026-09-10)
+
+Found while reading the code for the implementation plan
+(`docs/superpowers/plans/2026-09-10-loop-keys.md`). These supersede the sections above where they
+disagree.
+
+1. **Clear frame is allowed inside a loop's region, and refused on the loop key itself.** The
+   per-layer key tools (`insertKeyframe`, `insertBlankKeyframe`, `duplicateKeyframe`, `addFrame`,
+   `deleteFrame`, `setHold`, `moveKeyframe`) have **no UI callers**; the timeline's only
+   key-creating tool is Clear frame (◇). Blocking it would leave no way to end a trailing loop at a
+   chosen frame. Clearing a region frame creates a blank key there — creating a key, so it ends the
+   loop (your rule), without editing the replayed drawing. On the loop key it would silently delete
+   the loop, so it is refused with a status hint pointing at the Loop button.
+2. **There is no single-key move.** Keys move as timeline-selection blocks (`moveBlockFrames`),
+   which OVERWRITE their destination. A block dropped over the loop key replaces it, exactly as it
+   replaces any key there; the "drop onto the loop key is refused" rule is dropped. A block landing
+   elsewhere in the region ends the loop at its first key, as specified.
+3. The §3 frame-tool rows for F6/F7/Duplicate describe the pure ops (kept correct and tested), not UI.
+4. **Merge condition uses one replay step**, `loopSourceFrame(L, back, f)`, not the full recursive
+   `displayFrame(X, f)`. The merged layer replays one step at a time; by induction the earlier frame's
+   composite is already correct, so one step is both sufficient and exact (the recursive form is wrong
+   when a cycle contains another loop's region). A refusal surfaces through `whyNotMergeDown` → the
+   layer panel's Merge button is disabled with the reason in its title, like every other merge
+   refusal — not the canvas caption.
+5. Ghost spans are a separate array from the solid spans (no `ghost` field on `TimelineSpan`). A
+   ghost content span may have empty `keyFrames` (a replayed pass that starts on a held frame).
+6. A loop cell that a block move/paste lands on frame 0 becomes a hold (`normalizeLoopCell`): there
+   is nothing before frame 0 to repeat. This supersedes §2's "a move to frame 0 is refused"; the
+   change is undoable like any block op.
+7. Copying a block whose FIRST frame is the loop key copies the drawing on screen there (a key), not
+   the loop — the clipboard stays self-contained, since the loop's `back` would point outside the
+   copied block. A loop cell elsewhere in the copied block is copied as a loop. Block MOVE keeps a
+   leading loop as a loop (it moves in place with its cycle).

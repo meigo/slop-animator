@@ -2,7 +2,8 @@ import type { Cell } from "../anim/document";
 
 /**
  * Per-frame timeline glyphs for one cell track, computed in a single O(frames) forward pass:
- *   "◆" = keyframe with ink · "◇" = blank keyframe · "—" = hold continuing an inked key · "" = blank.
+ *   "◆" = keyframe with ink · "◇" = blank keyframe · "—" = hold continuing an inked key · "" = blank
+ *   · "↺" = loop key (its region is "", drawn as ghosts).
  *
  * Replaces a per-cell `resolveKeyframeIndex` backward scan (O(frames²) and, over a reactive
  * `$state` proxy, very expensive). Reads each cell once; `isEmpty` is called once per key cell.
@@ -21,6 +22,14 @@ export function computeTimelineGlyphs(
   let inkedKey = false; // the current resolved key has ink
   for (let f = 0; f < frameCount; f++) {
     const cell = f < cells.length ? cells[f] : undefined;
+    if (cell && cell.kind === "loop") {
+      // A loop ends the run before it; the frames it plays are drawn as ghosts
+      // (`computeLoopGhostSpans`), so the solid track is blank across them.
+      hasKey = true;
+      inkedKey = false;
+      out[f] = "↺";
+      continue;
+    }
     if (cell && cell.kind === "key") {
       hasKey = true;
       inkedKey = !isEmpty(cell.canvas);
@@ -62,6 +71,12 @@ export function resolveGlyphHolds(glyphs: string[]): string[] {
   let inkedKey = false;
   for (let f = 0; f < glyphs.length; f++) {
     const g = glyphs[f];
+    if (g === "↺") {
+      hasKey = true;
+      inkedKey = false;
+      out[f] = g;
+      continue;
+    }
     if (g === "◆" || g === "◇") {
       hasKey = true;
       inkedKey = g === "◆";

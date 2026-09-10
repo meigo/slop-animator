@@ -13,7 +13,7 @@
  * stroke, so it is rendered into the pixels; opacity is a byte in the layer record, which is what
  * lets the colourist keep re-tuning it.
  */
-import { resolvedKeyCell, type DrawingLayer, type Project } from "../anim/document";
+import { resolvedDisplayKeyCell, type DrawingLayer, type Project } from "../anim/document";
 import { drawLayerCell, renderFrame } from "../anim/render";
 import { boundsOfPixels } from "../lib/cell-ink";
 import { planPsdFrame } from "./psd-plan";
@@ -43,7 +43,7 @@ function drawLayerAlone(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.clearRect(0, 0, wDev, hDev);
-  const resolved = resolvedKeyCell(layer, frame);
+  const resolved = resolvedDisplayKeyCell(layer, frame);
   if (!resolved) return; // no key at or before this frame — nothing to draw, and no ink to find
   drawLayerCell(ctx, project, layer, resolved.cell, frame, dpr, 0);
 }

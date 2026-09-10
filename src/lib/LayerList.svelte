@@ -75,7 +75,7 @@
     groupTransform,
     isIdentityTransform,
     cellTransform,
-    resolvedKeyCell,
+    frameEditKeyCell,
     layerTransformTrack,
     layerOpacityTrack,
     opacityAt,
@@ -472,7 +472,7 @@
     // what is on screen — and Apply/Reset refuse on it anyway. The cell and group terms below are
     // unaffected: neither is driven by the track.
     if (!layerTransformTrack(layer) && !isIdentityTransform(layer.transform)) return true;
-    const rk = resolvedKeyCell(layer, appState.playhead);
+    const rk = frameEditKeyCell(layer, appState.playhead);
     if (rk && !isIdentityTransform(cellTransform(rk.cell))) return true;
     const g = groupOf(layer, appState.project.groups);
     // Same rule as the layer term above, one level out: an ANIMATED group's static transform is
@@ -488,7 +488,7 @@
     // Same reason as hasTransform: an animated layer's static transform is ignored, and Apply/Reset
     // refuse on it — so it must not win the scope dispatch and offer an action that no-ops.
     const layerNI = !layerTransformTrack(layer) && !isIdentityTransform(layer.transform);
-    const rk = resolvedKeyCell(layer, appState.playhead);
+    const rk = frameEditKeyCell(layer, appState.playhead);
     const cellNI = !!rk && !isIdentityTransform(cellTransform(rk.cell));
     const g = groupOf(layer, appState.project.groups);
     const groupNI = !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g)); // see hasTransform

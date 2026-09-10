@@ -38,7 +38,7 @@ export interface DrawingLayerJson {
   opacity: number;
   boilStrength: number;
   groupId: number | null;
-  cells: ("key" | "hold")[];
+  cells: ("key" | "hold" | "loop")[];
   transform: RefTransform;
   tracks?: LayerTracks;
   /** Are the layer's property rows folded away in the timeline? Optional and additive: absent =
@@ -54,6 +54,8 @@ export interface DrawingLayerJson {
       transformBox?: { x: number; y: number; w: number; h: number } | null;
     };
   };
+  /** Loop keys' `back`, by cell index. Optional and additive (format version unmoved): absent = no loops. */
+  loopBacks?: Record<string, number>;
 }
 
 export interface ReferenceJson {
@@ -244,6 +246,13 @@ export function projectToJson(project: Project): ProjectJson {
             : [],
         ),
       ),
+      ...(l.cells.some((c) => c.kind === "loop")
+        ? {
+            loopBacks: Object.fromEntries(
+              l.cells.flatMap((c, i) => (c.kind === "loop" ? [[i, c.back]] : [])),
+            ),
+          }
+        : {}),
     })),
     references: project.layers
       .map((l, index) => ({ l, index }))
@@ -570,6 +579,15 @@ export async function loadProjectBlob(
     maxId = Math.max(maxId, lj.id);
     const cells: Cell[] = [];
     for (let i = 0; i < lj.cells.length; i++) {
+      if (lj.cells[i] === "loop") {
+        // Clamp: `back` can only reach frames that exist before the loop. Frame 0 has none.
+        // A non-numeric loopBacks value (malformed save) falls back to 1 rather than NaN, which
+        // would survive the clamp and later crash displayFrame.
+        const raw = Number(lj.loopBacks?.[i]);
+        const back = Number.isFinite(raw) ? Math.min(i, Math.max(1, Math.floor(raw))) : 1;
+        cells.push(i === 0 ? { kind: "hold" } : { kind: "loop", back });
+        continue;
+      }
       if (lj.cells[i] === "hold") {
         cells.push({ kind: "hold" });
         continue;

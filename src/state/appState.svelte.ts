@@ -22,7 +22,7 @@ import {
   isLayerLocked,
   isLayerVisible,
   IDENTITY_TRANSFORM,
-  resolvedKeyCell,
+  frameEditKeyCell,
   transformAt,
   opacityAt,
   createTransformTrack,
@@ -777,7 +777,9 @@ export function duplicateLayer(id: number) {
               transform: c.transform ? { ...c.transform } : undefined, // keep per-cell transforms
               transformBox: c.transformBox ? { ...c.transformBox } : c.transformBox,
             }
-          : { kind: "hold" },
+          : c.kind === "loop"
+            ? { kind: "loop", back: c.back }
+            : { kind: "hold" },
     );
     layers.splice(idx + 1, 0, dup);
     setActiveLayer(dup.id);
@@ -847,7 +849,7 @@ export function applyCellTransform(layerId: number, frame: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (layer?.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   if (!layer || layer.kind !== "draw") return;
-  const rk = resolvedKeyCell(layer, frame);
+  const rk = frameEditKeyCell(layer, frame);
   if (!rk || !rk.cell.transform || isIdentityTransform(rk.cell.transform)) return;
   liftGuard.discard?.(); // bake replaces the cell canvas — a live lift would write to the detached one
   commitStructural(() => {
@@ -858,7 +860,7 @@ export function applyCellTransform(layerId: number, frame: number): void {
 export function resetCellTransform(layerId: number, frame: number): void {
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (!layer || !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
-  const rk = resolvedKeyCell(layer, frame);
+  const rk = frameEditKeyCell(layer, frame);
   if (!rk) return;
   const t = rk.cell.transform;
   if ((!t || isIdentityTransform(t)) && !rk.cell.transformBox) return;
@@ -1353,6 +1355,7 @@ export function mergeDown(id: number) {
     bakeLayerTransform(upper);
     bakeLayerTransform(below);
     below.cells = planMergeDown(below.cells, upper.cells).map((p): Cell => {
+      if (p.kind === "loop") return { kind: "loop", back: p.back };
       if (p.kind === "hold") return { kind: "hold" };
       const canvas = canvasOps.create();
       const ctx = canvas.getContext("2d")!;

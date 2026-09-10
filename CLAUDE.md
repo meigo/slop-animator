@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1139 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1226 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -194,6 +194,13 @@ affected-region tint; context-aware default reach); **transparent background** (
   layer / frame switch, layer visibility & lock, and before canvas-recreating ops / undo via `liftGuard`).
   A 2026-06-29 **multi-agent code review** fixed 8 undo/data-loss + lifecycle bugs (batches A/B/C). Test
   baseline ~**280**. See `undo-snapshot-and-lift-lifecycle-invariants` memory for the two hardened invariants.
+
+Shipped 2026-09-10: **Loop keys** — a Moho-style loop cell replays the frames before it until the
+next key (blank key, another loop, or document end), shown on the timeline as a red back-arrow
+with ghosted repeats, a Loop toolbar button, and a draggable arrowhead to resize the cycle. Frames
+a loop plays are read-only on the canvas (draw/erase/fill/lift tools blocked, captioned with the
+source frame); property tracks (transform/opacity) play straight through the remap. See the
+2026-09-10 changelog entry for the save-format and merge-down details.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

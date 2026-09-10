@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { unzipSync, strFromU8 } from "fflate";
+import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
 import {
   setMinLayerId,
   createDrawingLayer,
@@ -769,5 +769,46 @@ describe("track box sanitisation", () => {
     project.layers[0].tracks = trackWith({ x: 0, y: 0 }) as never;
     const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
     expect(loaded.layers[0].tracks?.transform?.box).toBeNull();
+  });
+});
+
+describe("loop keys", () => {
+  const loop = (back: number): Cell => ({ kind: "loop", back });
+  it("serializes the loop literal and a sparse loopBacks map", () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold(), loop(2), hold()];
+    const lj = projectToJson(project).layers[0];
+    expect(lj.cells).toEqual(["hold", "hold", "loop", "hold"]);
+    expect(lj.loopBacks).toEqual({ 2: 2 });
+  });
+  it("omits loopBacks when a layer has no loops", () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold()];
+    expect(projectToJson(project).layers[0].loopBacks).toBeUndefined();
+  });
+  it("round-trips, clamping back and turning a frame-0 loop into a hold", async () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [loop(1), hold(), loop(9), hold()];
+    project.frameCount = 4;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect((loaded.layers[0] as DrawingLayer).cells).toEqual([
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "loop", back: 2 },
+      { kind: "hold" },
+    ]);
+  });
+  it("a non-numeric loopBacks value falls back to 1 instead of crashing on NaN", async () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold(), loop(2), hold()];
+    project.frameCount = 4;
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    json.layers[0].loopBacks = { 2: "x" };
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    const corrupted = new Blob([zipSync(zip)], { type: "application/zip" });
+    const loaded = await loadProjectBlob(corrupted, 1);
+    expect((loaded.layers[0] as DrawingLayer).cells[2]).toEqual({ kind: "loop", back: 1 });
   });
 });
