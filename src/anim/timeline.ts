@@ -71,6 +71,28 @@ export function normalizeLoopCell(cell: Cell, frame: number): Cell {
   return cell.back > frame ? { kind: "loop", back: frame } : cell;
 }
 
+/** Put a loop key at `frame`, replacing a hold (or padding past the layer's end). Never replaces a
+ *  key (its drawing would be lost) and never at frame 0 (nothing to repeat). `back` clamped to 1..frame. */
+export function setLoop(layer: DrawingLayer, frame: number, back: number): void {
+  if (frame < 1) return;
+  if (frame < layer.cells.length && layer.cells[frame].kind === "key") return;
+  while (layer.cells.length <= frame) layer.cells.push({ kind: "hold" });
+  layer.cells[frame] = { kind: "loop", back: Math.max(1, Math.min(frame, Math.floor(back))) };
+}
+
+/** Turn the loop key at `frame` back into a hold. */
+export function removeLoop(layer: DrawingLayer, frame: number): void {
+  if (layer.cells[frame]?.kind === "loop") layer.cells[frame] = { kind: "hold" };
+}
+
+/** Set a loop key's `back` (clamped to 1..frame). Replaces the cell (gotcha #8). */
+export function setLoopBack(layer: DrawingLayer, frame: number, back: number): void {
+  const c = layer.cells[frame];
+  if (c?.kind !== "loop") return;
+  const b = Math.max(1, Math.min(frame, Math.floor(back)));
+  if (b !== c.back) layer.cells[frame] = { kind: "loop", back: b };
+}
+
 /** Insert a hold AFTER `after` on this layer, extending the current held span by one frame. */
 export function addFrame(layer: DrawingLayer, after: number): void {
   const at = clampIndex(layer, after);
