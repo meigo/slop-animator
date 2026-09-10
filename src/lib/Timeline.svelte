@@ -21,6 +21,7 @@
     Blend,
     Group,
     CircleStop,
+    Repeat,
   } from "@lucide/svelte";
   import {
     buildSegments,
@@ -80,6 +81,9 @@
     setHoldSpan,
     holdSpanEnd,
     shiftLayerTrackKeys,
+    setLoop,
+    removeLoop,
+    setLoopBack,
   } from "../anim/timeline";
   import {
     flingVelocity,
@@ -110,6 +114,8 @@
     refVisibleSpan,
     withMovedKey,
     withMovedTransformKey,
+    loopRegions,
+    type LoopRegion,
     type KeyInterp,
     type DrawingLayer,
     type Layer,
@@ -145,6 +151,7 @@
   import { isCellEmpty } from "./cell-ink";
   import { computeTimelineGlyphs, resolveGlyphHolds } from "./timeline-glyphs";
   import { computeTimelineSpans, type TimelineSpan } from "./timeline-spans";
+  import { computeLoopGhostSpans, defaultLoopBack, loopButtonState } from "./timeline-loops";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
@@ -249,6 +256,26 @@
     const spans = computeTimelineSpans(glyphsFor(layer, version));
     spanCache.set(layer.id, { version, frameCount, spans });
     return spans;
+  }
+
+  // Loop regions + their ghost spans, memoized exactly like `spanCache` (same stale-id caveat, same
+  // reason it is safe). A loop edit bumps `version`, so an arrowhead drag re-reads every step.
+  const loopCache = new Map<
+    number,
+    { version: number; frameCount: number; regions: LoopRegion[]; ghosts: TimelineSpan[] }
+  >();
+  function loopsFor(layer: DrawingLayer, version: number) {
+    const frameCount = appState.project.frameCount;
+    const hit = loopCache.get(layer.id);
+    if (hit && hit.version === version && hit.frameCount === frameCount) return hit;
+    const entry = {
+      version,
+      frameCount,
+      regions: loopRegions(layer.cells, frameCount),
+      ghosts: computeLoopGhostSpans(layer.cells, glyphsFor(layer, version), frameCount),
+    };
+    loopCache.set(layer.id, entry);
+    return entry;
   }
 
   /** Spans as CURRENTLY DISPLAYED: identical to `spansFor` except while a block drag is previewing
@@ -1609,7 +1636,59 @@
     startEdgeScroll((x, y) => rowMoveAt(x, y, layer), "row");
   }
 
+  // Arrowhead drag: sets a loop's `back` live, one undo step per gesture, nothing for a tap.
+  // Pen/mouse only, like every other edit gesture on a row (fingers pan the timeline).
+  let loopDrag: {
+    layerId: number;
+    frame: number;
+    startBack: number;
+    back: number;
+    undo: ReturnType<typeof beginStructuralEdit>;
+  } | null = $state(null);
+
+  function loopHandleDown(e: PointerEvent, layer: DrawingLayer, r: LoopRegion) {
+    e.stopPropagation(); // the row's own handlers must not also start a gesture (gotcha #12)
+    if (!isFinePointer(e) || !isLayerEditable(layer, appState.project.groups)) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    liftGuard.discard?.();
+    loopDrag = {
+      layerId: layer.id,
+      frame: r.frame,
+      startBack: r.back,
+      back: r.back,
+      undo: beginStructuralEdit(),
+    };
+    transformDragGuard.settle = settleLoopDrag;
+  }
+  function loopHandleMove(e: PointerEvent, layer: DrawingLayer) {
+    e.stopPropagation();
+    if (!loopDrag || loopDrag.layerId !== layer.id) return;
+    const row = (e.currentTarget as HTMLElement).parentElement!;
+    const col = columnAtX(
+      e.clientX - row.getBoundingClientRect().left,
+      CELL_W,
+      appState.project.frameCount,
+    );
+    const back = Math.max(1, Math.min(loopDrag.frame, loopDrag.frame - col));
+    if (back === loopDrag.back) return;
+    setLoopBack(layer, loopDrag.frame, back);
+    loopDrag.back = back;
+    bump();
+  }
+  function loopHandleUp(e: PointerEvent) {
+    e.stopPropagation();
+    settleLoopDrag();
+  }
+  function settleLoopDrag() {
+    if (!loopDrag) return;
+    if (loopDrag.back !== loopDrag.startBack) commitStructuralEdit(loopDrag.undo);
+    else revertStructural(loopDrag.undo);
+    loopDrag = null;
+    if (transformDragGuard.settle === settleLoopDrag) transformDragGuard.settle = null;
+  }
+
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
+    if ((e.target as HTMLElement).closest("[data-loop-handle]")) return; // the loop arrowhead owns it
     dragRowEl = e.currentTarget as HTMLElement;
     edgePointerX = e.clientX;
     edgePointerY = e.clientY;
@@ -1890,6 +1969,14 @@
   function clearFrame() {
     const l = activeLayer();
     if (!isLayerEditable(l, appState.project.groups)) return;
+    // On the loop key itself, clearing would replace the loop cell and silently delete the loop.
+    // Elsewhere in a loop's region, Clear is how you END a loop at a chosen frame: it creates a blank
+    // key there (spec amendment 1).
+    if (l.cells[appState.playhead]?.kind === "loop") {
+      appState.statusHint =
+        "Clear frame — this is the loop key; remove the loop with the Loop button";
+      return;
+    }
     // Already blank? Do nothing at all — no keyframe materialised out of a hold, no undo entry.
     // Without this, clearing an already-empty frame kept stacking meaningless ◇ boundaries and
     // undo steps. A hold over an INKED key is not caught by this: clearing there ends the run.
@@ -1924,6 +2011,29 @@
       ),
     );
     bump();
+  }
+
+  const loopBtn = $derived.by(() => {
+    const id = drawingRowLayerId();
+    const l = id == null ? undefined : appState.project.layers.find((x) => x.id === id);
+    return loopButtonState(
+      l?.kind === "draw" ? l.cells : null,
+      appState.playhead,
+      !!l && isLayerEditable(l, appState.project.groups),
+    );
+  });
+  function toggleLoop() {
+    const id = drawingRowLayerId();
+    const l = id == null ? undefined : appState.project.layers.find((x) => x.id === id);
+    const action = loopBtn.action; // read once: the derived must not change under the commit
+    if (l?.kind !== "draw" || !action) return;
+    const f = appState.playhead;
+    const back = defaultLoopBack(spansFor(l, appState.version), f);
+    liftGuard.discard?.(); // splices/replaces cells; a live lift would target a stale track
+    commitStructural(() => {
+      if (action === "remove") removeLoop(l, f);
+      else setLoop(l, f, back);
+    });
   }
 
   const toolBtn =
@@ -2016,6 +2126,12 @@
         if (!drawingRowSelected) return;
         clearFrame();
       }}><Diamond size={16} /></button
+    >
+    <button
+      class={`${toolBtn} aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent`}
+      aria-disabled={loopBtn.action === null}
+      title={loopBtn.title}
+      onclick={toggleLoop}><Repeat size={16} /></button
     >
     {#if !selRect}
       <button class={toolBtn} title="Delete frame (all layers)" onclick={deleteTool}
@@ -3106,7 +3222,7 @@
                    tints the lane and the span alike, which is what "these frames are selected"
                    should look like. Per-frame because a marquee selects frames, not spans — a block
                    can start and end mid-run. -->
-              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
+              {#snippet spanMarks(s: TimelineSpan, ghost: boolean)}
                 {#if s.blank}
                   <!-- A blank keyframe: the frame where the ink STOPS. It gets the hollow diamond,
                        drawn on its own frame in the empty lane and with no fill behind it — a ◇
@@ -3120,11 +3236,13 @@
                        of the document. One hollow diamond, on the frame that owns the meaning. -->
                   <span
                     class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
+                    class:opacity-35={ghost}
                     style="left: {s.startFrame * CELL_W + CELL_W / 2}px"
                   ></span>
                 {:else}
                   <div
                     class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
+                    class:opacity-35={ghost}
                     style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
                       s.startFrame +
                       1) *
@@ -3155,6 +3273,53 @@
                       ></span>
                     {/each}
                   </div>
+                {/if}
+              {/snippet}
+              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
+                {@render spanMarks(s, false)}
+              {/each}
+              <!-- A loop's repeats, ghosted: what the loop plays, up to the key that ends it — so where a loop
+                   stops is visible without scrubbing. Not interactive: pointer events fall through to the row,
+                   where a press on a ghost seeks like an empty frame. -->
+              {#each loopsFor(layer, appState.version).ghosts as s (s.startFrame)}
+                {@render spanMarks(s, true)}
+              {/each}
+              <!-- Loop keys: a red back-arrow along the row's top edge from the loop key to the first frame it
+                   replays (Moho's cycle arrow), and a red loop mark on the key itself. The arrowhead is the handle
+                   for `back`. z-[11]/[12]: above the selection wash (z-10), below the sticky gutter (z-20). -->
+              {#each loopsFor(layer, appState.version).regions as r (r.frame)}
+                {@const tipX = (r.frame - r.back) * CELL_W}
+                {@const tailX = r.frame * CELL_W + CELL_W / 2}
+                <span
+                  class="pointer-events-none absolute top-[4px] z-11 h-px bg-danger"
+                  style="left: {tipX + 4}px; width: {tailX - tipX - 4}px"
+                ></span>
+                <span
+                  class="pointer-events-none absolute top-px z-11 size-0 border-y-[3px] border-r-[5px] border-y-transparent border-r-danger"
+                  style="left: {tipX}px"
+                ></span>
+                <span
+                  class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rounded-sm bg-surface text-danger"
+                  style="left: {tailX}px"><Repeat size={12} /></span
+                >
+                <span
+                  data-loop-handle
+                  class="absolute inset-y-0 z-12 w-3 cursor-ew-resize"
+                  style="left: {tipX - 6}px; touch-action: none"
+                  role="slider"
+                  tabindex="-1"
+                  aria-label="Loop length"
+                  aria-valuenow={r.back}
+                  onpointerdown={(e) => loopHandleDown(e, layer, r)}
+                  onpointermove={(e) => loopHandleMove(e, layer)}
+                  onpointerup={(e) => loopHandleUp(e)}
+                  onpointercancel={(e) => loopHandleUp(e)}
+                ></span>
+                {#if loopDrag && loopDrag.layerId === layer.id && loopDrag.frame === r.frame}
+                  <span
+                    class="pointer-events-none absolute top-0 z-12 rounded-sm bg-danger px-1 text-[10px]/[14px] text-accent-text"
+                    style="left: {tipX + 6}px">↺ {r.back}</span
+                  >
                 {/if}
               {/each}
               {#each Array(appState.project.frameCount) as _, f (f)}
