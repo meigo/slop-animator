@@ -15,6 +15,14 @@ function ghostOpacity(distance: number, count: number): number {
 /**
  * Which neighbour frames to ghost for `current`, in draw order (farthest first so the
  * nearest ghost paints on top). Out-of-range neighbours are dropped.
+ *
+ * `bounds` is the PLAY RANGE, passed when one is set. Loop off (`wrap: false`): the range plays
+ * once, so ghosts are CONFINED to it — frames outside it are not part of what is being animated.
+ * Loop on (`wrap: true`): ghosts wrap across the seam exactly as playback does, so at the in-point
+ * the previous drawings are the END of the range and at the out-point the next ones are its START.
+ * That seam is where a cycle has to match, and it is the one place the plain onion could never show.
+ * Blender's Grease Pencil ships the same idea as its onion "Loop" option.
+ * A `current` outside the range ignores it: working outside the range is not working on the cycle.
  */
 export function computeOnionFrames(
   current: number,
@@ -22,38 +30,78 @@ export function computeOnionFrames(
   prevCount: number,
   nextCount: number,
   keyframes?: number[],
+  bounds?: { start: number; end: number; wrap: boolean },
 ): OnionFrame[] {
-  const result: OnionFrame[] = [];
+  const inRange = !!bounds && current >= bounds.start && current <= bounds.end;
+  const lo = inRange ? bounds!.start : 0;
+  const hi = inRange ? bounds!.end : frameCount - 1;
+  const wrap = inRange && bounds!.wrap;
 
+  // Candidate neighbours on each side, NEAREST FIRST.
+  let prevSeq: number[];
+  let nextSeq: number[];
   if (keyframes) {
     // Keyframe mode: step to the neighbouring DRAWINGS instead of neighbouring frames, so holds
     // don't burn an onion slot. A key exactly at `current` is not its own neighbour; from a hold,
     // the nearest "prev" is the key it holds (the last key strictly before `current`).
-    const before = keyframes.filter((f) => f < current).sort((a, b) => a - b);
-    const after = keyframes.filter((f) => f > current).sort((a, b) => a - b);
-    for (let d = prevCount; d >= 1; d--) {
-      const frame = before[before.length - d];
-      if (frame === undefined) continue;
-      result.push({ frame, kind: "prev", opacity: ghostOpacity(d, prevCount) });
+    const keys = [...new Set(keyframes)].filter((f) => f >= lo && f <= hi).sort((a, b) => a - b);
+    const before = keys.filter((f) => f < current);
+    const after = keys.filter((f) => f > current);
+    prevSeq = [...before].reverse();
+    nextSeq = after;
+    if (wrap) {
+      prevSeq = prevSeq.concat([...after].reverse());
+      nextSeq = nextSeq.concat(before);
     }
-    for (let d = nextCount; d >= 1; d--) {
-      const frame = after[d - 1];
-      if (frame === undefined) continue;
-      result.push({ frame, kind: "next", opacity: ghostOpacity(d, nextCount) });
+  } else {
+    const len = hi - lo + 1;
+    const cyc = (f: number) => lo + ((((f - lo) % len) + len) % len);
+    prevSeq = [];
+    nextSeq = [];
+    for (let d = 1; d <= prevCount; d++) {
+      const f = current - d;
+      if (f >= lo) prevSeq.push(f);
+      else if (wrap) prevSeq.push(cyc(f));
+      else break;
     }
-    return result;
+    for (let d = 1; d <= nextCount; d++) {
+      const f = current + d;
+      if (f <= hi) nextSeq.push(f);
+      else if (wrap) nextSeq.push(cyc(f));
+      else break;
+    }
   }
 
-  for (let d = prevCount; d >= 1; d--) {
-    const frame = current - d;
-    if (frame < 0) continue;
-    result.push({ frame, kind: "prev", opacity: ghostOpacity(d, prevCount) });
+  // Take up to `count` per side, alternating nearest-first, never the current frame and never a
+  // frame twice. Only reachable when WRAPPING a range shorter than the ghost counts (unwrapped, the
+  // two sides are disjoint), where it would otherwise ghost one drawing as both prev and next — or
+  // the frame you are on. A side stops at its first miss, so its step distances stay contiguous and
+  // the fade below still means "this many steps away".
+  const used = new Set([current]);
+  const prev: number[] = [];
+  const next: number[] = [];
+  for (let d = 0; d < Math.max(prevCount, nextCount); d++) {
+    if (d < prevCount && prev.length === d) {
+      const f = prevSeq[d];
+      if (f !== undefined && !used.has(f)) {
+        used.add(f);
+        prev.push(f);
+      }
+    }
+    if (d < nextCount && next.length === d) {
+      const f = nextSeq[d];
+      if (f !== undefined && !used.has(f)) {
+        used.add(f);
+        next.push(f);
+      }
+    }
   }
-  for (let d = nextCount; d >= 1; d--) {
-    const frame = current + d;
-    if (frame > frameCount - 1) continue;
-    result.push({ frame, kind: "next", opacity: ghostOpacity(d, nextCount) });
-  }
+
+  const result: OnionFrame[] = [];
+  for (let i = prev.length - 1; i >= 0; i--)
+    result.push({ frame: prev[i], kind: "prev", opacity: ghostOpacity(i + 1, prevCount) });
+  for (let i = next.length - 1; i >= 0; i--)
+    result.push({ frame: next[i], kind: "next", opacity: ghostOpacity(i + 1, nextCount) });
   return result;
 }
 
@@ -181,6 +229,9 @@ export function renderFrameWithOnion(
   activeLayerId: number,
   version = 0,
   outputScale = 1,
+  /** The play range — see `computeOnionFrames`. A separate argument rather than a field on
+   *  `OnionConfig`, because that is onion SETTINGS and the range is session playback state. */
+  bounds?: { start: number; end: number; wrap: boolean },
 ): void {
   const w = project.width * dpr;
   const h = project.height * dpr;
@@ -213,6 +264,7 @@ export function renderFrameWithOnion(
     onion.prev,
     onion.next,
     keyframes,
+    bounds,
   )) {
     const tint = g.kind === "prev" ? onion.tintPrev : onion.tintNext;
     drawGhost(

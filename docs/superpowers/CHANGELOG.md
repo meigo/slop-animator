@@ -5502,3 +5502,35 @@ release. This was the `resolveGlyphHolds` fix from 2026-09-09 and, before it, th
 forward as unwatched since the Flash-timeline merge — a scripted drag always landed on key-move or
 resize instead of a block move, so until now its only evidence was a test. Nothing owed remains from
 the 2026-09-09/10 work.
+
+**Onion skins respect the play range, and wrap across the loop seam (2026-09-10).** Asked as *"is there
+such practice that when playback range is defined then onion skin would work between in/out frame as
+well?"* — yes: Blender's Grease Pencil ships it as the onion "Loop" option, for cycles.
+
+| | onion ghosts |
+| --- | --- |
+| no range | unchanged |
+| range, loop off | confined to the range — frames outside it are not what is being animated |
+| range, loop on | confined AND wrapped: at the in-point the previous ghosts come from the range's end, at the out-point the next ones from its start |
+
+Wrapping only with loop on, deliberately: a range that plays once has no seam. A current frame OUTSIDE
+the range ignores it. Keyframe-step mode confines and wraps over the range's keys, so holds still don't
+burn a ghost.
+
+`computeOnionFrames` gains `bounds`; six tests, the five new behaviours written first and watched fail
+(the sixth guards today's behaviour for a frame outside the range). A range shorter than the ghost
+counts would reach the same frame from both sides, or the current frame — nearest wins, alternating
+sides, nothing ghosted twice. `renderFrameWithOnion` takes the range as its own argument rather than a
+field on `OnionConfig`: that object is onion SETTINGS, the range is session playback state.
+
+**The part that took proving: nothing redrew when the range or loop changed.** The canvas renders from
+a rAF loop that re-checks only size, `version` and the playhead; a range edit or loop toggle changes
+none of them, so the ghosts stayed stale. Proven on the UNFIXED code by hashing the canvas: identical
+before and after a real loop-button click (`2558040401` both), different after a forced repaint. Fixed
+in that loop's own change check — the range by object IDENTITY (every writer replaces it, so it is exact
+and allocation-free) and the loop flag, only while onion is on. Re-proven after: a loop-off click
+redraws; a loop-on click restores the exact wrapped frame (same hash as the first); a range edit alone
+redraws. The first two attempts at this test were invalid — a synchronous script cannot see a
+rAF-driven render, and every inked key on the test layer was the same drawing, so a ghost of one under
+another is invisible. What worked: batched browser steps with real frames between them, and a scene
+whose current key is blank.

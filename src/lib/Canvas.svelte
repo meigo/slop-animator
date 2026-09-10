@@ -13,6 +13,7 @@
   } from "../core/fill";
   import { drawCellComposed, renderFrame } from "../anim/render";
   import { renderFrameWithOnion } from "../anim/onion";
+  import { effectiveRange } from "../anim/playback";
   import { ensureDrawableKeyframe, restoreCellTrack, type CellTrackChange } from "../anim/timeline";
   import {
     state as appState,
@@ -445,6 +446,14 @@
         appState.activeLayerId,
         appState.version,
         ss,
+        // The play range confines the ghosts to it, and wraps them across the seam when looping —
+        // so a cycle's last drawing shows while you draw its first. See `computeOnionFrames`.
+        appState.playback.range
+          ? {
+              ...effectiveRange(appState.playback.range, appState.project.frameCount),
+              wrap: appState.playback.loop,
+            }
+          : undefined,
       );
     } else {
       // Line boil is a playback-only effect (so you never see your drawing warped while editing).
@@ -1991,10 +2000,24 @@
     let lastLayerId = appState.activeLayerId;
     let lastW = appState.project.width;
     let lastH = appState.project.height;
+    // The play range and the loop flag shape the onion ghosts (confined to the range, wrapped across
+    // its seam when looping — `computeOnionFrames`) but bump neither `version` nor the playhead, so
+    // this loop never noticed them: after an In/Out press, a handle drag, Clear, or the loop toggle,
+    // the ghosts stayed stale until something else redrew. Proven 2026-09-10 by hashing the canvas —
+    // identical before and after a real loop-button click, different after a forced repaint.
+    // IDENTITY on the range: every writer replaces the object (`withRangeIn/Out`, `withRangeEdgeAt`,
+    // clear → null), so this is exact and allocation-free on an idle frame. Only while onion is on —
+    // otherwise the range changes nothing on the canvas, and a handle drag would recomposite per step.
+    let lastRange = appState.playback.range;
+    let lastLoop = appState.playback.loop;
     const tick = () => {
       const dimsChanged = appState.project.width !== lastW || appState.project.height !== lastH;
       const changed =
-        dimsChanged || appState.version !== lastVersion || appState.playhead !== lastPlayhead;
+        dimsChanged ||
+        appState.version !== lastVersion ||
+        appState.playhead !== lastPlayhead ||
+        (appState.onion.enabled &&
+          (appState.playback.range !== lastRange || appState.playback.loop !== lastLoop));
       // setActiveLayer only bumps the version in single-layer onion mode, so a layer switch needs
       // its own check — a stale chain would clip/clear the wrong region on the new layer.
       const layerChanged = appState.activeLayerId !== lastLayerId;
@@ -2013,6 +2036,8 @@
       if (changed) {
         lastVersion = appState.version;
         lastPlayhead = appState.playhead;
+        lastRange = appState.playback.range;
+        lastLoop = appState.playback.loop;
         syncReferenceVideos(
           appState.project,
           appState.playhead,
