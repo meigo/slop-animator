@@ -212,3 +212,40 @@ function ownerRow(layer: Layer, groups: LayerGroup[]): ActiveRow {
   if (g?.collapsed) return { kind: "group", id: g.id };
   return { kind: "layer", id: layer.id };
 }
+
+/** Where a NEW layer goes: directly above the selected row, as its sibling — the convention
+ *  Photoshop, Procreate, Krita, Clip Studio and Animate share.
+ *
+ *  - a group MEMBER (or its track) → inside that group, just above the member
+ *  - the GROUP ROW (or its track) → at root, just above the group's topmost member
+ *  - a root layer → at root, just above it
+ *  - nothing to anchor to (audio lane, an unknown id, an EMPTY group) → top of the stack
+ *
+ *  Asked through `workingTarget` rather than `activeLayerId`, and that is the fix: placement used to
+ *  read `activeLayerId`, which a selected group row keeps as a remembered ANCHOR (see
+ *  `targetLayerId`). So with a single group, no selection could produce a root layer — the group row
+ *  still pointed into the group. A group row is a sibling of the root layers, so "above the
+ *  selection" lands at root without any special case.
+ *
+ *  An empty group has no members and therefore no position in the stack: `buildSegments` derives
+ *  groups from their members, so it cannot even be shown or selected in the panel. Falling back to
+ *  the top is the only answer that exists.
+ *
+ *  Every slot keeps each group's members one contiguous run (tested exhaustively), which matters
+ *  because `buildSegments` would otherwise render a split group as two headers. `layers` is data
+ *  order, bottom → top, so "above" is `index + 1`. */
+export function newLayerSlot(
+  row: ActiveRow,
+  layers: { id: number; groupId?: number | null }[],
+): { index: number; groupId: number | null } {
+  const wt = workingTarget(row);
+  if (wt.kind === "layer") {
+    const i = layers.findIndex((l) => l.id === wt.id);
+    if (i >= 0) return { index: i + 1, groupId: layers[i].groupId ?? null };
+  } else if (wt.kind === "group") {
+    let top = -1;
+    for (let i = 0; i < layers.length; i++) if (layers[i].groupId === wt.id) top = i;
+    if (top >= 0) return { index: top + 1, groupId: null };
+  }
+  return { index: layers.length, groupId: null };
+}
