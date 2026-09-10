@@ -5495,3 +5495,10 @@ took the press and the ruler did not scrub. The store import was round-trip-chec
 
 **iPad verification, 2026-09-10: draggable play-range markers — PASSED.** Dragging a marker with the
 Pencil moves it on the device, closing the one item the entry above left owed.
+
+**iPad verification, 2026-09-10: the rightward block-drag preview — PASSED.** Dragging a block of
+frames right with the Pencil now shows the span following the key during the drag, not only on
+release. This was the `resolveGlyphHolds` fix from 2026-09-09 and, before it, the one path carried
+forward as unwatched since the Flash-timeline merge — a scripted drag always landed on key-move or
+resize instead of a block move, so until now its only evidence was a test. Nothing owed remains from
+the 2026-09-09/10 work.
