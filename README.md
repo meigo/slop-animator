@@ -44,7 +44,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - A hold continues until a **blank key** (◇). Running out of cells on a layer
   does not stop it — Clear is how a drawing ends
 - **Loop keys** — a Moho-style loop key replays the drawings before it until the next key; shown
-  as a red back-arrow with ghosted repeats, drag the arrowhead to set the cycle
+  as a teal back-arrow with ghosted repeats, drag the arrowhead to set the cycle
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost). With a play range set they stay inside it, and when looping they wrap across the seam — so a cycle's last drawing shows while you draw its first
 - WebGL **line boil** (that hand-drawn wobble on held frames)
 - Layers with visual groups (collapse, visibility, lock, drag-reorder) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere

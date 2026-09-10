@@ -98,6 +98,10 @@
      colour blindnesses. It does: the playhead's tip is a SYMMETRIC triangle, the in/out markers'
      are right-angled wedges pointing into the range. */
   --color-danger: #f87171;
+  /* Loop keys' cycle arrow and mark (Timeline). Deliberately NOT danger: the playhead is that red and
+     crosses the arrow, and gold (`warn`) is the play-range markers. Teal is the one hue the timeline
+     does not already use for something else. */
+  --color-loop: #2dd4bf;
 }
 
 /* Native controls (checkbox, number spinners, the color swatch, scrollbars) are drawn by the
