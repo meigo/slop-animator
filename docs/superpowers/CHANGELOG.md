@@ -5404,3 +5404,44 @@ inside a render, and it keeps the `keyFrames` invariant true.
 **Not browser-verified**, and this is the same path that has resisted verification all day: a scripted
 drag lands on key-move or resize instead of a block move, so the preview cannot be exercised from the
 harness. The evidence here is the failing-then-passing test at the exact reported glyph array.
+
+**New layers go directly above the selected row (2026-09-10).** Asked as *"when there's a single
+group in layer list, there's no way to create a new layer to the root — it's created under the group
+and you have to drag it out… is there any conventions?"*
+
+**Root cause.** `addLayerToProject` read `activeLayerId`, and a selected GROUP ROW keeps
+`activeLayerId` pointing at a member as a remembered anchor (see `targetLayerId` in `active-row.ts`,
+whose own comment says a group row's layer-scoped target is `null`). So selecting the group row still
+aimed into the group, and with a single group no selection could produce a root layer.
+
+**The convention** (Photoshop, Procreate, Krita, Clip Studio, Animate) is one rule: a new layer goes
+directly above the selected row, as its SIBLING. A group row is a sibling of the root layers, so the
+escape hatch is not a special case:
+
+| selected row | new layer lands |
+| --- | --- |
+| a group member (or its track) | inside the group, just above the member — unchanged |
+| the group row (or its track) | at root, just above the group — the missing case |
+| a root layer | at root, just above IT — was: top of the whole stack |
+| audio lane / unknown / empty group | top of the stack |
+
+`newLayerSlot(row, layers)` in `active-row.ts`, asked through `workingTarget` like every other row
+question. Six tests written first and watched fail, including an exhaustive one: whatever is
+selected, inserting at the slot leaves every group's members ONE contiguous run — otherwise
+`buildSegments` would render a split group as two headers. An empty group has no members and so no
+stack position (`buildSegments` cannot even show it), which is why it falls back to the top. The rule
+applies to every caller: Add layer, image/video import, and pasted image references.
+
+**Verified in the running app, against the real Add-layer button** on a project with two groups:
+Group 1's row → ROOT, landing between Group 2 and Group 1 with both groups still contiguous; Group 2's
+row → ROOT at the top of the stack; member Layer 2 → inside Group 1 directly above it; root reference
+→ ROOT directly above it. Each probe undone; the project compared identical afterwards.
+
+**Harness note, with an apology built in.** The first probe imported
+`/src/state/appState.svelte.ts` from the console — and the mounted app was running
+`appState.svelte.ts?t=1789020881431`. Two instances: setup calls changed a detached copy while the
+real button clicks hit the real store, so **two probe layers were added to the local dev autosave**.
+Identified by id (the two newest, adjacent, active), removed with two `undo()`s, verified gone. This is
+the third detached-store trap and the first on a FRESH load. The reliable recipe: find the URL the page
+actually uses, `performance.getEntriesByType('resource')` filtered on `appState.svelte`, and import
+exactly that.

@@ -91,6 +91,7 @@ import {
   targetLayerId,
   workingTarget,
   type ActiveRow,
+  newLayerSlot,
 } from "../anim/active-row";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
@@ -607,18 +608,16 @@ export function commitStructural(mutate: () => void): void {
   commitStructuralEdit(before);
 }
 
-/** Append a layer (drawing or reference) on top and make it active. */
+/** Add a layer (drawing or reference) directly above the selected ROW, as its sibling, and make
+ *  it active. The placement rule and its reasoning live in `newLayerSlot`. */
 export function addLayerToProject(layer: Layer) {
   commitStructural(() => {
-    const active = state.project.layers.find((l) => l.id === state.activeLayerId);
-    if (active && active.groupId != null) {
-      // Active layer is in a group → the new layer joins that group, inserted just above the active
-      // one (keeps the group's contiguous run intact).
-      layer.groupId = active.groupId;
-      state.project.layers.splice(state.project.layers.indexOf(active) + 1, 0, layer);
-    } else {
-      state.project.layers.push(layer); // ungrouped → top of the stack (existing behavior)
-    }
+    // The ROW, not `activeLayerId`: a selected group row keeps `activeLayerId` pointing at a member
+    // as a remembered anchor, so reading it put every new layer inside the group — with a single
+    // group there was no way to get one at root.
+    const slot = newLayerSlot(state.activeRow, state.project.layers);
+    layer.groupId = slot.groupId;
+    state.project.layers.splice(slot.index, 0, layer);
     setActiveLayer(layer.id);
   });
 }
