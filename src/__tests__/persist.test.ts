@@ -771,3 +771,31 @@ describe("track box sanitisation", () => {
     expect(loaded.layers[0].tracks?.transform?.box).toBeNull();
   });
 });
+
+describe("loop keys", () => {
+  const loop = (back: number): Cell => ({ kind: "loop", back });
+  it("serializes the loop literal and a sparse loopBacks map", () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold(), loop(2), hold()];
+    const lj = projectToJson(project).layers[0];
+    expect(lj.cells).toEqual(["hold", "hold", "loop", "hold"]);
+    expect(lj.loopBacks).toEqual({ 2: 2 });
+  });
+  it("omits loopBacks when a layer has no loops", () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [hold(), hold()];
+    expect(projectToJson(project).layers[0].loopBacks).toBeUndefined();
+  });
+  it("round-trips, clamping back and turning a frame-0 loop into a hold", async () => {
+    const project = createProject();
+    (project.layers[0] as DrawingLayer).cells = [loop(1), hold(), loop(9), hold()];
+    project.frameCount = 4;
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect((loaded.layers[0] as DrawingLayer).cells).toEqual([
+      { kind: "hold" },
+      { kind: "hold" },
+      { kind: "loop", back: 2 },
+      { kind: "hold" },
+    ]);
+  });
+});
