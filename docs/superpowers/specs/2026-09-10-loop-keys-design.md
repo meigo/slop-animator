@@ -274,3 +274,30 @@ property tracks, groups or reference layers; a keyboard shortcut.
 
 README (Features bullet, test count), `docs/superpowers/CHANGELOG.md` entry, CLAUDE.md
 current-state paragraph and test count — in the same change.
+
+## Plan-time amendments (2026-09-10)
+
+Found while reading the code for the implementation plan
+(`docs/superpowers/plans/2026-09-10-loop-keys.md`). These supersede the sections above where they
+disagree.
+
+1. **Clear frame is allowed inside a loop's region, and refused on the loop key itself.** The
+   per-layer key tools (`insertKeyframe`, `insertBlankKeyframe`, `duplicateKeyframe`, `addFrame`,
+   `deleteFrame`, `setHold`, `moveKeyframe`) have **no UI callers**; the timeline's only
+   key-creating tool is Clear frame (◇). Blocking it would leave no way to end a trailing loop at a
+   chosen frame. Clearing a region frame creates a blank key there — creating a key, so it ends the
+   loop (your rule), without editing the replayed drawing. On the loop key it would silently delete
+   the loop, so it is refused with a status hint pointing at the Loop button.
+2. **There is no single-key move.** Keys move as timeline-selection blocks (`moveBlockFrames`),
+   which OVERWRITE their destination. A block dropped over the loop key replaces it, exactly as it
+   replaces any key there; the "drop onto the loop key is refused" rule is dropped. A block landing
+   elsewhere in the region ends the loop at its first key, as specified.
+3. The §3 frame-tool rows for F6/F7/Duplicate describe the pure ops (kept correct and tested), not UI.
+4. **Merge condition uses one replay step**, `loopSourceFrame(L, back, f)`, not the full recursive
+   `displayFrame(X, f)`. The merged layer replays one step at a time; by induction the earlier frame's
+   composite is already correct, so one step is both sufficient and exact (the recursive form is wrong
+   when a cycle contains another loop's region). A refusal surfaces through `whyNotMergeDown` → the
+   layer panel's Merge button is disabled with the reason in its title, like every other merge
+   refusal — not the canvas caption.
+5. Ghost spans are a separate array from the solid spans (no `ghost` field on `TimelineSpan`). A
+   ghost content span may have empty `keyFrames` (a replayed pass that starts on a held frame).
