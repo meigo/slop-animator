@@ -5534,3 +5534,81 @@ redraws. The first two attempts at this test were invalid — a synchronous scri
 rAF-driven render, and every inked key on the test layer was the same drawing, so a ghost of one under
 another is invisible. What worked: batched browser steps with real frames between them, and a scene
 whose current key is blank.
+
+**Loop keys — Moho-style cycles (2026-09-10).** Asked as *"it could be great to have a real looping
+feature. In moho it's a specific key type that can jump back and loop from specific frame or
+relative backwards offset… some other type of key afterwards would end the loop… represented as a
+red line with arrow head going back from loop key to the first frame of loop"* — and *"ghost of loop
+step could be displayed on track to easily determine later where the loop ends."*
+
+**Model.** A third cell kind, `{ kind: "loop"; back }`, alongside `key`/`hold`. A loop at frame L
+replays `[L−back, L−1]` from L until the region ends — the next key (inked or blank) or another
+loop, or the document end if the loop is the last key. Chosen over the two rejected approaches: a
+layer-level marker (would need marker-shifting code added to ~15 cell-moving ops, each a silent-drift
+risk if missed) and baking repeats into real cells (no live/adjustable loop, duplicated PNGs — a
+repeat would be a document-size canvas, ~33 MB at 1920×1080 on a 2× iPad). Target is a **relative
+offset** ("jump back N"), not an absolute frame, so it survives the loop being moved; default `back`
+on insert is the content run before the playhead (loop everything since the last blank key).
+
+**The display remap.** One pure function, `displayFrame(cells, f)` in `document.ts`: walk back to the
+nearest non-hold cell; if it's a loop, recurse on `L − back + ((f − L) mod back)`, which always lands
+strictly before L, so nesting resolves without a special case and the recursion terminates.
+`resolveDisplayKey`/`resolvedDisplayKeyCell` compose it with the existing keyframe resolution. Every
+call site (~40 resolver calls, ~34 direct `kind` checks, across `document.ts`, `onion.ts`,
+`timeline-block.ts`, `timeline.ts`, `psd-frame.ts`, `Canvas.svelte`, `LayerBoundsHint.svelte`,
+`LayerList.svelte`, `RefTransformGizmo.svelte`, `Timeline.svelte`, `cell-ink.ts`,
+`timeline-glyphs.ts`, `timeline-grid.ts`, `appState.svelte.ts`) was classified as a **display
+reader** (goes through the remap: render — 2D and boil, including boil's holds-only crisp check, so
+a key drawing is crisp on every replayed pass, not only the first, while boil noise itself stays keyed
+to real time so repeats still boil rather than replaying identical noise — onion, MP4/WebM + PSD
+export, eyedropper, bounds, thumbnails, merge-down) or a **structural reader** (raw cells: timeline
+hit-testing, span resize, key move, splice ops). Property tracks (transform/opacity) are unaffected —
+they play straight through the remap, keyed to the real frame.
+
+**Timeline.** A red loop mark on the loop key, a red back-arrow along the row top pointing from the
+loop key to the first replayed frame, and ghosted (35% opacity) repeats up to the key that ends the
+loop. The arrowhead is draggable to resize the cycle — press-relative mapping, so a Pencil tap
+anywhere on the handle is inert (a tap has no delta) rather than snapping `back` to wherever the tap
+landed; one undo step per completed drag. A **Loop** toolbar button sits next to Clear frame: on a
+hold it adds a loop at the playhead (default `back` = the run before it); on an existing loop key it
+removes it; disabled on a key, frame 1, or a locked layer.
+
+**Editing.** Frames a loop plays are read-only on the canvas — draw, erase, fill, paste, and
+selection/deform/pose lifts are all blocked, with the caption "Frame N repeats frame M — edit it
+there" pointing at the source. Frame-scope Transform is blocked the same way (with the same
+caption); Layer- and Group-scope transform still work, since those don't touch the per-cell drawing.
+Eyedropper, marquee + copy, and playback are unaffected — they only read. Creating a key inside the
+loop's region (Clear frame, pasting frames, dragging a key block in) ends the loop there, per the
+next-key rule — the loop key and its repeats before that point are untouched. Clear frame on the loop
+key itself is refused, with a status hint pointing at the Loop button instead (clearing it would
+silently turn a loop into an ordinary blank key with no visible cause). A block dropped over the loop
+key replaces it outright. Inserting/deleting frames or resizing a hold inside a cycle grows or shrinks
+`back` so the arrow keeps pointing at the same drawings — the same rule already used for reference
+ranges.
+
+**Save format.** Cells may be `"loop"` plus an optional per-layer `loopBacks` map; the project
+version stays 1 (additive). The loader clamps `back` to a valid range on load, and an older build
+reading a project with a loop cell sees an unrecognized kind and falls back to treating it as a blank
+key — a safe (if silent) degrade rather than a crash.
+
+**Merge down.** Kept when the merge provably repeats — the layer being merged into shows the same
+drawing across every frame the loop's cycle spans — otherwise the Merge button is disabled with "a
+loop repeats over frames that change on the other layer — end the loop first". Per the decision
+above, merge never bakes a loop's repeats into real cells regardless: each repeat would be a
+document-size canvas.
+
+Spec: `docs/superpowers/specs/2026-09-10-loop-keys-design.md` (includes a "Plan-time amendments"
+section — the read-only-region and merge-down answers were tightened after the initial brainstorm).
+Plan: `docs/superpowers/plans/2026-09-10-loop-keys.md`.
+
+**Verified in desktop Chrome** (2026-09-10): Loop button add/remove + undo; arrowhead drag + undo;
+taps on the handle inert; Clear on the loop key refused; Clear inside the region ends the loop; the
+canvas caption and refused stroke on a loop frame; the Frame-scope transform caption; autosave
+round-trip of a looped project; merge keeps a loop against a static upper layer and refuses against a
+changing one.
+
+**Owed an iPad pass:** the arrow and ghosted repeats rendering on device; the arrowhead drag with
+Apple Pencil; a finger press starting on the arrowhead (known from the handle's hit-testing: a
+12px-strip finger press doesn't pan, same shape as the play-range handles); the Loop toolbar button;
+the blocked-edit caption on a loop frame; onion skins stepping through a loop; and an MP4/WebM or PSD
+export that contains a loop.
