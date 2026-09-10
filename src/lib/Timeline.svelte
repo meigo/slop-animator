@@ -3296,8 +3296,8 @@
                 {@render spanMarks(s, true)}
               {/each}
               <!-- Loop keys: Moho's cycle arrow. A red line along the row's TOP EDGE, stepped down at both ends:
-                   down onto the loop key at its right end, and down into an arrowhead over the first frame it
-                   replays at its left end — both ends land on frame CENTRES, where the key marks sit. One SVG so
+                   down onto the loop key at its right end, and down into an arrowhead whose tip reaches the row's
+                   vertical centre (the key mark) over the first frame it replays at its left end — both ends land on frame CENTRES, where the key marks sit. One SVG so
                    the corners join. The loop mark on the key is rotated 45° to read as a key (the diamonds).
                    The arrowhead is the handle for `back`; it is a TOP strip only, so a press lower in that column
                    still reaches the key mark beneath it. z-11/12: above the selection wash (z-10), below the
@@ -3310,16 +3310,16 @@
                   class="pointer-events-none absolute top-0 z-11 overflow-visible text-danger"
                   style="left: {tipX - 4}px"
                   width={w + 8}
-                  height="8"
+                  height="12"
                   aria-hidden="true"
                 >
                   <polyline
-                    points="4.5,4 4.5,0.5 {w + 4.5},0.5 {w + 4.5},5"
+                    points="4.5,7 4.5,0.5 {w + 4.5},0.5 {w + 4.5},5"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1"
                   />
-                  <polygon points="1.5,3 7.5,3 4.5,7" fill="currentColor" />
+                  <polygon points="1.5,7 7.5,7 4.5,12" fill="currentColor" />
                 </svg>
                 <span
                   class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-danger"
