@@ -130,3 +130,25 @@ export class Playback {
     });
   }
 }
+
+/** Move ONE edge of the play range to `frame` under a DRAG, clamping rather than pushing or swapping.
+ *
+ *  The buttons use `withRangeIn` / `withRangeOut`, which PUSH the other point along — right for "set
+ *  the edge at the playhead". Under a drag it is wrong both ways: pushing moves the handle you are not
+ *  holding, and swapping would flip which handle is under the pointer mid-gesture. So the held edge
+ *  stops AT the other one (a one-frame range is valid — the range is inclusive). Same rule as
+ *  slop-video-compositor's `draggedPlayRange`.
+ *
+ *  Starts from the EFFECTIVE range, not the stored one: a range can outlive a shortened animation,
+ *  and a drag must begin from what is on screen. */
+export function withRangeEdgeAt(
+  range: { in: number; out: number } | null,
+  edge: "in" | "out",
+  frame: number,
+  frameCount: number,
+): { in: number; out: number } {
+  const last = Math.max(0, frameCount - 1);
+  const cur = effectiveRange(range, frameCount);
+  if (edge === "in") return { in: Math.max(0, Math.min(frame, cur.end)), out: cur.end };
+  return { in: cur.start, out: Math.min(last, Math.max(frame, cur.start)) };
+}
