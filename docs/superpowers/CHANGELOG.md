@@ -6008,3 +6008,10 @@ only candidate with a natural OFF form, so the state reads from the icon itself,
 accent fill — which matters in the selection bar, where there is no label. Considered and passed over:
 Expand / Maximize (read as fullscreen, and as an action rather than a setting), Scaling /
 ImageUpscale (an action), SquarePercent (a percentage), Proportions / Ratio (no off form).
+
+**Properties strip actions sit on the row columns (2026-09-11).** Asked as *"align the buttons on the
+right side of shared bar with lock and eye icons below"*. The strip's icon actions (Rename, Ungroup,
+Rasterize, Re-link) were bare icons of different widths, so they landed near the columns rather than on
+them. They now use the rows' own 20px `size-5` boxes; with the same 4px gap and the same 4px right inset
+they align by construction — measured in WebKit: Rename at the eye's centre (1166), Ungroup/the next
+action at the lock's (1142), for a group and for a layer. Apply/Reset stay text buttons further left.
