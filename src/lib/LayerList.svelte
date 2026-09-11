@@ -363,12 +363,29 @@
        icon at 8px — exactly where the 8px grip ends, so the two abut without overlapping and no
        space is wasted between them. -->
   <div class="flex items-center gap-1 p-1 border-b border-border">
-    <span class="text-xs font-semibold text-text-secondary flex-1 px-1">Layers</span>
+    <!-- `min-w-0 truncate` + flex-1 (basis 0): the title only takes LEFTOVER space, so on a narrow panel it
+         gives way before the buttons shrink; they stay full 28px targets at the default width. -->
+    <span class="min-w-0 flex-1 truncate px-1 text-xs font-semibold text-text-secondary"
+      >Layers</span
+    >
+    <!-- Grouped create │ derive │ destroy, divided (SLOP-TIMELINE-UI §4): Delete stands alone so a slightly
+         off tap on New group cannot remove a layer. Not aligned to the rows' columns on purpose — these
+         are 28px list actions at a 32px pitch, a different band from the 20px/24px state toggles below;
+         only the right edge is shared (the same 4px inset). -->
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary"
       title="Add layer"
       onclick={addLayer}><Plus size={16} /></button
     >
+    <button
+      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+      title={panel.group.title}
+      aria-disabled={!panel.group.enabled}
+      onclick={() => {
+        if (panel.group.enabled) groupActiveLayer();
+      }}><FolderPlus size={16} /></button
+    >
+    <span class="-mx-0.5 h-5 w-px shrink-0 bg-border" role="presentation"></span>
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
       title={panel.duplicate.title}
@@ -385,14 +402,7 @@
         if (panel.merge.enabled && panel.layerId != null) mergeDown(panel.layerId);
       }}><ArrowDownToLine size={16} /></button
     >
-    <button
-      class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
-      title={panel.group.title}
-      aria-disabled={!panel.group.enabled}
-      onclick={() => {
-        if (panel.group.enabled) groupActiveLayer();
-      }}><FolderPlus size={16} /></button
-    >
+    <span class="-mx-0.5 h-5 w-px shrink-0 bg-border" role="presentation"></span>
     <button
       class="size-7 rounded hover:bg-surface-hover flex items-center justify-center text-text-secondary aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
       title={panel.remove.title}

@@ -410,7 +410,9 @@
   class="hidden"
   onchange={onRelinkFile}
 />
-<!-- Settings LEFT, actions RIGHT (`ml-auto`; Rename always last, for a layer and a group alike). Wraps
+<!-- Settings LEFT, actions RIGHT (`ml-auto`; Rename always last, for a layer and a group alike). The
+     icon actions are the rows' own 20px boxes with the same 4px gap and the same 4px right inset, so
+     they sit exactly on the columns below: Rename over the eye, the next one over the lock. Wraps
      on a narrow panel rather than clipping — the rule this strip inherited from the row it replaces.
      `min-h-8` so switching between a one-line target and an empty one does not move the list.
      `pl-2` keeps the first control abutting the panel's 8px resize grip, like the rows' drag handle.
@@ -558,20 +560,20 @@
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "image"}
           <button
-            class="text-text-secondary hover:text-text"
+            class="flex size-5 shrink-0 items-center justify-center text-text-secondary hover:text-text"
             title="Rasterize to drawing layer"
             onclick={() => rasterizeReference(layer.id)}><ImageDown size={13} /></button
           >
         {/if}
         {#if layer.kind === "ref" && layer.media.type === "missing"}
           <button
-            class="text-text-secondary hover:text-text"
+            class="flex size-5 shrink-0 items-center justify-center text-text-secondary hover:text-text"
             title="Re-link media"
             onclick={() => startRelink(layer.id)}><Link size={13} /></button
           >
         {/if}
         <button
-          class="text-text-secondary hover:text-text"
+          class="flex size-5 shrink-0 items-center justify-center text-text-secondary hover:text-text"
           title="Rename layer"
           onclick={() => onRenameLayer(layer)}><Pencil size={13} /></button
         >
@@ -614,14 +616,14 @@
       </span>
       <span class="ml-auto flex items-center gap-1">
         <button
-          class="text-text-secondary hover:text-text"
+          class="flex size-5 shrink-0 items-center justify-center text-text-secondary hover:text-text"
           title="Ungroup"
           onclick={() => ungroup(group.id)}
         >
           <Ungroup size={14} />
         </button>
         <button
-          class="text-text-secondary hover:text-text"
+          class="flex size-5 shrink-0 items-center justify-center text-text-secondary hover:text-text"
           title="Rename group"
           onclick={() => onRenameGroup(group)}
         >

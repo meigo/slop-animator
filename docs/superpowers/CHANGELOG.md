@@ -6008,3 +6008,23 @@ only candidate with a natural OFF form, so the state reads from the icon itself,
 accent fill — which matters in the selection bar, where there is no label. Considered and passed over:
 Expand / Maximize (read as fullscreen, and as an action rather than a setting), Scaling /
 ImageUpscale (an action), SquarePercent (a percentage), Proportions / Ratio (no off form).
+
+**Properties strip actions sit on the row columns (2026-09-11).** Asked as *"align the buttons on the
+right side of shared bar with lock and eye icons below"*. The strip's icon actions (Rename, Ungroup,
+Rasterize, Re-link) were bare icons of different widths, so they landed near the columns rather than on
+them. They now use the rows' own 20px `size-5` boxes; with the same 4px gap and the same 4px right inset
+they align by construction — measured in WebKit: Rename at the eye's centre (1166), Ungroup/the next
+action at the lock's (1142), for a group and for a layer. Apply/Reset stay text buttons further left.
+
+**Layer panel header: grouped create │ derive │ destroy (2026-09-11).** Asked whether the header's buttons
+should also align to the row columns — no: they are 28px list actions at a 32px pitch, a different band
+from the 20px/24px state toggles, so at most the last one could land on the eye and the next would miss
+the lock by 8px (only the right edge is shared, via the same 4px inset). What they needed was grouping:
+Add, New group │ Duplicate, Merge down │ Delete, divided per SLOP-TIMELINE-UI §4, so Delete stands alone and
+a slightly-off tap on New group cannot remove a layer. The dividers cost width, and flex squeezed the
+BUTTONS (26px at 224px, 16px at 170px) because the "Layers" title never gave way; the title is now
+`min-w-0 flex-1 truncate` (basis 0, leftover space only), and each divider pulls its neighbours in
+(`-mx-0.5`: 2px a side instead of the 4px gap) — a first pass with plain gaps left the title at 45px and it
+read "Lay…" at the DEFAULT width, caught in a screenshot, not in the numbers. Measured now: 224px → title
+53/53px (fits), all five buttons 28px; at the real minimum (`MIN_PANEL_WIDTH` 184) the buttons stay 28px
+and the title truncates.
