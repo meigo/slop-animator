@@ -126,3 +126,28 @@ describe("History.onChange", () => {
     expect(seen.at(-1)).toEqual({ undo: true, redo: false });
   });
 });
+
+describe("pixelCommand marks its canvas's ink as changed", () => {
+  it("on creation (the write it records just happened), on undo and on redo", async () => {
+    const { pixelCommand } = await import("../anim/history");
+    const { inkRevision } = await import("../lib/cell-ink");
+    const canvas = {} as HTMLCanvasElement;
+    const img = { data: { byteLength: 4 } } as unknown as ImageData;
+    let undone = 0,
+      redone = 0;
+    const cmd = pixelCommand(
+      canvas,
+      () => undone++,
+      () => redone++,
+      img,
+      img,
+    );
+    expect(inkRevision(canvas)).toBe(1);
+    cmd.undo();
+    expect(undone).toBe(1);
+    expect(inkRevision(canvas)).toBe(2);
+    cmd.redo();
+    expect(redone).toBe(1);
+    expect(inkRevision(canvas)).toBe(3);
+  });
+});

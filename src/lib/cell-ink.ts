@@ -94,20 +94,55 @@ function probeEmpty(canvas: HTMLCanvasElement): boolean {
   return allTransparent(probe!);
 }
 
-const cache = new WeakMap<HTMLCanvasElement, { version: number; empty: boolean }>();
+// Both caches below are keyed on a per-CANVAS ink revision, not the document version. They used to be
+// keyed on `appState.version`, which every edit bumps — so after any stroke the timeline re-probed
+// every key in the project, although a stroke changes one drawing. Now a cached answer stands until
+// that canvas is marked (`markInkChanged`, called by every pixel write: `pixelCommand` covers the
+// undoable ones on apply/undo/redo, the lift/cancel/abort paths mark directly) or until the global
+// epoch moves (`invalidateInk`, on load/undo/redo — the safety net for a write that forgot to mark).
+// Fresh canvases (new keys, loads, resize, merge, clones) are simply not in the cache yet.
+const inkRev = new WeakMap<HTMLCanvasElement, number>();
+let inkEpoch = 0;
 
-/** Memoized emptiness check; pass the current document version so the cache invalidates on any edit. */
-export function isCellEmpty(canvas: HTMLCanvasElement, version: number): boolean {
+/** Record that `canvas`'s pixels changed, so its cached emptiness/bounds are re-measured. */
+export function markInkChanged(canvas: HTMLCanvasElement): void {
+  inkRev.set(canvas, (inkRev.get(canvas) ?? 0) + 1);
+}
+
+/** How many times `canvas` has been marked changed (0 if never). */
+export function inkRevision(canvas: HTMLCanvasElement): number {
+  return inkRev.get(canvas) ?? 0;
+}
+
+/** Drop every cached ink answer at once. The safety net for a pixel write that did not mark. */
+export function invalidateInk(): void {
+  inkEpoch++;
+}
+
+type Stamp = { epoch: number; rev: number };
+const stampOf = (canvas: HTMLCanvasElement): Stamp => ({
+  epoch: inkEpoch,
+  rev: inkRevision(canvas),
+});
+const fresh = (hit: Stamp | undefined, now: Stamp) =>
+  !!hit && hit.epoch === now.epoch && hit.rev === now.rev;
+
+const cache = new WeakMap<HTMLCanvasElement, Stamp & { empty: boolean }>();
+
+/** Memoized emptiness check. `_version` is not the cache key (see above); callers pass the document
+ *  version because reading it is what makes THEIR derived state re-run after an edit. */
+export function isCellEmpty(canvas: HTMLCanvasElement, _version: number): boolean {
+  const now = stampOf(canvas);
   const hit = cache.get(canvas);
-  if (hit && hit.version === version) return hit.empty;
+  if (hit && fresh(hit, now)) return hit.empty;
   const empty = probeEmpty(canvas);
-  cache.set(canvas, { version, empty });
+  cache.set(canvas, { ...now, empty });
   return empty;
 }
 
 const boundsCache = new WeakMap<
   HTMLCanvasElement,
-  { version: number; bounds: { x: number; y: number; w: number; h: number } | null }
+  Stamp & { bounds: { x: number; y: number; w: number; h: number } | null }
 >();
 
 /**
@@ -140,22 +175,24 @@ export function boundsOfPixels(
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
-/** Tight non-transparent bounds in DEVICE px, or null if empty. Memoized by document version —
- *  so it is only safe on a canvas whose identity means one thing over time (a CELL canvas). A
- *  reused scratch canvas wants `boundsOfPixels` above. */
+/** Tight non-transparent bounds in DEVICE px, or null if empty. Memoized per canvas ink revision
+ *  (see `markInkChanged`) — so it is only safe on a canvas whose identity means one thing over time
+ *  (a CELL canvas). A reused scratch canvas wants `boundsOfPixels` above. `_version`: as for
+ *  `isCellEmpty`, the caller's reactive dependency, not the key. */
 export function contentBounds(
   canvas: HTMLCanvasElement,
-  version: number,
+  _version: number,
 ): { x: number; y: number; w: number; h: number } | null {
+  const now = stampOf(canvas);
   const hit = boundsCache.get(canvas);
-  if (hit && hit.version === version) return hit.bounds;
+  if (hit && fresh(hit, now)) return hit.bounds;
   let bounds: { x: number; y: number; w: number; h: number } | null = null;
   if (canvas.width > 0 && canvas.height > 0) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
     bounds = boundsOfPixels(data, width, height);
   }
-  boundsCache.set(canvas, { version, bounds });
+  boundsCache.set(canvas, { ...now, bounds });
   return bounds;
 }
 

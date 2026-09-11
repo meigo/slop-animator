@@ -83,7 +83,7 @@
     type DrawingLayer,
     type TransformTrack,
   } from "../anim/document";
-  import { contentBoxLogical, groupBoxLogical, contentBounds } from "./cell-ink";
+  import { contentBoxLogical, groupBoxLogical, contentBounds, markInkChanged } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
@@ -575,6 +575,7 @@
     }
     history.push(
       pixelCommand(
+        ctx.canvas,
         () => {
           ctx.putImageData(before, 0, 0);
           if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
@@ -659,6 +660,7 @@
     }
     history.push(
       pixelCommand(
+        ctx.canvas,
         () => {
           ctx.putImageData(before, 0, 0);
           if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
@@ -1127,6 +1129,7 @@
     const mat = strokeMaterialized;
     history.push(
       pixelCommand(
+        target.canvas,
         () => {
           target.putImageData(before, 0, 0);
           if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
@@ -1413,6 +1416,7 @@
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
       history.push(
         pixelCommand(
+          ctx.canvas,
           () => {
             ctx.putImageData(before, 0, 0);
             if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // lifting on a hold made this ◆
@@ -1435,6 +1439,7 @@
     selection.onCancel = () => {
       if (selCtx && selBefore) {
         selCtx.putImageData(selBefore, 0, 0);
+        markInkChanged(selCtx.canvas);
         // A cancelled lift leaves nothing behind — including the keyframe it materialised.
         // Reverting the TRACK needs a bump, not just a repaint: the lift's entry already bumped
         // (pasteSelection does so explicitly), so without this `persistTick` describes a document
@@ -1551,6 +1556,7 @@
     selection.cellSpaceLift = false; // a paper crop: overlay stays uncomposed
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     selection.clearRegion(selCtx, DPR);
+    markInkChanged(selCtx.canvas); // the lift punched a hole in the cell
     selection.beginTransform(crop);
     syncOverlayScale();
     return true;
@@ -1629,6 +1635,7 @@
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
+        ctx.canvas,
         () => {
           ctx.putImageData(before, 0, 0);
           if (materialized) restoreTrackById(layerId, materialized.before); // deleting on a hold made this ◆
@@ -1730,6 +1737,7 @@
     // so this overlay — unlike the marquee — must carry `group ∘ layer ∘ cell`.
     selection.cellSpaceLift = true;
     const lifted = selection.liftPixels(selCtx, DPR);
+    markInkChanged(selCtx.canvas);
     if (!lifted) {
       selection.cellSpaceLift = false;
       if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // abandoned → leave the hold alone
@@ -1862,6 +1870,7 @@
     selection.composeSteps = [];
     liftComposeSteps = [];
     const lifted = selection.liftPixels(selCtx, DPR); // clears the content region from the cell
+    markInkChanged(selCtx.canvas);
     if (!lifted) {
       if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // abandoned → leave the hold alone
       clearLiftTarget();
@@ -1874,7 +1883,10 @@
     appState.poseActive = meshPose !== null;
     poseDirty = false; // fresh lift — nothing moved yet
     if (!meshPose) {
-      if (selBefore) selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
+      if (selBefore) {
+        selCtx.putImageData(selBefore, 0, 0); // no mesh → undo the lift
+        markInkChanged(selCtx.canvas);
+      }
       if (selMaterialized) restoreCellTrack(al, selMaterialized.before); // …including the ◆ it made
       clearLiftTarget();
       appState.poseFillWarning = "";
@@ -1905,6 +1917,7 @@
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
+        ctx.canvas,
         () => {
           ctx.putImageData(before, 0, 0);
           if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // posing on a hold made this ◆
@@ -1934,6 +1947,7 @@
   function cancelPose() {
     if (meshPose && selCtx && selBefore) {
       selCtx.putImageData(selBefore, 0, 0);
+      markInkChanged(selCtx.canvas);
       // …and the keyframe the lift materialised, so a cancelled pose leaves a hold a hold.
       if (selLayer && selMaterialized) restoreCellTrack(selLayer, selMaterialized.before);
     }
@@ -2229,6 +2243,7 @@
         drawRaf = 0;
       }
       strokeCtx.putImageData(beforeSnapshot, 0, 0);
+      markInkChanged(strokeCtx.canvas);
       // A discarded stroke leaves NOTHING behind, including the keyframe it materialised — reverting
       // only the pixels used to strand a blank ◆ on a frame that was a hold before the discard.
       const revertedTrack = !!(strokeLayer && strokeMaterialized);
