@@ -5865,3 +5865,23 @@ still missing"*, with a screenshot showing the blank strip is the ruler's header
 - **Owed:** the iPad check with the reported project (all groups collapsed, then only the first open).
 - Still noticed, still not fixed: the playhead line and guides end after the first screenful when a
   tall timeline is scrolled down (see the entry above).
+
+**Timeline gutter bleed-through after the plate went (2026-09-11).** Reported from desktop with a
+screenshot, as *"all good, except parts of timeline are visible in the gutter"* — the iPad fix above
+itself verified. The plate had a THIRD job nobody had written down: it was the opaque backing under
+the gutter, and two things had quietly relied on it.
+- **The selection tint is translucent** (`--ui-selected-tint`, accent at 10%). On the plate it
+  composited to a solid colour; without it the selected row's label, fold button and marker showed the
+  keys, the playhead and the guides scrolling underneath. Fixed with one rule scoped to the grid
+  (`.timeline-grid .ui-selected, .timeline-grid .ui-selected-tint`): the same 10% pre-mixed over
+  `--color-surface`, i.e. exactly the colour it used to make on the plate, now opaque. The layer
+  panel keeps the translucent tint.
+- **Labels are 24px in 25px rows**, so the row divider under the gutter is not covered by any sticky
+  element, and the full-height playhead line, play-range lines and 5-frame guides leaked through it —
+  the faint dashes on every row. Rather than put anything opaque behind the gutter again (the thing
+  iOS breaks), those three no longer draw there at all: the playhead line uses the existing
+  `playheadBehindGutter`, each range line hides once `x < gridScrollLeft`, and the guides take
+  `clip-path: inset(0 0 0 gridScrollLeft px)`.
+- Checked in desktop WebKit and Chromium on a selected layer with keys every 3 frames, playhead at
+  frame 12, strip scrolled 412px: selected label reports an opaque colour, no key, line or guide in
+  the gutter, no dashes at the dividers. **Owed:** a look on the iPad and desktop in the real project.
