@@ -2454,7 +2454,7 @@
        stays at the screen position it had; what moved is the row BACKGROUND, which now reaches 0, and
        the frame strip, which gains the reclaimed 8px at each end. -->
   <div
-    class="relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
+    class="timeline-grid relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
     bind:this={gridWrapper}
     onscroll={(e) => (gridScrollLeft = e.currentTarget.scrollLeft)}
   >
@@ -2477,7 +2477,8 @@
       style="left: {GUTTER_W}px; width: {stripFrames *
         CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {4 * CELL_W -
         1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W - 1}px {4 *
-        CELL_W}px, transparent {4 * CELL_W}px {5 * CELL_W}px);"
+        CELL_W}px, transparent {4 * CELL_W}px {5 *
+        CELL_W}px); clip-path: inset(0 0 0 {gridScrollLeft}px);"
     ></div>
     <!-- play-range lines: the tracks' part of each 1px warn line (the ruler draws its own slice,
          because the ruler is opaque). Just INSIDE the range at both ends, so the lines and the ruler's
@@ -2485,24 +2486,36 @@
          drag. Before the playhead in the DOM at the same z, so the playhead — the only red, the thing
          you must find — always paints over them. -->
     {#if playRange}
-      <div
-        class="pointer-events-none absolute inset-y-0 z-10 w-px"
-        style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
-      ></div>
-      <div
-        class="pointer-events-none absolute inset-y-0 z-10 w-px"
-        style="left: {GUTTER_W + (playRange.end + 1) * CELL_W - 1}px; background: var(--color-warn)"
-      ></div>
+      {#if playRange.start * CELL_W >= gridScrollLeft}
+        <div
+          class="pointer-events-none absolute inset-y-0 z-10 w-px"
+          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
+        ></div>
+      {/if}
+      {#if (playRange.end + 1) * CELL_W - 1 >= gridScrollLeft}
+        <div
+          class="pointer-events-none absolute inset-y-0 z-10 w-px"
+          style="left: {GUTTER_W +
+            (playRange.end + 1) * CELL_W -
+            1}px; background: var(--color-warn)"
+        ></div>
+      {/if}
     {/if}
     <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
          the ruler only — an interactive line here would sit over the ◆ at the current frame and block
          grabbing/moving it. -->
-    <div
-      class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
-      style="left: {GUTTER_W +
-        appState.playhead * CELL_W +
-        CELL_W / 2}px; transform: translateX(-50%)"
-    ></div>
+    <!-- These three (guides above, range lines, this line) are clipped/hidden once they scroll behind the
+         gutter rather than covered by it: nothing opaque sits BEHIND the gutter any more (the old plate
+         broke iOS — see the gutter filler), and the sticky labels are 24px in 25px rows, so a 1px line
+         leaked through every row divider under the gutter (2026-09-11). -->
+    {#if !playheadBehindGutter}
+      <div
+        class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
+        style="left: {GUTTER_W +
+          appState.playhead * CELL_W +
+          CELL_W / 2}px; transform: translateX(-50%)"
+      ></div>
+    {/if}
     <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
          it stays on that edge through horizontal scroll. z-40 — above the per-row sticky labels
          (z-20), which would otherwise swallow the press, AND above the ruler row (z-35), which the

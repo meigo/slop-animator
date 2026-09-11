@@ -221,6 +221,15 @@ textarea,
 .ui-selected {
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
+/* Inside the timeline grid the tint must be OPAQUE. The gutter's sticky labels are the only thing
+   between the scrolling strip and the eye (the full-height plate that used to back them broke iOS and
+   is gone, 2026-09-11), so a 10%-alpha tint let keys, the playhead and the guides show through the
+   selected row. Pre-mixed over the panel colour it is the exact colour the translucent tint made on
+   the old plate. The layer panel keeps the translucent tint. */
+.timeline-grid .ui-selected,
+.timeline-grid .ui-selected-tint {
+  background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+}
 
 /* The layer panel's group rail: a 2px line at x=0 marking which rows are one group, with a selected
    row's `.ui-selected` bar lighting its own stretch of it (same column, same width, so the two never
