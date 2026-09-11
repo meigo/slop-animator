@@ -13,7 +13,7 @@ const draw = (id: number, extra: Partial<Layer> = {}): Layer =>
     boilStrength: 1,
     groupId: null,
     cells: [],
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...extra,
   }) as Layer;
 
@@ -29,7 +29,7 @@ const ref = (id: number): Layer =>
     audioEnabled: false,
     groupId: null,
     media: { type: "missing", was: "image", name: "x" },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   }) as Layer;
 
 const group = (id: number): LayerGroup => ({

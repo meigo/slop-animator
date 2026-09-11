@@ -15,7 +15,7 @@ import {
 import { isSameTransform } from "../anim/document";
 
 const base: Rect = { x: 100, y: 100, w: 200, h: 100 }; // center (200,150)
-const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+const id = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
 describe("transformCenter", () => {
   it("identity → fit center", () => {
@@ -35,7 +35,7 @@ describe("transformedCorners", () => {
     expect(sw).toEqual({ x: 100, y: 200 });
   });
   it("scale=2 doubles each corner's distance from center", () => {
-    const [nw] = transformedCorners(base, { ...id, scale: 2 });
+    const [nw] = transformedCorners(base, { ...id, scaleX: 2, scaleY: 2 });
     expect(nw).toEqual({ x: 0, y: 50 });
   });
   it("rotation=π/2 rotates corners a quarter turn about center", () => {
@@ -63,10 +63,11 @@ describe("hitTestHandle", () => {
 
 describe("applyMove", () => {
   it("adds to dx/dy and leaves scale/rotation", () => {
-    expect(applyMove({ dx: 1, dy: 2, scale: 3, rotation: 4 }, 10, -5)).toEqual({
+    expect(applyMove({ dx: 1, dy: 2, scaleX: 3, scaleY: 3, rotation: 4 }, 10, -5)).toEqual({
       dx: 11,
       dy: -3,
-      scale: 3,
+      scaleX: 3,
+      scaleY: 3,
       rotation: 4,
     });
   });
@@ -76,14 +77,16 @@ describe("applyScale", () => {
   const center = { x: 200, y: 150 };
   it("doubling the distance from center doubles scale", () => {
     const out = applyScale(id, center, { x: 250, y: 150 }, { x: 300, y: 150 });
-    expect(out.scale).toBeCloseTo(2, 6);
+    expect(out.scaleX).toBeCloseTo(2, 6);
+    expect(out.scaleY).toBeCloseTo(2, 6);
     expect(out.dx).toBe(0);
     expect(out.dy).toBe(0);
     expect(out.rotation).toBe(0);
   });
   it("clamps to a small minimum", () => {
     const out = applyScale(id, center, { x: 300, y: 150 }, { x: 200.0001, y: 150 });
-    expect(out.scale).toBeGreaterThan(0);
+    expect(out.scaleX).toBeGreaterThan(0);
+    expect(out.scaleY).toBeGreaterThan(0);
   });
 });
 
@@ -92,14 +95,15 @@ describe("applyRotate", () => {
   it("a 90° pointer sweep adds π/2", () => {
     const out = applyRotate(id, center, { x: 300, y: 150 }, { x: 200, y: 250 });
     expect(out.rotation).toBeCloseTo(Math.PI / 2, 6);
-    expect(out.scale).toBe(1);
+    expect(out.scaleX).toBe(1);
+    expect(out.scaleY).toBe(1);
     expect(out.dx).toBe(0);
   });
 });
 
 describe("inverseTransformPoint", () => {
   const base = { x: 0, y: 0, w: 100, h: 100 }; // doc center = (50,50)
-  const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const id = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   it("identity is a no-op", () => {
     expect(inverseTransformPoint(base, id, { x: 30, y: 70 })).toEqual({ x: 30, y: 70 });
@@ -112,13 +116,13 @@ describe("inverseTransformPoint", () => {
   });
 
   it("pure scale divides distance from doc center", () => {
-    const p = inverseTransformPoint(base, { ...id, scale: 2 }, { x: 70, y: 50 });
+    const p = inverseTransformPoint(base, { ...id, scaleX: 2, scaleY: 2 }, { x: 70, y: 50 });
     expect(p.x).toBeCloseTo(60, 5);
     expect(p.y).toBeCloseTo(50, 5);
   });
 
   it("round-trips the forward render transform", () => {
-    const t = { dx: 12, dy: -7, scale: 1.5, rotation: 0.6 };
+    const t = { dx: 12, dy: -7, scaleX: 1.5, scaleY: 1.5, rotation: 0.6 };
     const cx = base.x + base.w / 2,
       cy = base.y + base.h / 2;
     const local = { x: 73, y: 21 };
@@ -127,8 +131,8 @@ describe("inverseTransformPoint", () => {
     const cos = Math.cos(t.rotation),
       sin = Math.sin(t.rotation);
     const screen = {
-      x: cx + t.dx + t.scale * (ox * cos - oy * sin),
-      y: cy + t.dy + t.scale * (ox * sin + oy * cos),
+      x: cx + t.dx + (t.scaleX * ox * cos - t.scaleY * oy * sin),
+      y: cy + t.dy + (t.scaleX * ox * sin + t.scaleY * oy * cos),
     };
     const back = inverseTransformPoint(base, t, screen);
     expect(back.x).toBeCloseTo(local.x, 4);
@@ -138,12 +142,12 @@ describe("inverseTransformPoint", () => {
 
 describe("forwardTransformPoint", () => {
   const base = { x: 0, y: 0, w: 100, h: 100 };
-  const id = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const id = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
   it("identity is a no-op", () => {
     expect(forwardTransformPoint(base, id, { x: 30, y: 70 })).toEqual({ x: 30, y: 70 });
   });
   it("round-trips with inverseTransformPoint", () => {
-    const t = { dx: 12, dy: -7, scale: 1.5, rotation: 0.6 };
+    const t = { dx: 12, dy: -7, scaleX: 1.5, scaleY: 1.5, rotation: 0.6 };
     const p = { x: 73, y: 21 };
     const back = inverseTransformPoint(base, t, forwardTransformPoint(base, t, p));
     expect(back.x).toBeCloseTo(p.x, 5);
@@ -154,9 +158,9 @@ describe("forwardTransformPoint", () => {
 describe("forwardChain / inverseChain", () => {
   const docBase = { x: 0, y: 0, w: 100, h: 100 };
   const cellBase = { x: 20, y: 30, w: 40, h: 50 };
-  const tLayer = { dx: 5, dy: -7, scale: 1.2, rotation: 0.3 };
-  const tCell = { dx: -2, dy: 4, scale: 0.8, rotation: -0.15 };
-  const tIdent = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const tLayer = { dx: 5, dy: -7, scaleX: 1.2, scaleY: 1.2, rotation: 0.3 };
+  const tCell = { dx: -2, dy: 4, scaleX: 0.8, scaleY: 0.8, rotation: -0.15 };
+  const tIdent = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   it("empty chain is identity", () => {
     expect(forwardChain([], { x: 17, y: 23 })).toEqual({ x: 17, y: 23 });
@@ -206,10 +210,41 @@ describe("forwardChain / inverseChain", () => {
 });
 
 describe("isSameTransform", () => {
-  const t = { dx: 3, dy: -1, scale: 1.5, rotation: 0.2 };
+  const t = { dx: 3, dy: -1, scaleX: 1.5, scaleY: 1.5, rotation: 0.2 };
   it("exact field equality", () => {
     expect(isSameTransform(t, { ...t })).toBe(true);
     expect(isSameTransform(t, { ...t, dx: 3.0000001 })).toBe(false);
     expect(isSameTransform(t, { ...t, rotation: 0 })).toBe(false);
+  });
+});
+
+describe("per-axis transforms", () => {
+  const t = { dx: 12, dy: -7, scaleX: -1.5, scaleY: 0.8, rotation: 0.6 };
+  it("forward then inverse round-trips with rotation, stretch and a mirror", () => {
+    for (const p of [
+      { x: 120, y: 130 },
+      { x: 290, y: 190 },
+      { x: 200, y: 150 },
+    ]) {
+      const q = inverseTransformPoint(base, t, forwardTransformPoint(base, t, p));
+      expect(q.x).toBeCloseTo(p.x, 9);
+      expect(q.y).toBeCloseTo(p.y, 9);
+    }
+  });
+  it("corners are the forward map of the base corners", () => {
+    const fwd = [
+      { x: 100, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 200 },
+      { x: 100, y: 200 },
+    ].map((p) => forwardTransformPoint(base, t, p));
+    transformedCorners(base, t).forEach((c, i) => {
+      expect(c.x).toBeCloseTo(fwd[i].x, 9);
+      expect(c.y).toBeCloseTo(fwd[i].y, 9);
+    });
+  });
+  it("isSameTransform compares both scales", () => {
+    expect(isSameTransform(t, { ...t })).toBe(true);
+    expect(isSameTransform(t, { ...t, scaleY: 0.81 })).toBe(false);
   });
 });

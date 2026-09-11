@@ -40,7 +40,7 @@ describe("animationBar — start", () => {
         draw(1, {
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
           },
@@ -58,7 +58,7 @@ describe("animationBar — start", () => {
         draw(1, {
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
             opacity: { keys: [{ frame: 0, v: 100 }] },
@@ -92,7 +92,7 @@ describe("animationBar — start", () => {
         group(10, {
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
           },
@@ -177,7 +177,7 @@ describe("animationBar — start", () => {
       offsetFrames: 0,
       speed: 1,
       media: { type: "image", el: {} as HTMLImageElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as Layer;
     expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
   });
@@ -194,7 +194,7 @@ describe("animationBar — start", () => {
       offsetFrames: 0,
       speed: 1,
       media: { type: "video", el: { duration: 2 } as HTMLVideoElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as Layer;
     expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
   });
@@ -211,7 +211,7 @@ describe("animationBar — start", () => {
       offsetFrames: 0,
       speed: 1,
       media: { type: "image", el: {} as HTMLImageElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as Layer;
     const bar = args({ layers: [ref], groups: [group(10)] });
     expect(bar.kind).toBe("start");
@@ -228,7 +228,7 @@ describe("animationBar — keys", () => {
         draw(1, {
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
           },
@@ -259,7 +259,7 @@ describe("animationBar — keys", () => {
         group(10, {
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
           },
@@ -300,7 +300,7 @@ describe("animationBar — keys", () => {
           visible: false,
           tracks: {
             transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
               box: null,
             },
           },

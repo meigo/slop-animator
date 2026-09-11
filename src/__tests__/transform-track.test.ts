@@ -29,7 +29,13 @@ import {
 } from "../anim/document";
 import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
 
-const T = (dx: number, rotation = 0, scale = 1) => ({ dx, dy: 0, scale, rotation });
+const T = (dx: number, rotation = 0, scale = 1) => ({
+  dx,
+  dy: 0,
+  scaleX: scale,
+  scaleY: scale,
+  rotation,
+});
 const layer = (track?: TransformTrack) =>
   ({ kind: "draw", id: 1, name: "L", transform: T(5), tracks: { transform: track } }) as Layer;
 const track = (over: Partial<TransformTrack> = {}): TransformTrack => ({
@@ -135,7 +141,19 @@ describe("transformAt", () => {
         { frame: 10, v: T(0, 0, 3) },
       ],
     });
-    expect(transformAt(layer(z), 5).scale).toBeCloseTo(2, 10);
+    expect(transformAt(layer(z), 5).scaleX).toBeCloseTo(2, 10);
+  });
+
+  it("interpolates scaleX and scaleY independently, through zero for a flip", () => {
+    const flip = track({
+      keys: [
+        { frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 2, rotation: 0 } },
+        { frame: 10, v: { dx: 0, dy: 0, scaleX: -1, scaleY: 4, rotation: 0 } },
+      ],
+    });
+    const mid = transformAt(layer(flip), 5);
+    expect(mid.scaleX).toBeCloseTo(0, 10);
+    expect(mid.scaleY).toBeCloseTo(3, 10);
   });
 });
 
@@ -331,7 +349,7 @@ describe("key sanitising on load", () => {
       transform: {
         keys: [
           { frame: 0, v: T(0) },
-          { frame: 4, v: { dx: 0, dy: NaN, scale: 1, rotation: 0 } },
+          { frame: 4, v: { dx: 0, dy: NaN, scaleX: 1, scaleY: 1, rotation: 0 } },
           { frame: 8, v: null },
         ],
         box: null,
@@ -671,7 +689,7 @@ describe("generic copy helpers", () => {
   });
 
   it("deep-copies the value with the supplied copier", () => {
-    const v = { dx: 1, dy: 2, scale: 1, rotation: 0 };
+    const v = { dx: 1, dy: 2, scaleX: 1, scaleY: 1, rotation: 0 };
     const copied = copyKeyframe({ frame: 0, v }, (x: typeof v) => ({ ...x }));
     expect(copied.v).toEqual(v);
     expect(copied.v).not.toBe(v);
@@ -787,15 +805,21 @@ describe("legacy transformTrack promotion", () => {
     project.layers.push(l);
     const legacy = await withOnDiskLegacyKeys(await saveProjectBlob(project), l.id, {
       keys: [
-        { frame: 0, t: { dx: 0, dy: 0, scale: 1, rotation: 0 } },
-        { frame: 6, t: { dx: 60, dy: 0, scale: 1, rotation: 0 }, interp: "hold" },
+        { frame: 0, t: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } },
+        { frame: 6, t: { dx: 60, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 }, interp: "hold" },
       ],
       box: null,
     });
     const back = (await loadProjectBlob(legacy, 1)).layers.find((x) => x.id === l.id)!;
     // Not merely "a track survived": the VALUES have to arrive, or the animation is a straight line.
     expect(back.tracks?.transform?.keys.map((k) => k.frame)).toEqual([0, 6]);
-    expect(back.tracks?.transform?.keys[1].v).toEqual({ dx: 60, dy: 0, scale: 1, rotation: 0 });
+    expect(back.tracks?.transform?.keys[1].v).toEqual({
+      dx: 60,
+      dy: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    });
     expect(back.tracks?.transform?.keys[1].interp).toBe("hold");
   });
 
@@ -805,7 +829,7 @@ describe("legacy transformTrack promotion", () => {
     const l = createDrawingLayer(1, "L");
     project.layers.push(l);
     const legacy = await withOnDiskLegacyKeys(await saveProjectBlob(project), l.id, {
-      keys: [{ frame: 0, t: { dx: null, dy: 0, scale: 1, rotation: 0 } }],
+      keys: [{ frame: 0, t: { dx: null, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
       box: null,
     });
     const back = (await loadProjectBlob(legacy, 1)).layers.find((x) => x.id === l.id)!;
@@ -886,12 +910,18 @@ describe("groupTransformAt", () => {
 
   it("is identity for a group with neither", () => {
     const g = { id: 1, name: "G", collapsed: false, visible: true } as LayerGroup;
-    expect(groupTransformAt(g, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
+    expect(groupTransformAt(g, 3)).toEqual({ dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
   });
 
   it("is identity for no group at all (an ungrouped layer's outer step)", () => {
-    expect(groupTransformAt(null, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
-    expect(groupTransformAt(undefined, 3)).toEqual({ dx: 0, dy: 0, scale: 1, rotation: 0 });
+    expect(groupTransformAt(null, 3)).toEqual({ dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+    expect(groupTransformAt(undefined, 3)).toEqual({
+      dx: 0,
+      dy: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    });
   });
 
   it("holds outside the key range rather than extrapolating", () => {

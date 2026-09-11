@@ -90,7 +90,7 @@ const animated = (id: number, groupId: number | null = null) =>
     groupId,
     tracks: {
       transform: {
-        keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+        keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
         box: null,
       },
     },
@@ -130,7 +130,7 @@ describe("timelineRows — transform tracks", () => {
   });
 });
 
-const T0 = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+const T0 = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 const bothTracks = {
   transform: { keys: [{ frame: 0, v: T0 }], box: null },
   opacity: { keys: [{ frame: 0, v: 100 }] },

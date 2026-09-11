@@ -47,22 +47,24 @@ function mul(m: Mat6, n: Mat6): Mat6 {
  * `inverseChain` over the same inner-to-outer step list, for stamping a paper-space bitmap back
  * into a cell (`Canvas.applyInverseCompose`).
  *
- * Each step contributes `T(c) · S(1/scale) · R(-rot) · T(-c - d)`; the product is taken in step
- * order, which (canvas multiplies on the right) applies the OUTERMOST step to the point first —
- * the same order `inverseChain` walks. An identity step contributes the identity matrix exactly.
+ * Each step contributes `T(c) · S(1/scaleX, 1/scaleY) · R(-rot) · T(-c - d)`; the product is taken
+ * in step order, which (canvas multiplies on the right) applies the OUTERMOST step to the point
+ * first — the same order `inverseChain` walks. An identity step contributes the identity matrix
+ * exactly.
  */
 export function inverseComposeMatrix(steps: ComposeStep[]): Mat6 {
   let m: Mat6 = [1, 0, 0, 1, 0, 0];
   for (const s of steps) {
     const cx = s.base.x + s.base.w / 2;
     const cy = s.base.y + s.base.h / 2;
-    const k = 1 / s.t.scale;
+    const kx = 1 / s.t.scaleX;
+    const ky = 1 / s.t.scaleY;
     const cos = Math.cos(-s.t.rotation);
     const sin = Math.sin(-s.t.rotation);
-    const a = k * cos;
-    const b = k * sin;
-    const c = -k * sin;
-    const d = k * cos;
+    const a = kx * cos;
+    const b = ky * sin;
+    const c = -kx * sin;
+    const d = ky * cos;
     const tx = -(cx + s.t.dx);
     const ty = -(cy + s.t.dy);
     m = mul(m, [a, b, c, d, a * tx + c * ty + cx, b * tx + d * ty + cy]);

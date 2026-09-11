@@ -87,7 +87,7 @@ function drawLayerWith(
     boilStrength: 1,
     groupId,
     cells: [{ kind: "key", canvas: stubCanvas(canvasW, canvasH, opaque) }],
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 

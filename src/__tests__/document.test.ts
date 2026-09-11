@@ -89,7 +89,7 @@ function layer(id: number, cells: Cell[], over: Partial<DrawingLayer> = {}): Dra
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...over,
   };
 }
@@ -121,7 +121,7 @@ function refLayer(id: number, over: Partial<ReferenceLayer> = {}): ReferenceLaye
     audioEnabled: false,
     groupId: null,
     media,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...over,
   };
 }
@@ -196,7 +196,7 @@ describe("buildFrameDrawList", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "image", el: {} as HTMLImageElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       range: { start: 2, end: 4 },
     } as unknown as Layer;
     const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
@@ -219,7 +219,7 @@ describe("buildFrameDrawList", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "image", el: {} as HTMLImageElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as unknown as Layer;
     const p = { layers: [ref], groups: [], fps: 12 } as unknown as Project;
     expect(buildFrameDrawList(p, 0).length).toBe(1);
@@ -340,7 +340,7 @@ describe("documentLength / refreshLength", () => {
     boilStrength: 1,
     groupId: null,
     cells: Array.from({ length: len }, () => ({ kind: "hold" }) as Cell),
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   });
   const ref = (): ReferenceLayer => ({
     kind: "ref",
@@ -353,7 +353,7 @@ describe("documentLength / refreshLength", () => {
     audioEnabled: false,
     groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   });
 
   it("documentLength is the longest drawing layer, ignoring reference layers", () => {
@@ -544,7 +544,7 @@ describe("countKeyframesPastLengthIn (snapshot-based count)", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "missing", was: "image", name: "x" },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as unknown as Layer;
     expect(countKeyframesPastLengthIn([ref], 0)).toBe(0);
   });
@@ -622,8 +622,8 @@ describe("layer groups", () => {
 describe("layer transform helpers", () => {
   it("isIdentityTransform detects identity", () => {
     expect(isIdentityTransform(IDENTITY_TRANSFORM)).toBe(true);
-    expect(isIdentityTransform({ dx: 1, dy: 0, scale: 1, rotation: 0 })).toBe(false);
-    expect(isIdentityTransform({ dx: 0, dy: 0, scale: 2, rotation: 0 })).toBe(false);
+    expect(isIdentityTransform({ dx: 1, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 })).toBe(false);
+    expect(isIdentityTransform({ dx: 0, dy: 0, scaleX: 2, scaleY: 2, rotation: 0 })).toBe(false);
   });
 
   it("createDrawingLayer starts at identity", () => {
@@ -682,7 +682,7 @@ describe("isLayerEditable", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "missing" as const, was: "image" as const, name: "x" },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     };
     expect(isLayerEditable(ref, [])).toBe(false);
     expect(whyNotEditable(ref, [])).toBe("not-draw");
@@ -765,7 +765,7 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
     audioEnabled: false,
     groupId: null,
     media: { type: "missing", was: "image", name: "x" },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...over,
   });
 
@@ -841,7 +841,7 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
 
     it("refuses when either side is ANIMATED — merge bakes a transform that varies", () => {
       const track = {
-        keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+        keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
         box: null,
       };
       const below = layer(1, [makeKey()]);
@@ -955,7 +955,7 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "image", el: {} as HTMLImageElement },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       ...over,
     }) as ReferenceLayer;
 
@@ -1050,7 +1050,10 @@ describe("refVisibleSpan / isRefVisibleAtFrame", () => {
   it("a leftover reference track reads as absent through the accessors — but is NOT destroyed", () => {
     const ref = imageRef() as Layer;
     ref.tracks = {
-      transform: { keys: [{ frame: 3, v: { dx: 5, dy: 0, scale: 1, rotation: 0 } }], box: null },
+      transform: {
+        keys: [{ frame: 3, v: { dx: 5, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
+        box: null,
+      },
       opacity: { keys: [{ frame: 3, v: 40 }] },
     };
     expect(layerTransformTrack(ref)).toBeUndefined();

@@ -14,7 +14,7 @@ function drawLayer(id: number): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells: [key()],
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 function refLayer(id: number): ReferenceLayer {
@@ -29,7 +29,7 @@ function refLayer(id: number): ReferenceLayer {
     audioEnabled: false,
     groupId: null,
     media: { type: "missing", was: "image", name: "x" },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 

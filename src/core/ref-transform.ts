@@ -12,7 +12,13 @@ export interface Rect {
 }
 export type Handle = "nw" | "ne" | "se" | "sw" | "rotate" | "body" | null;
 
-const MIN_SCALE = 0.05;
+export const MIN_SCALE = 0.05;
+
+/** Floor a scale's MAGNITUDE at MIN_SCALE, keeping its sign — so a drag through zero flips the axis
+ *  instead of collapsing it, and nothing downstream ever divides by zero. 0 counts as positive. */
+export function floorScale(v: number): number {
+  return v < 0 ? Math.min(-MIN_SCALE, v) : Math.max(MIN_SCALE, v);
+}
 
 /** Image center in document coords (fit-center + translate). */
 export function transformCenter(base: Rect, t: RefTransform): Pt {
@@ -30,8 +36,8 @@ function rotate(p: Pt, c: Pt, ang: number): Pt {
 /** Corners NW, NE, SE, SW of the transformed image. */
 export function transformedCorners(base: Rect, t: RefTransform): [Pt, Pt, Pt, Pt] {
   const c = transformCenter(base, t);
-  const hw = (base.w / 2) * t.scale,
-    hh = (base.h / 2) * t.scale;
+  const hw = (base.w / 2) * t.scaleX,
+    hh = (base.h / 2) * t.scaleY;
   const local: Pt[] = [
     { x: c.x - hw, y: c.y - hh },
     { x: c.x + hw, y: c.y - hh },
@@ -44,7 +50,7 @@ export function transformedCorners(base: Rect, t: RefTransform): [Pt, Pt, Pt, Pt
 /** Rotate-handle position: `gap` doc px beyond the top-edge midpoint (rotated about center). */
 export function rotateHandlePos(base: Rect, t: RefTransform, gap: number): Pt {
   const c = transformCenter(base, t);
-  const hh = (base.h / 2) * t.scale;
+  const hh = (base.h / 2) * Math.abs(t.scaleY);
   return rotate({ x: c.x, y: c.y - hh - gap }, c, t.rotation);
 }
 
@@ -71,8 +77,8 @@ export function hitTestHandle(
   for (const [h, pt] of named) if (dist(p, pt) <= tolDoc) return h;
   const c = transformCenter(base, t);
   const local = rotate(p, c, -t.rotation);
-  const hw = (base.w / 2) * t.scale,
-    hh = (base.h / 2) * t.scale;
+  const hw = (base.w / 2) * Math.abs(t.scaleX),
+    hh = (base.h / 2) * Math.abs(t.scaleY);
   if (Math.abs(local.x - c.x) <= hw && Math.abs(local.y - c.y) <= hh) return "body";
   return null;
 }
@@ -86,15 +92,15 @@ export function inverseTransformPoint(base: Rect, t: RefTransform, p: Pt): Pt {
     oy = p.y - (cy + t.dy);
   const cos = Math.cos(-t.rotation),
     sin = Math.sin(-t.rotation);
-  return { x: cx + (ox * cos - oy * sin) / t.scale, y: cy + (ox * sin + oy * cos) / t.scale };
+  return { x: cx + (ox * cos - oy * sin) / t.scaleX, y: cy + (ox * sin + oy * cos) / t.scaleY };
 }
 
 /** Map a layer-local point out to document space — the forward of inverseTransformPoint. */
 export function forwardTransformPoint(base: Rect, t: RefTransform, p: Pt): Pt {
   const cx = base.x + base.w / 2,
     cy = base.y + base.h / 2;
-  const ox = (p.x - cx) * t.scale,
-    oy = (p.y - cy) * t.scale;
+  const ox = (p.x - cx) * t.scaleX,
+    oy = (p.y - cy) * t.scaleY;
   const cos = Math.cos(t.rotation),
     sin = Math.sin(t.rotation);
   return { x: cx + t.dx + (ox * cos - oy * sin), y: cy + t.dy + (ox * sin + oy * cos) };
@@ -105,11 +111,12 @@ export function applyMove(t: RefTransform, ddx: number, ddy: number): RefTransfo
   return { ...t, dx: t.dx + ddx, dy: t.dy + ddy };
 }
 
-/** Uniform scale about `center`: t.scale * |p-center|/|start-center|, clamped. */
+/** Proportional scale about `center`: both axes times |p-center|/|start-center|, signs kept. */
 export function applyScale(t: RefTransform, center: Pt, start: Pt, p: Pt): RefTransform {
   const d0 = dist(start, center);
   if (d0 < 1e-6) return t;
-  return { ...t, scale: Math.max(MIN_SCALE, t.scale * (dist(p, center) / d0)) };
+  const k = dist(p, center) / d0;
+  return { ...t, scaleX: floorScale(t.scaleX * k), scaleY: floorScale(t.scaleY * k) };
 }
 
 /** Rotate about `center` by the angle the pointer swept from `start` to `p`. */
@@ -125,7 +132,7 @@ export interface ComposeStep {
 }
 
 function isId(t: RefTransform): boolean {
-  return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
+  return t.dx === 0 && t.dy === 0 && t.scaleX === 1 && t.scaleY === 1 && t.rotation === 0;
 }
 
 /** Map p outward through a chain of transforms (inner-to-outer order). Identity steps are skipped. */

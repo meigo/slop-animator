@@ -52,7 +52,7 @@ function layer(cells: Cell[]): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 
@@ -165,7 +165,7 @@ describe("timeline operations", () => {
 
   it("ensureDrawableKeyframe copies the held key's transform onto the new key", () => {
     const src = fakeOps.create();
-    const t = { dx: 12, dy: -4, scale: 1.5, rotation: 0.3 };
+    const t = { dx: 12, dy: -4, scaleX: 1.5, scaleY: 1.5, rotation: 0.3 };
     const box = { x: 10, y: 20, w: 100, h: 80 };
     const l = layer([
       { kind: "key", canvas: src, transform: t, transformBox: box },
@@ -220,7 +220,7 @@ describe("timeline operations", () => {
   });
 
   it("ensureDrawableKeyframe past the layer's end copies the held key's transform", () => {
-    const t = { dx: 12, dy: -4, scale: 1.5, rotation: 0.3 };
+    const t = { dx: 12, dy: -4, scaleX: 1.5, scaleY: 1.5, rotation: 0.3 };
     const box = { x: 10, y: 20, w: 100, h: 80 };
     const l = layer([{ kind: "key", canvas: fakeOps.create(), transform: t, transformBox: box }]);
     ensureDrawableKeyframe(l, 3, fakeOps);
@@ -423,7 +423,7 @@ function refLayerFixture(id: number): ReferenceLayer {
     audioEnabled: false,
     groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 
@@ -655,7 +655,7 @@ describe("ripple insert/delete shift document-space clips", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "image", el: {} },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       range,
     }) as unknown as never;
 
@@ -722,7 +722,7 @@ describe("ripple insert/delete shift document-space clips", () => {
   // Transform keys are document-frame space too: without this the drawings shifted and the layer's
   // move did not, so the animation finished a frame early and compounded with each ripple.
   describe("layer transform tracks", () => {
-    const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
+    const T = (dx: number) => ({ dx, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
     const animLayer = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
       l.tracks = {
@@ -906,7 +906,7 @@ describe("ripple insert/delete shift document-space clips", () => {
   // The per-layer counterpart: the frame tools resplice ONE layer's cells, so only that layer's
   // track may move. A reference RANGE is document-space and stays out of it.
   describe("shiftLayerTrackKeys", () => {
-    const T = (dx: number) => ({ dx, dy: 0, scale: 1, rotation: 0 });
+    const T = (dx: number) => ({ dx, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
     const withTrack = (frames: number[]) => {
       const l = layer([{ kind: "key", canvas: fakeOps.create() }, { kind: "hold" }]);
       l.tracks = { transform: { keys: frames.map((f) => ({ frame: f, v: T(f) })), box: null } };

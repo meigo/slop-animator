@@ -37,7 +37,7 @@ function layer(cells: Cell[], over: Partial<DrawingLayer> = {}): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...over,
   };
 }
@@ -260,7 +260,7 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
       layers: [
         layer([{ kind: "key", canvas: c }], {
           id: 1,
-          transform: { dx: 5, dy: 0, scale: 1.5, rotation: 0 },
+          transform: { dx: 5, dy: 0, scaleX: 1.5, scaleY: 1.5, rotation: 0 },
         }),
       ],
       audio: null,
@@ -276,7 +276,7 @@ describe("compositeFrameLayers with a drawing-layer transform", () => {
 describe("compositeFrameLayers with a per-cell transform", () => {
   it("non-identity cell transform still emits exactly one drawImage (composed path, natural size)", () => {
     const c = keyCanvas();
-    const cellT = { dx: 4, dy: 0, scale: 1.3, rotation: 0 };
+    const cellT = { dx: 4, dy: 0, scaleX: 1.3, scaleY: 1.3, rotation: 0 };
     const box = { x: 0, y: 0, w: 100, h: 100 };
     const p: Project = {
       name: "t",
@@ -369,7 +369,7 @@ describe("drawReferenceMedia — group-aware wrap", () => {
       name: "G",
       collapsed: false,
       visible: true,
-      transform: { dx: 0, dy: 0, scale: 1.5, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1.5, scaleY: 1.5, rotation: 0 },
       transformBox: { x: 0, y: 0, w: 100, h: 100 },
     };
     const p: Project = {
@@ -403,7 +403,7 @@ describe("compositeFrameLayers with a group transform", () => {
       name: "G",
       collapsed: false,
       visible: true,
-      transform: { dx: 8, dy: 0, scale: 1.1, rotation: 0 },
+      transform: { dx: 8, dy: 0, scaleX: 1.1, scaleY: 1.1, rotation: 0 },
       transformBox: { x: 0, y: 0, w: 100, h: 100 },
     };
     const p: Project = {

@@ -104,7 +104,7 @@
   } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
-  const IDENTITY = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const IDENTITY = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   /** Return the compose steps [layer-step, group-step] (inner-to-outer) above a draw layer. */
   function layerComposeSteps(layer: Layer): ComposeStep[] {
@@ -141,7 +141,8 @@
   }
 
   function composeScaleOf(steps: ComposeStep[]): number {
-    return steps.reduce((s, step) => s * step.t.scale, 1);
+    // One number cannot describe a stretch; the geometric mean keeps handles screen-constant on average.
+    return steps.reduce((s, step) => s * Math.sqrt(Math.abs(step.t.scaleX * step.t.scaleY)), 1);
   }
 
   /** Document-space point → cell-local (inverse of group ∘ layer ∘ cell). */
@@ -172,7 +173,7 @@
       const cy = s.base.y + s.base.h / 2;
       ctx.translate(cx + s.t.dx, cy + s.t.dy);
       ctx.rotate(s.t.rotation);
-      ctx.scale(s.t.scale, s.t.scale);
+      ctx.scale(s.t.scaleX, s.t.scaleY);
       ctx.translate(-cx, -cy);
     }
   }
