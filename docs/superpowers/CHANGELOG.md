@@ -5645,3 +5645,41 @@ taller), and the arrow's look on device.
 right-angled arrowhead and the 45° teal loop mark look right on device, and the 8px-tall arrowhead
 strip is grabbable with the Pencil. Still owed from the loop-keys entry: onion skins stepping through a
 loop, and an MP4/WebM or PSD export containing one.
+
+**Selection flip (2026-09-11).** Asked as *"I currently need it just for flipping pixels in current
+frame, no other side effects. So it could be added to select floating menu"* — with the Transform-tool
+flip (whole layer / group / reference layer, all frames) deferred to the roadmap as the larger job.
+
+- **Flip horizontal / Flip vertical** on the floating selection bar, in the plain-selection and
+  Free-transform states (hidden in Distort/Mesh, which own a grid). On a plain selection it lifts first
+  — the same lift, and so the same refusals (locked/hidden layer, a loop frame), as Free transform —
+  then mirrors; you land in Free transform with handles on the flipped result, and ✓ or a click outside
+  commits. Lift + commit stay ONE undo step; the flip itself pushes nothing.
+- **The mirror is local**: `flipMatrix(m, rect, axis)` = `m · T(c) · S · T(−c)` about the float's own
+  centre, so a rotated float flips along its own axis (the frame the scale handles already work in).
+  Twice is the identity. Four node tests, written first and watched fail.
+- **The bar keeps its buttons in place across the lift.** Flip lifts, and the lift used to reshape the
+  bar two ways: Free transform disappeared (every later button slid a slot left) and ✓ appeared — and
+  the bar is CENTRED on the selection, so a width change re-centres it and slides everything again. A
+  second tap on Flip horizontal missed. Now Free transform stays, shown active like Distort/Mesh, and a
+  dimmed ✓ holds Commit's slot before the lift, so the bar is the same width in both states. Positions
+  must not shift under the pen.
+
+**Verified in desktop Chrome:** flip H and V on a plain selection (lifted, mirrored about the
+selection's centre), two taps on Flip horizontal at the same spot flip and un-flip (the bar stays put), click-outside commits, one ⌘Z
+undoes lift + flip. **Owed an iPad pass.**
+
+**The free-transform rotate handle stays out from under the selection bar (2026-09-11).** Reported with
+a screenshot as *"selection>free transform rotate handle is covered by floating menu"*. The bar sits
+above the selection by default, 12px off it, and the rotate handle stuck 20 doc-px out of the TOP edge —
+straight into the bar. Now the handle goes on whichever local edge (top or bottom) lands FARTHER from the
+bar on screen: bottom when the bar is above (the usual case), top when there's no room above and the bar
+drops below. Decided in SCREEN space by the bar each frame (`pickRotateEdge` from `computeAnchor`'s new
+`side`), so a float rotated past 90° or a rotated view still picks the right one; the rotation gesture
+itself is angle-about-centre, so which edge carries the handle doesn't change how it rotates.
+Alternatives considered: pushing the bar further away (the handle offset is in document units, so the
+gap would depend on zoom and rotation), and Photoshop-style rotate-by-dragging-outside-a-corner (no
+hover on iPad, so the gesture would be invisible). Four node tests on the edge choice and the new
+`side`, written first. **Verified in desktop Chrome:** bar above → handle below and grabbable; after
+rotating the float up against the top of the canvas the bar dropped below and the handle moved to the
+upper edge. **Owed an iPad pass.**

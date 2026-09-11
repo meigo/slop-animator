@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1226 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1234 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -204,6 +204,7 @@ source frame); property tracks (transform/opacity) play straight through the rem
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
+- **Flip in the Transform tool** (deferred 2026-09-11): Flip H / V for the Frame / Layer / Group scopes and reference layers — a whole layer or group across all frames. Selection flip shipped first (floating selection bar). This one needs a mirror in `RefTransform` (read by render, gizmo math, persistence and transform tracks, ~70 sites) and a decision on keyed vs static flip for animated transforms.
 - ~~**Transform later**: animated/keyframed transforms~~ — **SHIPPED 2026-08-18** and NOT via the
   `RefTransform → KeyframedTransform` migration sketched here. See the **Layer transform track** and
   **Multi-property animation rows** entries below: an optional `tracks` bag (`LayerTracks`

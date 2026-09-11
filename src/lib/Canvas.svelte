@@ -1686,6 +1686,17 @@
     selection.drawOverlay();
   }
 
+  /** Flip the selection horizontally or vertically. A plain selection is lifted first — the same
+   *  lift (and the same refusals) as Free transform — so the flip shows up as a float with handles;
+   *  the lift and its commit stay one undo step. */
+  function flipSelection(axis: "h" | "v") {
+    if (!selection) return;
+    if (selection.state === "selected") enterTransform();
+    if (selection.state !== "transforming") return;
+    selection.flip(axis);
+    recomposite();
+  }
+
   function enterDeform() {
     const al = activeLayer();
     if (
@@ -2366,6 +2377,7 @@
     onTransform={enterTransform}
     onDistort={() => enterWarp(2, 2)}
     onMesh={() => enterWarp(3, 3)}
+    onFlip={flipSelection}
     onCommit={() => selection?.commit()}
     onCancel={() => selection?.cancel()}
     onDensify={(d) => {
