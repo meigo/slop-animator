@@ -169,12 +169,13 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     group ∘ layer ∘ cell does not. Overlay must not applyCompose the ants. Pixel ops
     (clip/lift/copy/commit) map through inverseChain via selection.composeSteps.
     Switching layers keeps the ants put; a live lift still banks (gotcha #9).
-14. **iOS WebKit misdraws a `sticky` box that overhangs the content it is pinned in.** The timeline's
-    gutter plate and grip are `sticky top-0`, panel-tall and out of flow; with fewer rows than fit they
-    hung past the content and every iPad browser blanked the name column's top by exactly the unused
-    height — while desktop Chrome AND desktop WebKit measured and drew it fine, so neither can
-    reproduce it. Keep the flow at least as tall as any pinned box (Timeline's `min-height: gridH`
-    wrapper). See the 2026-09-11 changelog entry.
+14. **iOS WebKit paints a full-height opaque `sticky` overlay OVER higher-z sticky siblings.** The
+    timeline's gutter plate (out of flow, `top-0 left-0 z-15`, opaque) covered the z-20 name labels and
+    the z-35 ruler on every iPad browser whenever the rows did not fill the panel, while desktop Chrome
+    and desktop WebKit drew it correctly — so neither can reproduce it. Proved by a `?tl=` bisect build
+    on the device, after a first guess (a min-height floor) failed. Don't layer an opaque sticky box
+    BEHIND sticky content; make it occupy only the space where nothing else is (Timeline's gutter
+    filler below the last row). See the 2026-09-11 changelog entries.
 
 ## Current state (all shipped & merged to `main`)
 
