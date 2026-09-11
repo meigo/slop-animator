@@ -30,6 +30,7 @@
     SaveOff,
     Lock,
     LockOpen,
+    Grid2x2,
   } from "@lucide/svelte";
   import {
     state as appState,
@@ -626,6 +627,25 @@
       >
         {#if layer.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
       </button>
+      {#if layer.kind === "draw"}
+        <!-- Alpha lock ("lock transparency"): the checkerboard is the usual transparency glyph, and a
+             second padlock beside the layer lock would read as a duplicate of it. A view-prop like
+             `locked`, toggled the same way (not undoable). -->
+        <button
+          class={layer.alphaLock ? "text-accent" : "text-text-muted hover:text-text"}
+          aria-pressed={layer.alphaLock === true}
+          title={layer.alphaLock
+            ? "Alpha lock on — paint lands only on existing pixels; click to turn off"
+            : "Alpha lock off — click to paint only over existing pixels"}
+          onclick={(e) => {
+            e.stopPropagation();
+            layer.alphaLock = !layer.alphaLock;
+            bump();
+          }}
+        >
+          <Grid2x2 size={15} />
+        </button>
+      {/if}
       {#if layer.kind === "ref"}
         {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
         <span

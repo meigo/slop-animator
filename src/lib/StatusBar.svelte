@@ -1,7 +1,8 @@
 <script lang="ts">
   import { state as appState, activeLayer, transformScope } from "../state/appState.svelte";
   import { whyRowRefusesTransform, workingTarget } from "../anim/active-row";
-  import { layerTransformTrack, whyNotEditable } from "../anim/document";
+  import { layerTransformTrack, resolvedDisplayKeyCell, whyNotEditable } from "../anim/document";
+  import { isCellEmpty } from "./cell-ink";
   import { contextHint } from "./status-hint";
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
 
@@ -52,6 +53,10 @@
     const keys =
       !audioOn &&
       ((!!target && layerTransformTrack(target) != null) || group?.tracks?.transform != null);
+    // Alpha lock, and whether the drawing at the playhead has anything to paint over.
+    const alphaLock = l.kind === "draw" && l.alphaLock === true;
+    const rk = l.kind === "draw" && alphaLock ? resolvedDisplayKeyCell(l, appState.playhead) : null;
+    const frameEmpty = alphaLock && (!rk || isCellEmpty(rk.cell.canvas, appState.version));
     return contextHint({
       tool: appState.tool,
       // The SAME function the canvas overlay and the selection bar ask, so the three cannot
@@ -69,6 +74,8 @@
       poseActive: appState.poseActive,
       // A held drag keys its GRAB frame, not wherever the playhead has since moved to.
       animatedFrame: keys ? (appState.transformDragFrame ?? appState.playhead) : null,
+      alphaLock,
+      frameEmpty,
     });
   });
   const targetName = $derived.by(() => {

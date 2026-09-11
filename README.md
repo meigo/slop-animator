@@ -18,6 +18,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Fill every area an outline encloses in one press, behind the strokes — the animator's
   white-under-black-outline, without redrawing each region by hand
 - Transparent background support with checkerboard view and a paint-behind toggle
+- Per-layer **alpha lock** (lock transparency): brushes paint only over what is already drawn, and the
+  bucket recolours existing pixels — toggle it with the checkerboard button on the layer row
 - **iPad:** finger pans, Pencil edits (canvas and timeline). Two-finger pinch zooms, pans, and
   rotates; lift snaps to 90° if you are within ~3°
 

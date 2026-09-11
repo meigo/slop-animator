@@ -37,6 +37,8 @@ export interface DrawingLayerJson {
   name: string;
   visible: boolean;
   locked: boolean;
+  /** Written only when on; absent = off. */
+  alphaLock?: boolean;
   opacity: number;
   boilStrength: number;
   groupId: number | null;
@@ -227,6 +229,7 @@ export function projectToJson(project: Project): ProjectJson {
       name: l.name,
       visible: l.visible,
       locked: l.locked,
+      ...(l.alphaLock ? { alphaLock: true } : {}),
       opacity: l.opacity,
       boilStrength: l.boilStrength,
       groupId: l.groupId,
@@ -652,6 +655,7 @@ export async function loadProjectBlob(
       name: lj.name,
       visible: lj.visible,
       locked: lj.locked,
+      ...(lj.alphaLock === true ? { alphaLock: true } : {}),
       opacity: lj.opacity,
       boilStrength: lj.boilStrength ?? 1,
       groupId: lj.groupId ?? null,

@@ -530,8 +530,11 @@
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     const color = hexToRgba(appState.fill.color, appState.fill.opacity);
-    if (selection && selection.state === "selected") {
-      // Flood on a temp copy, then composite back through the selection clip.
+    const alphaLock = layer.kind === "draw" && layer.alphaLock === true;
+    const clipSel = selection?.state === "selected" ? selection : null;
+    if (clipSel || alphaLock) {
+      // Flood on a temp copy, then composite back — through the selection clip, and with alpha lock
+      // `source-atop`, so only pixels that already exist take the fill (their alpha is kept).
       const tmp = document.createElement("canvas");
       tmp.width = canvas.width;
       tmp.height = canvas.height;
@@ -539,13 +542,21 @@
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
-        expand: appState.fill.expand,
+        // `expand` > 0 switches floodFill to painting BEHIND existing content (it exists to tuck a
+        // fill under anti-aliased line edges), which could never recolour a pixel — and alpha lock
+        // refuses every empty one — so under the lock it would be a guaranteed no-op. 0 = write
+        // the colour into the region, which the `source-atop` composite below then keeps inside the
+        // existing alpha: a recolour of what is there.
+        expand: alphaLock ? 0 : appState.fill.expand,
       });
       ctx.save();
       try {
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        selection.applyClip(ctx);
-        compositeClippedCopy(ctx, tmp);
+        clipSel?.applyClip(ctx);
+        if (alphaLock) {
+          ctx.globalCompositeOperation = "source-atop";
+          ctx.drawImage(tmp, 0, 0, tmp.width / DPR, tmp.height / DPR);
+        } else compositeClippedCopy(ctx, tmp);
       } finally {
         // strokeCtx/ctx outlive this call, so a throw between save() and restore() would strand
         // both the clip AND the "copy" composite on the cell — every later draw would then be
@@ -567,8 +578,9 @@
       // (only the DEFERRED closures above have to resolve by id).
       if (materialized) restoreTrackById(layerId, materialized.before);
       // Must not no-op in silence: this is pixel-identical to a fill that worked.
-      appState.statusHint =
-        selection?.state === "selected"
+      appState.statusHint = alphaLock
+        ? "Nothing filled — alpha lock is on, and there are no pixels there to recolour"
+        : selection?.state === "selected"
           ? "Nothing filled — that area is outside the selection, or already this color"
           : "Nothing filled — that area is already this color";
       return;
@@ -604,6 +616,12 @@
       onLoopFrame(layer)
     )
       return;
+    // Fill enclosed paints only EMPTY interiors, behind the lines — alpha lock refuses exactly those
+    // pixels, so it could never land anything. Say so rather than run a fill that cannot show.
+    if (layer.kind === "draw" && layer.alphaLock) {
+      appState.statusHint = "Alpha lock is on — Fill enclosed only paints empty areas";
+      return;
+    }
     // Read the RESOLVED key first: same pixels the user is looking at, and nothing is mutated yet.
     // `ensureDrawableKeyframe` is not just the ·→◆ marker on a hold — past the layer's end it
     // APPENDS holds and a keyframe — so running it before the region is known would leave the
@@ -701,7 +719,13 @@
     // every stroke. A list that has to be extended in a second file every time a brush parameter
     // is added will eventually not be, and nothing in the type system or the tests catches it,
     // because ToolSettings is a superset of BrushSettings and the extra keys are ignored.
-    const settings = { ...stroke, isEraser: appState.tool === "eraser" };
+    // alphaLock is a LAYER property, so it overrides the tool setting's (always-false) field. The
+    // engines' ladder is eraser > alphaLock > drawBehind, so the eraser is untouched by it.
+    const settings = {
+      ...stroke,
+      isEraser: appState.tool === "eraser",
+      alphaLock: strokeLayer?.alphaLock === true,
+    };
     const kind = stroke.brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.

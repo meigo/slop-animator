@@ -67,6 +67,11 @@ export interface HintContext {
    *  (the f n/n readout, the ruler, a key's tooltip) is 1-based. A drag will write
    *  a key THERE, and saying so is the mitigation for auto-key's one hazard. */
   animatedFrame: number | null;
+  /** The active drawing layer has alpha lock on: brush and fill paint only over existing pixels. */
+  alphaLock: boolean;
+  /** The drawing at the playhead is empty. Only read with `alphaLock`: a locked empty frame takes no
+   *  paint at all, which looks exactly like a broken brush unless something says why. */
+  frameEmpty: boolean;
 }
 
 export function contextHint(c: HintContext): string {
@@ -131,12 +136,17 @@ export function contextHint(c: HintContext): string {
         : "Tap the drawing to build the pose mesh";
     case "brush":
     case "eraser":
-    case "fill":
+    case "fill": {
+      // Alpha lock never touches the eraser, so it is never mentioned for it.
+      const locked = c.alphaLock && c.tool !== "eraser";
+      // A locked EMPTY frame takes no paint at all — the strongest "why is nothing happening".
+      if (locked && c.frameEmpty) return "Alpha lock is on — nothing on this frame to paint over";
       // A selection clips these tools, and with a paint tool active the on-canvas bar's ✕ is the
       // only reachable deselect — worth saying, since a forgotten marquee looks like a broken brush.
-      return c.selectionActive || c.selectionFloating
-        ? "Painting is clipped to the selection · ✕ on the selection bar deselects"
-        : "";
+      if (c.selectionActive || c.selectionFloating)
+        return "Painting is clipped to the selection · ✕ on the selection bar deselects";
+      return locked ? "Alpha lock — paint lands only on existing pixels" : "";
+    }
     default:
       return ""; // eyedropper etc.: drag-to-draw needs no teaching
   }

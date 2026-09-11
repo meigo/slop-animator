@@ -780,6 +780,7 @@ export function duplicateLayer(id: number) {
     const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
     dup.visible = src.visible;
     dup.locked = src.locked;
+    dup.alphaLock = src.alphaLock;
     dup.opacity = src.opacity;
     dup.boilStrength = src.boilStrength; // match the source's line-boil strength
     dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
