@@ -5999,3 +5999,12 @@ layer you are on) taken to its end.
   synthetic drag on a range input does not register); Rename from the strip on a member of a collapsed
   group opened the group and focused the row's input. **Owed:** an iPad look — reach of the right-hand
   columns with the Pencil, and the strip at the panel's default width.
+
+**Keep proportions: chain icon (2026-09-11).** Asked as *"the lock is too general"*. The padlock already
+means a locked layer in the same panel, so in both places the toggle lives — the Transform bar (with its
+"Keep proportions" label) and the floating selection bar (icon only) — it is now the chain: `Link2` on,
+`Link2Off` off. The chain is the settled glyph for linked width/height (Photoshop, Figma), and it is the
+only candidate with a natural OFF form, so the state reads from the icon itself, not only from the
+accent fill — which matters in the selection bar, where there is no label. Considered and passed over:
+Expand / Maximize (read as fullscreen, and as an action rather than a setting), Scaling /
+ImageUpscale (an action), SquarePercent (a percentage), Proportions / Ratio (no off form).

@@ -21,8 +21,8 @@
     ClipboardPaste,
     Trash2,
     MousePointerBan,
-    Lock,
-    LockOpen,
+    Link2,
+    Link2Off,
     FlipHorizontal2,
     FlipVertical2,
   } from "@lucide/svelte";
@@ -451,7 +451,7 @@
         ? "Keep proportions — on: corners keep the shape (sides always stretch)"
         : "Keep proportions — off: corners stretch freely"}
       onclick={() => (appState.keepProportions = !appState.keepProportions)}
-      >{#if appState.keepProportions}<Lock size={14} />{:else}<LockOpen size={14} />{/if}
+      >{#if appState.keepProportions}<Link2 size={14} />{:else}<Link2Off size={14} />{/if}
       Keep proportions</button
     >
   {:else if appState.tool === "deform" || appState.tool === "pose"}
