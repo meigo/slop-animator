@@ -1241,6 +1241,7 @@
           handle
         ) {
           selectionMode = "drag";
+          selection.keepProportions = appState.keepProportions; // read at grab, like every drag input
           selection.startDrag(handle, p.x, p.y);
         } else {
           // Outside any selection (or idle) → commit/cancel the old one, start a new marquee.

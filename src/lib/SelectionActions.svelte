@@ -8,6 +8,8 @@
     FlipVertical2,
     Check,
     X,
+    Lock,
+    LockOpen,
   } from "@lucide/svelte";
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
@@ -199,6 +201,27 @@
           {#if f.axis === "h"}<FlipHorizontal2 size={18} />{:else}<FlipVertical2 size={18} />{/if}
         </button>
       {/each}
+      <!-- Keep proportions: shown whenever Flip is (plain AND lifted), not only once lifted — the bar
+           is centred on the selection, so a button that appears on the lift re-centres it and slides
+           every other button under the pen (the reason the dimmed ✓ exists). It is a setting, so it
+           is harmless before the lift. Same value as the Transform bar's toggle. -->
+      <button
+        class="size-10 rounded-md border flex items-center justify-center"
+        class:bg-accent={appState.keepProportions}
+        class:text-accent-text={appState.keepProportions}
+        class:border-accent={appState.keepProportions}
+        class:bg-surface={!appState.keepProportions}
+        class:text-text-secondary={!appState.keepProportions}
+        class:border-border={!appState.keepProportions}
+        class:hover:bg-surface-hover={!appState.keepProportions}
+        aria-pressed={appState.keepProportions}
+        onpointerdown={tap(() => (appState.keepProportions = !appState.keepProportions))}
+        title={appState.keepProportions
+          ? "Keep proportions — on: corners keep the shape (sides always stretch)"
+          : "Keep proportions — off: corners stretch freely"}
+      >
+        {#if appState.keepProportions}<Lock size={18} />{:else}<LockOpen size={18} />{/if}
+      </button>
     {/if}
     {#if mode === "warping"}
       <button
