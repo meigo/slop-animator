@@ -5,34 +5,93 @@ import { resolveDisplayKey } from "../anim/document";
 // A full-resolution scan per cell would be far too expensive to run every render, so we
 // downscale the keyframe to a small probe and check it for any non-transparent pixel.
 //
-// The downscale MUST area-average (imageSmoothingQuality "high"). A single extreme downscale
-// of a high-DPR cell canvas (e.g. ~1500px wide → 24px) with the default sparse sampling skips
-// thin strokes entirely, so an inked keyframe reads as empty — the canvas composites it but the
-// timeline shows no ◆/— marker. A moderate probe size keeps the ratio sane so area-averaging
-// reliably preserves thin lines. (A genuinely cleared keyframe still reads empty, as intended.)
+// The downscale must never shrink by more than 2x in one draw. One big downscale (the old single
+// 1280px → 64px draw) does not area-average in Chrome even at imageSmoothingQuality "high": it
+// SAMPLES source rows, so a thin stroke lying between sample rows read as empty and an inked key
+// drew as a hollow ◇ — measured 2026-09-11: the same 5px-tall stroke was found at 3 of 10 vertical
+// offsets. Halving repeatedly with bilinear filtering cannot skip a row: at <= 2x each destination
+// pixel's footprint covers every source row it spans. (A lone single pixel of ink can still average
+// away to 0 over five halvings, as it could before — the probe is for strokes, not specks.)
+// (A genuinely cleared keyframe still reads empty, as intended.)
 
 const MAX_PROBE = 64; // longest probe side in px (aspect preserved)
 let probe: HTMLCanvasElement | null = null;
+const scratch: HTMLCanvasElement[] = []; // intermediate halving steps, reused across calls
 
-/** True if `canvas` has no visible ink (every pixel fully transparent in the downscaled probe). */
-function probeEmpty(canvas: HTMLCanvasElement): boolean {
-  if (canvas.width === 0 || canvas.height === 0) return true;
-  const scale = Math.min(1, MAX_PROBE / Math.max(canvas.width, canvas.height));
-  const pw = Math.max(1, Math.round(canvas.width * scale));
-  const ph = Math.max(1, Math.round(canvas.height * scale));
-  if (!probe) probe = document.createElement("canvas");
-  if (probe.width !== pw) probe.width = pw;
-  if (probe.height !== ph) probe.height = ph;
-  const ctx = probe.getContext("2d", { willReadFrequently: true })!;
-  ctx.clearRect(0, 0, pw, ph);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high"; // area-average so thin strokes survive the downscale
-  ctx.drawImage(canvas, 0, 0, pw, ph);
-  const { data } = ctx.getImageData(0, 0, pw, ph);
+/** Sizes of the successive draws that take a `w`×`h` canvas down to at most `max` px on its longest
+ *  side, each step at most 2x smaller on either axis (sizes round UP, so an odd side never shrinks
+ *  more than 2x). A canvas already that small gets one 1:1 copy. Pure; exported for tests. */
+export function probeSteps(w: number, h: number, max: number): { w: number; h: number }[] {
+  const out: { w: number; h: number }[] = [];
+  let cw = w,
+    ch = h;
+  while (Math.max(cw, ch) > max) {
+    cw = Math.max(1, Math.ceil(cw / 2));
+    ch = Math.max(1, Math.ceil(ch / 2));
+    out.push({ w: cw, h: ch });
+  }
+  return out.length ? out : [{ w: cw, h: ch }];
+}
+
+/** Read `c` back and report whether every pixel is fully transparent. */
+function allTransparent(c: HTMLCanvasElement): boolean {
+  const { data } = c
+    .getContext("2d", { willReadFrequently: true })!
+    .getImageData(0, 0, c.width, c.height);
   for (let i = 3; i < data.length; i += 4) {
     if (data[i] !== 0) return false;
   }
   return true;
+}
+
+let quick: HTMLCanvasElement | null = null;
+
+/**
+ * True if `canvas` has no visible ink. Two passes, because the robust one is ~12x the cost
+ * (0.30–0.37 ms against 0.027 ms per 1280×720 cell, desktop Chrome, measured 2026-09-11) and every
+ * version bump re-probes every key:
+ *  1. One direct draw to the probe size. It SAMPLES, so it can miss a thin stroke — but it can never
+ *     invent ink: a non-zero pixel here means the cell really is inked. That settles almost every
+ *     inked key at the old cost.
+ *  2. Only when pass 1 sees nothing: the halving probe (`probeSteps`), which cannot skip a row. It
+ *     confirms a genuinely blank key, or finds the thin stroke pass 1 fell between.
+ */
+function probeEmpty(canvas: HTMLCanvasElement): boolean {
+  if (canvas.width === 0 || canvas.height === 0) return true;
+
+  // Pass 1 — exactly the pre-2026-09-11 probe (same size, same single draw), so an inked key costs
+  // what it always did.
+  const scale = Math.min(1, MAX_PROBE / Math.max(canvas.width, canvas.height));
+  const pw = Math.max(1, Math.round(canvas.width * scale));
+  const ph = Math.max(1, Math.round(canvas.height * scale));
+  if (!quick) quick = document.createElement("canvas");
+  if (quick.width !== pw) quick.width = pw;
+  if (quick.height !== ph) quick.height = ph;
+  const qctx = quick.getContext("2d", { willReadFrequently: true })!;
+  qctx.clearRect(0, 0, pw, ph);
+  qctx.imageSmoothingEnabled = true;
+  qctx.imageSmoothingQuality = "high";
+  qctx.drawImage(canvas, 0, 0, pw, ph);
+  if (!allTransparent(quick)) return false;
+
+  const steps = probeSteps(canvas.width, canvas.height, MAX_PROBE);
+  let src: HTMLCanvasElement = canvas;
+  for (let k = 0; k < steps.length; k++) {
+    const last = k === steps.length - 1;
+    // The final step is the one read back, so it alone asks for a CPU-friendly context.
+    if (last && !probe) probe = document.createElement("canvas");
+    const dst = last ? probe! : (scratch[k] ??= document.createElement("canvas"));
+    const { w, h } = steps[k];
+    if (dst.width !== w) dst.width = w;
+    if (dst.height !== h) dst.height = h;
+    const ctx = dst.getContext("2d", last ? { willReadFrequently: true } : undefined)!;
+    ctx.clearRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "low"; // plain bilinear: at <= 2x that is an exact 2x2 average
+    ctx.drawImage(src, 0, 0, w, h);
+    src = dst;
+  }
+  return allTransparent(probe!);
 }
 
 const cache = new WeakMap<HTMLCanvasElement, { version: number; empty: boolean }>();

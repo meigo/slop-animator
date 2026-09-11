@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boundsOfPixels, contentBounds, groupContentBoxLogical } from "../lib/cell-ink";
+import { boundsOfPixels, contentBounds, groupContentBoxLogical, probeSteps } from "../lib/cell-ink";
 import type { Project, LayerGroup, DrawingLayer } from "../anim/document";
 
 // Minimal canvas stub: getContext→ctx with no-op draw + getImageData returning a known buffer.
@@ -170,5 +170,51 @@ describe("boundsOfPixels", () => {
     const { data, width, height } = pixels(["..", ".."]);
     data[0] = 255; // red, alpha still 0
     expect(boundsOfPixels(data, width, height)).toBeNull();
+  });
+});
+
+describe("probeSteps", () => {
+  // The emptiness probe must never shrink by more than 2x in one draw: a single big downscale
+  // SAMPLES rows (Chrome, even at imageSmoothingQuality "high"), so a thin stroke between sample rows
+  // read as empty — an inked key drew as a hollow diamond. <= 2x bilinear cannot skip a source row.
+  const sizes = (w: number, h: number) => probeSteps(w, h, 64).map((s) => `${s.w}x${s.h}`);
+
+  it("halves a 1280x720 cell down to the 64px probe", () => {
+    expect(sizes(1280, 720)).toEqual(["640x360", "320x180", "160x90", "80x45", "40x23"]);
+  });
+
+  it("takes one more halving for a 2x-DPR cell", () => {
+    expect(sizes(2560, 1440)).toEqual([
+      "1280x720",
+      "640x360",
+      "320x180",
+      "160x90",
+      "80x45",
+      "40x23",
+    ]);
+  });
+
+  it("copies 1:1 when the cell is already probe-sized", () => {
+    expect(sizes(50, 30)).toEqual(["50x30"]);
+  });
+
+  it("rounds odd sizes up, so a step never shrinks more than 2x", () => {
+    expect(sizes(65, 10)).toEqual(["33x5"]);
+    for (const [w, h] of [
+      [1920, 1080],
+      [1001, 3],
+      [3, 999],
+      [4096, 2304],
+    ]) {
+      let pw = w,
+        ph = h;
+      for (const st of probeSteps(w, h, 64)) {
+        expect(pw / st.w).toBeLessThanOrEqual(2);
+        expect(ph / st.h).toBeLessThanOrEqual(2);
+        pw = st.w;
+        ph = st.h;
+      }
+      expect(Math.max(pw, ph)).toBeLessThanOrEqual(64);
+    }
   });
 });

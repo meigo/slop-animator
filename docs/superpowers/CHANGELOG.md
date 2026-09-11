@@ -5683,3 +5683,31 @@ hover on iPad, so the gesture would be invisible). Four node tests on the edge c
 `side`, written first. **Verified in desktop Chrome:** bar above → handle below and grabbable; after
 rotating the float up against the top of the canvas the bar dropped below and the handle moved to the
 upper edge. **Owed an iPad pass.**
+
+**Inked keys no longer read as blank (hollow ◇) when a thin stroke sits between probe sample rows
+(2026-09-11).** Found while testing selection flip: after lifting a selection, moving it and committing,
+the frame's key drew as a hollow ◇ although its drawing was plainly there; undo put the ◆ back.
+Investigated rather than patched — instrumented the emptiness probe in the browser:
+
+- The cache was NOT stale. At the post-commit version the timeline called `isCellEmpty`, and the probe
+  itself read **0 non-zero pixels** from a canvas holding **555** inked ones (a 111×5 px stroke).
+- `probeEmpty` shrank the cell to its 64px probe in ONE `drawImage` (1280 → 64, 20×). That does not
+  area-average in Chrome, even at `imageSmoothingQuality = "high"` (the 2026-06-16 fix relied on it
+  doing so): it samples source rows. Shifting the same stroke 0–18px vertically, it was found at 3 of
+  10 offsets. The lift/commit merely moved the stroke onto a blind row — the bug was always there for
+  any thin, near-horizontal stroke, at whatever position.
+- **Fix:** halve repeatedly (`probeSteps` — each draw at most 2× smaller, sizes rounded up) with plain
+  bilinear filtering; at ≤2× a bilinear draw cannot skip a source row. Four node tests on `probeSteps`,
+  written first and watched fail.
+- **Kept cheap with two passes.** The halving probe alone measured ~10× the old cost per cell, and
+  every version bump re-probes every key. But the old one-draw probe can MISS ink, never invent it: a
+  non-zero pixel there is proof. So pass 1 is exactly the old probe and settles almost every inked key;
+  only a key it reads as empty (a genuinely blank key, or a stroke it fell between) pays for the halving
+  pass. Measured side by side from a clean page load, module against module (`main`'s `cell-ink.ts`
+  loaded as a temporary copy): **0.050 ms per inked key, old and new alike**; a blank key costs
+  **~0.57 ms** (was ~0.04). An earlier run that showed the new module 10× slower on inked keys was an
+  artefact of the test harness — its long-lived probe canvas had been fed non-`willReadFrequently`
+  test canvases; a fresh instance of the same code measured the same as the old.
+- **Verified in desktop Chrome:** the reproduced ◇ reads ◆ after reload; the stroke is detected at
+  all 20 vertical offsets (0–19px); a blank canvas still reads empty. A lone single pixel of ink can
+  still average away to 0, as it could before — the probe is for strokes.
