@@ -2535,11 +2535,21 @@
       <div class="absolute inset-y-0 w-1 group-hover:bg-text/10" style="left: 2px"></div>
     </div>
 
-    <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
+    <!-- Content floor. The plate and the grip above are pinned `sticky top-0` and exactly as tall as
+         the scroller (`gridH`), but they are pulled out of flow, so the FLOW is only the ruler + rows.
+         With fewer rows than fit, that left both boxes hanging past the content they are pinned in —
+         and iOS WebKit (every iPad browser) then painted the name column's top wrong: the ruler's
+         header and the first rows' names went blank, by exactly the unused height (2026-09-11;
+         desktop Chrome and desktop WebKit lay it out identically and draw it fine). Keeping the flow
+         at least `gridH` tall means nothing pinned ever overhangs its content. It adds no scrolling —
+         the scroll height was already `gridH` because of the plate. `w-max min-w-full` so any sticky
+         descendant keeps a containing block as wide as the strip (the 2026-08-14 lesson). -->
+    <div class="w-max min-w-full" style="min-height: {gridH}px">
+      <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->
-    <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
+      <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
          time band visibly ENDS at the last frame instead of stretching over the whole scroll width. -->
-    <!-- `border-b`: the ruler is the only row in the grid that had no bottom divider, which also made
+      <!-- `border-b`: the ruler is the only row in the grid that had no bottom divider, which also made
          it 24px where every layer and track row is 25 (24 + its own border). One class gives it both
          — the divider the rest of the grid has, and the same box height, so it stops reading a pixel
          short of the tracks below it. The 24px CONTENT is untouched, which matters: the tick stubs
@@ -2550,11 +2560,11 @@
          vertically. The ruler is the thing rows scroll UNDER, so it has to outrank them. The playhead
          badge is a child of this row and rides along; the gutter resize grip sits above it again
          (z-40) so it stays grabbable at the ruler's level. -->
-    <div
-      class="sticky top-0 z-35 flex w-max items-stretch border-b border-border bg-surface"
-      style="min-width: {stripMinW}px"
-    >
-      <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
+      <div
+        class="sticky top-0 z-35 flex w-max items-stretch border-b border-border bg-surface"
+        style="min-width: {stripMinW}px"
+      >
+        <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
            is the header over the row names, and the tone is what separates the ruler from the rows
            beneath it. Briefly changed to `bg-surface` on 2026-09-09 on the theory that a paler block
            was what made a selected first row look "cut from the top" — it was not. Measured with the
@@ -2564,13 +2574,13 @@
            edge above it, a 10%-accent tint looks like it begins somewhere arbitrary. Restored.
            This is a deliberate divergence from the shared doc's "Ruler: `panel` ground" — noted in
            SLOP-TIMELINE-UI.md, not drift. -->
-      <span
-        class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
-        style="width: {GUTTER_W}px"
-      >
-      </span>
-      {#if playRange}
-        <!-- Play-range handles: the wedge, the ruler's slice of the 1px line, and a 12px grab strip
+        <span
+          class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
+          style="width: {GUTTER_W}px"
+        >
+        </span>
+        {#if playRange}
+          <!-- Play-range handles: the wedge, the ruler's slice of the 1px line, and a 12px grab strip
              straddling the boundary so a thin line is still grabbable. The rest of each line runs
              down through the tracks from the scroller (see "play-range lines" there): the ruler is
              opaque and paints over anything the scroller draws beneath it.
@@ -2583,49 +2593,49 @@
              symmetric head in SHAPE — red against amber is the worst pair for the common colour
              blindnesses. Was 2px and ruler-height only (`h-6`, which went stale when the ruler became
              29px); now 1px and full height, as asked 2026-09-10. -->
-        {#each [{ edge: "in" as const, x: playRange.start * CELL_W }, { edge: "out" as const, x: (playRange.end + 1) * CELL_W }] as h (h.edge)}
-          <div
-            class="absolute inset-y-0 z-10 w-3 cursor-ew-resize hover:bg-text/10"
-            style="left: {GUTTER_W + h.x - 6}px; touch-action: none"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Play-range {h.edge}-point — drag to move"
-            title="Play-range {h.edge}-point — drag to move, tap to seek"
-            onpointerdown={(e) => rangeHandleDown(e, h.edge)}
-            onpointermove={rangeHandleMove}
-            onpointerup={rangeHandleUp}
-            onpointercancel={rangeHandleUp}
-          >
-            <span
-              class="pointer-events-none absolute inset-y-0 w-px"
-              style="left: {h.edge === 'in' ? 6 : 5}px; background: var(--color-warn)"
-            ></span>
-            <span
-              class="pointer-events-none absolute top-0"
-              style="left: {h.edge === 'in'
-                ? 6
-                : 1}px; width: 0; height: 0; border-top: 5px solid var(--color-warn); {h.edge ===
-              'in'
-                ? 'border-right'
-                : 'border-left'}: 5px solid transparent"
-            ></span>
-          </div>
-        {/each}
-      {/if}
-      <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
+          {#each [{ edge: "in" as const, x: playRange.start * CELL_W }, { edge: "out" as const, x: (playRange.end + 1) * CELL_W }] as h (h.edge)}
+            <div
+              class="absolute inset-y-0 z-10 w-3 cursor-ew-resize hover:bg-text/10"
+              style="left: {GUTTER_W + h.x - 6}px; touch-action: none"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Play-range {h.edge}-point — drag to move"
+              title="Play-range {h.edge}-point — drag to move, tap to seek"
+              onpointerdown={(e) => rangeHandleDown(e, h.edge)}
+              onpointermove={rangeHandleMove}
+              onpointerup={rangeHandleUp}
+              onpointercancel={rangeHandleUp}
+            >
+              <span
+                class="pointer-events-none absolute inset-y-0 w-px"
+                style="left: {h.edge === 'in' ? 6 : 5}px; background: var(--color-warn)"
+              ></span>
+              <span
+                class="pointer-events-none absolute top-0"
+                style="left: {h.edge === 'in'
+                  ? 6
+                  : 1}px; width: 0; height: 0; border-top: 5px solid var(--color-warn); {h.edge ===
+                'in'
+                  ? 'border-right'
+                  : 'border-left'}: 5px solid transparent"
+              ></span>
+            </div>
+          {/each}
+        {/if}
+        <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names.
            `danger`, not `accent`: in accent it was the same blue as the property keys, the span
            diamonds and the row selection, so the one mark you track during playback blended into the
            marks it has to be read against. The family doc reserves red for exactly this. -->
-      <div
-        class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
-        style="left: {GUTTER_W +
-          appState.playhead * CELL_W +
-          CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
-      >
-        {appState.playhead + 1}
-      </div>
-      <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
+        <div
+          class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
+          style="left: {GUTTER_W +
+            appState.playhead * CELL_W +
+            CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
+        >
+          {appState.playhead + 1}
+        </div>
+        <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
            the frame it marks. The badge is the ruler's full 24px, so its number centres exactly
            where the ruler's own labels do (those are `text-xs/6` in an `h-6` cell — same box, same
            centre), and this starts where the badge ends.
@@ -2637,16 +2647,16 @@
            one of them a selected row's tint. Not drawing the tip when it would be over the names has
            no such problem, and it is also what the artist would expect: the playhead is off-screen.
            If the badge's height changes, this `top` must change with it. -->
-      {#if !playheadBehindGutter}
-        <div
-          class="absolute z-10 pointer-events-none"
-          style="left: {GUTTER_W +
-            appState.playhead * CELL_W +
-            CELL_W /
-              2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
-        ></div>
-      {/if}
-      <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
+        {#if !playheadBehindGutter}
+          <div
+            class="absolute z-10 pointer-events-none"
+            style="left: {GUTTER_W +
+              appState.playhead * CELL_W +
+              CELL_W /
+                2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+          ></div>
+        {/if}
+        <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop. The tabindex CANNOT go entirely, even though
            `rulerKey` duplicates those same four global keys: `role="slider"` is an interactive role
            and svelte-check fails the build without one (a11y_interactive_supports_focus). role/aria
@@ -2657,42 +2667,44 @@
            play rang the whole ruler. Suppressing it costs nothing real: an element Tab cannot reach
            can never receive keyboard focus, so the ring here could only ever have been a false
            positive. -->
-      <div
-        bind:this={rulerEl}
-        class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
-        style="touch-action: none"
-        role="slider"
-        tabindex="-1"
-        aria-label="Scrub frames"
-        aria-valuemin={1}
-        aria-valuemax={appState.project.frameCount}
-        aria-valuenow={appState.playhead + 1}
-        onpointerdown={rulerDown}
-        onpointermove={rulerMove}
-        onpointerup={rulerUp}
-        onpointercancel={rulerUp}
-        onkeydown={rulerKey}
-      >
-        <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
+        <div
+          bind:this={rulerEl}
+          class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
+          style="touch-action: none"
+          role="slider"
+          tabindex="-1"
+          aria-label="Scrub frames"
+          aria-valuemin={1}
+          aria-valuemax={appState.project.frameCount}
+          aria-valuenow={appState.playhead + 1}
+          onpointerdown={rulerDown}
+          onpointermove={rulerMove}
+          onpointerup={rulerUp}
+          onpointercancel={rulerUp}
+          onkeydown={rulerKey}
+        >
+          <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
              the frames it measures; absolutely positioned so it adds no column.
              z-10 like the playhead badge beside it: the ruler's own sticky gutter spacer is z-20 and
              comes EARLIER in the DOM, so at equal z this handle would win and paint over the spacer
              once the animation's end is scrolled behind it. -->
-        <div
-          class="absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-text/10"
-          style="left: {GUTTER_W + appState.project.frameCount * CELL_W - 4}px; touch-action: none"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Drag to set the animation length"
-          title="Drag to set the animation length"
-          onpointerdown={lenGripDown}
-          onpointermove={lenGripMove}
-          onpointerup={lenGripUp}
-          onpointercancel={lenGripUp}
-        ></div>
-        {#each Array(appState.project.frameCount) as _, f (f)}
-          {@const r = playRange}
-          <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
+          <div
+            class="absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-text/10"
+            style="left: {GUTTER_W +
+              appState.project.frameCount * CELL_W -
+              4}px; touch-action: none"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag to set the animation length"
+            title="Drag to set the animation length"
+            onpointerdown={lenGripDown}
+            onpointermove={lenGripMove}
+            onpointerup={lenGripUp}
+            onpointercancel={lenGripUp}
+          ></div>
+          {#each Array(appState.project.frameCount) as _, f (f)}
+            {@const r = playRange}
+            <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
                number centred in the clear band between them. The two bands are disjoint, so a label
                can never collide with a tick — at any zoom, at any digit count.
                It was a full-height `border-r` with the label centred THROUGH it, which worked only
@@ -2725,116 +2737,65 @@
                where there is no preceding cell to carry a border.
                The 5-frame background guides moved with it and MUST stay in step; they are the same
                boundary drawn behind the rows. -->
-          <div
-            class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
-            style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
-              ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
-              : ''}"
-          >
-            {rulerLabel(f)}
-            {#each ["top-0", "bottom-0"] as edge (edge)}
-              <span
-                class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
-                  ? 'h-1 bg-text-muted'
-                  : 'h-[3px] bg-text-muted/35'}"
-                role="presentation"
-              ></span>
-            {/each}
-          </div>
-        {/each}
+            <div
+              class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
+              style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
+                ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
+                : ''}"
+            >
+              {rulerLabel(f)}
+              {#each ["top-0", "bottom-0"] as edge (edge)}
+                <span
+                  class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
+                    ? 'h-1 bg-text-muted'
+                    : 'h-[3px] bg-text-muted/35'}"
+                  role="presentation"
+                ></span>
+              {/each}
+            </div>
+          {/each}
+        </div>
       </div>
-    </div>
 
-    <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
-    <AudioLane
-      cellW={CELL_W}
-      labelW={LABEL_W}
-      markerW={MARKER_W}
-      minWidth={stripMinW}
-      onTouchDown={touchPanDown}
-      onTouchMove={touchPanMove}
-      onTouchUp={touchPanUp}
-      onEdgeScrollStart={startEdgeScroll}
-      onEdgeScrollStop={stopEdgeScroll}
-      onEdgePointerX={(x) => (edgePointerX = x)}
-      getScrollLeft={scrollX}
-      didPan={() => panEndedWithMovement}
-    />
+      <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
+      <AudioLane
+        cellW={CELL_W}
+        labelW={LABEL_W}
+        markerW={MARKER_W}
+        minWidth={stripMinW}
+        onTouchDown={touchPanDown}
+        onTouchMove={touchPanMove}
+        onTouchUp={touchPanUp}
+        onEdgeScrollStart={startEdgeScroll}
+        onEdgeScrollStop={stopEdgeScroll}
+        onEdgePointerX={(x) => (edgePointerX = x)}
+        getScrollLeft={scrollX}
+        didPan={() => panEndedWithMovement}
+      />
 
-    <!-- layer rows (top layer first) -->
-    {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}:${row.prop}` : `g${row.group.id}`)}
-      {#if row.kind === "group"}
-        {@const g = row.group}
-        {@const groupAnimated = isGroupAnimated(g)}
-        {@const showTrackFold = groupAnimated && !g.collapsed}
-        {@const groupLit = groupHeaderSelected(appState.activeRow, g, appState.project.layers)}
-        <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
+      <!-- layer rows (top layer first) -->
+      {#each timelineRows(buildSegments(appState.project.layers, appState.project.groups)) as row (row.kind === "layer" ? `l${row.layer.id}` : row.kind === "track" ? `t${row.layer.id}:${row.prop}` : row.kind === "grouptrack" ? `gt${row.group.id}:${row.prop}` : `g${row.group.id}`)}
+        {#if row.kind === "group"}
+          {@const g = row.group}
+          {@const groupAnimated = isGroupAnimated(g)}
+          {@const showTrackFold = groupAnimated && !g.collapsed}
+          {@const groupLit = groupHeaderSelected(appState.activeRow, g, appState.project.layers)}
+          <!-- A group row. It carries NO `data-layer-id`, which is what keeps it out of the selection
              axis for free: `layerIdAtPoint`, the marquee and every block op resolve rows through
              that attribute, and a group holds no cells to select. The frame strip is empty for now
              and is where a transform track would live. -->
-        <div
-          class="flex w-max items-center border-b border-border"
-          style="min-width: {stripMinW}px"
-        >
           <div
-            class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 hover:bg-surface-hover"
-            class:bg-surface={!groupLit}
-            class:ui-selected={groupLit}
-            class:text-text={groupLit}
-            class:text-text-secondary={!groupLit}
-            style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
-            role="presentation"
-            onpointerdown={(e) => {
-              if (isFinePointer(e)) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              touchPanDown(e);
-            }}
-            onpointermove={(e) => {
-              if (!isFinePointer(e) && touchPan) touchPanMove(e);
-            }}
-            onpointerup={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
-            onpointercancel={(e) => {
-              if (!isFinePointer(e)) touchPanUp(e);
-            }}
+            class="flex w-max items-center border-b border-border"
+            style="min-width: {stripMinW}px"
           >
-            <button
-              class="flex w-3.5 shrink-0 justify-center"
-              title={g.collapsed ? "Expand group" : "Collapse group"}
-              onclick={() => {
-                if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
-              }}
-            >
-              {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
-            </button>
-            <button
-              class="min-w-0 flex-1 truncate text-left font-semibold"
-              title="Select group"
-              onclick={() => {
-                if (!panEndedWithMovement) selectGroup(g.id);
-              }}>{g.name}</button
-            >
-            {#if groupAnimated && !showTrackFold}
-              <!-- Group is folded: property rows are gone with the members, so the Spline lives
-                   on the header the same way a collapsed group's animation used to. -->
-              <span class="shrink-0 text-text-secondary" title="Group is animated"
-                ><Spline size={11} /></span
-              >
-            {/if}
-            {#if row.hiddenCount > 0}
-              <!-- Says the content is still there. Collapsing used to remove it from the timeline
-                   with nothing left to indicate it existed. -->
-              <span class="shrink-0 text-text-muted">{row.hiddenCount}</span>
-            {/if}
-          </div>
-          {#if showTrackFold}
-            <button
-              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
-              style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
-              title={g.tracksCollapsed
-                ? "Show this group's animation rows"
-                : "Hide this group's animation rows"}
+            <div
+              class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 hover:bg-surface-hover"
+              class:bg-surface={!groupLit}
+              class:ui-selected={groupLit}
+              class:text-text={groupLit}
+              class:text-text-secondary={!groupLit}
+              style="width: {showTrackFold ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
+              role="presentation"
               onpointerdown={(e) => {
                 if (isFinePointer(e)) return;
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -2849,92 +2810,145 @@
               onpointercancel={(e) => {
                 if (!isFinePointer(e)) touchPanUp(e);
               }}
-              onclick={() => {
-                if (!panEndedWithMovement) toggleGroupTracksCollapsed(g.id);
-              }}
             >
-              <Spline size={11} />
-              {#if g.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
-            </button>
-          {/if}
-          <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
-            role="presentation"
-            style="left: {LABEL_W}px; width: {MARKER_W}px"
-            title={g.locked ? "Group locked — edits refused" : !g.visible ? "Group hidden" : ""}
-          >
-            {#if g.locked}<Lock size={11} />{:else if !g.visible}<EyeOff size={11} />{/if}
-          </span>
-        </div>
-      {:else if row.kind === "track" || row.kind === "grouptrack"}
-        <!-- One row per ANIMATED PROPERTY — layer transform/opacity or group transform/opacity.
+              <button
+                class="flex w-3.5 shrink-0 justify-center"
+                title={g.collapsed ? "Expand group" : "Collapse group"}
+                onclick={() => {
+                  if (!panEndedWithMovement) toggleGroupCollapsed(g.id);
+                }}
+              >
+                {#if g.collapsed}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
+              </button>
+              <button
+                class="min-w-0 flex-1 truncate text-left font-semibold"
+                title="Select group"
+                onclick={() => {
+                  if (!panEndedWithMovement) selectGroup(g.id);
+                }}>{g.name}</button
+              >
+              {#if groupAnimated && !showTrackFold}
+                <!-- Group is folded: property rows are gone with the members, so the Spline lives
+                   on the header the same way a collapsed group's animation used to. -->
+                <span class="shrink-0 text-text-secondary" title="Group is animated"
+                  ><Spline size={11} /></span
+                >
+              {/if}
+              {#if row.hiddenCount > 0}
+                <!-- Says the content is still there. Collapsing used to remove it from the timeline
+                   with nothing left to indicate it existed. -->
+                <span class="shrink-0 text-text-muted">{row.hiddenCount}</span>
+              {/if}
+            </div>
+            {#if showTrackFold}
+              <button
+                class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
+                style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
+                title={g.tracksCollapsed
+                  ? "Show this group's animation rows"
+                  : "Hide this group's animation rows"}
+                onpointerdown={(e) => {
+                  if (isFinePointer(e)) return;
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  touchPanDown(e);
+                }}
+                onpointermove={(e) => {
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onclick={() => {
+                  if (!panEndedWithMovement) toggleGroupTracksCollapsed(g.id);
+                }}
+              >
+                <Spline size={11} />
+                {#if g.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown
+                    size={13}
+                  />{/if}
+              </button>
+            {/if}
+            <span
+              class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
+              role="presentation"
+              style="left: {LABEL_W}px; width: {MARKER_W}px"
+              title={g.locked ? "Group locked — edits refused" : !g.visible ? "Group hidden" : ""}
+            >
+              {#if g.locked}<Lock size={11} />{:else if !g.visible}<EyeOff size={11} />{/if}
+            </span>
+          </div>
+        {:else if row.kind === "track" || row.kind === "grouptrack"}
+          <!-- One row per ANIMATED PROPERTY — layer transform/opacity or group transform/opacity.
              All four share this markup through a `TrackRowSpec`, because a per-property copy is
              how two rows come to answer the same question differently. Like the group row it
              carries NO `data-layer-id`: `layerIdAtPoint`, the marquee and every block op resolve
              rows through that attribute, and a track holds no cells, so there is nothing on it to
              select. A marquee dragged ACROSS one still spans the layers either side, through the
              existing nearest-row fallback. -->
-        {@const spec =
-          row.kind === "track"
-            ? layerTrackSpec(row.layer, row.prop)
-            : groupTrackSpec(row.group, row.prop)}
-        {#if spec}
-          <!-- Clamped to the strip: shortening the animation does not move keys, and an
+          {@const spec =
+            row.kind === "track"
+              ? layerTrackSpec(row.layer, row.prop)
+              : groupTrackSpec(row.group, row.prop)}
+          {#if spec}
+            <!-- Clamped to the strip: shortening the animation does not move keys, and an
                absolutely-positioned dot past the last frame would draw over the ruler's end and add
                scrollWidth. They are hidden, not deleted — lengthen the animation and they return. -->
-          {@const trackKeys = spec.track.keys}
-          {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
-          {@const stripW = appState.project.frameCount * CELL_W}
-          <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past
+            {@const trackKeys = spec.track.keys}
+            {@const keys = trackKeys.filter((k) => k.frame < appState.project.frameCount)}
+            {@const stripW = appState.project.frameCount * CELL_W}
+            <!-- Segments are built from the UNFILTERED keys and CLIPPED at the strip's edge. A key past
                the animation's end is hidden but still DRIVES the motion — it remains the track's last
                key, so every earlier frame interpolates toward it — and drawing only between visible
                keys left a lone marker with no line while the canvas was visibly moving. -->
-          {@const segments = trackKeys.slice(0, -1).flatMap((k, i) => {
-            const x = k.frame * CELL_W + CELL_W / 2;
-            if (x >= stripW) return [];
-            const end = Math.min(trackKeys[i + 1].frame * CELL_W + CELL_W / 2, stripW);
-            return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
-          })}
-          {@const readOnly = spec.readOnly}
-          <div
-            class="flex w-max items-center border-b border-border"
-            style="min-width: {stripMinW}px"
-          >
-            <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
+            {@const segments = trackKeys.slice(0, -1).flatMap((k, i) => {
+              const x = k.frame * CELL_W + CELL_W / 2;
+              if (x >= stripW) return [];
+              const end = Math.min(trackKeys[i + 1].frame * CELL_W + CELL_W / 2, stripW);
+              return [{ frame: k.frame, x, w: end - x, held: (k.interp ?? "linear") === "hold" }];
+            })}
+            {@const readOnly = spec.readOnly}
+            <div
+              class="flex w-max items-center border-b border-border"
+              style="min-width: {stripMinW}px"
+            >
+              <!-- Selecting the track focuses that track row (`activeRow.kind === "track"`) and aims
                  Transform scope at it — without switching the TOOL, so glancing at a track mid-
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
-            <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[26px] text-left hover:bg-surface-hover {spec.selected
-                ? 'text-text-secondary'
-                : 'text-text-muted/80'}"
-              class:group-rail={spec.groupId != null}
-              class:bg-surface={!spec.selected}
-              class:ui-selected={spec.selected}
-              style="width: {LABEL_W}px; touch-action: none"
-              title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
-                ? 'aim the Transform tool at it'
-                : 'move its opacity slider to key a change'}"
-              onpointerdown={(e) => {
-                if (isFinePointer(e)) return;
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                touchPanDown(e);
-              }}
-              onpointermove={(e) => {
-                if (!isFinePointer(e) && touchPan) touchPanMove(e);
-              }}
-              onpointerup={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onpointercancel={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onclick={() => {
-                if (panEndedWithMovement) return; // a finger scroll that happened to end here
-                spec.select();
-              }}
-            >
-              <!-- The type slot, which layer rows reserve and reference layers fill with a Film /
+              <button
+                class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[26px] text-left hover:bg-surface-hover {spec.selected
+                  ? 'text-text-secondary'
+                  : 'text-text-muted/80'}"
+                class:group-rail={spec.groupId != null}
+                class:bg-surface={!spec.selected}
+                class:ui-selected={spec.selected}
+                style="width: {LABEL_W}px; touch-action: none"
+                title="{spec.label} keys for {spec.owner} — select it and {spec.prop === 'transform'
+                  ? 'aim the Transform tool at it'
+                  : 'move its opacity slider to key a change'}"
+                onpointerdown={(e) => {
+                  if (isFinePointer(e)) return;
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  touchPanDown(e);
+                }}
+                onpointermove={(e) => {
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onclick={() => {
+                  if (panEndedWithMovement) return; // a finger scroll that happened to end here
+                  spec.select();
+                }}
+              >
+                <!-- The type slot, which layer rows reserve and reference layers fill with a Film /
                    Image glyph. A property row fills it with `GitCommitHorizontal` — a key on a
                    line, which is literally what the strip draws for this row. It was blank until
                    2026-09-09, which meant a track row and a DRAWING layer's row were typographically
@@ -2946,7 +2960,7 @@
                    so it would appear twice on one row meaning two things.
                    12px against the layer rows' 13px: near enough to sit in the same optical column,
                    small enough that this row still reads as subordinate to the one above it. -->
-              <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
+                <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
                    glyph has to line up with the GROUP LABEL's left edge (26px = the header's `pl-2`
                    plus its chevron and gap; every number here is derived from that base padding, so
                    changing it moves all of them), and centring a 12px icon in
@@ -2954,97 +2968,97 @@
                    it at the padding edge makes the alignment exact and independent of the icon's
                    width, so swapping the glyph cannot silently break it. The slot keeps its `w-3.5`,
                    which is what holds the LABEL column steady. -->
-              <span class="flex w-3.5 shrink-0 justify-start" role="presentation">
-                <GitCommitHorizontal size={12} />
-              </span>
-              <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
-            >
-            <!-- The same read-only marker its owner's row carries. Without it a locked owner's track
+                <span class="flex w-3.5 shrink-0 justify-start" role="presentation">
+                  <GitCommitHorizontal size={12} />
+                </span>
+                <span class="min-w-0 flex-1 truncate">{spec.label}</span></button
+              >
+              <!-- The same read-only marker its owner's row carries. Without it a locked owner's track
                  row was the one place that refused an edit while showing no reason, directly under a
                  row displaying the amber padlock. -->
-            <span
-              class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-warn border-r border-text-muted"
-              role="presentation"
-              style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
-              onpointerdown={(e) => {
-                if (isFinePointer(e)) return;
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                touchPanDown(e);
-              }}
-              onpointermove={(e) => {
-                if (!isFinePointer(e) && touchPan) touchPanMove(e);
-              }}
-              onpointerup={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onpointercancel={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              title={spec.block === "locked"
-                ? `${spec.owner} is locked — keys cannot be retimed`
-                : spec.block === "hidden"
-                  ? `${spec.owner} is hidden — keys cannot be retimed`
-                  : ""}
-            >
-              {#if spec.block === "locked"}<Lock
-                  size={11}
-                />{:else if spec.block === "hidden"}<EyeOff size={11} />{/if}
-            </span>
-            <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
+              <span
+                class="sticky z-20 shrink-0 flex items-center justify-center h-6 bg-surface text-warn border-r border-text-muted"
+                role="presentation"
+                style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
+                onpointerdown={(e) => {
+                  if (isFinePointer(e)) return;
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  touchPanDown(e);
+                }}
+                onpointermove={(e) => {
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                title={spec.block === "locked"
+                  ? `${spec.owner} is locked — keys cannot be retimed`
+                  : spec.block === "hidden"
+                    ? `${spec.owner} is hidden — keys cannot be retimed`
+                    : ""}
+              >
+                {#if spec.block === "locked"}<Lock
+                    size={11}
+                  />{:else if spec.block === "hidden"}<EyeOff size={11} />{/if}
+              </span>
+              <!-- The keys and the line between them are ABSOLUTE, over an empty cell grid. Drawing a
                  per-cell glyph the way the layer rows do cannot produce an unbroken line: every cell
                  carries its own 1px border, so adjacent segments never meet. Absolute positioning
                  also makes a key a real hit target for dragging it to another frame. All children
                  being absolute means this container has no intrinsic width — needs an explicit one
                  (see the drawing-row div below) or it collapses to 0 and every pointer handler here
                  goes dead. -->
-            <div
-              class="relative flex h-6 select-none"
-              style="touch-action: none; width: {appState.project.frameCount * CELL_W}px"
-              role="presentation"
-              onpointerdown={(e) => {
-                if (!isFinePointer(e)) {
-                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                  touchPanDown(e);
-                  return;
-                }
-                // A key marker is a DOM CHILD of this strip and deliberately does not
-                // stopPropagation, so its own keyDown runs first and this bubbled call must bail —
-                // the parent-bails-on-child-state shape (see rangeDown), never stopPropagation,
-                // which would suppress the window-level status-hint listener.
-                if (keyDrag) return;
-                // Otherwise a pen/mouse press on the empty part of the row does what the row's own
-                // label does. It used to return here and be a dead zone.
-                spec.select();
-              }}
-              onpointermove={(e) => {
-                // Route on the POINTER TYPE, not on "is a pan in flight": a Pencil dragging a key
-                // bubbles here, and panning against a resting finger's origin flung the timeline.
-                if (!isFinePointer(e) && touchPan) touchPanMove(e);
-              }}
-              onpointerup={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onpointercancel={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-            >
-              <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
+              <div
+                class="relative flex h-6 select-none"
+                style="touch-action: none; width: {appState.project.frameCount * CELL_W}px"
+                role="presentation"
+                onpointerdown={(e) => {
+                  if (!isFinePointer(e)) {
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    touchPanDown(e);
+                    return;
+                  }
+                  // A key marker is a DOM CHILD of this strip and deliberately does not
+                  // stopPropagation, so its own keyDown runs first and this bubbled call must bail —
+                  // the parent-bails-on-child-state shape (see rangeDown), never stopPropagation,
+                  // which would suppress the window-level status-hint listener.
+                  if (keyDrag) return;
+                  // Otherwise a pen/mouse press on the empty part of the row does what the row's own
+                  // label does. It used to return here and be a dead zone.
+                  spec.select();
+                }}
+                onpointermove={(e) => {
+                  // Route on the POINTER TYPE, not on "is a pan in flight": a Pencil dragging a key
+                  // bubbles here, and panning against a resting finger's origin flung the timeline.
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+              >
+                <!-- One line PER SEGMENT: SOLID where the value interpolates, DASHED where it holds —
                    the same distinction the layer rows already draw, because it is the same fact. A
                    drawing hold repeats one drawing across those frames; a property hold repeats one
                    value. So the timeline has two marks meaning two things, not three. -->
-              {#each segments as s (s.frame)}
-                <div
-                  class="pointer-events-none absolute top-1/2 -translate-y-1/2"
-                  class:h-px={!s.held}
-                  class:bg-selection={!s.held}
-                  class:border-t={s.held}
-                  class:border-dashed={s.held}
-                  class:border-selection={s.held}
-                  style="left: {s.x}px; width: {s.w}px"
-                ></div>
-              {/each}
-              {#each keys as k (k.frame)}
-                <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and
+                {#each segments as s (s.frame)}
+                  <div
+                    class="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                    class:h-px={!s.held}
+                    class:bg-selection={!s.held}
+                    class:border-t={s.held}
+                    class:border-dashed={s.held}
+                    class:border-selection={s.held}
+                    style="left: {s.x}px; width: {s.w}px"
+                  ></div>
+                {/each}
+                {#each keys as k (k.frame)}
+                  <!-- Selection-coloured, against the layer rows' white ◆ — distinct in both shape and
                      colour, because a property key and a drawing key are only ever confusable at a
                      glance. The SHAPE then says how the segment leaving this key behaves, so the
                      timing is readable without selecting anything: square = hold (blocky, stepped),
@@ -3052,63 +3066,63 @@
                      circle — at 8px a half-filled disc is a smudge, and the Ease control names which.
                      The hit area is deliberately larger than the mark: 8px is a fine target with a
                      Pencil and an impossible one with anything else. -->
-                {@const ki = k.interp ?? "linear"}
-                <div
-                  class="absolute top-0 flex h-6 w-4 items-center justify-center"
-                  style="left: {k.frame * CELL_W +
-                    CELL_W / 2 -
-                    8}px; touch-action: none; cursor: {readOnly ? 'default' : 'ew-resize'}"
-                  role="presentation"
-                  title="{spec.label} key for {spec.owner} at frame {k.frame + 1} ({INTERP_LABEL[
-                    ki
-                  ]}){readOnly ? '' : ' — drag to retime'}"
-                  onpointerdown={(e) => keyDown(e, spec, k.frame)}
-                  onpointermove={(e) => {
-                    if (!isFinePointer(e) && touchPan) touchPanMove(e);
-                  }}
-                  onpointerup={(e) => {
-                    if (!isFinePointer(e)) touchPanUp(e);
-                  }}
-                  onpointercancel={(e) => {
-                    if (!isFinePointer(e)) touchPanUp(e);
-                  }}
-                >
+                  {@const ki = k.interp ?? "linear"}
                   <div
-                    class="size-2 bg-selection"
-                    class:rounded-full={ki !== "hold" && ki !== "linear"}
-                    class:rotate-45={ki === "linear"}
-                  ></div>
-                </div>
-              {/each}
+                    class="absolute top-0 flex h-6 w-4 items-center justify-center"
+                    style="left: {k.frame * CELL_W +
+                      CELL_W / 2 -
+                      8}px; touch-action: none; cursor: {readOnly ? 'default' : 'ew-resize'}"
+                    role="presentation"
+                    title="{spec.label} key for {spec.owner} at frame {k.frame + 1} ({INTERP_LABEL[
+                      ki
+                    ]}){readOnly ? '' : ' — drag to retime'}"
+                    onpointerdown={(e) => keyDown(e, spec, k.frame)}
+                    onpointermove={(e) => {
+                      if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                    }}
+                    onpointerup={(e) => {
+                      if (!isFinePointer(e)) touchPanUp(e);
+                    }}
+                    onpointercancel={(e) => {
+                      if (!isFinePointer(e)) touchPanUp(e);
+                    }}
+                  >
+                    <div
+                      class="size-2 bg-selection"
+                      class:rounded-full={ki !== "hold" && ki !== "linear"}
+                      class:rotate-45={ki === "linear"}
+                    ></div>
+                  </div>
+                {/each}
+              </div>
             </div>
-          </div>
-        {/if}
-      {:else}
-        {@const layer = row.layer}
-        {@const animated = isLayerAnimated(layer)}
-        <div
-          class="flex w-max items-center border-b border-border"
-          style="min-width: {stripMinW}px"
-        >
-          <button
-            class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 text-left hover:bg-surface-hover"
-            class:group-rail={layer.groupId != null}
-            class:pl-[26px]={layer.groupId != null}
-            class:bg-surface={!isRowSelected(layer.id)}
-            class:ui-selected={isRowSelected(layer.id)}
-            class:text-text={isRowSelected(layer.id)}
-            class:text-text-secondary={!isRowSelected(layer.id)}
-            style="width: {animated ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
-            title="Select layer"
-            onpointerdown={(e) => nameDown(e, layer.id)}
-            onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
-            }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
-            onclick={() => setActiveLayer(layer.id)}
+          {/if}
+        {:else}
+          {@const layer = row.layer}
+          {@const animated = isLayerAnimated(layer)}
+          <div
+            class="flex w-max items-center border-b border-border"
+            style="min-width: {stripMinW}px"
           >
-            <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
+            <button
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 text-left hover:bg-surface-hover"
+              class:group-rail={layer.groupId != null}
+              class:pl-[26px]={layer.groupId != null}
+              class:bg-surface={!isRowSelected(layer.id)}
+              class:ui-selected={isRowSelected(layer.id)}
+              class:text-text={isRowSelected(layer.id)}
+              class:text-text-secondary={!isRowSelected(layer.id)}
+              style="width: {animated ? LABEL_W - DISCLOSE_W : LABEL_W}px; touch-action: none"
+              title="Select layer"
+              onpointerdown={(e) => nameDown(e, layer.id)}
+              onpointermove={(e) => {
+                if (touchPan) touchPanMove(e);
+              }}
+              onpointerup={touchPanUp}
+              onpointercancel={touchPanUp}
+              onclick={() => setActiveLayer(layer.id)}
+            >
+              <!-- Type slot, matching the audio lane's Music icon. ALWAYS rendered (blank for drawing
                  layers) for the same reason the marker column is: it reserves the width so every row
                  — and the audio lane, which uses the same px-1/gap-1 — starts its name at one x.
                  A GROUP MEMBER is the one deliberate exception: `pl-6` above lands it at the same
@@ -3120,123 +3134,125 @@
                  `pl-1`, since the scroller went full-bleed (`-mx-2`) and handed its 8px to the labels.
                  The marker column is a separate sticky element pinned
                  at LABEL_W, so it stays aligned regardless. -->
-            <span
-              class="flex w-3.5 shrink-0 justify-center"
-              role="presentation"
-              title={layer.kind === "ref"
-                ? "Reference layer — a guide only, not included in exports"
-                : ""}
-            >
-              {#if layer.kind === "ref"}
-                {#if layer.media.type === "video" || (layer.media.type === "missing" && layer.media.was === "video")}
-                  <Film size={13} />
-                {:else}
-                  <Image size={13} />
+              <span
+                class="flex w-3.5 shrink-0 justify-center"
+                role="presentation"
+                title={layer.kind === "ref"
+                  ? "Reference layer — a guide only, not included in exports"
+                  : ""}
+              >
+                {#if layer.kind === "ref"}
+                  {#if layer.media.type === "video" || (layer.media.type === "missing" && layer.media.was === "video")}
+                    <Film size={13} />
+                  {:else}
+                    <Image size={13} />
+                  {/if}
                 {/if}
-              {/if}
-            </span>
-            <!-- min-w-0: a flex child will not shrink below its content without it, so `truncate`
+              </span>
+              <!-- min-w-0: a flex child will not shrink below its content without it, so `truncate`
                  would silently do nothing and push the name past the sticky label's edge. -->
-            <span class="min-w-0 flex-1 truncate">{layer.name}</span></button
-          >
-          {#if animated}
-            <!-- Disclosure for this layer's property rows. The SAME chevron the group header draws,
+              <span class="min-w-0 flex-1 truncate">{layer.name}</span></button
+            >
+            {#if animated}
+              <!-- Disclosure for this layer's property rows. The SAME chevron the group header draws,
                  for the same job, so the timeline has one collapse idiom rather than two — but a
                  separate button, because the name button already selects the layer and a button
                  cannot nest inside a button. It eats into the NAME column rather than adding to the
                  gutter, so the marker column, the frame cells and every other row stay aligned; only
                  an animated layer pays for it. The Spline glyph is what still says "animated" when
                  the rows are folded away. -->
-            <button
-              class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
+              <button
+                class="shrink-0 sticky z-20 flex h-6 items-center justify-center gap-0.5 bg-surface text-text-secondary hover:text-text hover:bg-surface-hover"
+                class:ui-selected-tint={isRowSelected(layer.id)}
+                style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
+                title={layer.tracksCollapsed
+                  ? "Show this layer's animation rows"
+                  : "Hide this layer's animation rows"}
+                onpointerdown={(e) => {
+                  if (isFinePointer(e)) return;
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  touchPanDown(e);
+                }}
+                onpointermove={(e) => {
+                  if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                }}
+                onpointerup={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onpointercancel={(e) => {
+                  if (!isFinePointer(e)) touchPanUp(e);
+                }}
+                onclick={() => {
+                  if (!panEndedWithMovement) toggleTracksCollapsed(layer.id);
+                }}
+              >
+                <Spline size={11} />
+                {#if layer.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown
+                    size={13}
+                  />{/if}
+              </button>
+            {/if}
+            <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
+               column so every row aligns and the frame cells get a gap after the name. -->
+            <span
+              class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
+              class:bg-surface={!isRowSelected(layer.id)}
               class:ui-selected-tint={isRowSelected(layer.id)}
-              style="left: {LABEL_W - DISCLOSE_W}px; width: {DISCLOSE_W}px; touch-action: none"
-              title={layer.tracksCollapsed
-                ? "Show this layer's animation rows"
-                : "Hide this layer's animation rows"}
+              role="presentation"
+              style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
               onpointerdown={(e) => {
                 if (isFinePointer(e)) return;
                 (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                 touchPanDown(e);
               }}
               onpointermove={(e) => {
-                if (!isFinePointer(e) && touchPan) touchPanMove(e);
+                if (touchPan) touchPanMove(e);
               }}
-              onpointerup={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onpointercancel={(e) => {
-                if (!isFinePointer(e)) touchPanUp(e);
-              }}
-              onclick={() => {
-                if (!panEndedWithMovement) toggleTracksCollapsed(layer.id);
-              }}
+              onpointerup={touchPanUp}
+              onpointercancel={touchPanUp}
+              title={isLayerLocked(layer, appState.project.groups)
+                ? "Layer locked — edits refused"
+                : !isLayerVisible(layer, appState.project.groups)
+                  ? "Layer hidden — edits refused"
+                  : ""}
             >
-              <Spline size={11} />
-              {#if layer.tracksCollapsed}<ChevronRight size={13} />{:else}<ChevronDown
-                  size={13}
+              {#if isLayerLocked(layer, appState.project.groups)}<Lock
+                  size={11}
+                />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff
+                  size={11}
                 />{/if}
-            </button>
-          {/if}
-          <!-- Read-only/hidden marker. ALWAYS rendered (blank when editable): it reserves the
-               column so every row aligns and the frame cells get a gap after the name. -->
-          <span
-            class="sticky z-20 shrink-0 flex items-center justify-center h-6 text-warn bg-surface border-r border-text-muted"
-            class:bg-surface={!isRowSelected(layer.id)}
-            class:ui-selected-tint={isRowSelected(layer.id)}
-            role="presentation"
-            style="left: {LABEL_W}px; width: {MARKER_W}px; touch-action: none"
-            onpointerdown={(e) => {
-              if (isFinePointer(e)) return;
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              touchPanDown(e);
-            }}
-            onpointermove={(e) => {
-              if (touchPan) touchPanMove(e);
-            }}
-            onpointerup={touchPanUp}
-            onpointercancel={touchPanUp}
-            title={isLayerLocked(layer, appState.project.groups)
-              ? "Layer locked — edits refused"
-              : !isLayerVisible(layer, appState.project.groups)
-                ? "Layer hidden — edits refused"
-                : ""}
-          >
-            {#if isLayerLocked(layer, appState.project.groups)}<Lock
-                size={11}
-              />{:else if !isLayerVisible(layer, appState.project.groups)}<EyeOff size={11} />{/if}
-          </span>
-          {#if layer.kind === "draw"}
-            <!-- Explicit h-6 + width: the span/selection children are now `absolute`, so unlike the
+            </span>
+            {#if layer.kind === "draw"}
+              <!-- Explicit h-6 + width: the span/selection children are now `absolute`, so unlike the
                  old per-frame in-flow cells they contribute nothing to this container's intrinsic
                  size. Without an explicit size here the row would collapse to 0x0 and every pointer
                  handler below (hit-tested against this div's own box) would stop firing past x=0 —
                  a silent gesture regression. Width matches the exact box the old per-frame divs
                  summed to (frameCount * CELL_W); height matches their h-6. -->
-            <div
-              class="relative flex h-6 select-none"
-              style="touch-action: none; cursor: {rowCursor}; width: {appState.project.frameCount *
-                CELL_W}px"
-              class:opacity-100={isRowSelected(layer.id)}
-              class:opacity-70={!isRowSelected(layer.id)}
-              data-layer-id={layer.id}
-              role="application"
-              aria-label="{layer.name} frames"
-              onpointerdown={(e) => rowDown(e, layer)}
-              onpointermove={(e) => rowMove(e, layer)}
-              onpointerup={(e) => rowUp(e, layer)}
-              onpointercancel={(e) => rowUp(e, layer)}
-              onpointerleave={rowLeave}
-            >
-              <!-- Spans first, then the selection wash OVER them. Selection used to be a solid
+              <div
+                class="relative flex h-6 select-none"
+                style="touch-action: none; cursor: {rowCursor}; width: {appState.project
+                  .frameCount * CELL_W}px"
+                class:opacity-100={isRowSelected(layer.id)}
+                class:opacity-70={!isRowSelected(layer.id)}
+                data-layer-id={layer.id}
+                role="application"
+                aria-label="{layer.name} frames"
+                onpointerdown={(e) => rowDown(e, layer)}
+                onpointermove={(e) => rowMove(e, layer)}
+                onpointerup={(e) => rowUp(e, layer)}
+                onpointercancel={(e) => rowUp(e, layer)}
+                onpointerleave={rowLeave}
+              >
+                <!-- Spans first, then the selection wash OVER them. Selection used to be a solid
                    `bg-selection` block UNDERNEATH, so a span's border sat on a hard rectangle and the
                    pair read as an outline rather than as a selected span. A translucent wash on top
                    tints the lane and the span alike, which is what "these frames are selected"
                    should look like. Per-frame because a marquee selects frames, not spans — a block
                    can start and end mid-run. -->
-              {#snippet spanMarks(s: TimelineSpan, ghost: boolean)}
-                {#if s.blank}
-                  <!-- A blank keyframe: the frame where the ink STOPS. It gets the hollow diamond,
+                {#snippet spanMarks(s: TimelineSpan, ghost: boolean)}
+                  {#if s.blank}
+                    <!-- A blank keyframe: the frame where the ink STOPS. It gets the hollow diamond,
                        drawn on its own frame in the empty lane and with no fill behind it — a ◇
                        means "nothing from here", so a filled block would be a lie.
                        The hollow mark used to sit on the span's LAST HELD frame instead, one cell to
@@ -3246,22 +3262,22 @@
                        pixels: dragging the span pinned its tail to something invisible, and dragging
                        the whole span overwrote the blank key and silently ran the content to the end
                        of the document. One hollow diamond, on the frame that owns the meaning. -->
-                  <span
-                    class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
-                    class:opacity-35={ghost}
-                    style="left: {s.startFrame * CELL_W + CELL_W / 2}px"
-                  ></span>
-                {:else}
-                  <div
-                    class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
-                    class:opacity-35={ghost}
-                    style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
-                      s.startFrame +
-                      1) *
-                      CELL_W -
-                      4}px"
-                  >
-                    <!-- Flash's key marks: a filled diamond on EVERY keyframe inside the run.
+                    <span
+                      class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 border border-text"
+                      class:opacity-35={ghost}
+                      style="left: {s.startFrame * CELL_W + CELL_W / 2}px"
+                    ></span>
+                  {:else}
+                    <div
+                      class="pointer-events-none absolute inset-y-0.5 rounded-sm bg-media-clip"
+                      class:opacity-35={ghost}
+                      style="left: {s.startFrame * CELL_W + 2}px; width: {(s.endFrame -
+                        s.startFrame +
+                        1) *
+                        CELL_W -
+                        4}px"
+                    >
+                      <!-- Flash's key marks: a filled diamond on EVERY keyframe inside the run.
                          They are what tells a DRAWING span from a media clip — the two are
                          deliberately the same colour, so the difference has to be content, not hue —
                          and they restore the keyframe legibility that ◆ carried before spans.
@@ -3278,25 +3294,25 @@
                          The block's right EDGE is where the run ends; it needs no mark of its own.
                          Where a run ends because a blank key follows, that key carries the hollow
                          diamond above — on its own frame, which is the one you can actually grab. -->
-                    {#each s.keyFrames as kf (kf)}
-                      <span
-                        class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
-                        style="left: {(kf - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
-                      ></span>
-                    {/each}
-                  </div>
-                {/if}
-              {/snippet}
-              {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
-                {@render spanMarks(s, false)}
-              {/each}
-              <!-- A loop's repeats, ghosted: what the loop plays, up to the key that ends it — so where a loop
+                      {#each s.keyFrames as kf (kf)}
+                        <span
+                          class="pointer-events-none absolute top-1/2 size-2 -translate-1/2 rotate-45 bg-text"
+                          style="left: {(kf - s.startFrame) * CELL_W + CELL_W / 2 - 2}px"
+                        ></span>
+                      {/each}
+                    </div>
+                  {/if}
+                {/snippet}
+                {#each displaySpansFor(layer, appState.version) as s (s.startFrame)}
+                  {@render spanMarks(s, false)}
+                {/each}
+                <!-- A loop's repeats, ghosted: what the loop plays, up to the key that ends it — so where a loop
                    stops is visible without scrubbing. Not interactive: pointer events fall through to the row,
                    where a press on a ghost seeks like an empty frame. -->
-              {#each loopsFor(layer, appState.version).ghosts as s (s.startFrame)}
-                {@render spanMarks(s, true)}
-              {/each}
-              <!-- Loop keys: Moho's cycle arrow. A line along the row's TOP EDGE that steps down
+                {#each loopsFor(layer, appState.version).ghosts as s (s.startFrame)}
+                  {@render spanMarks(s, true)}
+                {/each}
+                <!-- Loop keys: Moho's cycle arrow. A line along the row's TOP EDGE that steps down
                    onto the loop key at its right end; at its left end an arrowhead hangs straight
                    off the line (base flush with it; a right angle at the tip, 12px wide and 6px
                    deep) and stops at the top of the key mark of the first frame it replays (a tip
@@ -3309,184 +3325,184 @@
                    the handle for `back`; it is a TOP strip only, so a press lower in that column
                    still reaches the key mark beneath it. z-11/12: above the selection wash (z-10),
                    below the sticky gutter (z-20). -->
-              {#each loopsFor(layer, appState.version).regions as r (r.frame)}
-                {@const tipX = (r.frame - r.back) * CELL_W + CELL_W / 2}
-                {@const tailX = r.frame * CELL_W + CELL_W / 2}
-                {@const w = tailX - tipX}
-                <svg
-                  class="pointer-events-none absolute top-0 z-11 overflow-visible text-loop"
-                  style="left: {tipX - 4}px"
-                  width={w + 8}
-                  height="8"
-                  aria-hidden="true"
-                >
-                  <polyline
-                    points="4,0.5 {w + 4},0.5 {w + 4},5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1"
-                  />
-                  <polygon points="-2,0 10,0 4,6" fill="currentColor" />
-                </svg>
-                <span
-                  class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-loop"
-                  style="left: {tailX}px"><Repeat size={12} /></span
-                >
-                <span
-                  data-loop-handle
-                  class="absolute top-0 z-12 h-2 w-4 cursor-ew-resize"
-                  style="left: {tipX - 8}px; touch-action: none"
-                  role="slider"
-                  tabindex="-1"
-                  aria-label="Loop length"
-                  aria-valuenow={r.back}
-                  aria-valuemin={1}
-                  aria-valuemax={r.frame}
-                  onpointerdown={(e) => loopHandleDown(e, layer, r)}
-                  onpointermove={(e) => loopHandleMove(e, layer)}
-                  onpointerup={(e) => loopHandleUp(e)}
-                  onpointercancel={(e) => loopHandleUp(e)}
-                ></span>
-                {#if loopDrag && loopDrag.layerId === layer.id && loopDrag.frame === r.frame}
-                  <span
-                    class="pointer-events-none absolute top-0 z-12 rounded-sm bg-loop px-1 text-[10px]/[14px] text-accent-text"
-                    style="left: {tipX + 8}px">↺ {r.back}</span
+                {#each loopsFor(layer, appState.version).regions as r (r.frame)}
+                  {@const tipX = (r.frame - r.back) * CELL_W + CELL_W / 2}
+                  {@const tailX = r.frame * CELL_W + CELL_W / 2}
+                  {@const w = tailX - tipX}
+                  <svg
+                    class="pointer-events-none absolute top-0 z-11 overflow-visible text-loop"
+                    style="left: {tipX - 4}px"
+                    width={w + 8}
+                    height="8"
+                    aria-hidden="true"
                   >
-                {/if}
-              {/each}
-              {#each Array(appState.project.frameCount) as _, f (f)}
-                {#if inSelection(layer.id, f)}
-                  <div
-                    class="pointer-events-none absolute inset-y-0 z-10"
-                    style="left: {f *
-                      CELL_W}px; width: {CELL_W}px; background: color-mix(in srgb, var(--color-selection) 35%, transparent)"
-                  ></div>
-                {/if}
-              {/each}
-            </div>
-          {:else}
-            {@const ref = layer}
-            {#if ref.media.type === "video" && Number.isFinite(ref.media.el.duration) && ref.media.el.duration > 0}
-              {@const dur = ref.media.el.duration}
-              {@const trim = {
-                trimInFrames: ref.trimInFrames,
-                trimLenFrames: ref.trimLenFrames,
-              }}
-              {@const full = videoClipLayout(
-                videoClipOriginOffset(ref.offsetFrames, ref.trimInFrames),
-                ref.speed,
-                dur,
-                appState.project.fps,
-              )}
-              {@const kept = videoClipLayout(
-                ref.offsetFrames,
-                ref.speed,
-                dur,
-                appState.project.fps,
-                trim,
-              )}
-              {@const keptLeft = (kept.startFrame - full.startFrame) * CELL_W}
-              {@const tailFrames = Math.max(
-                0,
-                full.startFrame + full.spanFrames - appState.project.frameCount,
-              )}
-              <div
-                class="relative box-border h-6 overflow-hidden text-xs/6 text-text"
-                class:opacity-70={!isRowSelected(ref.id)}
-                style="touch-action: none; margin-left: {full.startFrame *
-                  CELL_W}px; width: {full.spanFrames * CELL_W}px"
-                role="presentation"
-              >
-                <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
-                <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
+                    <polyline
+                      points="4,0.5 {w + 4},0.5 {w + 4},5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1"
+                    />
+                    <polygon points="-2,0 10,0 4,6" fill="currentColor" />
+                  </svg>
+                  <span
+                    class="pointer-events-none absolute top-1/2 z-11 -translate-1/2 rotate-45 rounded-sm bg-surface text-loop"
+                    style="left: {tailX}px"><Repeat size={12} /></span
+                  >
+                  <span
+                    data-loop-handle
+                    class="absolute top-0 z-12 h-2 w-4 cursor-ew-resize"
+                    style="left: {tipX - 8}px; touch-action: none"
+                    role="slider"
+                    tabindex="-1"
+                    aria-label="Loop length"
+                    aria-valuenow={r.back}
+                    aria-valuemin={1}
+                    aria-valuemax={r.frame}
+                    onpointerdown={(e) => loopHandleDown(e, layer, r)}
+                    onpointermove={(e) => loopHandleMove(e, layer)}
+                    onpointerup={(e) => loopHandleUp(e)}
+                    onpointercancel={(e) => loopHandleUp(e)}
+                  ></span>
+                  {#if loopDrag && loopDrag.layerId === layer.id && loopDrag.frame === r.frame}
+                    <span
+                      class="pointer-events-none absolute top-0 z-12 rounded-sm bg-loop px-1 text-[10px]/[14px] text-accent-text"
+                      style="left: {tipX + 8}px">↺ {r.back}</span
+                    >
+                  {/if}
+                {/each}
+                {#each Array(appState.project.frameCount) as _, f (f)}
+                  {#if inSelection(layer.id, f)}
+                    <div
+                      class="pointer-events-none absolute inset-y-0 z-10"
+                      style="left: {f *
+                        CELL_W}px; width: {CELL_W}px; background: color-mix(in srgb, var(--color-selection) 35%, transparent)"
+                    ></div>
+                  {/if}
+                {/each}
+              </div>
+            {:else}
+              {@const ref = layer}
+              {#if ref.media.type === "video" && Number.isFinite(ref.media.el.duration) && ref.media.el.duration > 0}
+                {@const dur = ref.media.el.duration}
+                {@const trim = {
+                  trimInFrames: ref.trimInFrames,
+                  trimLenFrames: ref.trimLenFrames,
+                }}
+                {@const full = videoClipLayout(
+                  videoClipOriginOffset(ref.offsetFrames, ref.trimInFrames),
+                  ref.speed,
+                  dur,
+                  appState.project.fps,
+                )}
+                {@const kept = videoClipLayout(
+                  ref.offsetFrames,
+                  ref.speed,
+                  dur,
+                  appState.project.fps,
+                  trim,
+                )}
+                {@const keptLeft = (kept.startFrame - full.startFrame) * CELL_W}
+                {@const tailFrames = Math.max(
+                  0,
+                  full.startFrame + full.spanFrames - appState.project.frameCount,
+                )}
                 <div
-                  class="absolute inset-y-0.5 box-border cursor-grab overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
-                  style="left: {keptLeft}px; width: {kept.spanFrames *
-                    CELL_W}px; touch-action: none"
+                  class="relative box-border h-6 overflow-hidden text-xs/6 text-text"
+                  class:opacity-70={!isRowSelected(ref.id)}
+                  style="touch-action: none; margin-left: {full.startFrame *
+                    CELL_W}px; width: {full.spanFrames * CELL_W}px"
                   role="presentation"
-                  title="Drag to offset the video"
-                  onpointerdown={(e) => clipDown(e, ref)}
-                  onpointermove={clipMove}
-                  onpointerup={clipUp}
-                  onpointercancel={clipUp}
+                >
+                  <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
+                  <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
+                  <div
+                    class="absolute inset-y-0.5 box-border cursor-grab overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
+                    style="left: {keptLeft}px; width: {kept.spanFrames *
+                      CELL_W}px; touch-action: none"
+                    role="presentation"
+                    title="Drag to offset the video"
+                    onpointerdown={(e) => clipDown(e, ref)}
+                    onpointermove={clipMove}
+                    onpointerup={clipUp}
+                    onpointercancel={clipUp}
+                  >
+                    <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
+                    <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
+                  </div>
+                  {#if tailFrames > 0}
+                    <div
+                      class="pointer-events-none absolute inset-y-0 right-0 bg-media-clip-dim"
+                      style="width: {tailFrames * CELL_W}px"
+                    ></div>
+                  {/if}
+                  <!-- Grips are the ONLY marking: cursor-ew-resize does nothing on iPad. z-10 so
+                     they slide UNDER the sticky gutter (z-20), same as the image-range handles. -->
+                  <div
+                    class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                    style="left: {keptLeft}px; touch-action: none"
+                    role="presentation"
+                    title="Trim the start of the video"
+                    onpointerdown={(e) => videoTrimDown(e, ref, "head")}
+                    onpointermove={videoTrimMove}
+                    onpointerup={videoTrimUp}
+                    onpointercancel={videoTrimUp}
+                  >
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  </div>
+                  <div
+                    class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                    style="left: {keptLeft + kept.spanFrames * CELL_W - 8}px; touch-action: none"
+                    role="presentation"
+                    title="Trim the end of the video"
+                    onpointerdown={(e) => videoTrimDown(e, ref, "tail")}
+                    onpointermove={videoTrimMove}
+                    onpointerup={videoTrimUp}
+                    onpointercancel={videoTrimUp}
+                  >
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  </div>
+                </div>
+              {:else if ref.media.type === "missing"}
+                <!-- A call to action, not a label. Plain onclick, NOT onpointerdown + stopPropagation:
+                   the window-level status-hint listener reads this title on press, and stopping
+                   propagation would kill the hint for the very pointer performing the gesture. -->
+                <button
+                  class="ml-1 rounded px-1 text-xs text-text-muted underline decoration-dotted underline-offset-2 hover:bg-surface-hover hover:text-text"
+                  class:opacity-70={!isRowSelected(ref.id)}
+                  title="Media missing — click to re-link the file"
+                  onclick={() => startRelink(ref.id)}>re-link</button
+                >
+              {:else if ref.media.type === "image"}
+                {@const span = refVisibleSpan(ref, appState.project.fps)}
+                <!-- Untrimmed: span the project's REAL frames, the same implicit range an edge drag
+                   materialises (rangeDown). Not stripFrames — that only runs wider when some OTHER
+                   row's clip hangs past the end, which says nothing about this image. -->
+                {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
+                <div
+                  class="relative my-0.5 box-border h-5 overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
+                  class:border-media-clip-border={span !== null}
+                  class:cursor-grab={span !== null}
+                  class:border-dashed={span === null}
+                  class:border-text-muted={span === null}
+                  class:opacity-70={!isRowSelected(ref.id)}
+                  style="touch-action: none; margin-left: {s.start * CELL_W}px; width: {(s.end -
+                    s.start +
+                    1) *
+                    CELL_W}px"
+                  role="presentation"
+                  title={span === null
+                    ? "Visible on every frame — drag an edge to trim"
+                    : "Drag to move, drag an edge to trim"}
+                  onpointerdown={(e) => rangeDown(e, ref, "slide")}
+                  onpointermove={rangeMove}
+                  onpointerup={rangeUp}
+                  onpointercancel={rangeUp}
                 >
                   <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
                   <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
-                </div>
-                {#if tailFrames > 0}
-                  <div
-                    class="pointer-events-none absolute inset-y-0 right-0 bg-media-clip-dim"
-                    style="width: {tailFrames * CELL_W}px"
-                  ></div>
-                {/if}
-                <!-- Grips are the ONLY marking: cursor-ew-resize does nothing on iPad. z-10 so
-                     they slide UNDER the sticky gutter (z-20), same as the image-range handles. -->
-                <div
-                  class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
-                  style="left: {keptLeft}px; touch-action: none"
-                  role="presentation"
-                  title="Trim the start of the video"
-                  onpointerdown={(e) => videoTrimDown(e, ref, "head")}
-                  onpointermove={videoTrimMove}
-                  onpointerup={videoTrimUp}
-                  onpointercancel={videoTrimUp}
-                >
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                </div>
-                <div
-                  class="absolute inset-y-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
-                  style="left: {keptLeft + kept.spanFrames * CELL_W - 8}px; touch-action: none"
-                  role="presentation"
-                  title="Trim the end of the video"
-                  onpointerdown={(e) => videoTrimDown(e, ref, "tail")}
-                  onpointermove={videoTrimMove}
-                  onpointerup={videoTrimUp}
-                  onpointercancel={videoTrimUp}
-                >
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                </div>
-              </div>
-            {:else if ref.media.type === "missing"}
-              <!-- A call to action, not a label. Plain onclick, NOT onpointerdown + stopPropagation:
-                   the window-level status-hint listener reads this title on press, and stopping
-                   propagation would kill the hint for the very pointer performing the gesture. -->
-              <button
-                class="ml-1 rounded px-1 text-xs text-text-muted underline decoration-dotted underline-offset-2 hover:bg-surface-hover hover:text-text"
-                class:opacity-70={!isRowSelected(ref.id)}
-                title="Media missing — click to re-link the file"
-                onclick={() => startRelink(ref.id)}>re-link</button
-              >
-            {:else if ref.media.type === "image"}
-              {@const span = refVisibleSpan(ref, appState.project.fps)}
-              <!-- Untrimmed: span the project's REAL frames, the same implicit range an edge drag
-                   materialises (rangeDown). Not stripFrames — that only runs wider when some OTHER
-                   row's clip hangs past the end, which says nothing about this image. -->
-              {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
-              <div
-                class="relative my-0.5 box-border h-5 overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
-                class:border-media-clip-border={span !== null}
-                class:cursor-grab={span !== null}
-                class:border-dashed={span === null}
-                class:border-text-muted={span === null}
-                class:opacity-70={!isRowSelected(ref.id)}
-                style="touch-action: none; margin-left: {s.start * CELL_W}px; width: {(s.end -
-                  s.start +
-                  1) *
-                  CELL_W}px"
-                role="presentation"
-                title={span === null
-                  ? "Visible on every frame — drag an edge to trim"
-                  : "Drag to move, drag an edge to trim"}
-                onpointerdown={(e) => rangeDown(e, ref, "slide")}
-                onpointermove={rangeMove}
-                onpointerup={rangeUp}
-                onpointercancel={rangeUp}
-              >
-                <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
-                <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
-                <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing
+                  <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing
                      on iPad (no cursor, no hover), which is the platform this app is used on most. The
                      bars are pointer-events-none so the handle div stays the event target.
                      z-10, NOT z-20: at z-20 they tied with the sticky gutter label, and equal z plus
@@ -3494,42 +3510,43 @@
                      layer names instead of sliding under them. z-10 still beats the clip's own label
                      (also z-10, but earlier in the DOM), so a long name cannot cover a grip. Same
                      mistake the audio trim handles made; see AudioLane. -->
-                <div
-                  class="absolute inset-y-0 left-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
-                  style="touch-action: none"
-                  role="presentation"
-                  title="Trim the start"
-                  onpointerdown={(e) => rangeDown(e, ref, "start")}
-                  onpointermove={rangeMove}
-                  onpointerup={rangeUp}
-                  onpointercancel={rangeUp}
-                >
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  <div
+                    class="absolute inset-y-0 left-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                    style="touch-action: none"
+                    role="presentation"
+                    title="Trim the start"
+                    onpointerdown={(e) => rangeDown(e, ref, "start")}
+                    onpointermove={rangeMove}
+                    onpointerup={rangeUp}
+                    onpointercancel={rangeUp}
+                  >
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  </div>
+                  <div
+                    class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
+                    style="touch-action: none"
+                    role="presentation"
+                    title="Trim the end"
+                    onpointerdown={(e) => rangeDown(e, ref, "end")}
+                    onpointermove={rangeMove}
+                    onpointerup={rangeUp}
+                    onpointercancel={rangeUp}
+                  >
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                    <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
+                  </div>
                 </div>
-                <div
-                  class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-ew-resize items-center justify-center gap-px"
-                  style="touch-action: none"
-                  role="presentation"
-                  title="Trim the end"
-                  onpointerdown={(e) => rangeDown(e, ref, "end")}
-                  onpointermove={rangeMove}
-                  onpointerup={rangeUp}
-                  onpointercancel={rangeUp}
+              {:else}
+                <span class="ml-1 text-xs text-text-muted" class:opacity-70={!isRowSelected(ref.id)}
+                  >{ref.media.type === "video" ? "video" : "image"}</span
                 >
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                  <span class="pointer-events-none h-3 w-px bg-text-muted"></span>
-                </div>
-              </div>
-            {:else}
-              <span class="ml-1 text-xs text-text-muted" class:opacity-70={!isRowSelected(ref.id)}
-                >{ref.media.type === "video" ? "video" : "image"}</span
-              >
+              {/if}
             {/if}
-          {/if}
-        </div>
-      {/if}
-    {/each}
+          </div>
+        {/if}
+      {/each}
+    </div>
 
     <TimelineSelectionBar
       container={gridWrapper}

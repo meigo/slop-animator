@@ -5814,3 +5814,26 @@ scale, and also be animatable that way?"* Spec:
 **Owed:** a browser + iPad pass — side handles and proportional corners on a layer, a group and a
 reference; the Keep proportions toggle in both the Transform bar and the selection bar; Flip H/V on
 each of those (static and animated); Apply after a flip; an export containing a flip.
+
+
+**Timeline name column blank at the top on iPad when the rows don't fill the panel (2026-09-11).**
+Reported as *"content of 2 first row not displayed (gutter only, timeline is ok) when there are closed
+groups and less than 3 drawing layers in the root … happening only iPad Chrome, desktop is ok"*.
+- **Trigger, narrowed on the device:** only while the rows are SHORTER than the timeline panel —
+  shrinking the panel until the last row overflows brought every name back — and the blank strip
+  (the ruler's header cell plus the first rows' names) was exactly the unused height.
+- **Cause:** the full-height gutter plate (z-15, hides the playhead line below the last row) and the
+  gutter resize grip are `sticky top-0`, exactly `gridH` tall, and pulled out of flow with a negative
+  margin, so the flow is only ruler + rows. With few rows both boxes overhung the content they are
+  pinned in. Desktop Chrome and desktop WebKit (Playwright WebKit 26.6) lay this out identically
+  (measured: plate/grip at top 0, rows below) and draw it correctly; iOS WebKit's compositor did not.
+- **Fix:** the ruler, audio lane and rows are wrapped in one `w-max min-w-full` box with
+  `min-height: gridH`, so the flow is never shorter than the scroller and nothing pinned overhangs
+  it. No new scrolling (scroll height was already `gridH` because of the plate), and measured in both
+  desktop engines: short rows → wrapper = client height, scroll height unchanged; all groups expanded
+  and scrolled to the bottom → ruler still pinned at 0.
+- **Owed:** the iPad check itself (desktop engines never showed the bug), with the reported project:
+  four collapsed groups, then open only the first.
+- **Noticed, not fixed (pre-existing on main):** scroll a tall timeline down and the red playhead line
+  and the 5-frame guides stop after the first screenful — they are `absolute inset-y-0` in the
+  scroller, so they span its visible height, not its content.
