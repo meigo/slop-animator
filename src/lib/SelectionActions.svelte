@@ -11,7 +11,7 @@
   } from "@lucide/svelte";
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
-  import { computeAnchor } from "../core/selection-anchor";
+  import { computeAnchor, pickRotateEdge } from "../core/selection-anchor";
   import { state as appState, activeLayer } from "../state/appState.svelte";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
@@ -80,6 +80,14 @@
           margin: MARGIN,
         });
         pos = { x: a.x, y: a.y };
+        // Keep the rotate handle out from under this bar: put it on the float's local edge that lands
+        // farther from the bar on screen (screen space, so a rotated float or view still works).
+        const cand = selection.rotateHandleCandidates();
+        if (cand) {
+          const t = viewport.canvasToScreen(cand.top.x, cand.top.y);
+          const b = viewport.canvasToScreen(cand.bottom.x, cand.bottom.y);
+          selection.rotateHandleEdge = pickRotateEdge(a.side, t.y, b.y);
+        }
         visible = true;
       }
     } else {

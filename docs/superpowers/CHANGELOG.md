@@ -5668,3 +5668,18 @@ flip (whole layer / group / reference layer, all frames) deferred to the roadmap
 **Verified in desktop Chrome:** flip H and V on a plain selection (lifted, mirrored about the
 selection's centre), two taps on Flip horizontal at the same spot flip and un-flip (the bar stays put), click-outside commits, one ⌘Z
 undoes lift + flip. **Owed an iPad pass.**
+
+**The free-transform rotate handle stays out from under the selection bar (2026-09-11).** Reported with
+a screenshot as *"selection>free transform rotate handle is covered by floating menu"*. The bar sits
+above the selection by default, 12px off it, and the rotate handle stuck 20 doc-px out of the TOP edge —
+straight into the bar. Now the handle goes on whichever local edge (top or bottom) lands FARTHER from the
+bar on screen: bottom when the bar is above (the usual case), top when there's no room above and the bar
+drops below. Decided in SCREEN space by the bar each frame (`pickRotateEdge` from `computeAnchor`'s new
+`side`), so a float rotated past 90° or a rotated view still picks the right one; the rotation gesture
+itself is angle-about-centre, so which edge carries the handle doesn't change how it rotates.
+Alternatives considered: pushing the bar further away (the handle offset is in document units, so the
+gap would depend on zoom and rotation), and Photoshop-style rotate-by-dragging-outside-a-corner (no
+hover on iPad, so the gesture would be invisible). Four node tests on the edge choice and the new
+`side`, written first. **Verified in desktop Chrome:** bar above → handle below and grabbable; after
+rotating the float up against the top of the canvas the bar dropped below and the handle moved to the
+upper edge. **Owed an iPad pass.**

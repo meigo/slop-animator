@@ -821,12 +821,32 @@ export class Selection {
     };
   }
 
+  /** The rotate handle, off whichever local edge `rotateHandleEdge` names. */
   private rotateHandlePos(c: ReturnType<Selection["transformedCorners"]>) {
-    // Outward normal at the top edge: -local_y direction transformed.
-    const n = applyVec(this.matrix, 0, -1);
+    return this.rotateHandleAt(c, this.rotateHandleEdge);
+  }
+
+  /** The rotate handle as it would sit off the local `edge`, plus that edge's midpoint (the tether's
+   *  anchor). Outward normal: ∓local_y through the matrix, so it follows a rotated float. */
+  private rotateHandleAt(c: ReturnType<Selection["transformedCorners"]>, edge: "top" | "bottom") {
+    const n = applyVec(this.matrix, 0, edge === "top" ? -1 : 1);
     const len = Math.hypot(n.x, n.y) || 1;
-    const top = { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 };
-    return { x: top.x + (n.x / len) * ROTATE_OFFSET, y: top.y + (n.y / len) * ROTATE_OFFSET };
+    const mid =
+      edge === "top"
+        ? { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 }
+        : { x: (c.bl.x + c.br.x) / 2, y: (c.bl.y + c.br.y) / 2 };
+    return { x: mid.x + (n.x / len) * ROTATE_OFFSET, y: mid.y + (n.y / len) * ROTATE_OFFSET, mid };
+  }
+
+  /** Both candidate rotate-handle positions (document space) for the floating bar to choose between
+   *  via `rotateHandleEdge`. Null unless free-transforming. */
+  rotateHandleCandidates(): {
+    top: { x: number; y: number };
+    bottom: { x: number; y: number };
+  } | null {
+    if (this.state !== "transforming" || !this.rect) return null;
+    const c = this.transformedCorners();
+    return { top: this.rotateHandleAt(c, "top"), bottom: this.rotateHandleAt(c, "bottom") };
   }
 
   private pointInsideTransformedBox(x: number, y: number): boolean {
@@ -854,6 +874,10 @@ export class Selection {
    *  The overlay canvas is stage-sized (not CSS-zoomed); zoom lives on the 2D context so a
    *  1-screen-px stroke is rasterized after scale, not as a sub-pixel line blown up by CSS. */
   applyView: ((ctx: CanvasRenderingContext2D) => void) | null = null;
+  /** Which local edge carries the free-transform rotate handle. Set each frame by the floating
+   *  selection bar (`pickRotateEdge`) so the handle sits on the side AWAY from the bar — the bar sits
+   *  above the selection by default and covered a top handle entirely. */
+  rotateHandleEdge: "top" | "bottom" = "top";
   /** Optional: `group ∘ layer ∘ cell`, applied ONLY for a `cellSpaceLift` (deform). Document-space
    *  geometry — the marquee and every paper-crop float — must never be composed. */
   applyCompose: ((ctx: CanvasRenderingContext2D) => void) | null = null;
@@ -978,9 +1002,8 @@ export class Selection {
       }
 
       // Rotation tether + handle.
-      const top = { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 };
       ctx.beginPath();
-      ctx.moveTo(top.x, top.y);
+      ctx.moveTo(rotHandle.mid.x, rotHandle.mid.y);
       ctx.lineTo(rotHandle.x, rotHandle.y);
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = this.px;
