@@ -2005,6 +2005,7 @@
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push(
       pixelCommand(
+        canvas,
         () => {
           ctx.putImageData(before, 0, 0);
           // Clearing a HOLD materialises a keyframe first; undo removes that too, so the frame goes

@@ -1,3 +1,4 @@
+import { markInkChanged } from "../lib/cell-ink";
 /** A reversible edit. The caller performs the action, then pushes the command. */
 export interface Command {
   undo(): void;
@@ -10,13 +11,31 @@ export interface Command {
 /** Default pixel-undo budget: ~15 full-frame 1920×1080 strokes (2 ImageDatas each). */
 export const DEFAULT_HISTORY_BYTES = 256 * 1024 * 1024;
 
+/**
+ * An undoable pixel write on `canvas`. Also marks `canvas`'s ink as changed — now (the write this
+ * records has just happened) and on every undo/redo — so the per-canvas emptiness/bounds caches in
+ * `cell-ink` re-measure exactly the drawing that changed. Every undoable pixel write goes through
+ * here, which is what lets those caches stop invalidating on every document edit.
+ */
 export function pixelCommand(
+  canvas: HTMLCanvasElement,
   undo: () => void,
   redo: () => void,
   before: ImageData,
   after: ImageData,
 ): Command {
-  return { undo, redo, bytes: before.data.byteLength + after.data.byteLength };
+  markInkChanged(canvas);
+  return {
+    undo: () => {
+      undo();
+      markInkChanged(canvas);
+    },
+    redo: () => {
+      redo();
+      markInkChanged(canvas);
+    },
+    bytes: before.data.byteLength + after.data.byteLength,
+  };
 }
 
 export class History {

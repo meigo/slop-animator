@@ -5711,3 +5711,28 @@ Investigated rather than patched — instrumented the emptiness probe in the bro
 - **Verified in desktop Chrome:** the reproduced ◇ reads ◆ after reload; the stroke is detected at
   all 20 vertical offsets (0–19px); a blank canvas still reads empty. A lone single pixel of ink can
   still average away to 0, as it could before — the probe is for strokes.
+
+**Timeline ink checks are cached per drawing, not per document edit (2026-09-11).** Raised after the
+thin-stroke fix: *"checking every blank key sounds wrong and can become problem in larger project."* It
+was worse than blank keys: `isCellEmpty` and `contentBounds` cached against `appState.version`, which
+EVERY edit bumps, so after any stroke the timeline re-probed every key in the project — cost grew with
+project size although a stroke changes one drawing.
+
+- **Per-canvas ink revision** in `cell-ink`: `markInkChanged(canvas)` bumps one drawing's revision;
+  both caches key on (revision, epoch). `invalidateInk()` moves the global epoch — called on
+  `replaceProject`, `undo` and `redo` as the safety net for a write that forgot to mark. The `version`
+  argument stays in both signatures (`_version`): it is the CALLER's reactive dependency, no longer
+  the cache key.
+- **Every pixel write marks.** `pixelCommand` now takes the canvas and marks it on creation (the write
+  it records just happened) and on every undo/redo — that covers all seven undoable writes (brush/eraser
+  stroke, fill, fill-enclosed, selection commit, delete selection, pose bake, clear frame). The writes
+  outside history mark directly: the paper-crop lift, the deform/pose lifts, the three lift reverts, and
+  a cancelled stroke. Audited the rest: rasterize, merge, resize, duplicate, block ops and load all
+  draw into FRESH canvases before anything can probe them, so they have no cached answer to go stale.
+- **Measured** (desktop Chrome, 40 doc-size keys of which 10 blank, one simulated edit = one sweep):
+  re-probing everything **23.3 ms per edit**; per-canvas cache **~0 ms**. Five node tests (four on
+  the cache — a new version alone does not re-scan, a mark re-scans only its canvas, the epoch re-scans
+  all, revisions count; one on `pixelCommand` marking on create/undo/redo), written first and watched
+  fail. Verified in the browser: Clear frame turns the key ◇, undo restores ◆, redo ◇ again. A
+  brush stroke was not driven in the browser this time (the test tab was hidden, which stalls canvas
+  input); its write goes through the same `pixelCommand`.

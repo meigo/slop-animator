@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { boundsOfPixels, contentBounds, groupContentBoxLogical, probeSteps } from "../lib/cell-ink";
+import {
+  boundsOfPixels,
+  contentBounds,
+  groupContentBoxLogical,
+  probeSteps,
+  markInkChanged,
+  invalidateInk,
+  inkRevision,
+} from "../lib/cell-ink";
 import type { Project, LayerGroup, DrawingLayer } from "../anim/document";
 
 // Minimal canvas stub: getContext→ctx with no-op draw + getImageData returning a known buffer.
@@ -216,5 +224,62 @@ describe("probeSteps", () => {
       }
       expect(Math.max(pw, ph)).toBeLessThanOrEqual(64);
     }
+  });
+});
+
+describe("ink caches are per canvas, not per document version", () => {
+  // A stub whose getImageData counts reads, so a test can tell a cache hit from a re-scan.
+  function countingCanvas(opaque: boolean) {
+    let reads = 0;
+    const data = new Uint8ClampedArray(4 * 4 * 4);
+    if (opaque) data[3] = 255;
+    const canvas = {
+      width: 4,
+      height: 4,
+      getContext: () => ({
+        getImageData: () => {
+          reads++;
+          return { data, width: 4, height: 4 };
+        },
+      }),
+    } as unknown as HTMLCanvasElement;
+    return { canvas, reads: () => reads };
+  }
+
+  it("a new document version alone does not re-scan an unchanged canvas", () => {
+    const a = countingCanvas(true);
+    contentBounds(a.canvas, 1);
+    contentBounds(a.canvas, 2);
+    contentBounds(a.canvas, 3);
+    expect(a.reads()).toBe(1);
+  });
+
+  it("markInkChanged re-scans only the canvas it names", () => {
+    const a = countingCanvas(true);
+    const b = countingCanvas(false);
+    contentBounds(a.canvas, 1);
+    contentBounds(b.canvas, 1);
+    markInkChanged(a.canvas);
+    contentBounds(a.canvas, 2);
+    contentBounds(b.canvas, 2);
+    expect(a.reads()).toBe(2);
+    expect(b.reads()).toBe(1);
+  });
+
+  it("invalidateInk re-scans every canvas once (the safety net)", () => {
+    const a = countingCanvas(true);
+    contentBounds(a.canvas, 1);
+    invalidateInk();
+    contentBounds(a.canvas, 1);
+    contentBounds(a.canvas, 1);
+    expect(a.reads()).toBe(2);
+  });
+
+  it("inkRevision counts the marks on a canvas", () => {
+    const a = countingCanvas(true);
+    expect(inkRevision(a.canvas)).toBe(0);
+    markInkChanged(a.canvas);
+    markInkChanged(a.canvas);
+    expect(inkRevision(a.canvas)).toBe(2);
   });
 });

@@ -100,7 +100,7 @@ import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 // A state→lib import, which nothing else here does — but the group's base rect lives with the
 // content-bounds caches it is built from, and appState is browser-only by construction anyway
 // (it touches window/audio at module load, so it is not node-importable either way).
-import { groupBoxLogical } from "../lib/cell-ink";
+import { groupBoxLogical, invalidateInk } from "../lib/cell-ink";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -2024,6 +2024,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
 
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
+  invalidateInk(); // a new document: no cached ink answer carries over
   bumpPersistGeneration(); // drop in-flight autosave/prune of the outgoing document
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
@@ -2197,6 +2198,7 @@ export function undo(): void {
   liftGuard.discard?.();
   if (!history.canUndo) return;
   history.undo();
+  invalidateInk(); // safety net: a pixel write that forgot to mark cannot outlive an undo
   state.timelineSelection = null; // a structural restore can invalidate stored endpoints
   bump(); // pixel commands only recomposite — glyphs, contentBounds, and autosave key off version
   resyncAudioAfterHistory();
@@ -2213,6 +2215,7 @@ export function redo(): void {
   liftGuard.discard?.();
   if (!history.canRedo) return;
   history.redo();
+  invalidateInk();
   state.timelineSelection = null;
   bump();
   resyncAudioAfterHistory();
