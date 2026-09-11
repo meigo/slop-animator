@@ -160,7 +160,7 @@
 
   const CELL_W = $derived(appState.timelineCellW); // px, column width (box-border cells, no gap → contiguous columns)
   // Layer-name column, now user-resizable (drag the divider at the gutter's right edge). REACTIVE:
-  // every consumer below — the ruler spacer, both playhead offsets, the sticky plate, the strip
+  // every consumer below — the ruler spacer, both playhead offsets, the gutter filler, the strip
   // width, AudioLane's labelW and TimelineSelectionBar's labelW — reads these, so they must be
   // $derived rather than the consts they used to be, or the gutter and the cells drift apart.
   const LABEL_W = $derived(appState.timelineLabelWidth);
@@ -1125,7 +1125,7 @@
    *  file's documented scrub jitter. */
   let gridScrollLeft = $state(0);
   const playheadBehindGutter = $derived(appState.playhead * CELL_W + CELL_W / 2 < gridScrollLeft);
-  // Visible height of the scroller — the gutter plate must cover empty space below the last row.
+  // Visible height of the scroller — the content floor and the full-height resize grip are sized to it.
   let gridH = $state(0);
   $effect(() => {
     const el = gridWrapper;
@@ -2503,18 +2503,10 @@
         appState.playhead * CELL_W +
         CELL_W / 2}px; transform: translateX(-50%)"
     ></div>
-    <!-- Full-height gutter plate. Sticky labels only cover their own row, so the playhead
-         (absolute, inset-y-0, z-10) leaked through empty space below the last track. This
-         plate sits between the line and the names (z-15), stays in the visible left strip,
-         and is pulled out of flow so it does not push the rows down. -->
-    <div
-      class="pointer-events-none sticky top-0 left-0 z-15 bg-surface border-r border-text-muted"
-      style="width: {GUTTER_W}px; height: {gridH}px; margin-bottom: {-gridH}px"
-    ></div>
     <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
          it stays on that edge through horizontal scroll. z-40 — above the per-row sticky labels
          (z-20), which would otherwise swallow the press, AND above the ruler row (z-35), which the
-         grip crosses and must stay grabbable through. Pulled out of flow the same way the plate is,
+         grip crosses and must stay grabbable through. Pulled out of flow with a negative margin,
          so it adds no height. -->
     <div
       class="group sticky top-0 z-40 cursor-col-resize"
@@ -2535,16 +2527,10 @@
       <div class="absolute inset-y-0 w-1 group-hover:bg-text/10" style="left: 2px"></div>
     </div>
 
-    <!-- Content floor. The plate and the grip above are pinned `sticky top-0` and exactly as tall as
-         the scroller (`gridH`), but they are pulled out of flow, so the FLOW is only the ruler + rows.
-         With fewer rows than fit, that left both boxes hanging past the content they are pinned in —
-         and iOS WebKit (every iPad browser) then painted the name column's top wrong: the ruler's
-         header and the first rows' names went blank, by exactly the unused height (2026-09-11;
-         desktop Chrome and desktop WebKit lay it out identically and draw it fine). Keeping the flow
-         at least `gridH` tall means nothing pinned ever overhangs its content. It adds no scrolling —
-         the scroll height was already `gridH` because of the plate. `w-max min-w-full` so any sticky
-         descendant keeps a containing block as wide as the strip (the 2026-08-14 lesson). -->
-    <div class="w-max min-w-full" style="min-height: {gridH}px">
+    <!-- Content floor: a column at least as tall as the scroller, so the gutter FILLER after the rows
+         can take whatever height the rows leave (`flex-1`) — 0 once they overflow. `w-max min-w-full`
+         keeps any sticky descendant's containing block as wide as the strip (the 2026-08-14 lesson). -->
+    <div class="flex w-max min-w-full flex-col" style="min-height: {gridH}px">
       <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->
       <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
@@ -3546,6 +3532,19 @@
           </div>
         {/if}
       {/each}
+      <!-- Gutter filler, BELOW the last row only. Sticky labels cover their own rows, so without this
+           the playhead line (z-10), the play-range lines and the 5-frame guides leak into the empty
+           gutter under the last track once the strip is scrolled sideways. Until 2026-09-11 this was
+           a full-height sticky plate BEHIND the whole gutter (out of flow, z-15), and on iOS WebKit
+           (every iPad browser) it painted OVER the ruler's header and the first rows' names whenever
+           the rows did not fill the panel — `?tl=noplate` on the device fixed it, desktop Chrome and
+           WebKit never showed it. Occupying only the space below the rows, it never overlaps a label,
+           so there is nothing for the compositor to order wrongly. Sticky LEFT only: when the rows
+           overflow it is 0 tall, so it never needs to pin vertically. -->
+      <div
+        class="pointer-events-none sticky left-0 z-15 flex-1 bg-surface border-r border-text-muted"
+        style="width: {GUTTER_W}px"
+      ></div>
     </div>
 
     <TimelineSelectionBar

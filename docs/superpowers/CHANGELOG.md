@@ -5816,6 +5816,10 @@ reference; the Keep proportions toggle in both the Transform bar and the selecti
 each of those (static and animated); Apply after a flip; an export containing a flip.
 
 
+> **SUPERSEDED (2026-09-11, same day)** — the cause below is WRONG. The `min-height` floor did not fix
+> the iPad; the device bisect (`?tl=noplate`) proved the full-height gutter PLATE itself is what iOS
+> paints over the names. See **Timeline name column on iPad: the gutter plate was the cause** below.
+
 **Timeline name column blank at the top on iPad when the rows don't fill the panel (2026-09-11).**
 Reported as *"content of 2 first row not displayed (gutter only, timeline is ok) when there are closed
 groups and less than 3 drawing layers in the root … happening only iPad Chrome, desktop is ok"*.
@@ -5837,3 +5841,27 @@ groups and less than 3 drawing layers in the root … happening only iPad Chrome
 - **Noticed, not fixed (pre-existing on main):** scroll a tall timeline down and the red playhead line
   and the 5-frame guides stop after the first screenful — they are `absolute inset-y-0` in the
   scroller, so they span its visible height, not its content.
+
+
+**Timeline name column on iPad: the gutter plate was the cause (2026-09-11).** Follow-up to the entry
+above, whose `min-height` floor was deployed and did NOT fix it — reported back as *"no 2 first rows
+still missing"*, with a screenshot showing the blank strip is the ruler's header plus the first two rows
+(~75px) whatever the rows' height, not the unused height as first measured.
+- **Bisected on the device**, not guessed a second time: a temporary build (branch
+  `debug/timeline-gutter-flags`, never merged) took `?tl=noplate,nogrip,nomx,norail,nofloor`, each
+  removing one suspect. *"noplate fixes it."* So the full-height sticky gutter plate (out of flow,
+  `top-0 left-0 z-15`, opaque `bg-surface`) is what iOS WebKit painted OVER the z-20 labels and the
+  z-35 ruler whenever the rows did not fill the panel. Desktop Chrome and desktop WebKit (Playwright
+  26.6) order it correctly and could never reproduce it.
+- **Fix: the plate is gone; a filler takes its jobs.** Its two jobs were hiding the playhead line, the
+  play-range lines and the 5-frame guides in the empty gutter under the last row once the strip scrolls
+  sideways, and carrying the gutter background and divider to the panel's bottom. Now the ruler + rows
+  sit in a `flex flex-col` column with `min-height: gridH` (the floor from the first attempt, kept for
+  this), and after the rows a `flex-1`, `sticky left-0`, `z-15`, `bg-surface border-r` filler takes
+  exactly the leftover height — measured 77px under four rows in a 207px panel, 0 once the rows
+  overflow. It occupies only space BELOW the rows, so it never overlaps a label and there is nothing
+  for the compositor to mis-order. Screenshots scrolled 400px sideways in both desktop engines: no
+  playhead or guide in the empty gutter, divider intact, ruler still pinned when scrolled down.
+- **Owed:** the iPad check with the reported project (all groups collapsed, then only the first open).
+- Still noticed, still not fixed: the playhead line and guides end after the first screenful when a
+  tall timeline is scrolled down (see the entry above).
