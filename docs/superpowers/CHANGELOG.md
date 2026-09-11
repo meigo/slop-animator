@@ -5838,7 +5838,7 @@ groups and less than 3 drawing layers in the root … happening only iPad Chrome
   and scrolled to the bottom → ruler still pinned at 0.
 - **Owed:** the iPad check itself (desktop engines never showed the bug), with the reported project:
   four collapsed groups, then open only the first.
-- **Noticed, not fixed (pre-existing on main):** scroll a tall timeline down and the red playhead line
+- **Noticed, not fixed (pre-existing on main) — FIXED later the same day, see _Playhead line and guides span the whole timeline_:** scroll a tall timeline down and the red playhead line
   and the 5-frame guides stop after the first screenful — they are `absolute inset-y-0` in the
   scroller, so they span its visible height, not its content.
 
@@ -5863,7 +5863,7 @@ still missing"*, with a screenshot showing the blank strip is the ruler's header
   for the compositor to mis-order. Screenshots scrolled 400px sideways in both desktop engines: no
   playhead or guide in the empty gutter, divider intact, ruler still pinned when scrolled down.
 - **Owed:** the iPad check with the reported project (all groups collapsed, then only the first open).
-- Still noticed, still not fixed: the playhead line and guides end after the first screenful when a
+- (FIXED later the same day — see _Playhead line and guides span the whole timeline_.) Still noticed, still not fixed: the playhead line and guides end after the first screenful when a
   tall timeline is scrolled down (see the entry above).
 
 **Timeline gutter bleed-through after the plate went (2026-09-11).** Reported from desktop with a
@@ -5885,3 +5885,15 @@ the gutter, and two things had quietly relied on it.
 - Checked in desktop WebKit and Chromium on a selected layer with keys every 3 frames, playhead at
   frame 12, strip scrolled 412px: selected label reports an opaque colour, no key, line or guide in
   the gutter, no dashes at the dividers. **Owed:** a look on the iPad and desktop in the real project.
+
+
+**Playhead line and guides span the whole timeline (2026-09-11).** The pre-existing gap noted in the
+entries above, fixed on request (*"right, fix it"*): in a timeline tall enough to scroll, the red
+playhead line, the play-range lines and the 5-frame guides stopped after the first screenful. They were
+`absolute inset-y-0` children of the SCROLLER, so they spanned its visible height, not its content.
+They now live inside the content column (made `relative`), which is as tall as every row and never
+shorter than the panel, so `inset-y-0` spans all of it. Their `left` is unchanged (the column starts at
+the content's left edge), and so is the layering (z-0/z-10 under the z-20 labels and the z-35 ruler)
+and the hide-behind-the-gutter logic. Measured in desktop WebKit and Chromium with all groups open and
+scrolled to the bottom: content 555px, line and guides 555px (were 207px), line bottom flush with the
+view; screenshots show both reaching the last row.
