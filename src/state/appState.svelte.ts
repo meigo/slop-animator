@@ -132,6 +132,7 @@ import {
   withRangeOut,
 } from "../anim/playback";
 import type { Preferences } from "../persist/preferences";
+import { keepProportionsPref } from "../persist/preferences";
 import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
 import {
   clampPanelWidth,
@@ -253,6 +254,9 @@ interface AnimState {
    *  Mirrored from RefTransformGizmo's rAF tick because the scope dispatch it derives from is
    *  gizmo-local — same reason poseActive mirrors meshPose rather than exposing a function. */
   canResetTransform: boolean;
+  /** Transform CORNERS keep the aspect ratio (gizmo and selection float). Sides always stretch one
+   *  axis. A preference — see `keepProportionsPref`. */
+  keepProportions: boolean;
   /** Mirrors `history.canUndo`/`canRedo`. History is a plain class, so its getters are not $state
    *  dependencies — the toolbar buttons would never grey out without this. Kept in sync by the
    *  `history.onChange` hook below, so there is one writer rather than one per push site. */
@@ -333,6 +337,7 @@ export const state: AnimState = $state({
   poseFillWarning: "",
   hasPixelClipboard: false,
   canResetTransform: false,
+  keepProportions: true,
   canUndo: false,
   canRedo: false,
 });
@@ -1992,6 +1997,7 @@ export function gatherPreferences(): Preferences {
     timelineLabelWidth: state.timelineLabelWidth,
     timelineCellW: state.timelineCellW,
     pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
+    keepProportions: state.keepProportions,
   };
 }
 
@@ -2022,6 +2028,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
       pressureCurve.cp2 = { x: cp2.x, y: cp2.y };
     pressureCurve.buildLUT();
   }
+  state.keepProportions = keepProportionsPref(p);
 }
 
 /** Replace the whole document (e.g. after Open or autosave restore). */

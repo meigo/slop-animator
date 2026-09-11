@@ -12,6 +12,8 @@ export interface Preferences {
   timelineLabelWidth?: number; // px width of the timeline gutter's name column
   timelineCellW?: number; // px width of a timeline frame column
   pressureCurve: { cp1: CurvePoint; cp2: CurvePoint };
+  /** Transform corners scale proportionally. Absent = on (the default), so older prefs keep it. */
+  keepProportions?: boolean;
   /** Ignored since 2026-09-08 — the app is dark-only. Kept on the type so a stored pref from an
    *  older version still parses; nothing reads it, so a user who last saved "light" simply gets
    *  the one theme rather than being stranded in a light UI with no toggle to leave it. */
@@ -41,6 +43,11 @@ export function loadPreferences(): Partial<Preferences> {
   } catch {
     return {};
   }
+}
+
+/** The stored Keep proportions setting; anything but an explicit boolean means the default, on. */
+export function keepProportionsPref(p: Partial<Preferences>): boolean {
+  return typeof p.keepProportions === "boolean" ? p.keepProportions : true;
 }
 
 export function savePreferences(p: Preferences): void {

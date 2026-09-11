@@ -37,10 +37,11 @@
   import { groupBoxLogical } from "./cell-ink";
   import {
     transformedCorners,
+    transformedSides,
     rotateHandlePos,
+    rotateHandleStem,
     transformCenter,
-    applyScale,
-    applyRotate,
+    dragTransform,
     forwardChain,
     inverseChain,
     type ComposeStep,
@@ -55,10 +56,12 @@
   const ROTATE_GAP_PX = 28;
   let visible = $state(false);
   let corners = $state<{ x: number; y: number }[]>([]);
+  let sides = $state<{ x: number; y: number }[]>([]);
   let rotatePt = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+  let stemPt = $state<{ x: number; y: number }>({ x: 0, y: 0 });
   let raf = 0;
 
-  type DragHandle = "nw" | "ne" | "se" | "sw" | "rotate";
+  type DragHandle = "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w" | "rotate";
   // Active handle drag. center/start are in the TARGET's local logical coords (pointer mapped
   // through `outer` chain inverse); startT is a snapshot of the target transform at grab time so
   // each move recomputes from the original. setT writes back to the target (layer, cell, or group).
@@ -305,10 +308,7 @@
     }
     e.preventDefault();
     const p = inverseChain(d.outer, vp.screenToCanvas(e.clientX, e.clientY));
-    const nt =
-      d.handle === "rotate"
-        ? applyRotate(d.startT, d.center, d.start, p)
-        : applyScale(d.startT, d.center, d.start, p); // any corner = uniform scale
+    const nt = dragTransform(d.handle, d.startT, d.center, d.start, p, appState.keepProportions);
     d.setT(nt);
     d.lastT = nt; // settle compares what was WRITTEN — see the note in Canvas.onTransformDrag
     bump();
@@ -397,7 +397,9 @@
         return { x: s.x - rect.left, y: s.y - rect.top };
       };
       corners = transformedCorners(base, t).map(toLocal);
+      sides = transformedSides(base, t).map(toLocal);
       rotatePt = toLocal(rotateHandlePos(base, t, gap));
+      stemPt = toLocal(rotateHandleStem(base, t));
       visible = true;
       // Publish whether Reset would do anything, so the ToolOptions bar can hide a dead button.
       // Assigning the same boolean is a no-op for $state dependents, so this is safe per frame.
@@ -415,8 +417,8 @@
     raf = requestAnimationFrame(tick);
   }
 
-  // A corner handle resizes along its diagonal from the gizmo centre — and that diagonal ROTATES
-  // with the layer, so the cursor is derived from the corner's actual on-screen angle rather than
+  // A corner or side handle resizes along its axis from the gizmo centre — and that axis ROTATES
+  // with the layer, so the cursor is derived from the handle's actual on-screen angle rather than
   // its index (index-mapping is only right at 0°). Spelling the four class names out as literals is
   // also what lets Tailwind's scanner see them, since the class is chosen at runtime.
   const RESIZE_CURSORS = [
@@ -425,11 +427,11 @@
     "cursor-ns-resize",
     "cursor-nesw-resize",
   ];
-  function cornerCursor(i: number): string {
+  function resizeCursor(pt: { x: number; y: number }): string {
     // corners[0] and corners[2] are opposite corners, so their midpoint is the centre.
     const cx = (corners[0].x + corners[2].x) / 2;
     const cy = (corners[0].y + corners[2].y) / 2;
-    const deg = (Math.atan2(corners[i].y - cy, corners[i].x - cx) * 180) / Math.PI;
+    const deg = (Math.atan2(pt.y - cy, pt.x - cx) * 180) / Math.PI;
     // Screen y grows DOWNWARD, so a down-right diagonal is the NW↔SE axis. A resize axis is the
     // same in both directions, so fold to [0,180) and bucket every 45°.
     const a = ((deg % 180) + 180) % 180;
@@ -460,7 +462,7 @@
   });
 </script>
 
-{#if visible && corners.length === 4}
+{#if visible && corners.length === 4 && sides.length === 4}
   <svg class="absolute inset-0 size-full pointer-events-none" style="overflow: visible">
     <polygon
       points={corners.map((c) => `${c.x},${c.y}`).join(" ")}
@@ -469,8 +471,8 @@
       stroke-width="1.5"
     />
     <line
-      x1={(corners[0].x + corners[1].x) / 2}
-      y1={(corners[0].y + corners[1].y) / 2}
+      x1={stemPt.x}
+      y1={stemPt.y}
       x2={rotatePt.x}
       y2={rotatePt.y}
       stroke="#3b82f6"
@@ -481,7 +483,7 @@
         role="button"
         tabindex="-1"
         aria-label="Scale reference"
-        class="pointer-events-auto {cornerCursor(i)}"
+        class="pointer-events-auto {resizeCursor(c)}"
         data-ref-handle=""
         x={c.x - 6}
         y={c.y - 6}
@@ -491,6 +493,23 @@
         stroke="#3b82f6"
         stroke-width="1.5"
         onpointerdown={(e) => startHandleDrag((["nw", "ne", "se", "sw"] as const)[i], e)}
+      />
+    {/each}
+    {#each sides as s, i (i)}
+      <rect
+        role="button"
+        tabindex="-1"
+        aria-label="Stretch"
+        class="pointer-events-auto {resizeCursor(s)}"
+        data-ref-handle=""
+        x={s.x - 6}
+        y={s.y - 6}
+        width="12"
+        height="12"
+        fill="#fff"
+        stroke="#3b82f6"
+        stroke-width="1.5"
+        onpointerdown={(e) => startHandleDrag((["n", "e", "s", "w"] as const)[i], e)}
       />
     {/each}
     <circle

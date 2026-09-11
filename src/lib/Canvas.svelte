@@ -92,9 +92,7 @@
   import {
     hitTestHandle,
     transformCenter,
-    applyMove,
-    applyScale,
-    applyRotate,
+    dragTransform,
     inverseChain,
     forwardChain,
     type Handle,
@@ -1030,12 +1028,7 @@
       // An earlier round gated this write on the value actually changing, but the gate also
       // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
       // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
-      const nt =
-        d.handle === "body"
-          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
-          : d.handle === "rotate"
-            ? applyRotate(d.startT, d.center, d.start, pc)
-            : applyScale(d.startT, d.center, d.start, pc);
+      const nt = dragTransform(d.handle, d.startT, d.center, d.start, pc, appState.keepProportions);
       setT(nt);
       // Compare what was WRITTEN, not a read-back. With `sampleEvery > 1` a track quantises the
       // sampled frame, so reading at a frame off the grid returns a lerp toward the key rather than

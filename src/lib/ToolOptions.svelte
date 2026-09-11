@@ -21,6 +21,8 @@
     ClipboardPaste,
     Trash2,
     MousePointerBan,
+    Lock,
+    LockOpen,
   } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
@@ -418,6 +420,18 @@
       onclick={() => {
         if (canDeselect) selectionActions.deselect?.();
       }}><MousePointerBan size={16} /></button
+    >
+  {:else if appState.tool === "transform"}
+    <button
+      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs flex items-center gap-1 hover:bg-surface-hover hover:text-text"
+      class:ui-on={appState.keepProportions}
+      aria-pressed={appState.keepProportions}
+      title={appState.keepProportions
+        ? "Keep proportions — on: corners keep the shape (sides always stretch)"
+        : "Keep proportions — off: corners stretch freely"}
+      onclick={() => (appState.keepProportions = !appState.keepProportions)}
+      >{#if appState.keepProportions}<Lock size={14} />{:else}<LockOpen size={14} />{/if}
+      Keep proportions</button
     >
   {:else if appState.tool === "deform" || appState.tool === "pose"}
     <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
