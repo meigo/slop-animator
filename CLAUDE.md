@@ -209,7 +209,7 @@ proportions (toggle), Flip H/V in the Transform bar (2026-09-11).
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
-- **Flip in the Transform tool** (deferred 2026-09-11): Flip H / V for the Frame / Layer / Group scopes and reference layers — a whole layer or group across all frames. Selection flip shipped first (floating selection bar). This one needs a mirror in `RefTransform` (read by render, gizmo math, persistence and transform tracks, ~70 sites) and a decision on keyed vs static flip for animated transforms.
+- ~~**Flip in the Transform tool** (deferred 2026-09-11): Flip H / V for the Frame / Layer / Group scopes and reference layers — a whole layer or group across all frames.~~ — **SHIPPED 2026-09-11** as per-axis scaleX/scaleY (negative = mirrored): Flip H/V in the Transform bar mirrors a layer, reference or group in place, every key of an animated one included. See the 2026-09-11 **Transform stretch & flip** changelog entry. Selection flip shipped first (floating selection bar). This one needs a mirror in `RefTransform` (read by render, gizmo math, persistence and transform tracks, ~70 sites) and a decision on keyed vs static flip for animated transforms.
 - ~~**Transform later**: animated/keyframed transforms~~ — **SHIPPED 2026-08-18** and NOT via the
   `RefTransform → KeyframedTransform` migration sketched here. See the **Layer transform track** and
   **Multi-property animation rows** entries below: an optional `tracks` bag (`LayerTracks`
