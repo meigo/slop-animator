@@ -5897,3 +5897,58 @@ the content's left edge), and so is the layering (z-0/z-10 under the z-20 labels
 and the hide-behind-the-gutter logic. Measured in desktop WebKit and Chromium with all groups open and
 scrolled to the bottom: content 555px, line and guides 555px (were 207px), line bottom flush with the
 view; screenshots show both reaching the last row.
+
+**Alpha lock — lock transparency per layer (2026-09-11).** Asked as *"do we have a feature to lock
+transparency of canvas to only paint on existing pixels? Maybe slop-paint had that feature"* — it did
+(a per-layer `alphaLock`), and here every brush engine already honoured an `alphaLock` setting
+(`source-atop`, the ladder eraser > alphaLock > drawBehind) that had no UI and was always `false`.
+- **Model:** `DrawingLayer.alphaLock?: boolean`, per LAYER like slop-paint and like Photoshop/Procreate,
+  and a view-prop exactly like `locked` (toggled inline, persisted, never undone; `restoreStructure`
+  keeps it live). Saved only when on, loaded only from an explicit `true`; format version unmoved.
+  `duplicateLayer` copies it (it copies fields one by one).
+- **Brushes:** Canvas's settings spread now takes `alphaLock` from the stroke's layer (`strokeLayer`,
+  bound on the stroke's first event), overriding the tool setting's dead field. The eraser is untouched
+  by the ladder.
+- **Fill:** under the lock the bucket floods a temp copy and composites it back `source-atop`, with
+  `expand` forced to 0 — `expand > 0` makes floodFill paint BEHIND existing content, which under the
+  lock was a guaranteed no-op. So the bucket recolours what is there, keeping each pixel's alpha
+  (anti-aliased edges stay soft). **Fill enclosed** refuses with a hint: it only ever paints empty
+  interiors, which the lock forbids.
+- **UI:** a checkerboard (`Grid2x2`) toggle after the lock on drawing-layer rows — the usual
+  transparency glyph, and a second padlock beside the layer lock would read as a duplicate. Status bar:
+  "Alpha lock — paint lands only on existing pixels", and on an empty frame "Alpha lock is on — nothing
+  on this frame to paint over" (outranks the selection-clip hint, which outranks the plain note; never
+  for the eraser).
+- **Verified in desktop WebKit and Chromium** through real pointer input on a 1600×800 document whose
+  left half is red: a stroke across both halves put green only on the red half (same count as the
+  unlocked baseline; 0 pixels with any alpha on the empty half, where the baseline had 1206); a bucket
+  click on the red recoloured it blue and every left pixel stayed fully opaque; a click on the empty half
+  changed nothing. Tests: 6 hint cases, 3 persistence cases (1297 total). **Owed:** an iPad pass with
+  the Pencil (pressure strokes, ink/calligraphy/stamp engines under the lock).
+- **Noticed, not fixed (pre-existing) — FIXED the same day, see _Status messages from a press survive it_:** the fill's "Nothing filled — …" status messages never reach the
+  bar — sampled every frame, `statusHint` never changes, with or without the lock — most likely the
+  window-level hover/press writer clears it in the same gesture. Same class of problem `poseFillWarning`
+  was split out for.
+- Layer-to-selection, discussed alongside, is deferred to the roadmap in CLAUDE.md.
+
+
+**Status messages from a press survive it (2026-09-11).** Asked as *"fix the nothing filled hint
+too"*. Every message an action writes to `statusHint` on its own press — the bucket's "Nothing filled —
+…", Fill enclosed's refusal, alpha lock's — was invisible over the canvas. Two causes, measured with an
+event log in desktop WebKit, not guessed:
+- **Order.** `App.svelte`'s title mirror (`onPointerHint`: the hovered/pressed element's `title=` →
+  `statusHint`, `""` for an untitled target) ran on `pointerdown` in the BUBBLE phase, i.e. after the
+  canvas's own handler, so it blanked the message in the same event. Now `onpointerdowncapture` /
+  `onpointerovercapture`: the mirror runs first, the action's report lands after it.
+- **Pointer capture.** That alone left the message alive for ~1ms: the canvas input takes pointer
+  capture on every press (`input.ts`), and the browser fires boundary `pointerover`s onto the capturing
+  stage and back onto the canvas on release (logged with `buttons=0`, so a pressed-button filter cannot
+  tell them apart). Each re-cleared it. The mirror now remembers the element its last hint came from
+  and ignores a `pointerover` that resolves to the same source; `pointerdown` always writes, so pressing
+  the canvas again still clears a stale message, and hovering onto a titled control and back still
+  shows and clears its title.
+- Verified in WebKit: both "Nothing filled" variants read in the status bar after the click, hover over
+  the Brush button shows "Brush", moving back onto the canvas clears it. The Pose tool's
+  `poseFillWarning` was split out of `statusHint` for exactly this collision and is left as it is.
+- Alpha lock's no-op fill message reworded to "Nothing filled — alpha lock only recolours existing
+  pixels, or they are already this color": it also fires on existing pixels already in the fill colour.

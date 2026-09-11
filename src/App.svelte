@@ -197,8 +197,21 @@
   // covers desktop hover; pointerdown covers touch/Pencil (iPad has no hover). Moving onto an untitled
   // element sets "" (natural clear). No pointerup clear — a tapped control's hint persists until the
   // next hover/press, which is the readable behavior on touch.
+  // CAPTURE phase, so this runs BEFORE any handler of the same event: an action that reports on its own
+  // press (the bucket's "Nothing filled — …", Fill enclosed, alpha lock) writes after the title mirror
+  // instead of being blanked by it microseconds later. It ran in the bubble phase until 2026-09-11,
+  // which is why every such message was invisible over the untitled canvas.
+  //
+  // A `pointerover` that resolves to the SAME hint source as the last write is not a hover change and
+  // is ignored: pointer capture (the canvas takes it on every press) fires boundary `pointerover`s onto
+  // the capturing element and back again on release, and each one re-cleared a message the press's
+  // own action had just written (measured: set at t, blanked at t+1ms). A `pointerdown` always writes,
+  // so pressing the canvas again still clears a stale message.
+  let hintSource: Element | null = null;
   function onPointerHint(e: PointerEvent) {
-    const el = (e.target as Element | null)?.closest("[title]");
+    const el = (e.target as Element | null)?.closest("[title]") ?? null;
+    if (e.type === "pointerover" && el === hintSource) return;
+    hintSource = el;
     state.statusHint = el?.getAttribute("title") ?? "";
   }
 
@@ -332,8 +345,8 @@
 <svelte:window
   onkeydown={onKey}
   onpaste={onPaste}
-  onpointerover={onPointerHint}
-  onpointerdown={onPointerHint}
+  onpointerovercapture={onPointerHint}
+  onpointerdowncapture={onPointerHint}
 />
 
 <div class="h-full flex flex-col bg-surface text-text">

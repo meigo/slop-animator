@@ -12,6 +12,8 @@ const base: HintContext = {
   selectionFloating: false,
   poseActive: false,
   animatedFrame: null,
+  alphaLock: false,
+  frameEmpty: false,
 };
 const ctx = (over: Partial<HintContext>): HintContext => ({ ...base, ...over });
 
@@ -179,6 +181,8 @@ describe("contextHint — animated layer", () => {
     selectionActive: false,
     selectionFloating: false,
     poseActive: false,
+    alphaLock: false,
+    frameEmpty: false,
   };
 
   // Auto-key's one real hazard is silence: a nudge made while scrubbed between keys bends the
@@ -206,5 +210,39 @@ describe("contextHint — animated layer", () => {
 describe("loopEditLabel", () => {
   it("names the frame and the frame it repeats, 1-based", () => {
     expect(loopEditLabel(11, 3)).toBe("Frame 12 repeats frame 4 — edit it there");
+  });
+});
+
+describe("alpha lock", () => {
+  it("brush and fill say that paint lands only on existing pixels", () => {
+    for (const tool of ["brush", "fill"]) {
+      expect(contextHint(ctx({ tool, alphaLock: true }))).toBe(
+        "Alpha lock — paint lands only on existing pixels",
+      );
+    }
+  });
+  it("an empty frame says there is nothing to paint over", () => {
+    expect(contextHint(ctx({ tool: "brush", alphaLock: true, frameEmpty: true }))).toBe(
+      "Alpha lock is on — nothing on this frame to paint over",
+    );
+  });
+  it("the eraser is unaffected and says nothing about it", () => {
+    expect(contextHint(ctx({ tool: "eraser", alphaLock: true, frameEmpty: true }))).toBe("");
+  });
+  it("the empty-frame warning outranks the selection clip, which outranks the plain note", () => {
+    expect(
+      contextHint(ctx({ tool: "brush", alphaLock: true, frameEmpty: true, selectionActive: true })),
+    ).toMatch(/nothing on this frame/);
+    expect(contextHint(ctx({ tool: "brush", alphaLock: true, selectionActive: true }))).toMatch(
+      /clipped to the selection/,
+    );
+  });
+  it("a refused edit still outranks it", () => {
+    expect(contextHint(ctx({ tool: "brush", alphaLock: true, editBlock: "locked" }))).toMatch(
+      /Layer locked/,
+    );
+  });
+  it("frameEmpty alone (no alpha lock) changes nothing", () => {
+    expect(contextHint(ctx({ tool: "brush", frameEmpty: true }))).toBe("");
   });
 });

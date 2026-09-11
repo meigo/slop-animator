@@ -51,6 +51,11 @@ export interface DrawingLayer {
   name: string;
   visible: boolean;
   locked: boolean;
+  /** Alpha lock ("lock transparency"): paint lands only where this layer's drawing already has
+   *  pixels, keeping their alpha — brush strokes and flood fill composite `source-atop`. Per LAYER
+   *  and a view-prop, exactly like `locked`: persisted, never undone. Absent = off. The eraser
+   *  ignores it. */
+  alphaLock?: boolean;
   opacity: number; // 0..100
   boilStrength: number; // per-layer multiplier on boil amount/weight (1 = full, 0 = none)
   groupId: number | null;

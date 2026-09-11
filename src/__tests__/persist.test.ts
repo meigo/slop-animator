@@ -923,3 +923,31 @@ describe("legacy uniform-scale files", () => {
     expect("scale" in json.layers[0].transform).toBe(false);
   });
 });
+
+describe("alpha lock persistence", () => {
+  it("round-trips a locked layer", async () => {
+    const project = createProject();
+    project.layers[0] = { ...(project.layers[0] as DrawingLayer), alphaLock: true };
+    const loaded = await loadProjectBlob(await saveProjectBlob(project), 1);
+    expect((loaded.layers[0] as DrawingLayer).alphaLock).toBe(true);
+  });
+  it("is not written when off, and loads as absent", async () => {
+    const project = createProject();
+    const blob = await saveProjectBlob(project);
+    const json = JSON.parse(
+      strFromU8(unzipSync(new Uint8Array(await blob.arrayBuffer()))["project.json"]),
+    );
+    expect("alphaLock" in json.layers[0]).toBe(false);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect((loaded.layers[0] as DrawingLayer).alphaLock).toBeUndefined();
+  });
+  it("ignores a non-boolean value from a hand-edited file", async () => {
+    const project = createProject();
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(project)).arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    json.layers[0].alphaLock = "yes";
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    const loaded = await loadProjectBlob(new Blob([zipSync(zip)]), 1);
+    expect((loaded.layers[0] as DrawingLayer).alphaLock).toBeUndefined();
+  });
+});
