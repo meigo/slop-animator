@@ -2458,64 +2458,6 @@
     bind:this={gridWrapper}
     onscroll={(e) => (gridScrollLeft = e.currentTarget.scrollLeft)}
   >
-    <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
-         conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
-         group headers, and the property rows whose grid cells were deleted — showed nothing, so the
-         guides broke into disconnected segments wherever such a row sat between two layers.
-         A background here is continuous by construction, costs zero DOM nodes, and needs no row to
-         opt in. The line occupies [4·CELL_W − 1, 4·CELL_W) within each 5-cell period, which is
-         exactly where the ruler's major tick sits: that tick is drawn on the RIGHT edge of the cell
-         whose (f+2)%5===0, i.e. the LEFT edge of the labelled frame. The two are one boundary and
-         must move together — before 2026-09-09 both sat one cell later, on frame 5's right edge,
-         which put the line you count from one frame past the number naming it. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
-         25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
-         guides and the dividers read as one quiet lattice instead of one dominating the other. The
-         floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
-         dividers prove 1.41 is not. -->
-    <div
-      class="pointer-events-none absolute inset-y-0 z-0"
-      style="left: {GUTTER_W}px; width: {stripFrames *
-        CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {4 * CELL_W -
-        1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W - 1}px {4 *
-        CELL_W}px, transparent {4 * CELL_W}px {5 *
-        CELL_W}px); clip-path: inset(0 0 0 {gridScrollLeft}px);"
-    ></div>
-    <!-- play-range lines: the tracks' part of each 1px warn line (the ruler draws its own slice,
-         because the ruler is opaque). Just INSIDE the range at both ends, so the lines and the ruler's
-         wash agree on which frames are in it. Decoration only; the handles in the ruler are what you
-         drag. Before the playhead in the DOM at the same z, so the playhead — the only red, the thing
-         you must find — always paints over them. -->
-    {#if playRange}
-      {#if playRange.start * CELL_W >= gridScrollLeft}
-        <div
-          class="pointer-events-none absolute inset-y-0 z-10 w-px"
-          style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
-        ></div>
-      {/if}
-      {#if (playRange.end + 1) * CELL_W - 1 >= gridScrollLeft}
-        <div
-          class="pointer-events-none absolute inset-y-0 z-10 w-px"
-          style="left: {GUTTER_W +
-            (playRange.end + 1) * CELL_W -
-            1}px; background: var(--color-warn)"
-        ></div>
-      {/if}
-    {/if}
-    <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
-         the ruler only — an interactive line here would sit over the ◆ at the current frame and block
-         grabbing/moving it. -->
-    <!-- These three (guides above, range lines, this line) are clipped/hidden once they scroll behind the
-         gutter rather than covered by it: nothing opaque sits BEHIND the gutter any more (the old plate
-         broke iOS — see the gutter filler), and the sticky labels are 24px in 25px rows, so a 1px line
-         leaked through every row divider under the gutter (2026-09-11). -->
-    {#if !playheadBehindGutter}
-      <div
-        class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
-        style="left: {GUTTER_W +
-          appState.playhead * CELL_W +
-          CELL_W / 2}px; transform: translateX(-50%)"
-      ></div>
-    {/if}
     <!-- Gutter resize grip: straddles the divider at the gutter's right edge, full height, sticky so
          it stays on that edge through horizontal scroll. z-40 — above the per-row sticky labels
          (z-20), which would otherwise swallow the press, AND above the ruler row (z-35), which the
@@ -2543,7 +2485,69 @@
     <!-- Content floor: a column at least as tall as the scroller, so the gutter FILLER after the rows
          can take whatever height the rows leave (`flex-1`) — 0 once they overflow. `w-max min-w-full`
          keeps any sticky descendant's containing block as wide as the strip (the 2026-08-14 lesson). -->
-    <div class="flex w-max min-w-full flex-col" style="min-height: {gridH}px">
+    <div class="relative flex w-max min-w-full flex-col" style="min-height: {gridH}px">
+      <!-- The guides, the play-range lines and the playhead line live INSIDE this column so their
+           `inset-y-0` spans every row. As children of the scroller they spanned only its visible
+           height and scrolled away with the first screenful of a tall timeline (2026-09-11). -->
+      <!-- 5-frame guides, painted ONCE behind every row rather than per cell. They were a
+           conditional `border-r` on the drawing-layer cells, which meant rows that own no cells —
+           group headers, and the property rows whose grid cells were deleted — showed nothing, so the
+           guides broke into disconnected segments wherever such a row sat between two layers.
+           A background here is continuous by construction, costs zero DOM nodes, and needs no row to
+           opt in. The line occupies [4·CELL_W − 1, 4·CELL_W) within each 5-cell period, which is
+           exactly where the ruler's major tick sits: that tick is drawn on the RIGHT edge of the cell
+           whose (f+2)%5===0, i.e. the LEFT edge of the labelled frame. The two are one boundary and
+           must move together — before 2026-09-09 both sat one cell later, on frame 5's right edge,
+           which put the line you count from one frame past the number naming it. Sits at z-0, under the playhead (z-10) and under the sticky ruler (z-35).
+           25% is 1.41:1 against the lane — deliberately the SAME weight as the row divider, so the
+           guides and the dividers read as one quiet lattice instead of one dominating the other. The
+           floor is real: 1.16:1 (an earlier border-border/50) was reported as invisible, and the
+           dividers prove 1.41 is not. -->
+      <div
+        class="pointer-events-none absolute inset-y-0 z-0"
+        style="left: {GUTTER_W}px; width: {stripFrames *
+          CELL_W}px; background-image: repeating-linear-gradient(to right, transparent 0 {4 *
+          CELL_W -
+          1}px, color-mix(in oklab, var(--color-text-muted) 25%, transparent) {4 * CELL_W -
+          1}px {4 * CELL_W}px, transparent {4 * CELL_W}px {5 *
+          CELL_W}px); clip-path: inset(0 0 0 {gridScrollLeft}px);"
+      ></div>
+      <!-- play-range lines: the tracks' part of each 1px warn line (the ruler draws its own slice,
+           because the ruler is opaque). Just INSIDE the range at both ends, so the lines and the ruler's
+           wash agree on which frames are in it. Decoration only; the handles in the ruler are what you
+           drag. Before the playhead in the DOM at the same z, so the playhead — the only red, the thing
+           you must find — always paints over them. -->
+      {#if playRange}
+        {#if playRange.start * CELL_W >= gridScrollLeft}
+          <div
+            class="pointer-events-none absolute inset-y-0 z-10 w-px"
+            style="left: {GUTTER_W + playRange.start * CELL_W}px; background: var(--color-warn)"
+          ></div>
+        {/if}
+        {#if (playRange.end + 1) * CELL_W - 1 >= gridScrollLeft}
+          <div
+            class="pointer-events-none absolute inset-y-0 z-10 w-px"
+            style="left: {GUTTER_W +
+              (playRange.end + 1) * CELL_W -
+              1}px; background: var(--color-warn)"
+          ></div>
+        {/if}
+      {/if}
+      <!-- playhead line (visual, non-interactive); centered on the current column. Scrubbing lives on
+           the ruler only — an interactive line here would sit over the ◆ at the current frame and block
+           grabbing/moving it. -->
+      <!-- These three (guides above, range lines, this line) are clipped/hidden once they scroll behind the
+           gutter rather than covered by it: nothing opaque sits BEHIND the gutter any more (the old plate
+           broke iOS — see the gutter filler), and the sticky labels are 24px in 25px rows, so a 1px line
+           leaked through every row divider under the gutter (2026-09-11). -->
+      {#if !playheadBehindGutter}
+        <div
+          class="absolute inset-y-0 z-10 w-px bg-danger pointer-events-none"
+          style="left: {GUTTER_W +
+            appState.playhead * CELL_W +
+            CELL_W / 2}px; transform: translateX(-50%)"
+        ></div>
+      {/if}
       <!-- ruler (contiguous with the rows so the sticky gutter fully hides the playhead line). A
          distinct shade + a divider set the time band apart from the content tracks below. -->
       <!-- The band bg lives on the label + tick strip (not this full-width sticky wrapper), so the
