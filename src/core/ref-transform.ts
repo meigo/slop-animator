@@ -1,4 +1,4 @@
-import type { RefTransform } from "../anim/document";
+import type { RefTransform, TransformTrack } from "../anim/document";
 
 export interface Pt {
   x: number;
@@ -10,7 +10,7 @@ export interface Rect {
   w: number;
   h: number;
 }
-export type Handle = "nw" | "ne" | "se" | "sw" | "rotate" | "body" | null;
+export type Handle = "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w" | "rotate" | "body" | null;
 
 export const MIN_SCALE = 0.05;
 
@@ -54,6 +54,20 @@ export function rotateHandlePos(base: Rect, t: RefTransform, gap: number): Pt {
   return rotate({ x: c.x, y: c.y - hh - gap }, c, t.rotation);
 }
 
+/** Edge midpoints N, E, S, W of the transformed image (the side-stretch handles). */
+export function transformedSides(base: Rect, t: RefTransform): [Pt, Pt, Pt, Pt] {
+  const [nw, ne, se, sw] = transformedCorners(base, t);
+  const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  return [mid(nw, ne), mid(ne, se), mid(se, sw), mid(sw, nw)];
+}
+
+/** Where the rotate handle's stem leaves the box: the VISUAL top edge's midpoint, which is local
+ *  −y only while scaleY is positive — hence |scaleY|, matching `rotateHandlePos`. */
+export function rotateHandleStem(base: Rect, t: RefTransform): Pt {
+  const c = transformCenter(base, t);
+  return rotate({ x: c.x, y: c.y - (base.h / 2) * Math.abs(t.scaleY) }, c, t.rotation);
+}
+
 function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -75,6 +89,14 @@ export function hitTestHandle(
     ["rotate", rotateHandlePos(base, t, gap)],
   ];
   for (const [h, pt] of named) if (dist(p, pt) <= tolDoc) return h;
+  const [n, e, s, w] = transformedSides(base, t);
+  const sides: [Handle, Pt][] = [
+    ["n", n],
+    ["e", e],
+    ["s", s],
+    ["w", w],
+  ];
+  for (const [h, pt] of sides) if (dist(p, pt) <= tolDoc) return h;
   const c = transformCenter(base, t);
   const local = rotate(p, c, -t.rotation);
   const hw = (base.w / 2) * Math.abs(t.scaleX),
@@ -111,12 +133,109 @@ export function applyMove(t: RefTransform, ddx: number, ddy: number): RefTransfo
   return { ...t, dx: t.dx + ddx, dy: t.dy + ddy };
 }
 
-/** Proportional scale about `center`: both axes times |p-center|/|start-center|, signs kept. */
+/** The target's own axes in document space: local x → (cos, sin), local y → (−sin, cos). */
+function localAxis(t: RefTransform, axis: "x" | "y"): Pt {
+  const cos = Math.cos(t.rotation),
+    sin = Math.sin(t.rotation);
+  return axis === "x" ? { x: cos, y: sin } : { x: -sin, y: cos };
+}
+
+/** Ratio of the pointer's offset from `center` to the grab's, measured along `u`. Null when the
+ *  grab sat on the centre line (nothing to measure against). Signed: past the centre is negative. */
+function ratioAlong(u: Pt, center: Pt, start: Pt, p: Pt): number | null {
+  const l0 = (start.x - center.x) * u.x + (start.y - center.y) * u.y;
+  if (Math.abs(l0) < 1e-6) return null;
+  return ((p.x - center.x) * u.x + (p.y - center.y) * u.y) / l0;
+}
+
+/** Proportional scale about `center`: ONE signed factor — the pointer's offset projected onto the
+ *  grab direction — applied to both axes, so signs are kept and dragging through the centre flips
+ *  both (a 180° turn). */
 export function applyScale(t: RefTransform, center: Pt, start: Pt, p: Pt): RefTransform {
-  const d0 = dist(start, center);
-  if (d0 < 1e-6) return t;
-  const k = dist(p, center) / d0;
+  const v0 = { x: start.x - center.x, y: start.y - center.y };
+  const len2 = v0.x * v0.x + v0.y * v0.y;
+  if (len2 < 1e-12) return t;
+  const k = ((p.x - center.x) * v0.x + (p.y - center.y) * v0.y) / len2;
   return { ...t, scaleX: floorScale(t.scaleX * k), scaleY: floorScale(t.scaleY * k) };
+}
+
+/** Stretch ONE of the target's own axes about `center`. */
+export function applyStretch(
+  t: RefTransform,
+  axis: "x" | "y",
+  center: Pt,
+  start: Pt,
+  p: Pt,
+): RefTransform {
+  const k = ratioAlong(localAxis(t, axis), center, start, p);
+  if (k === null) return t;
+  return axis === "x"
+    ? { ...t, scaleX: floorScale(t.scaleX * k) }
+    : { ...t, scaleY: floorScale(t.scaleY * k) };
+}
+
+/** A corner with Keep proportions OFF: each axis follows the pointer independently. */
+export function applyFreeScale(t: RefTransform, center: Pt, start: Pt, p: Pt): RefTransform {
+  return applyStretch(applyStretch(t, "x", center, start, p), "y", center, start, p);
+}
+
+/** One handle drag, from the grab-time transform. THE dispatch the gizmo and the on-canvas drag
+ *  share, so the two cannot drift. */
+export function dragTransform(
+  handle: Exclude<Handle, null>,
+  startT: RefTransform,
+  center: Pt,
+  start: Pt,
+  p: Pt,
+  keepProportions: boolean,
+): RefTransform {
+  switch (handle) {
+    case "body":
+      return applyMove(startT, p.x - start.x, p.y - start.y);
+    case "rotate":
+      return applyRotate(startT, center, start, p);
+    case "e":
+    case "w":
+      return applyStretch(startT, "x", center, start, p);
+    case "n":
+    case "s":
+      return applyStretch(startT, "y", center, start, p);
+    default:
+      return keepProportions
+        ? applyScale(startT, center, start, p)
+        : applyFreeScale(startT, center, start, p);
+  }
+}
+
+/**
+ * Mirror a transform across the line x = `line` ("h") or y = `line` ("v"), in the target's parent
+ * space, keeping the same base. Reflecting `C + d + R(θ)S(p − C)` by F = diag(−1, 1) gives
+ * F·R(θ)·S = R(−θ)·S(−sx, sy), so the result is again a transform on the same base:
+ * scaleX' = −scaleX, rotation' = −rotation, dx' = 2·line − 2·C.x − dx (the "v" case mirrors this on
+ * y). Affine in every field, so it commutes with key interpolation — see `mirrorTransformTrack`.
+ */
+export function mirrorTransform(
+  t: RefTransform,
+  baseCentre: Pt,
+  axis: "h" | "v",
+  line: number,
+): RefTransform {
+  return axis === "h"
+    ? { ...t, scaleX: -t.scaleX, rotation: -t.rotation, dx: 2 * line - 2 * baseCentre.x - t.dx }
+    : { ...t, scaleY: -t.scaleY, rotation: -t.rotation, dy: 2 * line - 2 * baseCentre.y - t.dy };
+}
+
+/** Mirror every key of a transform track (a NEW track; frames, easing, sampling, box untouched). */
+export function mirrorTransformTrack(
+  track: TransformTrack,
+  baseCentre: Pt,
+  axis: "h" | "v",
+  line: number,
+): TransformTrack {
+  return {
+    ...track,
+    keys: track.keys.map((k) => ({ ...k, v: mirrorTransform(k.v, baseCentre, axis, line) })),
+  };
 }
 
 /** Rotate about `center` by the angle the pointer swept from `start` to `p`. */
