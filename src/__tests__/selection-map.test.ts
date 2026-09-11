@@ -11,14 +11,17 @@ import { forwardChain, inverseChain, type ComposeStep } from "../core/ref-transf
 const DOC = { x: 0, y: 0, w: 200, h: 100 };
 const id = (over = {}): ComposeStep => ({
   base: DOC,
-  t: { dx: 0, dy: 0, scale: 1, rotation: 0, ...over },
+  t: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0, ...over },
 });
 
 /** cell ∘ layer ∘ group, inner-to-outer, with a rotation in the middle — the highest-risk shape. */
 const CHAIN: ComposeStep[] = [
-  { base: { x: 20, y: 10, w: 80, h: 60 }, t: { dx: 12, dy: -7, scale: 1.4, rotation: 0.3 } },
-  { base: DOC, t: { dx: -30, dy: 25, scale: 0.6, rotation: -0.75 } },
-  { base: { x: 5, y: 5, w: 150, h: 90 }, t: { dx: 8, dy: 3, scale: 2, rotation: 1.1 } },
+  {
+    base: { x: 20, y: 10, w: 80, h: 60 },
+    t: { dx: 12, dy: -7, scaleX: 1.4, scaleY: 1.4, rotation: 0.3 },
+  },
+  { base: DOC, t: { dx: -30, dy: 25, scaleX: 0.6, scaleY: 0.6, rotation: -0.75 } },
+  { base: { x: 5, y: 5, w: 150, h: 90 }, t: { dx: 8, dy: 3, scaleX: 2, scaleY: 2, rotation: 1.1 } },
 ];
 
 describe("needsMap", () => {
@@ -52,7 +55,7 @@ describe("mapDocPolyToCell", () => {
 
   it("undoes a 2× scale about the doc center", () => {
     // center (100, 50); a paper point 20 px right of center came from 10 px right in the cell
-    const [cell] = mapDocPolyToCell([id({ scale: 2 })], [{ x: 120, y: 50 }]);
+    const [cell] = mapDocPolyToCell([id({ scaleX: 2, scaleY: 2 })], [{ x: 120, y: 50 }]);
     expect(cell.x).toBeCloseTo(110);
     expect(cell.y).toBeCloseTo(50);
   });
@@ -99,7 +102,7 @@ describe("mapDocRectToCell", () => {
 
   it("2× scale maps a paper box to a half-size cell box about the same center", () => {
     const r = { x: 80, y: 40, w: 40, h: 20 }; // paper center (100, 50)
-    const q = mapDocRectToCell([id({ scale: 2 })], r);
+    const q = mapDocRectToCell([id({ scaleX: 2, scaleY: 2 })], r);
     expect(q[0].x).toBeCloseTo(90);
     expect(q[0].y).toBeCloseTo(45);
     expect(q[2].x).toBeCloseTo(110);
@@ -121,7 +124,24 @@ describe("inverseComposeMatrix", () => {
   });
 
   it("agrees with inverseChain on a single translated + scaled step", () => {
-    const steps = [id({ dx: 30, dy: -10, scale: 2 })];
+    const steps = [id({ dx: 30, dy: -10, scaleX: 2, scaleY: 2 })];
+    const m = inverseComposeMatrix(steps);
+    for (const p of SAMPLES) {
+      const viaMatrix = applyMat6(m, p);
+      const viaChain = inverseChain(steps, p);
+      expect(viaMatrix.x).toBeCloseTo(viaChain.x, 6);
+      expect(viaMatrix.y).toBeCloseTo(viaChain.y, 6);
+    }
+  });
+
+  it("agrees with inverseChain on a rotated, stretched and mirrored step", () => {
+    const steps: ComposeStep[] = [
+      {
+        base: { x: 10, y: 30, w: 120, h: 70 },
+        t: { dx: 6, dy: -4, scaleX: -1.3, scaleY: 0.7, rotation: 0.4 },
+      },
+      id({ dx: -12, scaleX: 1.6, scaleY: -0.9, rotation: -0.3 }),
+    ];
     const m = inverseComposeMatrix(steps);
     for (const p of SAMPLES) {
       const viaMatrix = applyMat6(m, p);

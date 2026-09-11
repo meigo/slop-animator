@@ -5766,3 +5766,51 @@ working; keep the eyedropper on reference rows.
   `layer` on a layer or reference row; a per-frame transform planted in a saved-project shape still gets
   Apply / Reset in the layer panel, and Reset clears it. **Owed:** an actual transform drag on a layer,
   group and reference row, and an iPad pass.
+
+**Transform stretch & flip (2026-09-11).** Asked as *"I'd like to flip reference layer … selection >
+free transform has only non-uniform scale (dragging from corners) available and layer transform has
+only uniform scale available. I can imagine that layer flip could be solved with non-uniform negative
+scale, and also be animatable that way?"* Spec:
+`docs/superpowers/specs/2026-09-11-transform-stretch-flip-design.md`. Plan:
+`docs/superpowers/plans/2026-09-11-transform-stretch-flip.md`.
+
+- **`RefTransform` gains `scaleX`/`scaleY`, replacing the uniform `scale`** (negative = mirrored),
+  everywhere the field lives: layer, cell, reference, group and track keys. A new `normalizeTransform`
+  migrates old `{ scale }` files on load (`scaleX = scaleY = scale`) and also rejects a non-finite or
+  **zero** scale (loads as identity rather than an invisible, divide-by-zero transform — the spec only
+  asked for non-finite). Saves write `scaleX`/`scaleY` only — `scaleX`/`scaleY` REPLACE `scale`, they
+  are not additive — and the save-format `version` stays **1** anyway: the deployed app is always
+  current, so a pre-change build mis-reading a new file is accepted.
+- **Side handles on the layer/group/reference gizmo stretch one axis** about the target's own
+  (rotated) centre; **corners scale proportionally**, and dragging a handle through the centre flips
+  that axis (a live, continuous flip, not just the Flip buttons). **Keep proportions** (Transform bar
+  and the floating selection bar) toggles corner behaviour only — sides always stretch — defaults on,
+  persists with preferences, absent-in-storage reads as on. The selection-bar toggle shows in **both**
+  the plain and the lifted state, so the bar's width doesn't jump when a lift starts.
+- **Selection free-transform's side handles now stretch instead of skew** (skew removed); corners
+  scale proportionally from the opposite corner. The selection float's own scale matrix carries no
+  0.05 magnitude floor (RefTransform's floor doesn't apply there, and none existed for corners before
+  this change either) — a drag landing exactly on the anchor point can still yield a singular matrix,
+  a pre-existing risk now shared by sides.
+- **Flip horizontal / Flip vertical** buttons in the Transform bar mirror a layer, reference or group
+  in place — the mirror line runs through the centre of what's on screen at the playhead. An animated
+  target has every key mirrored in one pass; the whole edit is **one undo step**. Flipping an
+  identity, un-animated group freezes its `transformBox` the same way a drag's initial grab does (so
+  the pivot matches what a drag would have used); an animated group's absent static transform is left
+  absent rather than inventing one.
+- Handle sizing (`composeScaleOf`) uses the geometric mean `sqrt(|scaleX·scaleY|)` per compose step,
+  since a non-uniform stretch has no single scalar — cosmetic only, handles can read slightly off-size
+  on a heavily stretched layer.
+- Status hint updated to **"Drag to move · corners scale · sides stretch · top handle rotates."**
+- **Post-review fix (final whole-branch review):** `lerpTransform` (`document.ts`) now floors the
+  RESOLVED scale too, not just stored keys — a key-to-key flip's raw lerp passes through 0 at the
+  midpoint, and `inverseTransformPoint`/`inverseComposeMatrix` divide by it, which could send a paint/
+  fill/lift stroke to ±Infinity and hang a stamp-brush loop. `normalizeTransform`
+  (`project-file.ts`) floors a hand-edited file's below-0.05 scale the same way, rather than loading
+  it as-is. Also: `flipLayerTransform`/`flipGroupTransform` now settle an in-flight gizmo drag first
+  (`transformDragGuard.settle?.()`, same as `undo()`), and `flipLayerTransform` on a reference now also
+  refuses a hidden layer/group or one outside its frame span, not just a locked one.
+
+**Owed:** a browser + iPad pass — side handles and proportional corners on a layer, a group and a
+reference; the Keep proportions toggle in both the Transform bar and the selection bar; Flip H/V on
+each of those (static and animated); Apply after a flip; an export containing a flip.

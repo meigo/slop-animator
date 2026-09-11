@@ -119,8 +119,8 @@ export function contextHint(c: HintContext): string {
       return c.tool === "lasso" ? "Draw a loop to select" : "Drag to select an area";
     case "transform":
       if (c.animatedFrame !== null)
-        return `Animated — a drag keys frame ${c.animatedFrame + 1} · corners scale · top handle rotates`;
-      return "Drag to move · corners scale · top handle rotates";
+        return `Animated — a drag keys frame ${c.animatedFrame + 1} · corners scale · sides stretch · top handle rotates`;
+      return "Drag to move · corners scale · sides stretch · top handle rotates";
     case "deform":
       return c.selectionFloating
         ? "Drag a grid point to warp · leaving the tool bakes it"

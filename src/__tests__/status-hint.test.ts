@@ -193,7 +193,7 @@ describe("contextHint — animated layer", () => {
 
   it("falls back to the plain transform hint when the layer is not animated", () => {
     expect(contextHint({ ...base, animatedFrame: null })).toBe(
-      "Drag to move · corners scale · top handle rotates",
+      "Drag to move · corners scale · sides stretch · top handle rotates",
     );
   });
 

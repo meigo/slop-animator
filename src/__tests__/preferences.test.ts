@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePreferences } from "../persist/preferences";
+import { parsePreferences, keepProportionsPref } from "../persist/preferences";
 import { clampTimelineCellW } from "../lib/timeline-grid";
 
 describe("parsePreferences", () => {
@@ -32,5 +32,22 @@ describe("timelineCellW", () => {
     expect(clampTimelineCellW(4)).toBe(12);
     expect(clampTimelineCellW(99)).toBe(32);
     expect(clampTimelineCellW(24)).toBe(24);
+  });
+});
+
+describe("keepProportions", () => {
+  it("absent means on", () => {
+    expect(keepProportionsPref({})).toBe(true);
+    expect(keepProportionsPref(parsePreferences(null))).toBe(true);
+  });
+  it("round-trips an explicit off", () => {
+    expect(keepProportionsPref(parsePreferences(JSON.stringify({ keepProportions: false })))).toBe(
+      false,
+    );
+  });
+  it("ignores a non-boolean", () => {
+    expect(keepProportionsPref(parsePreferences(JSON.stringify({ keepProportions: "no" })))).toBe(
+      true,
+    );
   });
 });

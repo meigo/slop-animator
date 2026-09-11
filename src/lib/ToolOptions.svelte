@@ -21,6 +21,10 @@
     ClipboardPaste,
     Trash2,
     MousePointerBan,
+    Lock,
+    LockOpen,
+    FlipHorizontal2,
+    FlipVertical2,
   } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
@@ -418,6 +422,37 @@
       onclick={() => {
         if (canDeselect) selectionActions.deselect?.();
       }}><MousePointerBan size={16} /></button
+    >
+  {:else if appState.tool === "transform"}
+    {@const flipBtn =
+      "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
+    {#each [{ axis: "h", title: "Flip horizontal" }, { axis: "v", title: "Flip vertical" }] as const as f (f.axis)}
+      <!-- aria-disabled, NOT disabled — see the select/lasso branch above for why. -->
+      <button
+        class={flipBtn}
+        title={appState.canFlipTransform
+          ? `${f.title} — in place`
+          : `${f.title} — nothing to flip here`}
+        aria-disabled={!appState.canFlipTransform}
+        onclick={() => {
+          if (appState.canFlipTransform) transformActions.flip?.(f.axis);
+        }}
+        >{#if f.axis === "h"}<FlipHorizontal2 size={16} />{:else}<FlipVertical2
+            size={16}
+          />{/if}</button
+      >
+    {/each}
+    <span class="mx-1 h-5 w-px bg-border"></span>
+    <button
+      class="h-7 px-2 rounded border border-border bg-surface text-text-secondary text-xs flex items-center gap-1 hover:bg-surface-hover hover:text-text"
+      class:ui-on={appState.keepProportions}
+      aria-pressed={appState.keepProportions}
+      title={appState.keepProportions
+        ? "Keep proportions — on: corners keep the shape (sides always stretch)"
+        : "Keep proportions — off: corners stretch freely"}
+      onclick={() => (appState.keepProportions = !appState.keepProportions)}
+      >{#if appState.keepProportions}<Lock size={14} />{:else}<LockOpen size={14} />{/if}
+      Keep proportions</button
     >
   {:else if appState.tool === "deform" || appState.tool === "pose"}
     <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,

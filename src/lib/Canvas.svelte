@@ -92,9 +92,7 @@
   import {
     hitTestHandle,
     transformCenter,
-    applyMove,
-    applyScale,
-    applyRotate,
+    dragTransform,
     inverseChain,
     forwardChain,
     type Handle,
@@ -104,7 +102,7 @@
   } from "../core/ref-transform";
 
   const REF_ROTATE_GAP_PX = 28; // screen px from the top edge to the rotate handle
-  const IDENTITY = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const IDENTITY = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   /** Return the compose steps [layer-step, group-step] (inner-to-outer) above a draw layer. */
   function layerComposeSteps(layer: Layer): ComposeStep[] {
@@ -141,7 +139,8 @@
   }
 
   function composeScaleOf(steps: ComposeStep[]): number {
-    return steps.reduce((s, step) => s * step.t.scale, 1);
+    // One number cannot describe a stretch; the geometric mean keeps handles screen-constant on average.
+    return steps.reduce((s, step) => s * Math.sqrt(Math.abs(step.t.scaleX * step.t.scaleY)), 1);
   }
 
   /** Document-space point → cell-local (inverse of group ∘ layer ∘ cell). */
@@ -172,7 +171,7 @@
       const cy = s.base.y + s.base.h / 2;
       ctx.translate(cx + s.t.dx, cy + s.t.dy);
       ctx.rotate(s.t.rotation);
-      ctx.scale(s.t.scale, s.t.scale);
+      ctx.scale(s.t.scaleX, s.t.scaleY);
       ctx.translate(-cx, -cy);
     }
   }
@@ -1029,12 +1028,7 @@
       // An earlier round gated this write on the value actually changing, but the gate also
       // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
       // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
-      const nt =
-        d.handle === "body"
-          ? applyMove(d.startT, pc.x - d.start.x, pc.y - d.start.y)
-          : d.handle === "rotate"
-            ? applyRotate(d.startT, d.center, d.start, pc)
-            : applyScale(d.startT, d.center, d.start, pc);
+      const nt = dragTransform(d.handle, d.startT, d.center, d.start, pc, appState.keepProportions);
       setT(nt);
       // Compare what was WRITTEN, not a read-back. With `sampleEvery > 1` a track quantises the
       // sampled frame, so reading at a frame off the grid returns a lerp toward the key rather than
@@ -1247,6 +1241,7 @@
           handle
         ) {
           selectionMode = "drag";
+          selection.keepProportions = appState.keepProportions; // read at grab, like every drag input
           selection.startDrag(handle, p.x, p.y);
         } else {
           // Outside any selection (or idle) → commit/cancel the old one, start a new marquee.

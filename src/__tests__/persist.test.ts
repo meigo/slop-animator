@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
 import {
   setMinLayerId,
@@ -19,6 +19,7 @@ import {
   shouldRestoreMedia,
   sanitizeFilename,
   collectFrameAssets,
+  normalizeTransform,
 } from "../persist/project-file";
 import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
 
@@ -39,7 +40,7 @@ function dlayer(id: number, cells: Cell[]): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 function rlayer(id: number): ReferenceLayer {
@@ -54,7 +55,7 @@ function rlayer(id: number): ReferenceLayer {
     audioEnabled: false,
     groupId: null,
     media: { type: "image", el: {} as HTMLImageElement },
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 
@@ -93,7 +94,7 @@ describe("projectToJson", () => {
           boilStrength: 1,
           groupId: null,
           cells: ["key", "hold"],
-          transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+          transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
           cellTransforms: {},
         },
       ],
@@ -109,7 +110,7 @@ describe("projectToJson", () => {
           audioEnabled: false,
           groupId: null,
           was: "image",
-          transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+          transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
         },
       ],
       audio: null,
@@ -267,7 +268,7 @@ describe("group transform persistence", () => {
       name: "G",
       collapsed: false,
       visible: true,
-      transform: { dx: 12, dy: -3, scale: 1.4, rotation: 0.2 },
+      transform: { dx: 12, dy: -3, scaleX: 1.4, scaleY: 1.4, rotation: 0.2 },
       transformBox: { x: 5, y: 6, w: 30, h: 20 },
     };
     project.groups = [g];
@@ -299,7 +300,7 @@ describe("group transform persistence", () => {
         name: "I",
         collapsed: false,
         visible: true,
-        transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+        transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       },
     ];
     const blob = await saveProjectBlob(project);
@@ -741,7 +742,7 @@ describe("trim field sanitisation", () => {
 describe("track box sanitisation", () => {
   const trackWith = (box: unknown) => ({
     transform: {
-      keys: [{ frame: 0, v: { dx: 0, dy: 0, scale: 1, rotation: 0 } }],
+      keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
       box,
     },
   });
@@ -810,5 +811,115 @@ describe("loop keys", () => {
     const corrupted = new Blob([zipSync(zip)], { type: "application/zip" });
     const loaded = await loadProjectBlob(corrupted, 1);
     expect((loaded.layers[0] as DrawingLayer).cells[2]).toEqual({ kind: "loop", back: 1 });
+  });
+});
+
+describe("normalizeTransform", () => {
+  it("promotes a legacy uniform scale to both axes", () => {
+    expect(normalizeTransform({ dx: 1, dy: 2, scale: 1.5, rotation: 0.3 })).toEqual({
+      dx: 1,
+      dy: 2,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      rotation: 0.3,
+    });
+  });
+  it("passes the new shape through and drops unknown fields", () => {
+    expect(
+      normalizeTransform({ dx: 0, dy: 0, scaleX: -1, scaleY: 2, rotation: 0, extra: 5 }),
+    ).toEqual({ dx: 0, dy: 0, scaleX: -1, scaleY: 2, rotation: 0 });
+  });
+  it("prefers scaleX/scaleY when a value carries both shapes", () => {
+    expect(
+      normalizeTransform({ dx: 0, dy: 0, scale: 3, scaleX: 2, scaleY: 4, rotation: 0 }),
+    ).toEqual({ dx: 0, dy: 0, scaleX: 2, scaleY: 4, rotation: 0 });
+  });
+  it("floors a below-MIN_SCALE magnitude, keeping the sign", () => {
+    expect(normalizeTransform({ dx: 0, dy: 0, scaleX: 0.001, scaleY: -0.01, rotation: 0 })).toEqual(
+      { dx: 0, dy: 0, scaleX: 0.05, scaleY: -0.05, rotation: 0 },
+    );
+  });
+  it("rejects non-objects, non-finite fields, a missing scale and a zero scale", () => {
+    expect(normalizeTransform(null)).toBeNull();
+    expect(normalizeTransform("x")).toBeNull();
+    expect(normalizeTransform({ dx: NaN, dy: 0, scale: 1, rotation: 0 })).toBeNull();
+    expect(normalizeTransform({ dx: 0, dy: 0, rotation: 0 })).toBeNull();
+    expect(normalizeTransform({ dx: 0, dy: 0, scaleX: 0, scaleY: 1, rotation: 0 })).toBeNull();
+    expect(
+      normalizeTransform({ dx: 0, dy: 0, scaleX: 1, scaleY: Infinity, rotation: 0 }),
+    ).toBeNull();
+  });
+});
+
+describe("legacy uniform-scale files", () => {
+  // Save a real project, rewrite project.json into the PREVIOUS build's shape, load it back.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped project.json on purpose
+  async function reloadEdited(project: Project, edit: (json: Record<string, any>) => void) {
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(project)).arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    edit(json);
+    zip["project.json"] = strToU8(JSON.stringify(json));
+    return loadProjectBlob(new Blob([zipSync(zip)]), 1);
+  }
+  const legacy = (scale: number) => ({ dx: 0, dy: 0, scale, rotation: 0 });
+  const both = (s: number) => ({ dx: 0, dy: 0, scaleX: s, scaleY: s, rotation: 0 });
+
+  it("migrates layer, cell, track-key, reference and group transforms", async () => {
+    const project = createProject();
+    project.layers.push(
+      createReferenceLayer({ type: "missing", was: "image", name: "r.png" }, "R"),
+    );
+    // createProject()'s frame 0 is a "hold" cell (createDrawingLayer's default), not a key — the
+    // load loop only builds a cell canvas (createCellCanvas → document.createElement) for a "key"
+    // entry. There is no DOM in this test env, so stub just enough of `document` to let a key cell
+    // with no PNG bytes come back (frame 0 was never encoded, so the loader's decode branch is
+    // skipped and only the bare canvas shell — width/height + a 2D context stub — is needed).
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({ setTransform: () => {} }),
+      }),
+    });
+    try {
+      const loaded = await reloadEdited(project, (json) => {
+        json.layers[0].cells[0] = "key";
+        json.layers[0].transform = legacy(2);
+        json.layers[0].cellTransforms = { "0": { transform: legacy(0.5), transformBox: null } };
+        json.layers[0].tracks = { transform: { keys: [{ frame: 0, v: legacy(1.5) }], box: null } };
+        json.references[0].transform = legacy(3);
+        json.groups = [
+          {
+            id: 90,
+            name: "G",
+            collapsed: false,
+            visible: true,
+            transform: legacy(1.2),
+            transformBox: null,
+            tracks: { transform: { keys: [{ frame: 0, v: legacy(0.7) }], box: null } },
+          },
+        ];
+      });
+      const dl = loaded.layers.find((l) => l.kind === "draw") as DrawingLayer;
+      expect(dl.transform).toEqual(both(2));
+      const c0 = dl.cells[0];
+      expect(c0.kind === "key" && c0.transform).toEqual(both(0.5));
+      expect(dl.tracks?.transform?.keys[0].v).toEqual(both(1.5));
+      const ref = loaded.layers.find((l) => l.kind === "ref") as ReferenceLayer;
+      expect(ref.transform).toEqual(both(3));
+      expect(loaded.groups[0].transform).toEqual(both(1.2));
+      expect(loaded.groups[0].tracks?.transform?.keys[0].v).toEqual(both(0.7));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a save writes scaleX/scaleY and never `scale`", async () => {
+    const project = createProject();
+    project.layers[0].transform = { dx: 1, dy: 0, scaleX: -1, scaleY: 2, rotation: 0 };
+    const zip = unzipSync(new Uint8Array(await (await saveProjectBlob(project)).arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.layers[0].transform).toEqual({ dx: 1, dy: 0, scaleX: -1, scaleY: 2, rotation: 0 });
+    expect("scale" in json.layers[0].transform).toBe(false);
   });
 });

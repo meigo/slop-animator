@@ -1,4 +1,5 @@
 import { videoClipLayout } from "./clip-layout";
+import { floorScale } from "../core/ref-transform";
 
 export type Cell =
   | {
@@ -71,7 +72,10 @@ export type ReferenceMedia =
 export interface RefTransform {
   dx: number; // translate from fit-center, document logical px
   dy: number;
-  scale: number; // uniform multiplier on the fit size (1 = fit)
+  /** Per-axis multipliers on the fit size, along the target's OWN (rotated) axes. 1 = fit;
+   *  negative = mirrored on that axis. Magnitude is never below 0.05 (ref-transform MIN_SCALE). */
+  scaleX: number;
+  scaleY: number;
   rotation: number; // radians, clockwise, about the center
 }
 
@@ -280,10 +284,10 @@ export interface ReferenceLayer {
 
 export type Layer = DrawingLayer | ReferenceLayer;
 
-export const IDENTITY_TRANSFORM: RefTransform = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+export const IDENTITY_TRANSFORM: RefTransform = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
 export function isIdentityTransform(t: RefTransform): boolean {
-  return t.dx === 0 && t.dy === 0 && t.scale === 1 && t.rotation === 0;
+  return t.dx === 0 && t.dy === 0 && t.scaleX === 1 && t.scaleY === 1 && t.rotation === 0;
 }
 
 /** Can this layer's CONTENT be edited right now? Drawing layer, unlocked, and visible. Hidden is
@@ -428,7 +432,13 @@ export function groupHasLockedLayer(
 /** Exact equality — drag deltas recompute from the grab-time transform, so an untouched drag
  *  ends bit-identical; no epsilon. Used to skip history pushes for no-op drags. */
 export function isSameTransform(a: RefTransform, b: RefTransform): boolean {
-  return a.dx === b.dx && a.dy === b.dy && a.scale === b.scale && a.rotation === b.rotation;
+  return (
+    a.dx === b.dx &&
+    a.dy === b.dy &&
+    a.scaleX === b.scaleX &&
+    a.scaleY === b.scaleY &&
+    a.rotation === b.rotation
+  );
 }
 
 /** Logical base rect for a layer's transform: the full document for a draw layer; the media
@@ -641,7 +651,11 @@ function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransfor
   return {
     dx: a.dx + (b.dx - a.dx) * u,
     dy: a.dy + (b.dy - a.dy) * u,
-    scale: a.scale + (b.scale - a.scale) * u,
+    // A key-to-key flip's raw lerp passes through 0 at the turnaround; floor the resolved
+    // magnitude (keeping the sign) so inverseTransformPoint / inverseComposeMatrix never divide
+    // by zero on an in-between frame.
+    scaleX: floorScale(a.scaleX + (b.scaleX - a.scaleX) * u),
+    scaleY: floorScale(a.scaleY + (b.scaleY - a.scaleY) * u),
     // Absolute, NOT shortest-path: the gizmo stores accumulated rotation, so a 720° spin is 4π and
     // has to render as two turns.
     rotation: a.rotation + (b.rotation - a.rotation) * u,
@@ -1269,7 +1283,7 @@ export function createReferenceLayer(media: ReferenceMedia, name: string): Refer
     locked: false,
     groupId: null,
     media,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { ...IDENTITY_TRANSFORM },
   };
 }
 

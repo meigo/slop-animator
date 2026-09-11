@@ -40,7 +40,7 @@ function drawLayer(id: number, cells: Cell[]): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 function proj(layers: (DrawingLayer | ReferenceLayer)[], frameCount: number): Project {
@@ -77,7 +77,7 @@ describe("cloneCell", () => {
   });
 
   it("deep-clones transform and transformBox", () => {
-    const tf = { dx: 1, dy: 2, scale: 3, rotation: 4 };
+    const tf = { dx: 1, dy: 2, scaleX: 3, scaleY: 3, rotation: 4 };
     const box = { x: 5, y: 6, w: 7, h: 8 };
     const k: Cell = { kind: "key", canvas: fakeOps.create(), transform: tf, transformBox: box };
     const cloned = cloneCell(k, fakeOps);
@@ -115,7 +115,7 @@ describe("copyBlock", () => {
 
   it("clones an interior KEY and preserves per-cell transform/transformBox", () => {
     const k = fakeOps.create();
-    const tf = { dx: 5, dy: 6, scale: 2, rotation: 1 };
+    const tf = { dx: 5, dy: 6, scaleX: 2, scaleY: 2, rotation: 1 };
     const box = { x: 1, y: 2, w: 3, h: 4 };
     const l = drawLayer(1, [{ kind: "key", canvas: k, transform: tf, transformBox: box }]);
     const block = copyBlock(proj([l], 1), [1], 0, 0, fakeOps);
@@ -538,7 +538,7 @@ describe("anyEditablePasteTarget", () => {
       audioEnabled: false,
       groupId: null,
       media: { type: "missing", was: "image", name: "x" },
-      transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     };
     expect(anyEditablePasteTarget(proj([draw, ref], 1), 2)).toBe(false);
   });
@@ -548,7 +548,7 @@ describe("anyEditablePasteTarget", () => {
 // respliced, so an insert that moves the drawings must move the motion with them. (A reference
 // RANGE is document-space and shared, which is why those are deliberately left alone.)
 describe("pasteBlockInsert and transform keys", () => {
-  const T0 = { dx: 0, dy: 0, scale: 1, rotation: 0 };
+  const T0 = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   it("shifts the target layer's keys by the number of inserted cells", () => {
     const l = drawLayer(1, [key(), hold(), hold(), hold(), key()]);

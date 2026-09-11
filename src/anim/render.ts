@@ -44,7 +44,7 @@ export function drawTransformed(
   ctx.save();
   ctx.translate(base.x + base.w / 2 + t.dx * dpr, base.y + base.h / 2 + t.dy * dpr);
   ctx.rotate(t.rotation);
-  ctx.scale(t.scale, t.scale);
+  ctx.scale(t.scaleX, t.scaleY);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, -base.w / 2, -base.h / 2, base.w, base.h);
@@ -91,7 +91,7 @@ export function drawReferenceMedia(
     gcy = lb.y * dpr + (lb.h * dpr) / 2;
   ctx.translate(gcx + groupT.dx * dpr, gcy + groupT.dy * dpr);
   ctx.rotate(groupT.rotation);
-  ctx.scale(groupT.scale, groupT.scale);
+  ctx.scale(groupT.scaleX, groupT.scaleY);
   ctx.translate(-gcx, -gcy);
   drawTransformed(ctx, layer.media.el, base, lt, dpr);
   ctx.restore();
@@ -117,20 +117,20 @@ export function drawCellComposed(
       gcy = groupBoxDev.y + groupBoxDev.h / 2;
     ctx.translate(gcx + groupT.dx * dpr, gcy + groupT.dy * dpr);
     ctx.rotate(groupT.rotation);
-    ctx.scale(groupT.scale, groupT.scale);
+    ctx.scale(groupT.scaleX, groupT.scaleY);
     ctx.translate(-gcx, -gcy);
   }
   const dcx = wDev / 2,
     dcy = hDev / 2;
   ctx.translate(dcx + layerT.dx * dpr, dcy + layerT.dy * dpr);
   ctx.rotate(layerT.rotation);
-  ctx.scale(layerT.scale, layerT.scale);
+  ctx.scale(layerT.scaleX, layerT.scaleY);
   ctx.translate(-dcx, -dcy);
   const ccx = cellBoxDev.x + cellBoxDev.w / 2,
     ccy = cellBoxDev.y + cellBoxDev.h / 2;
   ctx.translate(ccx + cellT.dx * dpr, ccy + cellT.dy * dpr);
   ctx.rotate(cellT.rotation);
-  ctx.scale(cellT.scale, cellT.scale);
+  ctx.scale(cellT.scaleX, cellT.scaleY);
   ctx.translate(-ccx, -ccy);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";

@@ -54,7 +54,7 @@ export function dl(cells: Cell[], id = 1): DrawingLayer {
     boilStrength: 1,
     groupId: null,
     cells,
-    transform: { dx: 0, dy: 0, scale: 1, rotation: 0 },
+    transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 export const fakeOps: CanvasOps = {

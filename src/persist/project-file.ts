@@ -1,6 +1,7 @@
 import {
   isDrawingLayer,
   isIdentityTransform,
+  IDENTITY_TRANSFORM,
   createCellCanvas,
   setMinLayerId,
   refreshLength,
@@ -29,6 +30,7 @@ import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate"
 import { decodeAudioBytes } from "../audio/decode";
 import { mediaFromBlob } from "../anim/reference";
 import { putMedia } from "./media-store";
+import { floorScale } from "../core/ref-transform";
 
 export interface DrawingLayerJson {
   id: number;
@@ -234,14 +236,7 @@ export function projectToJson(project: Project): ProjectJson {
       tracksCollapsed: l.tracksCollapsed,
       cellTransforms: Object.fromEntries(
         l.cells.flatMap((c, i) =>
-          c.kind === "key" &&
-          c.transform &&
-          !(
-            c.transform.dx === 0 &&
-            c.transform.dy === 0 &&
-            c.transform.scale === 1 &&
-            c.transform.rotation === 0
-          )
+          c.kind === "key" && c.transform && !isIdentityTransform(c.transform)
             ? [[i, { transform: c.transform, transformBox: c.transformBox ?? null }]]
             : [],
         ),
@@ -451,10 +446,37 @@ function frameCountOrUndefined(v: unknown): number | undefined {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
 }
 
+/**
+ * A transform read from a file, in either shape: the previous build's uniform `{ scale }` (becomes
+ * `scaleX = scaleY = scale`) or `{ scaleX, scaleY }` (wins when both are present). Anything
+ * non-finite, missing or zero-scaled is rejected — a NaN poisons the whole compose chain and a zero
+ * scale divides by zero in every inverse. Returns a FRESH object with only the model's fields.
+ */
+export function normalizeTransform(raw: unknown): RefTransform | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const perAxis = r.scaleX !== undefined || r.scaleY !== undefined;
+  const t = {
+    dx: r.dx,
+    dy: r.dy,
+    scaleX: perAxis ? r.scaleX : r.scale,
+    scaleY: perAxis ? r.scaleY : r.scale,
+    rotation: r.rotation,
+  };
+  const nums = [t.dx, t.dy, t.scaleX, t.scaleY, t.rotation];
+  if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  if (t.scaleX === 0 || t.scaleY === 0) return null;
+  // A hand-edited file can carry a below-floor magnitude; floor it here too so nothing downstream
+  // divides by a near-zero scale.
+  return {
+    ...t,
+    scaleX: floorScale(t.scaleX as number),
+    scaleY: floorScale(t.scaleY as number),
+  } as RefTransform;
+}
+
 function isTransformValue(v: unknown): boolean {
-  if (!v || typeof v !== "object") return false;
-  const t = v as RefTransform;
-  return [t.dx, t.dy, t.scale, t.rotation].every((n) => Number.isFinite(n));
+  return normalizeTransform(v) !== null;
 }
 function isOpacityValue(v: unknown): boolean {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
@@ -517,7 +539,20 @@ function sanitiseTracks<T extends LayerTracks | GroupTracks>(tracks: T | undefin
   for (const p of new Set<TrackProp | GroupTrackProp>([...TRACK_PROPS, ...GROUP_TRACK_PROPS])) {
     switch (p) {
       case "transform": {
-        const transform = sanitiseTrack(tracks.transform, isTransformValue);
+        const raw = tracks.transform;
+        const normalised =
+          raw && Array.isArray(raw.keys)
+            ? {
+                ...raw,
+                keys: raw.keys.map((k) =>
+                  k && typeof k === "object" ? { ...k, v: normalizeTransform(k.v) } : k,
+                ),
+              }
+            : raw;
+        const transform = sanitiseTrack(
+          normalised as unknown as TransformTrack | undefined,
+          isTransformValue,
+        );
         if (transform) out.transform = { ...transform, box: sanitiseTrackBox(transform.box) };
         break;
       }
@@ -606,7 +641,8 @@ export async function loadProjectBlob(
     for (const [k, v] of Object.entries(ct)) {
       const cell = cells[Number(k)];
       if (cell && cell.kind === "key") {
-        cell.transform = v.transform;
+        const t = normalizeTransform(v.transform);
+        if (t) cell.transform = t;
         cell.transformBox = v.transformBox ?? null;
       }
     }
@@ -620,7 +656,7 @@ export async function loadProjectBlob(
       boilStrength: lj.boilStrength ?? 1,
       groupId: lj.groupId ?? null,
       cells,
-      transform: lj.transform ?? { dx: 0, dy: 0, scale: 1, rotation: 0 },
+      transform: normalizeTransform(lj.transform) ?? { ...IDENTITY_TRANSFORM },
       // Read both shapes: `transformTrack` shipped and is in real projects, including autosaves.
       // `tracks` wins when a file carries both.
       tracks: sanitiseTracks(lj.tracks ?? legacyTracks(lj.transformTrack)),
@@ -650,7 +686,7 @@ export async function loadProjectBlob(
       mediaMime: rj.mediaMime,
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
-      transform: rj.transform,
+      transform: normalizeTransform(rj.transform) ?? { ...IDENTITY_TRANSFORM },
       tracks: sanitiseTracks(rj.tracks ?? legacyTracks(rj.transformTrack)),
       tracksCollapsed: rj.tracksCollapsed,
       media: { type: "missing", was: rj.was, name: rj.name },
@@ -681,7 +717,7 @@ export async function loadProjectBlob(
       visible: g.visible,
       locked: g.locked ?? false,
       opacity: typeof o === "number" && Number.isFinite(o) && o >= 0 && o <= 100 ? o : undefined,
-      transform: g.transform ? { ...g.transform } : undefined,
+      transform: normalizeTransform(g.transform) ?? undefined,
       transformBox: g.transformBox ? { ...g.transformBox } : null,
       tracks: sanitiseTracks(g.tracks),
       tracksCollapsed: g.tracksCollapsed,
