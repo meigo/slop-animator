@@ -88,7 +88,6 @@ import {
   layerRowSelected,
   trackRowSelected,
   audioRowSelected,
-  groupDetailShown,
   groupRowSelected,
   plainLayerRowSelected,
   resolveStaleTrackFocus,
@@ -1815,10 +1814,6 @@ export function isGroupRowSelected(groupId?: number): boolean {
 
 /** Show this group's detail strip? Deliberately BROADER than the header highlight — see
  *  `groupDetailShown`, which the panel used to hand-roll beside it. */
-export function isGroupDetailShown(groupId: number): boolean {
-  return groupDetailShown(state.activeRow, groupId, state.project.layers);
-}
-
 /** The DRAWING layer a frame tool should act on, or null. Through `targetLayerId`, so a layer's own
  *  track row counts as its layer — which is what `isRowSelected` already lights. Branching on
  *  `activeRow.kind === "layer"` here made "Clear frame" report a non-drawing row while the layer's

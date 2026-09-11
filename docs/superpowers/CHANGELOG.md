@@ -339,6 +339,10 @@ rejected for the same reason (painting inside a selection is a real technique). 
 iPad, and that it doesn't bleed a tap through to the canvas (it uses the bar's existing
 `tap()` stopPropagation wrapper).
 
+> **SUPERSEDED in part (2026-09-11)** — there is no Row 2 any more: the per-layer controls moved to a
+> properties strip above the list (`LayerProps.svelte`). The rule below still holds with "Row 2" read as
+> "the strip". See **Layer panel: one-line rows, a properties strip on top** below.
+
 **Layer row de-crowding (2026-08-11):** a video reference row had FOUR icons before the name (grip,
 eye, audio, embed, + type glyph), truncating the name to uselessness. The two video-only toggles
 (audio 🔊, embed 💾) moved from Row 1 to **Row 2** — the detail strip that renders only for the
@@ -5960,3 +5964,38 @@ tap, the timeline gutter fixes (names drawn with few rows, no bleed-through, pla
 through every row), and transform stretch & flip (side handles, Keep proportions in both bars,
 selection stretch, Flip on static and animated targets, Apply with a flip, export). A user report
 rather than a scripted checklist — anything found later gets its own entry.
+
+
+**Layer panel: one-line rows, a properties strip on top (2026-09-11).** Asked as *"let's think about
+layer list layout … maybe we would benefit of aligning some buttons to the right side"*, then *"consider
+… that some apps move some props to the top to separate context sensitive bar"* — the Photoshop/Krita
+convention, and the 2026-08-11 rule (rows = state you scan ACROSS layers, the rest = controls for the
+layer you are on) taken to its end.
+- **Rows are one line, always:** grip · type slot (15px, blank for drawing layers — the width of a
+  group's chevron, so top-level layer names start exactly where group names do) · name · then three
+  fixed 20px columns on the RIGHT: alpha lock · lock · eye (outermost: the most used). Groups keep an
+  empty alpha-lock slot so their lock and eye stay in the same columns. Members keep the 19px indent,
+  so nesting shows only in the name. Alpha lock is `text-muted/50` when off (the rarely-on one; a third
+  equal-weight icon read as noise).
+- **Selecting a row no longer grows it.** The old Row 2 (and the group's detail strip) opened INSIDE
+  the selected row, pushing everything below it down — the row you meant to tap next moved under the
+  Pencil. Now `LayerProps.svelte` sits under the panel header and follows `workingTarget(activeRow)`:
+  a layer (or its own track) → opacity, boil, per-clip video settings, and on the right Apply/Reset
+  transform, rasterize, re-link, Rename (always last); a group → group opacity, Ungroup, Rename; audio →
+  "Audio — edit it in the timeline". `min-h-8`, wraps on a narrow panel. Each target is its own
+  `{#key}`, so a slider still UNMOUNTS when the selection moves — its settle-on-unmount action is the
+  backstop that closes an open opacity undo bracket.
+- **Behaviour change:** a selected MEMBER shows only its own properties. The old UI showed its group's
+  opacity strip too; group opacity is now edited by selecting the group row (the same rule the header
+  actions already follow). `isGroupDetailShown` lost its only caller and was removed.
+- **Rename** still edits inline in the row. Started from the strip, it first opens a collapsed group so
+  the row exists on screen; focusing the input scrolls it into view.
+- The opacity brackets, `hasTransform`/`activeTransformScope` and the re-link input moved to
+  `LayerProps.svelte` verbatim (LayerList 1124 → 504 lines; LayerProps 633).
+- **Verified in desktop WebKit and Chromium:** every row's alpha/lock/eye at the same x (152/176/200 at
+  the default width, 98/122/146 at 170px), names at 46 (groups and top-level layers) and 65 (members),
+  every row 28px before and after selecting a layer; the strip shows the right controls for a layer and
+  for a group; the opacity slider changes the layer (pointer in Chromium, keyboard in WebKit, where a
+  synthetic drag on a range input does not register); Rename from the strip on a member of a collapsed
+  group opened the group and focused the row's input. **Owed:** an iPad look — reach of the right-hand
+  columns with the Pencil, and the strip at the panel's default width.

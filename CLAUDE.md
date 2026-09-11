@@ -85,7 +85,8 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
   `fill.ts`, `input.ts`. `src/lib/cell-ink.ts` — per-cell ink/`contentBounds` caches.
 - `src/state/appState.svelte.ts` — the global `$state` store (`state`), all mutation actions,
   history/undo, preferences gather/apply. **The single source of truth.**
-- `src/lib/*.svelte` — UI: `Canvas`, `Toolbar`, `LayerList`, `Timeline`, `Playbar`, `AudioLane`,
+- `src/lib/*.svelte` — UI: `Canvas`, `Toolbar`, `LayerList` (one-line rows) + `LayerProps` (the selected
+  row's properties strip above it), `Timeline`, `Playbar`, `AudioLane`,
   `RefTransformGizmo`, `BrushCursor`, dialogs.
 - `src/persist/` — `project-file.ts` (zip: project.json + PNG per key cell; autosave + export),
   `preferences.ts` (localStorage), `autosave.ts` (IndexedDB, ~3s debounce).
