@@ -1,4 +1,5 @@
 import { videoClipLayout } from "./clip-layout";
+import { floorScale } from "../core/ref-transform";
 
 export type Cell =
   | {
@@ -650,8 +651,11 @@ function lerpTransform(a: RefTransform, b: RefTransform, u: number): RefTransfor
   return {
     dx: a.dx + (b.dx - a.dx) * u,
     dy: a.dy + (b.dy - a.dy) * u,
-    scaleX: a.scaleX + (b.scaleX - a.scaleX) * u,
-    scaleY: a.scaleY + (b.scaleY - a.scaleY) * u,
+    // A key-to-key flip's raw lerp passes through 0 at the turnaround; floor the resolved
+    // magnitude (keeping the sign) so inverseTransformPoint / inverseComposeMatrix never divide
+    // by zero on an in-between frame.
+    scaleX: floorScale(a.scaleX + (b.scaleX - a.scaleX) * u),
+    scaleY: floorScale(a.scaleY + (b.scaleY - a.scaleY) * u),
     // Absolute, NOT shortest-path: the gizmo stores accumulated rotation, so a 720° spin is 4π and
     // has to render as two turns.
     rotation: a.rotation + (b.rotation - a.rotation) * u,

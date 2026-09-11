@@ -28,6 +28,7 @@ import {
   type Track,
 } from "../anim/document";
 import { saveProjectBlob, loadProjectBlob } from "../persist/project-file";
+import { MIN_SCALE } from "../core/ref-transform";
 
 const T = (dx: number, rotation = 0, scale = 1) => ({
   dx,
@@ -144,7 +145,7 @@ describe("transformAt", () => {
     expect(transformAt(layer(z), 5).scaleX).toBeCloseTo(2, 10);
   });
 
-  it("interpolates scaleX and scaleY independently, through zero for a flip", () => {
+  it("interpolates scaleX and scaleY independently, flooring the magnitude at the midpoint of a flip", () => {
     const flip = track({
       keys: [
         { frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 2, rotation: 0 } },
@@ -152,8 +153,22 @@ describe("transformAt", () => {
       ],
     });
     const mid = transformAt(layer(flip), 5);
-    expect(mid.scaleX).toBeCloseTo(0, 10);
+    // Raw lerp would give scaleX 0 at the midpoint; floorScale(0) keeps it positive (0 counts as
+    // positive) and floors the magnitude at MIN_SCALE so nothing downstream divides by zero.
+    expect(mid.scaleX).toBeCloseTo(MIN_SCALE, 10);
     expect(mid.scaleY).toBeCloseTo(3, 10);
+  });
+
+  it("floors every resolved scale along a key-to-key flip, never dipping below MIN_SCALE", () => {
+    const flip = track({
+      keys: [
+        { frame: 0, v: { dx: 0, dy: 0, scaleX: MIN_SCALE, scaleY: 1, rotation: 0 } },
+        { frame: 10, v: { dx: 0, dy: 0, scaleX: -MIN_SCALE, scaleY: 1, rotation: 0 } },
+      ],
+    });
+    for (let f = 0; f <= 10; f++) {
+      expect(Math.abs(transformAt(layer(flip), f).scaleX)).toBeGreaterThanOrEqual(MIN_SCALE);
+    }
   });
 });
 

@@ -834,6 +834,11 @@ describe("normalizeTransform", () => {
       normalizeTransform({ dx: 0, dy: 0, scale: 3, scaleX: 2, scaleY: 4, rotation: 0 }),
     ).toEqual({ dx: 0, dy: 0, scaleX: 2, scaleY: 4, rotation: 0 });
   });
+  it("floors a below-MIN_SCALE magnitude, keeping the sign", () => {
+    expect(normalizeTransform({ dx: 0, dy: 0, scaleX: 0.001, scaleY: -0.01, rotation: 0 })).toEqual(
+      { dx: 0, dy: 0, scaleX: 0.05, scaleY: -0.05, rotation: 0 },
+    );
+  });
   it("rejects non-objects, non-finite fields, a missing scale and a zero scale", () => {
     expect(normalizeTransform(null)).toBeNull();
     expect(normalizeTransform("x")).toBeNull();

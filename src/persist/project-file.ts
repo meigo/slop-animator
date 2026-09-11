@@ -30,6 +30,7 @@ import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate"
 import { decodeAudioBytes } from "../audio/decode";
 import { mediaFromBlob } from "../anim/reference";
 import { putMedia } from "./media-store";
+import { floorScale } from "../core/ref-transform";
 
 export interface DrawingLayerJson {
   id: number;
@@ -465,7 +466,13 @@ export function normalizeTransform(raw: unknown): RefTransform | null {
   const nums = [t.dx, t.dy, t.scaleX, t.scaleY, t.rotation];
   if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
   if (t.scaleX === 0 || t.scaleY === 0) return null;
-  return t as RefTransform;
+  // A hand-edited file can carry a below-floor magnitude; floor it here too so nothing downstream
+  // divides by a near-zero scale.
+  return {
+    ...t,
+    scaleX: floorScale(t.scaleX as number),
+    scaleY: floorScale(t.scaleY as number),
+  } as RefTransform;
 }
 
 function isTransformValue(v: unknown): boolean {

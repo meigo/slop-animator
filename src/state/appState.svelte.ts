@@ -21,6 +21,7 @@ import {
   isLayerEditable,
   isLayerLocked,
   isLayerVisible,
+  isRefVisibleAtFrame,
   IDENTITY_TRANSFORM,
   frameEditKeyCell,
   transformAt,
@@ -938,10 +939,15 @@ function layerFlipCentre(
  *  what is on screen at the playhead. An animated layer mirrors the static value AND every key —
  *  the mirror is affine, so every in-between frame is mirrored exactly too. One undo step. */
 export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
+  transformDragGuard.settle?.(); // don't interleave with an in-flight gizmo drag's structural commit
   const layer = state.project.layers.find((l) => l.id === layerId);
   if (!layer) return;
   if (layer.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
-  if (layer.kind === "ref" && isLayerLocked(layer, state.project.groups)) return; // a locked ref is pinned
+  if (layer.kind === "ref") {
+    if (isLayerLocked(layer, state.project.groups)) return; // a locked ref is pinned
+    if (!isLayerVisible(layer, state.project.groups)) return;
+    if (!isRefVisibleAtFrame(layer, state.playhead, state.project.fps)) return;
+  }
   const base = transformBaseRect(layer, state.project.width, state.project.height);
   if (!base) return; // reference media not loaded
   const frame = state.playhead;
@@ -963,6 +969,7 @@ export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
 /** Mirror a group's transform in place across the line through its box centre at the playhead —
  *  static value and every key, as `flipLayerTransform`. One undo step. */
 export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
+  transformDragGuard.settle?.(); // don't interleave with an in-flight gizmo drag's structural commit
   const g = state.project.groups.find((x) => x.id === groupId);
   if (!g) return;
   if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group

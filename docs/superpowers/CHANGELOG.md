@@ -5778,9 +5778,9 @@ scale, and also be animatable that way?"* Spec:
   everywhere the field lives: layer, cell, reference, group and track keys. A new `normalizeTransform`
   migrates old `{ scale }` files on load (`scaleX = scaleY = scale`) and also rejects a non-finite or
   **zero** scale (loads as identity rather than an invisible, divide-by-zero transform — the spec only
-  asked for non-finite). Saves write `scaleX`/`scaleY` only; the save-format `version` stays **1**, so
-  a pre-change build reading a new file would mis-read it — accepted, since bumping the version for an
-  additive field wasn't judged worth the migration weight.
+  asked for non-finite). Saves write `scaleX`/`scaleY` only — `scaleX`/`scaleY` REPLACE `scale`, they
+  are not additive — and the save-format `version` stays **1** anyway: the deployed app is always
+  current, so a pre-change build mis-reading a new file is accepted.
 - **Side handles on the layer/group/reference gizmo stretch one axis** about the target's own
   (rotated) centre; **corners scale proportionally**, and dragging a handle through the centre flips
   that axis (a live, continuous flip, not just the Flip buttons). **Keep proportions** (Transform bar
@@ -5802,6 +5802,14 @@ scale, and also be animatable that way?"* Spec:
   since a non-uniform stretch has no single scalar — cosmetic only, handles can read slightly off-size
   on a heavily stretched layer.
 - Status hint updated to **"Drag to move · corners scale · sides stretch · top handle rotates."**
+- **Post-review fix (final whole-branch review):** `lerpTransform` (`document.ts`) now floors the
+  RESOLVED scale too, not just stored keys — a key-to-key flip's raw lerp passes through 0 at the
+  midpoint, and `inverseTransformPoint`/`inverseComposeMatrix` divide by it, which could send a paint/
+  fill/lift stroke to ±Infinity and hang a stamp-brush loop. `normalizeTransform`
+  (`project-file.ts`) floors a hand-edited file's below-0.05 scale the same way, rather than loading
+  it as-is. Also: `flipLayerTransform`/`flipGroupTransform` now settle an in-flight gizmo drag first
+  (`transformDragGuard.settle?.()`, same as `undo()`), and `flipLayerTransform` on a reference now also
+  refuses a hidden layer/group or one outside its frame span, not just a locked one.
 
 **Owed:** a browser + iPad pass — side handles and proportional corners on a layer, a group and a
 reference; the Keep proportions toggle in both the Transform bar and the selection bar; Flip H/V on

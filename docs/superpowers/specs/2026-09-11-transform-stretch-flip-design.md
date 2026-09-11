@@ -35,14 +35,14 @@ interface RefTransform {
 - Compose order (unchanged in shape): `T(centre + d) · R(rotation) · S(scaleX, scaleY) · T(−centre)` —
   the canvas's `translate → rotate → scale(sx, sy)`. A stretch rides the target's own axes, so a
   rotated stretched layer keeps its stretch direction (as a selection float already does).
-- **Magnitude floor:** `|scaleX|, |scaleY| ≥ 0.05` (today's `MIN_SCALE`), sign kept. Zero is never
-  stored; nothing divides by zero.
+- **Magnitude floor:** `|scaleX|, |scaleY| ≥ 0.05` (today's `MIN_SCALE`), sign kept. No stored OR
+  resolved value is below the floor; nothing divides by zero.
 - A mirror on BOTH axes equals a 180° rotation — no separate flip flag can disagree with the scale.
 - `IDENTITY_TRANSFORM = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 }`; `isIdentityTransform`
   and `isSameTransform` compare both scales.
 - **Tracks:** `lerpTransform` blends `scaleX` and `scaleY` independently. A key-to-key flip passes
-  through zero (the squash turnaround) unless that key's easing is `hold`. Nothing else about tracks
-  changes.
+  through the 0.05 floor (the turnaround squashes to a 5% sliver, not zero) unless that key's easing
+  is `hold`. Nothing else about tracks changes.
 
 ### One transform maths
 
