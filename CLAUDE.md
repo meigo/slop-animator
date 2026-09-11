@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1245 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1286 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -203,6 +203,9 @@ with ghosted repeats, a Loop toolbar button, and a draggable arrowhead to resize
 a loop plays are read-only on the canvas (draw/erase/fill/lift tools blocked, captioned with the
 source frame); property tracks (transform/opacity) play straight through the remap. See the
 2026-09-10 changelog entry for the save-format and merge-down details.
+
+Transforms are per-axis (scaleX/scaleY; negative = mirrored): side handles stretch, corners keep
+proportions (toggle), Flip H/V in the Transform bar (2026-09-11).
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

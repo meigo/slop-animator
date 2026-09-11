@@ -51,7 +51,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 **Transform & deform**
 
-- Free transform of a selection, and of a whole layer, reference or layer group — the Transform tool acts on whichever row is selected (transforms compose `group ∘ layer ∘ cell` at render)
+- Free transform of a selection, and of a whole layer, reference or layer group — the Transform tool acts on whichever row is selected (transforms compose `group ∘ layer ∘ cell` at render); side handles stretch one axis, corners keep proportions (toggleable), and Flip horizontal/vertical mirrors a layer, reference or group in place — animated ones included
 - Flip a selection horizontally or vertically from the floating selection bar (lifts it as a free-transform float, so you can keep adjusting before committing)
 - A layer's transform can be animated: keys at any frame, per-key easing (linear, hold, ease in/out),
   and a step setting so a move can land on 2s/3s like the drawings. Drag a key along its row to
@@ -99,7 +99,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1245); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1286); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
