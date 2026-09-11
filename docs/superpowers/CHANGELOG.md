@@ -5925,8 +5925,30 @@ transparency of canvas to only paint on existing pixels? Maybe slop-paint had th
   click on the red recoloured it blue and every left pixel stayed fully opaque; a click on the empty half
   changed nothing. Tests: 6 hint cases, 3 persistence cases (1297 total). **Owed:** an iPad pass with
   the Pencil (pressure strokes, ink/calligraphy/stamp engines under the lock).
-- **Noticed, not fixed (pre-existing):** the fill's "Nothing filled — …" status messages never reach the
+- **Noticed, not fixed (pre-existing) — FIXED the same day, see _Status messages from a press survive it_:** the fill's "Nothing filled — …" status messages never reach the
   bar — sampled every frame, `statusHint` never changes, with or without the lock — most likely the
   window-level hover/press writer clears it in the same gesture. Same class of problem `poseFillWarning`
   was split out for.
 - Layer-to-selection, discussed alongside, is deferred to the roadmap in CLAUDE.md.
+
+
+**Status messages from a press survive it (2026-09-11).** Asked as *"fix the nothing filled hint
+too"*. Every message an action writes to `statusHint` on its own press — the bucket's "Nothing filled —
+…", Fill enclosed's refusal, alpha lock's — was invisible over the canvas. Two causes, measured with an
+event log in desktop WebKit, not guessed:
+- **Order.** `App.svelte`'s title mirror (`onPointerHint`: the hovered/pressed element's `title=` →
+  `statusHint`, `""` for an untitled target) ran on `pointerdown` in the BUBBLE phase, i.e. after the
+  canvas's own handler, so it blanked the message in the same event. Now `onpointerdowncapture` /
+  `onpointerovercapture`: the mirror runs first, the action's report lands after it.
+- **Pointer capture.** That alone left the message alive for ~1ms: the canvas input takes pointer
+  capture on every press (`input.ts`), and the browser fires boundary `pointerover`s onto the capturing
+  stage and back onto the canvas on release (logged with `buttons=0`, so a pressed-button filter cannot
+  tell them apart). Each re-cleared it. The mirror now remembers the element its last hint came from
+  and ignores a `pointerover` that resolves to the same source; `pointerdown` always writes, so pressing
+  the canvas again still clears a stale message, and hovering onto a titled control and back still
+  shows and clears its title.
+- Verified in WebKit: both "Nothing filled" variants read in the status bar after the click, hover over
+  the Brush button shows "Brush", moving back onto the canvas clears it. The Pose tool's
+  `poseFillWarning` was split out of `statusHint` for exactly this collision and is left as it is.
+- Alpha lock's no-op fill message reworded to "Nothing filled — alpha lock only recolours existing
+  pixels, or they are already this color": it also fires on existing pixels already in the fill colour.

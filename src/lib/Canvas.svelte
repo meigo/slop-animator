@@ -579,7 +579,7 @@
       if (materialized) restoreTrackById(layerId, materialized.before);
       // Must not no-op in silence: this is pixel-identical to a fill that worked.
       appState.statusHint = alphaLock
-        ? "Nothing filled — alpha lock is on, and there are no pixels there to recolour"
+        ? "Nothing filled — alpha lock only recolours existing pixels, or they are already this color"
         : selection?.state === "selected"
           ? "Nothing filled — that area is outside the selection, or already this color"
           : "Nothing filled — that area is already this color";
