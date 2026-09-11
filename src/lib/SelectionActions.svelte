@@ -8,8 +8,8 @@
     FlipVertical2,
     Check,
     X,
-    Lock,
-    LockOpen,
+    Link2,
+    Link2Off,
   } from "@lucide/svelte";
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
@@ -220,7 +220,7 @@
           ? "Keep proportions — on: corners keep the shape (sides always stretch)"
           : "Keep proportions — off: corners stretch freely"}
       >
-        {#if appState.keepProportions}<Lock size={18} />{:else}<LockOpen size={18} />{/if}
+        {#if appState.keepProportions}<Link2 size={18} />{:else}<Link2Off size={18} />{/if}
       </button>
     {/if}
     {#if mode === "warping"}
