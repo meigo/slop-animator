@@ -7,14 +7,15 @@ import {
 } from "../anim/document";
 import type { Layer, LayerGroup } from "../anim/document";
 import type { Tool } from "../state/appState.svelte";
+import type { TransformScope } from "../anim/active-row";
 
 /**
  * Whose transform an Animate control (or a transform drag) acts on, or null when none applies.
  *
  * A ref is animatable under ANY tool because its gizmo is always live — the same reason
  * Reset-to-fit sits outside the per-tool branches. A DRAW layer is only animatable under the
- * Transform tool at LAYER scope: at frame scope a drag writes the cell's transform and at group
- * scope the GROUP's, so neither writes a key on this layer. Group scope is not "no target" but a
+ * Transform tool at LAYER scope (its own row selected): on a group row a drag writes the GROUP's
+ * transform, not a key on this layer. Group scope is not "no target" but a
  * different one — see `animateTargetGroup` below, which is what the Animate controls fall through
  * to there. A locked or hidden layer is never a target, and
  * neither is a ref outside its own frame span — `RefTransformGizmo.activeTransformLayer` and
@@ -31,7 +32,7 @@ export function animateTargetLayer(
   layer: Layer | null | undefined,
   groups: LayerGroup[],
   tool: Tool,
-  scope: "frame" | "layer" | "group",
+  scope: TransformScope,
   playhead: number,
   fps: number,
 ): Layer | null {
@@ -63,7 +64,7 @@ export function animateTargetGroup(
   groups: LayerGroup[],
   layers: Layer[],
   tool: Tool,
-  scope: "frame" | "layer" | "group",
+  scope: TransformScope,
 ): LayerGroup | null {
   if (tool !== "transform" || scope !== "group") return null;
   if (!layer) return null;

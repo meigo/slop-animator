@@ -5736,3 +5736,33 @@ project size although a stroke changes one drawing.
   fail. Verified in the browser: Clear frame turns the key ◇, undo restores ◆, redo ◇ again. A
   brush stroke was not driven in the browser this time (the test tab was hidden, which stalls canvas
   input); its write goes through the same `pixelCommand`.
+
+**The Transform tool follows the selected row; the Frame/Layer/Group toggle is gone (2026-09-11).**
+Raised while wanting to flip a reference: *"for reference layers we could remove Frame/Layer/Group
+selection as only Layer is available … group transform could be available only when group layer is
+selected … I make permanent changes on frame level usually - only bulk transforms at layer/group level
+make sense for me."* Decided in chat: remove Frame scope from the UI; keep existing cell transforms
+working; keep the eyedropper on reference rows.
+
+- **Scope is derived, never set.** `transformScopeOf(row)` (active-row.ts): a group row, or one of the
+  group's own track rows, transforms the GROUP; every other row the layer (drawing or reference).
+  `appState.transformScope` the field is gone — `transformScope()` reads the row. Gone with it: the
+  six places that set or reset the scope (select group / track, ungroup, setActiveLayer), the
+  `wrong-scope` refusal and its status-bar hint (a group row can no longer be at the wrong scope), and
+  every Frame-scope branch in the canvas drag, the gizmo and the loop-frame gate. `rowAdmitsTransform`
+  / `whyRowRefusesTransform` lose their scope argument.
+- **Existing per-frame (cell) transforms** in saved projects still render (model and render path
+  untouched). The layer panel's Apply / Reset still reaches them: a group row means the group's
+  transform, otherwise the layer's own first, then the frame's.
+- **Select / Lasso dim on a reference row** (`selectToolsBlock`, same still-clickable dimming as the
+  pixel tools) and a marquee there is refused: nothing can be lifted or copied from a reference. A
+  locked or hidden DRAWING layer still admits them — copying is a read. The eyedropper stays live
+  everywhere: it samples the whole visible picture, so picking colours off a reference is a real use.
+- Tests: `transformScopeOf` (2 new), `rowAdmitsTransform` / `whyRowRefusesTransform` and the
+  transform-target / status-hint tests rewritten for the row-derived scope.
+- **Verified in desktop Chrome** (test tab hidden, so checks ran through the live store and the DOM, not
+  canvas drags): on a reference row Select/Lasso and the pixel tools dim while the eyedropper stays
+  live, and the Transform bar no longer shows a scope toggle; the scope reads `group` on a group row and
+  `layer` on a layer or reference row; a per-frame transform planted in a saved-project shape still gets
+  Apply / Reset in the layer panel, and Reset clears it. **Owed:** an actual transform drag on a layer,
+  group and reference row, and an iPad pass.

@@ -115,8 +115,7 @@ export function groupHeaderSelected(
  *  The CAPABILITY twin of the highlight predicates above, and it exists because the six highlight
  *  fixes converted what LIGHTS UP without converting what a drag is allowed to touch. A GROUP row
  *  is working on THAT group; `activeLayerId` under it is a remembered ANCHOR, not the target — so
- *  the gesture is only the lit row's while the scope really is "group" AND that anchor is a DRAW
- *  layer really inside it. Every other combination moved something the artist could not see was
+ *  the gesture is only the lit row's through a DRAW layer really inside that group. Every other combination moved something the artist could not see was
  *  selected: layer scope moved the member's own transform, an anchor left over in another group
  *  moved THAT group, and a ref anchor fell through to the ref's own transform (only a draw layer
  *  reaches the group branch of `transformTarget`). Audio never transforms at all.
@@ -127,10 +126,19 @@ export function groupHeaderSelected(
  *  leave the drag reachable with nothing on screen to explain it. */
 export function rowAdmitsTransform(
   row: ActiveRow,
-  scope: "frame" | "layer" | "group",
   layer: { kind: Layer["kind"]; groupId?: number | null },
 ): boolean {
-  return whyRowRefusesTransform(row, scope, layer) === null;
+  return whyRowRefusesTransform(row, layer) === null;
+}
+
+/** What the Transform tool acts on while `row` is selected: a group row (or one of the group's own
+ *  track rows) transforms the GROUP; every other row the layer — drawing or reference. The scope
+ *  FOLLOWS THE ROW: the Frame/Layer/Group toggle was removed on 2026-09-11 (a reference only ever
+ *  had Layer, Group only meant anything on a group, and per-frame transforms were not wanted). */
+export type TransformScope = "layer" | "group";
+
+export function transformScopeOf(row: ActiveRow): TransformScope {
+  return workingTarget(row).kind === "group" ? "group" : "layer";
 }
 
 /** WHY `rowAdmitsTransform` says no — the refusals are different, and each has a different fix.
@@ -139,22 +147,18 @@ export function rowAdmitsTransform(
  *  a gesture that returns.
  *
  *  - `audio-row`: nothing on the audio lane transforms; the fix is to select a layer or group row.
- *  - `wrong-scope`: a group row is working on the GROUP, so any other scope aims at the remembered
- *    anchor layer, which the lit row does not name. Fix: set the scope to Group.
  *  - `no-draw-member`: group scope, but the anchor is a reference or sits in another group — only a
  *    DRAW member of THIS group reaches the group branch of `transformTarget`. A group of references
  *    has nothing to transform this way at all. */
-export type TransformRefusal = "audio-row" | "wrong-scope" | "no-draw-member";
+export type TransformRefusal = "audio-row" | "no-draw-member";
 
 export function whyRowRefusesTransform(
   row: ActiveRow,
-  scope: "frame" | "layer" | "group",
   layer: { kind: Layer["kind"]; groupId?: number | null },
 ): TransformRefusal | null {
   const wt = workingTarget(row);
   if (wt.kind === "audio") return "audio-row";
   if (wt.kind !== "group") return null;
-  if (scope !== "group") return "wrong-scope";
   if (layer.kind !== "draw" || (layer.groupId ?? null) !== wt.id) return "no-draw-member";
   return null;
 }

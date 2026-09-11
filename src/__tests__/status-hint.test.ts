@@ -69,9 +69,6 @@ describe("group row selected", () => {
   // the case that created it. Each names the fix it actually has.
   it("says WHY when the group row refuses the transform, per reason", () => {
     expect(
-      contextHint(ctx({ tool: "transform", groupRow: true, groupTransformBlock: "wrong-scope" })),
-    ).toBe("Group row — set Transform scope to Group");
-    expect(
       contextHint(
         ctx({ tool: "transform", groupRow: true, groupTransformBlock: "no-draw-member" }),
       ),
@@ -88,7 +85,7 @@ describe("group row selected", () => {
   // asserted so an `else` cannot creep back in and print the group message for it.
   it("leaves other tools alone on a refusing group row", () => {
     expect(
-      contextHint(ctx({ tool: "select", groupRow: true, groupTransformBlock: "wrong-scope" })),
+      contextHint(ctx({ tool: "select", groupRow: true, groupTransformBlock: "no-draw-member" })),
     ).toBe("Drag to select an area");
   });
 });

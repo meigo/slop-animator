@@ -32,11 +32,10 @@ describe("animateTargetLayer", () => {
     expect(animateTargetLayer(null, [], "transform", "layer", 0, FPS)).toBeNull();
   });
 
-  // A draw layer is only animatable where a drag actually writes a KEY. At frame scope the drag
-  // writes the cell's transform and at group scope the group's — neither touches the track.
+  // A draw layer is only animatable where a drag actually writes a KEY on it. On a group row the
+  // drag writes the GROUP's transform, not this layer's track.
   it("takes a drawing layer only under the Transform tool at layer scope", () => {
     expect(animateTargetLayer(draw(), [], "transform", "layer", 0, FPS)).not.toBeNull();
-    expect(animateTargetLayer(draw(), [], "transform", "frame", 0, FPS)).toBeNull();
     expect(animateTargetLayer(draw(), [], "transform", "group", 0, FPS)).toBeNull();
     expect(animateTargetLayer(draw(), [], "brush", "layer", 0, FPS)).toBeNull();
   });
@@ -44,7 +43,7 @@ describe("animateTargetLayer", () => {
   // A ref's gizmo is live under every tool, which is why Reset-to-fit sits outside the per-tool
   // branches too — so the Animate controls must follow the gizmo, not the tool.
   it("takes a reference layer under any tool", () => {
-    expect(animateTargetLayer(ref(), [], "brush", "frame", 0, FPS)).not.toBeNull();
+    expect(animateTargetLayer(ref(), [], "brush", "layer", 0, FPS)).not.toBeNull();
   });
 
   it("refuses a locked or hidden layer", () => {
@@ -73,8 +72,8 @@ describe("animateTargetLayer", () => {
   // third site offering the same affordance and must agree with both.
   it("refuses a reference layer outside its visible span", () => {
     const trimmed = ref({ range: { start: 0, end: 10 } });
-    expect(animateTargetLayer(trimmed, [], "brush", "frame", 5, FPS)).not.toBeNull();
-    expect(animateTargetLayer(trimmed, [], "brush", "frame", 30, FPS)).toBeNull();
+    expect(animateTargetLayer(trimmed, [], "brush", "layer", 5, FPS)).not.toBeNull();
+    expect(animateTargetLayer(trimmed, [], "brush", "layer", 30, FPS)).toBeNull();
   });
 });
 
@@ -93,7 +92,6 @@ describe("animateTargetGroup", () => {
   it("takes the group only under the Transform tool at group scope", () => {
     expect(animateTargetGroup(grouped, g(), [grouped], "transform", "group")).not.toBeNull();
     expect(animateTargetGroup(grouped, g(), [grouped], "transform", "layer")).toBeNull();
-    expect(animateTargetGroup(grouped, g(), [grouped], "transform", "frame")).toBeNull();
     expect(animateTargetGroup(grouped, g(), [grouped], "brush", "group")).toBeNull();
   });
 

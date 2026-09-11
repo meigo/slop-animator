@@ -14,6 +14,7 @@
     persistReferenceMedia,
     selectEyedropper,
     pixelToolsBlock,
+    selectToolsBlock,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -55,6 +56,11 @@
   // pattern the next control would have copied. The title carries the reason either way.
   const toolsBlock = $derived(pixelToolsBlock());
   const toolsDimmed = $derived(toolsBlock !== null);
+  // Select/lasso dim on a REFERENCE row only (nothing to lift or copy there); a locked or hidden
+  // drawing layer keeps them — copying is a read. Same still-clickable dimming as the pixel tools.
+  const selectBlock = $derived(selectToolsBlock());
+  const selectTitle = (name: string) =>
+    selectBlock ? `${name} — ${editBlockLabel(selectBlock)}` : name;
   const pixelTitle = (name: string) =>
     toolsBlock ? `${name} — ${editBlockLabel(toolsBlock)}` : name;
 
@@ -201,13 +207,15 @@
   <button
     class={toolBtn}
     class:ui-on={appState.tool === "select"}
-    title="Select"
+    class:opacity-40={selectBlock !== null}
+    title={selectTitle("Select")}
     onclick={() => (appState.tool = "select")}><BoxSelect size={18} /></button
   >
   <button
     class={toolBtn}
     class:ui-on={appState.tool === "lasso"}
-    title="Lasso"
+    class:opacity-40={selectBlock !== null}
+    title={selectTitle("Lasso")}
     onclick={() => (appState.tool = "lasso")}><Lasso size={18} /></button
   >
   <button

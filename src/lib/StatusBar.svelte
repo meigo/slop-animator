@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { state as appState, activeLayer } from "../state/appState.svelte";
+  import { state as appState, activeLayer, transformScope } from "../state/appState.svelte";
   import { whyRowRefusesTransform, workingTarget } from "../anim/active-row";
   import { layerTransformTrack, whyNotEditable } from "../anim/document";
   import { contextHint } from "./status-hint";
@@ -23,13 +23,13 @@
   const idleHint = $derived.by(() => {
     const l = activeLayer();
     // The SAME predicates the Animate controls use (shared, so the two cannot drift): a track alone
-    // is not enough, because at FRAME scope a drag writes the CELL's transform, which no track
-    // holds. Group scope keys a different target rather than none — hence the second call below.
+    // is not enough, because on a GROUP row a drag writes the group's transform, not this layer's
+    // track — a different target rather than none, hence the second call below.
     const target = animateTargetLayer(
       l,
       appState.project.groups,
       appState.tool,
-      appState.transformScope,
+      transformScope(),
       appState.playhead,
       appState.project.fps,
     );
@@ -42,7 +42,7 @@
       appState.project.groups,
       appState.project.layers,
       appState.tool,
-      appState.transformScope,
+      transformScope(),
     );
     const wt = workingTarget(appState.activeRow);
     const audioOn = wt.kind === "audio";
@@ -61,11 +61,9 @@
       notDraw: l.kind !== "draw",
       audioRow: audioOn,
       groupRow: groupOn,
-      // The SAME predicate the gizmo and the canvas drag ask, with the SAME raw scope they pass —
-      // a hint derived from anything else could describe a gesture those two refuse.
-      groupTransformBlock: groupOn
-        ? whyRowRefusesTransform(appState.activeRow, appState.transformScope, l)
-        : null,
+      // The SAME predicate the gizmo and the canvas drag ask — a hint derived from anything else
+      // could describe a gesture those two refuse.
+      groupTransformBlock: groupOn ? whyRowRefusesTransform(appState.activeRow, l) : null,
       selectionActive: appState.selectionActive,
       selectionFloating: appState.selectionFloating,
       poseActive: appState.poseActive,
