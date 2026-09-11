@@ -5952,3 +5952,11 @@ event log in desktop WebKit, not guessed:
   `poseFillWarning` was split out of `statusHint` for exactly this collision and is left as it is.
 - Alpha lock's no-op fill message reworded to "Nothing filled — alpha lock only recolours existing
   pixels, or they are already this color": it also fires on existing pixels already in the fill colour.
+
+**iPad verification, 2026-09-11: today's features — PASSED (user report).** *"All these seem to work on
+ipad"*, after the lists in the entries above: alpha lock with the Pencil (pressure strokes across the
+engines, the bucket recolouring, the checkerboard toggle), the "Nothing filled" status messages after a
+tap, the timeline gutter fixes (names drawn with few rows, no bleed-through, playhead line and guides
+through every row), and transform stretch & flip (side handles, Keep proportions in both bars,
+selection stretch, Flip on static and animated targets, Apply with a flip, export). A user report
+rather than a scripted checklist — anything found later gets its own entry.
