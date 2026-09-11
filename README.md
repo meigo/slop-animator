@@ -52,6 +52,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Transform & deform**
 
 - Free transform at four scopes: selection, current-frame cell, whole layer, and layer group (transforms compose `group ∘ layer ∘ cell` at render)
+- Flip a selection horizontally or vertically from the floating selection bar (lifts it as a free-transform float, so you can keep adjusting before committing)
 - A layer's transform can be animated: keys at any frame, per-key easing (linear, hold, ease in/out),
   and a step setting so a move can land on 2s/3s like the drawings. Drag a key along its row to
   retime it. Starting the track is on the timeline bar, not the Transform tool
@@ -98,7 +99,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1226); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1230); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

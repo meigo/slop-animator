@@ -1,6 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Move, SquareDashed, Grid3x3, Check, X } from "@lucide/svelte";
+  import {
+    Move,
+    SquareDashed,
+    Grid3x3,
+    FlipHorizontal2,
+    FlipVertical2,
+    Check,
+    X,
+  } from "@lucide/svelte";
   import type { Selection } from "../core/selection";
   import type { Viewport } from "../core/viewport";
   import { computeAnchor } from "../core/selection-anchor";
@@ -17,6 +25,7 @@
     onTransform,
     onDistort,
     onMesh,
+    onFlip,
     onCommit,
     onCancel,
     onDensify,
@@ -29,6 +38,7 @@
     onTransform: () => void;
     onDistort: () => void;
     onMesh: () => void;
+    onFlip: (axis: "h" | "v") => void;
     onCommit: () => void;
     onCancel: () => void;
     onDensify: (delta: number) => void;
@@ -83,6 +93,7 @@
     return () => cancelAnimationFrame(rafId);
   });
 
+  const transformActive = $derived(mode === "transforming");
   const distortActive = $derived(mode === "warping" && warp.rows === 2 && warp.cols === 2);
   const meshActive = $derived(mode === "warping" && (warp.rows !== 2 || warp.cols !== 2));
   const liftBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -111,18 +122,26 @@
     : 'none'}; touch-action: none;"
 >
   <div class="flex items-center gap-1">
-    {#if mode === "selected"}
-      <button
-        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
-        aria-disabled={liftBlocked}
-        onpointerdown={tap(() => {
-          if (!liftBlocked) onTransform();
-        })}
-        title={liftBlocked ? liftBlockLabel : "Free transform"}
-      >
-        <Move size={18} />
-      </button>
-    {/if}
+    <!-- Free transform stays in the bar once lifted, shown ACTIVE like Distort/Mesh below, rather than
+         disappearing: every button after it used to slide one slot left on the lift, so a second tap on
+         Flip horizontal (which lifts) landed on Flip vertical. Positions must not shift under the pen. -->
+    <button
+      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class:bg-accent={transformActive}
+      class:text-accent-text={transformActive}
+      class:border-accent={transformActive}
+      class:bg-surface={!transformActive}
+      class:text-text-secondary={!transformActive}
+      class:border-border={!transformActive}
+      class:hover:bg-surface-hover={!transformActive}
+      aria-disabled={liftBlocked}
+      onpointerdown={tap(() => {
+        if (!liftBlocked && mode === "selected") onTransform();
+      })}
+      title={liftBlocked ? liftBlockLabel : "Free transform"}
+    >
+      <Move size={18} />
+    </button>
     <button
       class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
       class:bg-accent={distortActive}
@@ -155,6 +174,24 @@
     >
       <Grid3x3 size={18} />
     </button>
+    {#if mode !== "warping"}
+      <!-- Flip: mirrors the float about its own centre. On a plain selection it lifts first (the same
+           lift as Free transform, so the same block applies), so you see the handles on the flipped
+           result; ✓ or a click outside commits it. Hidden in Distort/Mesh, which have their own grid. -->
+      <div class="w-px h-6 bg-border mx-0.5"></div>
+      {#each [{ axis: "h", title: "Flip horizontal" }, { axis: "v", title: "Flip vertical" }] as const as f (f.axis)}
+        <button
+          class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+          aria-disabled={liftBlocked}
+          onpointerdown={tap(() => {
+            if (!liftBlocked) onFlip(f.axis);
+          })}
+          title={liftBlocked ? liftBlockLabel : f.title}
+        >
+          {#if f.axis === "h"}<FlipHorizontal2 size={18} />{:else}<FlipVertical2 size={18} />{/if}
+        </button>
+      {/each}
+    {/if}
     {#if mode === "warping"}
       <button
         class="px-2 py-1 text-xs border border-border rounded bg-surface"
@@ -188,10 +225,22 @@
       {/if}
     {/if}
     {#if mode === "selected"}
+      <!-- A dimmed ✓ holds the slot Commit takes once lifted. The bar is CENTRED on the selection, so
+           a bar that gains a button on the lift re-centres and every button slides ~half a slot:
+           Flip lifts, so a second tap on the same Flip button missed it. Same width in both states
+           keeps positions still under the pen. -->
+      <div class="w-px h-6 bg-border mx-0.5"></div>
+      <button
+        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center opacity-40 cursor-default"
+        aria-disabled="true"
+        tabindex="-1"
+        title="Commit — nothing lifted yet"
+      >
+        <Check size={18} />
+      </button>
       <!-- Deselect: the bar is the ONLY reachable deselect while a paint tool is active (the
          ToolOptions Deselect shows for select/lasso, tap-outside draws instead, Esc needs a
          keyboard) — and a selection clips brush/eraser/fill, so a forgotten one is confusing. -->
-      <div class="w-px h-6 bg-border mx-0.5"></div>
       <button
         class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
         onpointerdown={tap(onCancel)}

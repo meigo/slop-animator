@@ -95,6 +95,22 @@ function invertVec(m: Mat, x: number, y: number): { x: number; y: number } {
   return { x: (m.d * x - m.c * y) / det, y: (-m.b * x + m.a * y) / det };
 }
 
+/**
+ * `m` with a mirror about the float's own centre applied FIRST, in its local (untransformed) space:
+ * `m · T(c) · S · T(-c)`. Local, not world, so a rotated float flips along its own axis — the same
+ * frame the scale handles work in (`updateDrag` right-multiplies them the same way). Flipping twice
+ * is the identity.
+ */
+export function flipMatrix(m: Mat, rect: SelectionRect, axis: "h" | "v"): Mat {
+  const cx = rect.x + rect.w / 2,
+    cy = rect.y + rect.h / 2;
+  const mirror: Mat =
+    axis === "h"
+      ? { a: -1, b: 0, c: 0, d: 1, e: 2 * cx, f: 0 }
+      : { a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * cy };
+  return multiply(m, mirror);
+}
+
 export class Selection {
   state: SelectionState = "idle";
   rect: SelectionRect | null = null;
@@ -384,6 +400,15 @@ export class Selection {
     this.lassoPath = null;
     this.lassoPoints = [];
     this.beginTransform(pixels);
+  }
+
+  /** Mirror the lifted float horizontally or vertically about its own centre. Free transform only
+   *  (a warp has its own grid); a no-op otherwise. Not an undo step of its own — the lift and its
+   *  commit already are one. */
+  flip(axis: "h" | "v") {
+    if (this.state !== "transforming" || !this.rect) return;
+    this.matrix = flipMatrix(this.matrix, this.rect, axis);
+    this.drawOverlay();
   }
 
   /**
