@@ -53,9 +53,8 @@ export interface HintContext {
   groupRow: boolean;
   /** Why a group row refuses the Transform tool RIGHT NOW, or null when it admits it. `groupRow`
    *  alone used to imply "transform works here", which stopped being true once
-   *  `rowAdmitsTransform` gained its scope and anchor terms: a group of REFERENCES, or any group
-   *  row at Frame/Layer scope, silently returns from the drag while the bar cheerfully described
-   *  the gesture. That is precisely the failure this whole function exists to prevent. */
+   *  `rowAdmitsTransform` gained its anchor term: a group of REFERENCES silently returns from the
+   *  drag while the bar cheerfully described the gesture. That is precisely the failure this whole function exists to prevent. */
   groupTransformBlock: TransformRefusal | null;
   /** A committed marquee exists (not lifted). */
   selectionActive: boolean;
@@ -93,12 +92,10 @@ export function contextHint(c: HintContext): string {
     )
       return editBlockLabel("not-layer-row");
     // Transform is the one tool a group row usually DOES admit, so it is excluded above — but only
-    // usually. Each refusal names its own fix; "wrong scope" is one tap away, "no draw member" is
-    // not fixable at all for a group of references, and saying so beats promising a drag.
+    // usually: "no draw member" is not fixable at all for a group of references, and saying so beats
+    // promising a drag.
     // Each value matched EXPLICITLY: `audio-row` cannot reach here (a row is one or the other), and
     // an `else` would have silently printed the group message for it if that ever changed.
-    if (c.tool === "transform" && c.groupTransformBlock === "wrong-scope")
-      return "Group row — set Transform scope to Group";
     if (c.tool === "transform" && c.groupTransformBlock === "no-draw-member")
       return "This group has no drawing layer to transform";
   }

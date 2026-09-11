@@ -92,6 +92,8 @@ import {
   workingTarget,
   type ActiveRow,
   newLayerSlot,
+  transformScopeOf,
+  type TransformScope,
 } from "../anim/active-row";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
@@ -175,7 +177,6 @@ interface AnimState {
   playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
-  transformScope: "frame" | "layer" | "group";
   brush: ToolSettings;
   eraser: ToolSettings;
   /** The bucket's OWN colour and opacity. Separate from the brush on purpose — in a cel-painting
@@ -266,7 +267,6 @@ export const state: AnimState = $state({
   playhead: 0,
   activeLayerId: project.layers[0].id,
   tool: "brush",
-  transformScope: "frame",
   brush: {
     size: 4,
     color: "#1a1a1a",
@@ -938,7 +938,7 @@ export function removeLayerAnimation(layerId: number): void {
     l.tracks = normalizedTracks({ ...l.tracks, transform: undefined });
   });
   // The row repair is `commitStructural`'s, not ours. Deliberately NOT setActiveLayer — that would
-  // also reset transformScope when the layer is ungrouped.
+  // re-point the selected row.
 }
 
 /** Start animating a layer's opacity: its current static value becomes the key at frame 0. Same
@@ -1404,11 +1404,6 @@ export function ungroup(groupId: number) {
   commitStructural(() => {
     for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
     state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
-    // Don't leave the Transform tool in Group scope with no group (mirror setActiveLayer's guard).
-    const al = state.project.layers.find((l) => l.id === state.activeLayerId);
-    if (state.transformScope === "group" && (!al || al.groupId == null)) {
-      state.transformScope = "frame";
-    }
   });
 }
 /** Fold a layer's property rows away in the timeline, or unfold them. A VIEW-prop, exactly like a
@@ -1685,6 +1680,21 @@ export function pixelToolsDimmed(): boolean {
  *  group row, which did dim. Two predicates answering "can you draw here?" will drift; the
  *  caption already knew, because it asks `whyNotEditable`. Now they cannot disagree, and the
  *  toolbar's titles get the group-aware reasons for nothing. */
+/** What the Transform tool acts on right now — derived from the selected row (`transformScopeOf`),
+ *  never set directly. */
+export function transformScope(): TransformScope {
+  return transformScopeOf(state.activeRow);
+}
+
+/** Why Select/Lasso cannot work on the current row, or null. A REFERENCE row has nothing to lift
+ *  or copy (only drawing layers hold pixels), so the tools dim and a marquee is refused there, like
+ *  the pixel tools. A locked or hidden DRAWING layer still admits them — copying is a read. */
+export function selectToolsBlock(): LayerEditBlock | null {
+  return workingTarget(state.activeRow).kind === "layer" && activeLayer().kind === "ref"
+    ? "not-draw"
+    : null;
+}
+
 export function pixelToolsBlock(): LayerEditBlock | null {
   if (workingTarget(state.activeRow).kind !== "layer") return "not-layer-row";
   return whyNotEditable(activeLayer(), state.project.groups);
@@ -1719,7 +1729,6 @@ export function drawingRowLayerId(): number | null {
 export function selectGroup(id: number): void {
   if (!state.project.groups.some((g) => g.id === id)) return;
   state.activeRow = { kind: "group", id };
-  state.transformScope = "group";
   const member = [...state.project.layers]
     .reverse()
     .find((l) => l.groupId === id && l.kind === "draw");
@@ -1736,23 +1745,16 @@ export function selectAudioLane(): void {
 
 /** Focus a property track. Does NOT call `setActiveLayer` — that would clear the track case.
  *  Still updates `activeLayerId` when the draw target should follow (layer-owned track → that
- *  layer; group-owned → a draw member), and aims Transform scope for transform tracks. */
+ *  layer; group-owned → a draw member). The Transform scope follows from the row itself. */
 export function selectTrack(ref: TrackRef): void {
   if (ref.owner === "layer") {
     const layerChanged = state.activeLayerId !== ref.id;
     state.activeLayerId = ref.id;
     state.activeRow = { kind: "track", owner: "layer", id: ref.id, prop: ref.prop };
-    if (ref.prop === "transform") state.transformScope = "layer";
-    const l = state.project.layers.find((x) => x.id === ref.id);
-    if (state.transformScope === "group" && (!l || l.groupId == null)) {
-      state.transformScope = "frame";
-    }
     if (layerChanged && state.onion.enabled && !state.onion.allLayers) repaint();
     return;
   }
   state.activeRow = { kind: "track", owner: "group", id: ref.id, prop: ref.prop };
-  // Only a transform track is a reason to aim the gizmo at group scope — opacity does not.
-  if (ref.prop === "transform") state.transformScope = "group";
   // DRAW member, or NONE — never a ref. Group scope resolves through the active layer's
   // `groupId`, and `activeTransformLayer` only returns a draw layer at group scope; aiming a
   // ref member would silently key that REF's own transform. An all-ref group is reachable, so
@@ -2224,17 +2226,10 @@ export function redo(): void {
 /** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
 export const pressureCurve = new PressureCurve();
 
-/**
- * Set the active layer. If transformScope is "group" and the new layer is not in a group,
- * fall back to "frame" scope so the disabled Group button can't stay selected silently.
- */
+/** Set the active layer (and select its row). */
 export function setActiveLayer(id: number): void {
   state.activeLayerId = id;
   state.activeRow = { kind: "layer", id }; // selection and draw target coincide when a layer is picked
-  const l = state.project.layers.find((x) => x.id === id);
-  if (state.transformScope === "group" && (!l || l.groupId == null)) {
-    state.transformScope = "frame";
-  }
   // In single-layer onion mode the ghosts track the active layer, so the display must recomposite.
   if (state.onion.enabled && !state.onion.allLayers) repaint();
 }

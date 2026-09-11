@@ -10,7 +10,7 @@
     transformActions,
     fillActions,
   } from "../state/appState.svelte";
-  import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
+  import { workingTarget } from "../anim/active-row";
 
   import { createCurveEditor } from "../core/pressure-curve";
   import { clickOutside } from "./click-outside";
@@ -419,72 +419,6 @@
         if (canDeselect) selectionActions.deselect?.();
       }}><MousePointerBan size={16} /></button
     >
-  {:else if appState.tool === "transform"}
-    {@const _activeLayer = activeLayer()}
-    {@const _onRef = _activeLayer.kind === "ref"}
-    <!-- Group scope must be legal for the SELECTED ROW, not merely for the anchor layer: under a
-         group row `activeLayerId` is remembered anchor, not target (see `rowAdmitsTransform`), so an
-         anchor left in a DIFFERENT group — or a ref anchor — cannot transform the lit group. Asking
-         the same predicate the gizmo and the canvas drag ask stops this button offering a scope
-         those two refuse. -->
-    {@const _groupedActive =
-      _activeLayer.groupId != null && rowAdmitsTransform(appState.activeRow, "group", _activeLayer)}
-    <!-- Does the SELECTED ROW refuse the scope in effect? Asked with the RAW scope, because that is
-         what `Canvas.onStroke` and the gizmo pass — a lit button derived from anything else could
-         disagree with the two surfaces that actually decide. -->
-    {@const _rowRefuses = !rowAdmitsTransform(
-      appState.activeRow,
-      appState.transformScope,
-      _activeLayer,
-    )}
-    <!-- Which scope is IN EFFECT, so a lit button can never contradict its own aria-disabled state
-         (it did: Group was lit AND disabled saying "Active layer is not in a group"). Group scope on
-         an ungrouped layer falls through to the layer branch in both drag paths. When the ROW
-         refuses the drag outright — a group row at Frame/Layer scope, a group with no draw member,
-         the audio lane — NOTHING is being transformed, so nothing lights: `Layer` used to stay lit
-         under a group row while the drag silently returned, which is the same contradiction one
-         button over. Only the `scope === "group"` case was covered before. -->
-    {@const _scopeShown = _rowRefuses
-      ? null
-      : appState.transformScope === "group" && !_groupedActive
-        ? workingTarget(appState.activeRow).kind === "group"
-          ? null
-          : "layer"
-        : _onRef && appState.transformScope === "frame"
-          ? "layer"
-          : appState.transformScope}
-    <div class="flex rounded border border-border overflow-hidden text-xs" title="Transform scope">
-      <button
-        class="px-2 py-1 aria-disabled:opacity-40 aria-disabled:cursor-default"
-        class:ui-on={_scopeShown === "frame"}
-        aria-disabled={_onRef}
-        title={_onRef ? "References have no per-frame transform" : "Transform this frame only"}
-        onclick={() => {
-          if (!_onRef) appState.transformScope = "frame";
-        }}>Frame</button
-      >
-      <button
-        class="px-2 py-1"
-        class:ui-on={_scopeShown === "layer"}
-        title="Transform the whole layer"
-        onclick={() => (appState.transformScope = "layer")}>Layer</button
-      >
-      <button
-        class="px-2 py-1"
-        class:ui-on={_scopeShown === "group"}
-        class:opacity-40={!_groupedActive}
-        class:cursor-not-allowed={!_groupedActive}
-        aria-disabled={!_groupedActive}
-        title={_groupedActive
-          ? "Transform the group"
-          : workingTarget(appState.activeRow).kind === "layer"
-            ? "Active layer is not in a group"
-            : "The selected row has no drawing layer to transform as a group"}
-        onclick={() => {
-          if (_groupedActive) appState.transformScope = "group";
-        }}>Group</button
-      >
-    </div>
   {:else if appState.tool === "deform" || appState.tool === "pose"}
     <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
          and the status bar says it a third time — this branch was the only place that repeated it,

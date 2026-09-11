@@ -64,6 +64,7 @@
     beginStructuralEdit,
     commitStructuralEdit,
     transformDragGuard,
+    transformScope,
   } from "../state/appState.svelte";
   import type { StructSnapshot } from "../state/appState.svelte";
   import { groupHeaderSelected } from "../anim/active-row";
@@ -481,8 +482,10 @@
     return !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g));
   }
 
-  // Act on whichever transform is actually non-identity; when multiple are, the scope toggle decides.
-  // (Avoids the case where the toggle says "Frame" but only the layer transform is set → no-op.)
+  // Which transform Apply/Reset act on — always one that is actually non-identity. A GROUP row means
+  // the group's; otherwise the layer's own, else a per-frame (cell) transform: no longer creatable
+  // since Frame scope left the Transform bar (2026-09-11), but saved projects can still carry one and
+  // must be able to bake or clear it.
   function activeTransformScope(layer: Layer): "frame" | "layer" | "group" | null {
     if (layer.kind !== "draw") return null;
     // Same reason as hasTransform: an animated layer's static transform is ignored, and Apply/Reset
@@ -493,13 +496,9 @@
     const g = groupOf(layer, appState.project.groups);
     const groupNI = !!g && !g.tracks?.transform && !isIdentityTransform(groupTransform(g)); // see hasTransform
     if (!layerNI && !cellNI && !groupNI) return null;
-    // Honour the active toolbar scope when it points at a non-identity transform.
-    if (appState.transformScope === "frame" && cellNI) return "frame";
-    if (appState.transformScope === "layer" && layerNI) return "layer";
-    if (appState.transformScope === "group" && groupNI) return "group";
-    // Tiebreak: whichever is non-identity (frame > layer > group).
-    if (cellNI) return "frame";
+    if (transformScope() === "group" && groupNI) return "group";
     if (layerNI) return "layer";
+    if (cellNI) return "frame";
     return "group";
   }
 

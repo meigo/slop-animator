@@ -8,16 +8,14 @@
     beginStructuralEdit,
     commitStructuralEdit,
     resetLayerTransform,
-    resetCellTransform,
     resetGroupTransform,
     transformDragGuard,
     transformActions,
+    transformScope,
   } from "../state/appState.svelte";
   import { rowAdmitsTransform } from "../anim/active-row";
   import {
     transformBaseRect,
-    cellTransform,
-    frameEditKeyCell,
     groupOf,
     groupHasLockedLayer,
     isLayerEditable,
@@ -36,7 +34,7 @@
     type RefTransform,
     type TransformTrack,
   } from "../anim/document";
-  import { contentBoxLogical, groupBoxLogical } from "./cell-ink";
+  import { groupBoxLogical } from "./cell-ink";
   import {
     transformedCorners,
     rotateHandlePos,
@@ -108,7 +106,7 @@
     // rule lives in the pure `rowAdmitsTransform`, which Canvas.onStroke's group branch shares
     // BECAUSE the two must agree: hiding the handles alone leaves the canvas drag reachable with
     // nothing on screen to explain it (the same pairing `refPinned` documents).
-    if (!rowAdmitsTransform(appState.activeRow, appState.transformScope, l)) return null;
+    if (!rowAdmitsTransform(appState.activeRow, l)) return null;
     // Group-derived, not raw flags: a ref inside a hidden or LOCKED GROUP is pinned too. Also gated
     // on the ref's own frame SPAN — outside it the ref draws nothing, so handles over blank canvas
     // would offer to move something invisible. Canvas.svelte's refPinned must agree with this.
@@ -121,8 +119,8 @@
     if (l.kind === "draw" && appState.tool === "transform") {
       // GROUP scope moves the whole group, so a hidden/locked ANCHOR must not veto it — other
       // members may be visible, and transformTarget's groupHasLockedLayer is the real gate there.
-      // Frame/layer scope edits THIS layer's content → editable (draw + unlocked + visible) only.
-      if (appState.transformScope === "group") return l;
+      // Layer scope edits THIS layer's content → editable (draw + unlocked + visible) only.
+      if (transformScope() === "group") return l;
       return isLayerEditable(l, appState.project.groups) ? l : null;
     }
     return null;
@@ -149,14 +147,12 @@
     outer: ComposeStep[]; // inner-to-outer (innermost first)
     cell: Extract<Cell, { kind: "key" }> | null;
     group: LayerGroup | null;
-    scope: "frame" | "layer" | "group";
+    scope: "layer" | "group";
     /** Layer scope on a layer driven by a transform TRACK — Reset-to-fit refuses on those. */
     animated: boolean;
   } | null {
     const l = activeTransformLayer();
     if (!l) return null;
-    const W = appState.project.width,
-      H = appState.project.height;
     const g = groupOf(l, appState.project.groups);
     const groupStep: ComposeStep[] = g
       ? [
@@ -169,7 +165,7 @@
         ]
       : [];
 
-    if (l.kind === "draw" && appState.transformScope === "group") {
+    if (l.kind === "draw" && transformScope() === "group") {
       if (!g) return null; // Group scope is disabled when ungrouped; safety fallback.
       if (groupHasLockedLayer(g, appState.project.layers)) return null; // a locked member pins the group
       return {
@@ -196,25 +192,6 @@
         // Reset-to-fit, for the same reason an animated layer does: the static field it clears is
         // retained-but-ignored, so the button would do nothing (`resetGroupTransform` refuses).
         animated: !!g.tracks?.transform,
-      };
-    }
-
-    if (l.kind === "draw" && appState.transformScope === "frame") {
-      const rk = frameEditKeyCell(l, frame);
-      if (!rk) return null;
-      const outer: ComposeStep[] = [
-        { base: { x: 0, y: 0, w: W, h: H }, t: transformAt(l, frame) },
-        ...groupStep,
-      ];
-      return {
-        getT: () => cellTransform(rk.cell),
-        setT: (t: RefTransform) => (rk.cell.transform = t),
-        base: contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, appState.version),
-        outer,
-        cell: rk.cell,
-        group: g,
-        scope: "frame",
-        animated: false, // a per-cell transform is static even on an animated layer
       };
     }
 
@@ -259,7 +236,7 @@
     // Freeze the frame for the whole gesture (see transformTarget): every closure below reads and
     // writes here, so a playhead that moves mid-drag cannot retarget the key.
     const keyFrame = appState.playhead;
-    let tgt = transformTarget(keyFrame);
+    const tgt = transformTarget(keyFrame);
     if (!vp || !tgt || !tgt.base) return;
     e.stopPropagation();
     e.preventDefault();
@@ -272,30 +249,12 @@
     // Named reference, not a fresh closure: the settle slot is shared, so releasing it has to be
     // conditional on this drag still owning it (see settleDragUndo).
     transformDragGuard.settle = endDragFromGuard;
-    if (tgt.scope === "frame" && tgt.cell) {
-      const l = activeTransformLayer();
-      if (l?.kind === "draw") {
-        const idx = l.cells.indexOf(tgt.cell);
-        if (idx >= 0) {
-          l.cells[idx] = { ...tgt.cell };
-          tgt = transformTarget(keyFrame); // re-resolve: closures must write the clone, not the snapshot's cell
-          if (!tgt || !tgt.base) {
-            dragUndo = null;
-            if (transformDragGuard.settle === endDragFromGuard) transformDragGuard.settle = null;
-            return;
-          }
-        }
-      }
-    }
     const base = tgt.base;
     const t = tgt.getT();
-    // Freeze the content box on grab for a frame or group transform that's currently identity,
+    // Freeze the content box on grab for a group transform that's currently identity,
     // so the gizmo's box stays put as content moves under the new transform.
     if (isIdentityTransform(t)) {
-      if (tgt.scope === "frame" && tgt.cell) {
-        dragFreeze = { cell: tgt.cell, group: null, prevBox: tgt.cell.transformBox ?? null };
-        tgt.cell.transformBox = base;
-      } else if (tgt.scope === "group" && tgt.group) {
+      if (tgt.scope === "group" && tgt.group) {
         dragFreeze = { cell: null, group: tgt.group, prevBox: tgt.group.transformBox ?? null };
         tgt.group.transformBox = base;
       }
@@ -444,9 +403,8 @@
       // Assigning the same boolean is a no-op for $state dependents, so this is safe per frame.
       // An ANIMATED layer's resolved transform is usually non-identity, so this alone left the
       // button rendered on a target where resetLayerTransform only prints its refusal hint — a
-      // button that appears "only when it does something" must account for that guard too. FRAME
-      // scope keeps working on an animated layer — a cell transform is a separate value the track
-      // does not touch. GROUP scope sets `animated` from the GROUP's own track, so an animated
+      // button that appears "only when it does something" must account for that guard too. GROUP
+      // scope sets `animated` from the GROUP's own track, so an animated
       // group refuses Reset for exactly the same reason a layer does; an animated MEMBER does not
       // block it.
       appState.canResetTransform = !isIdentityTransform(t) && !tgt.animated;
@@ -482,8 +440,7 @@
     const l = activeTransformLayer();
     const tgt = transformTarget();
     if (!l || !tgt) return;
-    if (tgt.scope === "frame") resetCellTransform(l.id, appState.playhead);
-    else if (tgt.scope === "group" && tgt.group) resetGroupTransform(tgt.group.id);
+    if (tgt.scope === "group" && tgt.group) resetGroupTransform(tgt.group.id);
     else resetLayerTransform(l.id); // draw layer-scope AND reference layers (Task 1 generalized it)
   }
 

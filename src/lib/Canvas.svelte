@@ -31,6 +31,8 @@
     applyEyedropper,
     beginStructuralEdit,
     commitStructuralEdit,
+    transformScope,
+    selectToolsBlock,
   } from "../state/appState.svelte";
   import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
   import { pixelCommand } from "../anim/history";
@@ -64,7 +66,6 @@
     resolvedDisplayKeyCell,
     isLoopFrame,
     displayFrame,
-    frameEditKeyCell,
     cloneCanvas,
     groupOf,
     groupHasLockedLayer,
@@ -872,7 +873,7 @@
       H = appState.project.height;
     const p = points[points.length - 1];
 
-    const scope = appState.transformScope;
+    const scope = transformScope();
     const isDraw = layer.kind === "draw";
     const g = groupOf(layer, appState.project.groups);
     // The frame this gesture reads and keys at. Before the grab (the hit test and the startT capture
@@ -886,7 +887,6 @@
     let getT: () => typeof layer.transform, setT: (t: typeof layer.transform) => void;
     let base: { x: number; y: number; w: number; h: number } | null;
     const outerSteps: ComposeStep[] = [];
-    let frameRk: ReturnType<typeof resolvedKeyCell> = null;
     // Set only by the layer-scope branch below (draw layer at layer scope, or a ref layer under
     // any scope) — the grab site below uses it to know whether to freeze a transform track
     // reference for a no-op-drag revert (frame/group scope have no track at their own level).
@@ -923,48 +923,6 @@
       // frame-independent today, so this is coherence rather than a visible bug — but
       // `RefTransformGizmo.transformTarget` already pairs them, so the two must not disagree.)
       base = groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version);
-    } else if (isDraw && scope === "frame") {
-      frameRk = frameEditKeyCell(layer as Extract<Layer, { kind: "draw" }>, appState.playhead);
-      if (!frameRk) {
-        if (done) {
-          finishTransformDragUndo();
-          refDrag = null;
-        }
-        return;
-      }
-      // Playhead moved mid-drag onto a different (un-cloned) cell: settle the in-flight drag on
-      // the grab-time clone instead of writing to a snapshot-shared cell (gotcha #8 corruption).
-      if (refDrag !== null && refDrag.cell && refDrag.cell !== frameRk.cell) {
-        finishTransformDragUndo();
-        refDrag = null;
-        return;
-      }
-      base = contentBoxLogical(
-        frameRk.cell.canvas,
-        frameRk.cell.transformBox,
-        W,
-        H,
-        DPR,
-        appState.version,
-      );
-      getT = () => cellTransform(frameRk!.cell);
-      setT = (nt) => (frameRk!.cell.transform = nt);
-      // Outer = layer, then group (inner-to-outer).
-      outerSteps.push({
-        base: { x: 0, y: 0, w: W, h: H },
-        // Frozen with the rest of the drag: on an ANIMATED layer a live read would move the outer
-        // step (and so the pointer inverse-map) out from under a startT captured at the grab frame.
-        // No change for a static layer — transformAt is frame-independent there.
-        t: transformAt(layer, dragFrame()),
-      });
-      if (g)
-        outerSteps.push({
-          base: groupBoxLogical(g, appState.project, dragFrame(), DPR, appState.version),
-          // The DRAG frame, frozen at grab, for the same reason the layer step above is: on an
-          // animated group a live read would slide the outer step (and so the pointer inverse-map)
-          // out from under a startT captured at the grab frame.
-          t: groupTransformAt(g, dragFrame()),
-        });
     } else {
       // scope = "layer" (or ref layer). An animated layer reads and writes THROUGH the track;
       // `base` stays live (never frozen to `track.box`, which Task 5 fixed at null for layer
@@ -1018,21 +976,9 @@
       if (handle) {
         refDragUndo = beginStructuralEdit(); // FIRST: snapshot must capture the old shared cell (gotcha #8)
         transformDragGuard.settle = settleRefDrag;
-        if (isDraw && scope === "frame" && frameRk) {
-          const dl = layer as Extract<Layer, { kind: "draw" }>;
-          dl.cells[frameRk.index] = { ...frameRk.cell }; // fresh object; in-drag writes can't corrupt the snapshot
-          frameRk = { index: frameRk.index, cell: dl.cells[frameRk.index] as typeof frameRk.cell };
-        }
-        // Freeze the box on grab for a frame/group transform currently at identity.
+        // Freeze the box on grab for a group transform currently at identity.
         if (isIdentityTransform(getT())) {
-          if (isDraw && scope === "frame" && frameRk) {
-            refDragFreeze = {
-              cell: frameRk.cell,
-              group: null,
-              prevBox: frameRk.cell.transformBox ?? null,
-            };
-            frameRk.cell.transformBox = base;
-          } else if (isDraw && scope === "group" && g) {
+          if (isDraw && scope === "group" && g) {
             refDragFreeze = { cell: null, group: g, prevBox: g.transformBox ?? null };
             g.transformBox = base;
           }
@@ -1059,7 +1005,7 @@
         start: pc,
         startT: { ...getT() },
         center: transformCenter(base, getT()),
-        cell: isDraw && scope === "frame" ? (frameRk?.cell ?? null) : null,
+        cell: null, // per-frame (cell) transforms are no longer dragged — Frame scope left the UI
         layerId: layer.id,
         groupId: g?.id ?? null,
         keyFrame: appState.playhead,
@@ -1175,11 +1121,7 @@
       // each move something the lit row does not name. Same predicate as
       // RefTransformGizmo.activeTransformLayer, and these two MUST agree for the same reason the
       // gizmo and refPinned below do — a hidden handle set does not disable this drag.
-      if (
-        t === "transform" &&
-        !rowAdmitsTransform(appState.activeRow, appState.transformScope, activeLayer())
-      )
-        return;
+      if (t === "transform" && !rowAdmitsTransform(appState.activeRow, activeLayer())) return;
     }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
@@ -1213,7 +1155,7 @@
       // its group, onTransformDrag falls through to the LAYER branch, which has no editable check —
       // so a bare scope check would let a hidden/locked layer be dragged by the whole canvas.
       const groupScope =
-        appState.transformScope === "group" && groupOf(al, appState.project.groups) != null;
+        transformScope() === "group" && groupOf(al, appState.project.groups) != null;
       if (!groupScope && !isLayerEditable(al, appState.project.groups)) {
         // Locked or hidden = content is immovable. Also settle any drag that was in flight when the
         // lock/hide landed (mid-gesture), so its undo bracket can't leak into the next gesture.
@@ -1289,6 +1231,7 @@
       return;
     }
     if (appState.tool === "select" || appState.tool === "lasso") {
+      if (selectToolsBlock()) return; // a reference row: nothing to lift or copy
       const p = points[points.length - 1];
       if (points.length === 1 && !done) {
         syncComposeSteps(); // gesture start: match the layer we are about to clip / lift on
@@ -2155,7 +2098,7 @@
     const t = appState.tool;
     // Reading the scope makes it a dependency: switching either mid-drag must settle the open
     // transform bracket, or it leaks into the next gesture and one undo reverts both (gotcha #6).
-    void appState.transformScope;
+    void transformScope();
     transformDragGuard.settle?.();
     if (!selection) {
       // Prime here too: leaving the flag false on an early first run would cost the artist TWO tool
@@ -2297,7 +2240,8 @@
   // Tools that WRITE to the active layer. The eyedropper samples the composite and select/lasso can
   // still copy from a locked layer, so they are deliberately excluded — showing "not allowed" for a
   // gesture that does work would be a worse lie than showing nothing.
-  // Eyedropper samples the composite and select/lasso can still copy, so they are not in this list.
+  // Eyedropper samples the composite, so it is never blocked. Select/lasso are gated separately
+  // (`selectToolsBlock`): a locked drawing layer can still be copied from, a reference cannot.
   const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose"];
   // Pixel tools need a drawable layer. Transform on a DRAWING layer does too; on a REF the gizmo
   // is live (lock/span gate it separately) — treating that as blocked showed a not-allowed cursor
@@ -2311,9 +2255,9 @@
     if (appState.tool === "transform")
       return (
         wt.kind === "audio" ||
-        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups)) ||
-        (wt.kind === "layer" && appState.transformScope === "frame" && onLoopFrame(l))
+        (wt.kind === "layer" && l.kind === "draw" && !isLayerEditable(l, groups))
       );
+    if (appState.tool === "select" || appState.tool === "lasso") return selectToolsBlock() !== null;
     return false;
   });
   // Same caption the status bar's idle hint uses. Lives on the STAGE (not the paper) so pan/zoom
