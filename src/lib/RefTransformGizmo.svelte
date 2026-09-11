@@ -9,6 +9,8 @@
     commitStructuralEdit,
     resetLayerTransform,
     resetGroupTransform,
+    flipLayerTransform,
+    flipGroupTransform,
     transformDragGuard,
     transformActions,
     transformScope,
@@ -410,9 +412,11 @@
       // group refuses Reset for exactly the same reason a layer does; an animated MEMBER does not
       // block it.
       appState.canResetTransform = !isIdentityTransform(t) && !tgt.animated;
+      appState.canFlipTransform = true;
     } else {
       visible = false;
       appState.canResetTransform = false;
+      appState.canFlipTransform = false;
     }
     raf = requestAnimationFrame(tick);
   }
@@ -446,12 +450,23 @@
     else resetLayerTransform(l.id); // draw layer-scope AND reference layers (Task 1 generalized it)
   }
 
+  function flipTransform(axis: "h" | "v") {
+    const l = activeTransformLayer();
+    const tgt = transformTarget();
+    if (!l || !tgt || !tgt.base) return;
+    if (tgt.scope === "group" && tgt.group) flipGroupTransform(tgt.group.id, axis);
+    else flipLayerTransform(l.id, axis); // draw layer AND reference
+  }
+
   onMount(() => {
     transformActions.reset = resetTransform;
+    transformActions.flip = flipTransform;
     raf = requestAnimationFrame(tick);
     return () => {
       transformActions.reset = null;
+      transformActions.flip = null;
       appState.canResetTransform = false;
+      appState.canFlipTransform = false;
       cancelAnimationFrame(raf);
       // Drop any in-flight drag listeners if the component unmounts mid-drag.
       settleDragUndo();

@@ -24,6 +24,9 @@ import {
   IDENTITY_TRANSFORM,
   frameEditKeyCell,
   transformAt,
+  transformBaseRect,
+  resolvedDisplayKeyCell,
+  cellTransform,
   opacityAt,
   createTransformTrack,
   copyTracks,
@@ -102,7 +105,14 @@ import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 // A state→lib import, which nothing else here does — but the group's base rect lives with the
 // content-bounds caches it is built from, and appState is browser-only by construction anyway
 // (it touches window/audio at module load, so it is not node-importable either way).
-import { groupBoxLogical, invalidateInk } from "../lib/cell-ink";
+import { groupBoxLogical, invalidateInk, contentBounds, contentBoxLogical } from "../lib/cell-ink";
+import {
+  mirrorTransform,
+  mirrorTransformTrack,
+  transformCenter,
+  forwardChain,
+  type Pt,
+} from "../core/ref-transform";
 import { audioEngine } from "../audio/engine";
 import { History } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
@@ -254,6 +264,9 @@ interface AnimState {
    *  Mirrored from RefTransformGizmo's rAF tick because the scope dispatch it derives from is
    *  gizmo-local — same reason poseActive mirrors meshPose rather than exposing a function. */
   canResetTransform: boolean;
+  /** A live gizmo target exists, so Flip horizontal/vertical would act. Mirrored from
+   *  RefTransformGizmo's tick, like `canResetTransform`. */
+  canFlipTransform: boolean;
   /** Transform CORNERS keep the aspect ratio (gizmo and selection float). Sides always stretch one
    *  axis. A preference — see `keepProportionsPref`. */
   keepProportions: boolean;
@@ -337,6 +350,7 @@ export const state: AnimState = $state({
   poseFillWarning: "",
   hasPixelClipboard: false,
   canResetTransform: false,
+  canFlipTransform: false,
   keepProportions: true,
   canUndo: false,
   canRedo: false,
@@ -891,6 +905,84 @@ export function resetGroupTransform(groupId: number): void {
   commitStructural(() => {
     g.transform = { ...IDENTITY_TRANSFORM };
     g.transformBox = null;
+  });
+}
+
+/** The point a layer flip mirrors through, at `frame`, in the layer's parent space: the centre of
+ *  what is ON SCREEN. A drawing layer uses its displayed key's ink, carried through the cell and
+ *  layer transforms; an empty frame, or a reference, uses the transform centre. */
+function layerFlipCentre(
+  layer: Layer,
+  base: { x: number; y: number; w: number; h: number },
+  t: RefTransform,
+  frame: number,
+): Pt {
+  if (layer.kind !== "draw") return transformCenter(base, t);
+  const rk = resolvedDisplayKeyCell(layer, frame);
+  const ink = rk ? contentBounds(rk.cell.canvas, state.version) : null;
+  if (!rk || !ink) return transformCenter(base, t);
+  const W = state.project.width,
+    H = state.project.height;
+  const cellBox = contentBoxLogical(rk.cell.canvas, rk.cell.transformBox, W, H, DPR, state.version);
+  const inkCentre = { x: (ink.x + ink.w / 2) / DPR, y: (ink.y + ink.h / 2) / DPR };
+  return forwardChain(
+    [
+      { base: cellBox, t: cellTransform(rk.cell) },
+      { base, t },
+    ],
+    inkCentre,
+  );
+}
+
+/** Mirror a layer's (or reference's) transform in place, across the line through the centre of
+ *  what is on screen at the playhead. An animated layer mirrors the static value AND every key —
+ *  the mirror is affine, so every in-between frame is mirrored exactly too. One undo step. */
+export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
+  const layer = state.project.layers.find((l) => l.id === layerId);
+  if (!layer) return;
+  if (layer.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
+  if (layer.kind === "ref" && isLayerLocked(layer, state.project.groups)) return; // a locked ref is pinned
+  const base = transformBaseRect(layer, state.project.width, state.project.height);
+  if (!base) return; // reference media not loaded
+  const frame = state.playhead;
+  const centre = layerFlipCentre(layer, base, transformAt(layer, frame), frame);
+  const line = axis === "h" ? centre.x : centre.y;
+  const baseCentre = { x: base.x + base.w / 2, y: base.y + base.h / 2 };
+  const track = layerTransformTrack(layer);
+  commitStructural(() => {
+    // New objects only — undo snapshots share the layer (gotcha #8, at the bag level too).
+    layer.transform = mirrorTransform(layer.transform, baseCentre, axis, line);
+    if (track)
+      layer.tracks = {
+        ...layer.tracks,
+        transform: mirrorTransformTrack(track, baseCentre, axis, line),
+      };
+  });
+}
+
+/** Mirror a group's transform in place across the line through its box centre at the playhead —
+ *  static value and every key, as `flipLayerTransform`. One undo step. */
+export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g) return;
+  if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group
+  const frame = state.playhead;
+  const box = groupBoxLogical(g, state.project, frame, DPR, state.version);
+  const t = groupTransformAt(g, frame);
+  const centre = transformCenter(box, t);
+  const line = axis === "h" ? centre.x : centre.y;
+  const baseCentre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+  const track = g.tracks?.transform;
+  commitStructural(() => {
+    // Freeze the pivot box exactly as a drag's grab does on an identity group: without it the box
+    // stays live content bounds, and drawing more would slide the pivot under the flip.
+    if (!track && isIdentityTransform(t)) g.transformBox = box;
+    // The static value is mirrored too (retained-but-ignored while animated), but an animated group
+    // with NO static value keeps none — mirroring the identity would invent one.
+    if (g.transform || !track)
+      g.transform = mirrorTransform(g.transform ?? IDENTITY_TRANSFORM, baseCentre, axis, line);
+    if (track)
+      g.tracks = { ...g.tracks, transform: mirrorTransformTrack(track, baseCentre, axis, line) };
   });
 }
 
@@ -2180,9 +2272,13 @@ export const viewActions: {
  *  canvas owns the keyframe, the undo bracket and the selection clip. */
 export const fillActions: { allEnclosed: (() => void) | null } = { allEnclosed: null };
 
-/** Gizmo-owned Reset-to-fit, so the ToolOptions bar can offer it without duplicating the gizmo's
- *  scope dispatch. Paired with `state.canResetTransform`, which says whether it would do anything. */
-export const transformActions: { reset: (() => void) | null } = { reset: null };
+/** Gizmo-owned Reset-to-fit and Flip, so the ToolOptions bar can offer them without duplicating the
+ *  gizmo's scope dispatch. Paired with `state.canResetTransform`/`state.canFlipTransform`, which
+ *  say whether each would do anything. */
+export const transformActions: {
+  reset: (() => void) | null;
+  flip: ((axis: "h" | "v") => void) | null;
+} = { reset: null, flip: null };
 
 /** Canvas-owned Pose-tool actions for App's Enter (apply) / Escape (cancel) keys. */
 export const poseActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
