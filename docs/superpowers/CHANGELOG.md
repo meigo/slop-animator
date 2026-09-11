@@ -5640,3 +5640,8 @@ to match a diamond shape of other keys"*, then refined over four rounds of scree
 
 **Owed an iPad pass:** whether an 8px-tall strip is comfortable to grab with the Pencil (it can be made
 taller), and the arrow's look on device.
+
+**iPad verification, 2026-09-11: loop arrow restyle — PASSED.** The top-edge arrow with the
+right-angled arrowhead and the 45° teal loop mark look right on device, and the 8px-tall arrowhead
+strip is grabbable with the Pencil. Still owed from the loop-keys entry: onion skins stepping through a
+loop, and an MP4/WebM or PSD export containing one.
