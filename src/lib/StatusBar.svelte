@@ -88,8 +88,18 @@
   });
 </script>
 
+<!-- `px-5`, not the app's usual 8px: this is the ONLY element on the window's bottom edge, and iPadOS
+     rounds the bottom corners of a browser window (and of a standalone web app), clipping whatever the
+     page paints into them. At 8px both ends of this row ran under the curve — the right-hand
+     frame/tool/target readout lost its last characters, reported from an iPad in landscape. A ~24px
+     corner radius eats roughly 8px of horizontal room at the height this text's descenders sit, so 20px
+     clears it with margin to spare.
+     `env(safe-area-inset-*)` CANNOT do this job here, which is why the number is hard-coded: the insets
+     are zero in a browser tab (the window's own rounding is not a safe-area inset, and index.html
+     deliberately omits `viewport-fit=cover` — see the note there), so the OS never reports the space
+     this text needs. The cost is 24px less room for the hint, which already truncates. -->
 <div
-  class="flex items-center justify-between gap-3 border-t border-border bg-surface px-2 h-6 text-xs text-text-secondary select-none"
+  class="flex items-center justify-between gap-3 border-t border-border bg-surface px-5 h-6 text-xs text-text-secondary select-none"
 >
   {#if appState.persistAlert}
     <!-- Amber, per the read-only/state-signalling convention: this is a condition to act on, not a

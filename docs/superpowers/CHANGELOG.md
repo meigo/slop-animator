@@ -6238,3 +6238,21 @@ on reference spans, could be vertically centered"*. They were low — measurably
   the 12px glyphs. Measured after: label centre 623 on both, equal to the box centre.
 - The absolutely-positioned trim grips are out of flow, so flex layout leaves them where they were, and
   `px-2.5` still keeps a long name from sliding under one.
+
+**The status bar clears the iPad's rounded window corners (2026-09-12).** Reported from an iPad in
+landscape: *"ipad rounds bottom corners and crops some texts on the status bar"* — the right-hand
+`f 1/100 · select · <layer>` readout lost its last characters into the curve.
+- **Cause: 8px of padding against a ~24px corner radius.** The status bar is the only element on the
+  window's bottom edge, and iPadOS rounds the bottom corners of a browser window (and of a standalone
+  web app), clipping whatever the page paints there. At the height this 12px text's descenders sit —
+  roughly 6px above the bar's bottom — a 24px radius eats about 8px of horizontal room, i.e. exactly
+  the padding there was.
+- **Fix: `px-2` → `px-5`** (20px), which clears it with margin. The hint on the left loses 24px of room
+  and already truncates.
+- **Why the number is hard-coded rather than `env(safe-area-inset-*)`:** those insets are ZERO in a
+  browser tab. A window's own corner rounding is not a safe-area inset, and `index.html` deliberately
+  omits `viewport-fit=cover` (its note explains why: cover makes every inset non-zero, bottom included,
+  and would push this bar and the playbar under the home-indicator strip). So the OS never reports the
+  space this text needs — there is nothing to read.
+- **Owed:** the iPad pass that reported it. 20px is sized from the screenshot's geometry, not measured
+  on the device; if it reads too airy, 16px still clears a 24px radius.
