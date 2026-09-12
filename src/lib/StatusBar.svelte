@@ -7,9 +7,17 @@
   import { animateTargetGroup, animateTargetLayer } from "./transform-target";
 
   // Ambient readout: frame, tool (brush/eraser show their stroke type), and the active layer.
-  // Split rather than one string: the readout is right-anchored, so a frame number gaining a digit
-  // (9 → 10) slid the whole line left and everything after it appeared to jump while scrubbing.
-  // tabular-nums equalizes digit WIDTH, not digit COUNT — the counter needs reserved width.
+  // `tabular-nums` stays and is the whole stabiliser now: it equalizes digit WIDTH, so scrubbing
+  // within a digit count moves nothing at all.
+  // The RESERVED WIDTH that used to sit with it is gone (2026-09-12). It was `frameDigits` ch on an
+  // `inline-block text-right` box around the frame number, added on 2026-08-11 against a 9 → 10
+  // reflow, and the cost was a gap: on a 100-frame project frame 9 rendered its digit at the right
+  // of three digits' worth of space, leaving ~15px of hole after the label. Reserving bought less
+  // than it looked. This readout is the LAST flex item in a `justify-between` row, so its right edge
+  // is pinned and everything after the number — `/N · tool · layer` — holds still whatever the
+  // number does; only the label and the number itself shift, by one digit, at a digit boundary. And
+  // the left edge is not stable anyway: switching tool or layer changes this string's width on every
+  // press. Measured before/after in the 2026-09-12 changelog entry.
   const toolLabel = $derived(
     appState.tool === "eraser"
       ? "eraser"
@@ -17,7 +25,6 @@
         ? appState.brush.brushType
         : appState.tool,
   );
-  const frameDigits = $derived(String(appState.project.frameCount).length);
 
   // Idle hint: the non-obvious gestures for the current tool + context. A real hover/press hint
   // (sourced from any title=) always wins; this only fills the gap, which on touch is always.
@@ -110,9 +117,9 @@
     >
   {/if}
   <span class="truncate">{appState.statusHint || idleHint}</span>
+  <!-- "frame", not "f": there is room for the word at every width this bar is used at, and the
+       abbreviation only ever existed to keep the line short. -->
   <span class="shrink-0 tabular-nums"
-    >f <span class="inline-block text-right" style="min-width: {frameDigits}ch"
-      >{appState.playhead + 1}</span
-    >/{appState.project.frameCount} · {toolLabel} · {targetName}</span
+    >frame {appState.playhead + 1}/{appState.project.frameCount} · {toolLabel} · {targetName}</span
   >
 </div>
