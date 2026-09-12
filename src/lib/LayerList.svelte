@@ -15,6 +15,7 @@
     ChevronRight,
     Image,
     Film,
+    Square,
     Lock,
     LockOpen,
     Grid2x2,
@@ -39,7 +40,14 @@
     selectGroup,
   } from "../state/appState.svelte";
   import { groupHeaderSelected } from "../anim/active-row";
-  import { createDrawingLayer, nextLayerName, groupOf, isLayerLocked } from "../anim/document";
+  import {
+    createDrawingLayer,
+    nextLayerName,
+    groupOf,
+    isLayerLocked,
+    resolvedDisplayKeyCell,
+  } from "../anim/document";
+  import { isCellEmpty } from "./cell-ink";
   import type { Layer } from "../anim/document";
   import { layerPanelActions } from "../anim/layer-panel-actions";
   import { clampPanelWidth } from "../anim/panel-layout";
@@ -253,7 +261,25 @@
           {#if t === "image"}<Image size={13} />{:else}<Film size={13} />{/if}
         </span>
       {:else}
-        <span class="w-[15px] shrink-0" role="presentation"></span>
+        <!-- The type slot is ALWAYS filled, so the column never reads as a hole on the commonest row
+             (reported: "when chevron or icon are missing there are large gaps"). A square, quiet at
+             60% muted: it earns its ink by saying whether this layer has anything ON THIS FRAME —
+             FILLED when it does, an empty outline when the frame is blank. Filled-vs-outline, not
+             solid-vs-dashed: at 13px the two outlines were "barely visible" apart (reported). 13px
+             matches the reference glyphs beside it, so the column has one weight. Same question
+             `computeTimelineGlyphs` asks, through the same per-canvas cache (`isCellEmpty`), so the
+             two surfaces cannot disagree. NOT mirrored into the timeline gutter: a row there is
+             followed by its own strip of ◆/◇, and a second ink mark beside them would compete. -->
+        {@const rk = resolvedDisplayKeyCell(layer, appState.playhead)}
+        {@const inked = !!rk && !isCellEmpty(rk.cell.canvas, appState.version)}
+        <span
+          class="flex w-[15px] shrink-0 justify-center text-text-muted/60"
+          title={inked
+            ? "Drawing layer — ink on this frame"
+            : "Drawing layer — blank on this frame"}
+        >
+          {#if inked}<Square size={13} fill="currentColor" />{:else}<Square size={13} />{/if}
+        </span>
       {/if}
       {#if editingId === layer.id}
         <input
@@ -448,8 +474,12 @@
               <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
                 ><GripVertical size={14} /></span
               >
+              <!-- `-ml-0.5 mr-0.5`: the chevron glyph carries ~3.75px of its own padding on the left, so at
+                   an even gap it sat ~12px from the grip and only ~8px from the name. Shifting the BOX 2px
+                   left and giving the 2px back on its right balances the ink without moving the name, which
+                   is what keeps group and layer names on one column. -->
               <button
-                class="flex w-[15px] shrink-0 justify-center text-text-secondary hover:text-text"
+                class="-ml-0.5 mr-0.5 flex w-[15px] shrink-0 justify-center text-text-secondary hover:text-text"
                 title={seg.group.collapsed ? "Expand group" : "Collapse group"}
                 onclick={() => toggleGroupCollapsed(seg.group.id)}
               >

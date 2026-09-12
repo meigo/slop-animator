@@ -6048,3 +6048,27 @@ layer-scoped and still say "select a layer first".
 - Tests: `canRemoveGroup` (3) and the panel's group branch (5) — 1305 total. Verified in desktop WebKit:
   the title, the delete, the undo, and a refusal that holds when the group carries the last drawing layer.
   **Owed:** an iPad tap.
+
+**Layer rows: the type slot is always filled, and the chevron sits 2px left (2026-09-12).** Asked as
+*"when chevron or icon are missing (drawing layer) there are large gaps there"* — the 15px slot that
+carries a group's chevron and a reference's Image/Film glyph was EMPTY on drawing layers, which are most
+rows, so the commonest row read as a hole between the grip and the name.
+- **A quiet square fills it**, `text-muted/60` at 13px (the reference glyphs' size, so the column has one
+  weight), and it earns its ink: FILLED when the layer has something on the frame at the playhead, an
+  empty outline when that frame is blank. Filled-vs-outline rather than solid-vs-dashed, and 13 rather
+  than 12, after a first pass was reported as "smaller than icons of other layers" with the two states
+  "barely visible" apart. `fill="currentColor"` overrides lucide's own `fill="none"` (the component
+  spreads caller props after its defaults), so one glyph covers both states. The question and the cache are
+  the timeline's own (`resolvedDisplayKeyCell` + `isCellEmpty`, per-canvas revision), so the panel and the
+  strip cannot disagree about what is empty.
+- **Not mirrored into the timeline gutter**, and deliberately: a row there is followed by its own strip of
+  ◆/◇ saying the same thing per frame, so a second ink mark beside them would compete. The gutter's slot
+  stays blank for drawing layers. (The 2026-08-18 rule that both surfaces reserve the slot is unchanged —
+  this is about what fills it.)
+- **The chevron moved 2px left** (`-ml-0.5 mr-0.5`), reported as "a pixel or 2 on the left side of the
+  group's chevron more that we could cut off". Measured: the glyph carries ~3.75px of its own padding, so
+  its ink sat ~12px from the grip's dots and ~8px from the name. The box shifts left and gives the 2px
+  back on its right, so the ink balances and the NAME does not move — group and layer names stay on one
+  column (measured after: names 46/65, chevron slot 25, type slots 27).
+- Verified in desktop WebKit: chevron / solid square / dashed square / image on the four row kinds, with
+  the name x unchanged. **Owed:** an iPad look.
