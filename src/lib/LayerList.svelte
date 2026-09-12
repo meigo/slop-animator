@@ -242,7 +242,7 @@
          — so every row's toggles line up whatever its nesting or kind. The per-layer CONTROLS moved to
          the properties strip above the list (LayerProps) on 2026-09-11, so a row never grows when
          selected and the one under the Pencil never moves. -->
-    <div class="flex items-center gap-1 p-1">
+    <div class="flex items-center gap-1 py-1 pr-1 pl-2">
       <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
         ><GripVertical size={14} /></span
       >
@@ -379,16 +379,19 @@
     onpointerup={gripUp}
     onpointercancel={gripUp}
   >
-    <!-- The HIT area is 8px, but the tint is only the 4px the panel actually reserves. Tinting the
-         full 8px painted over the rows' own background (the grip overlays their left 4px), which
-         read as a mismatched notch against the active/hover row colour. -->
+    <!-- The HIT area is 8px; the tint is the outer 4px of it. It now sits OVER a row's rail and the
+         left half of a selected row's accent bar (the rows are full-bleed since 2026-09-12) — only
+         while the pointer is on the grip, and never on iPad, which has no hover at all. -->
     <div class="absolute inset-y-0 left-0 w-1 group-hover:bg-text/10"></div>
   </div>
-  <!-- The grip's strip is reserved on BOTH direct children (the header's own `p-1`, and `pl-1` on the
-       list), never on the panel root: padding the root would inset the header's bottom border too and
-       leave it short of the left edge. 4px there plus each row's own 4px `p-1` puts the drag-handle
-       icon at 8px — exactly where the 8px grip ends, so the two abut without overlapping and no
-       space is wasted between them. -->
+  <!-- FULL-BLEED rows (2026-09-12): the 4px the list used to reserve (`pl-1`) moved INTO each row's
+       own padding (`pl-2`), so a row's BORDER box starts at the panel's edge — its `.group-rail`
+       background-image and its `.ui-selected` inset bar with it, which is what the timeline gutter
+       already does (reported: "in gutter we have vertical indicator lines on the edge but in layer
+       panel we have a padding"). Every interactive thing still starts at 8px, clear of the grip's 8px
+       hit area, because the 4px only changed owner. The HEADER keeps its own `p-1`, and the
+       properties strip its `pl-2`: both are direct children, and padding the panel ROOT instead would
+       inset the header's bottom border and leave it short of the left edge. -->
   <div class="flex items-center gap-1 p-1 border-b border-border">
     <!-- `min-w-0 truncate` + flex-1 (basis 0): the title only takes LEFTOVER space, so on a narrow panel it
          gives way before the buttons shrink; they stay full 28px targets at the default width. -->
@@ -446,7 +449,7 @@
        to open as a second line inside the selected row. -->
   <LayerProps onRenameLayer={renameLayerFromStrip} onRenameGroup={startGroupEdit} />
 
-  <div bind:this={listEl} class="flex-1 overflow-y-auto pl-1">
+  <div bind:this={listEl} class="flex-1 overflow-y-auto">
     {#key dragNonce}
       {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
         {#if "layer" in seg}
@@ -462,7 +465,7 @@
                member row's hover erased the line under it. -->
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
-              class="group-rail flex items-center gap-1 p-1 hover:bg-surface-hover"
+              class="group-rail flex items-center gap-1 py-1 pr-1 pl-2 hover:bg-surface-hover"
               class:ui-selected={groupLit}
               role="presentation"
             >
