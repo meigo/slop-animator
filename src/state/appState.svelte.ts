@@ -976,6 +976,9 @@ export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
   const line = axis === "h" ? centre.x : centre.y;
   const baseCentre = { x: base.x + base.w / 2, y: base.y + base.h / 2 };
   const track = layerTransformTrack(layer);
+  // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
+  // bank those pixels back at the old placement. Every sibling structural action discards first.
+  liftGuard.discard?.();
   commitStructural(() => {
     // New objects only — undo snapshots share the layer (gotcha #8, at the bag level too).
     layer.transform = mirrorTransform(layer.transform, baseCentre, axis, line);
@@ -1001,6 +1004,9 @@ export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
   const line = axis === "h" ? centre.x : centre.y;
   const baseCentre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
   const track = g.tracks?.transform;
+  // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
+  // bank those pixels back at the old placement. Every sibling structural action discards first.
+  liftGuard.discard?.();
   commitStructural(() => {
     // Freeze the pivot box exactly as a drag's grab does on an identity group: without it the box
     // stays live content bounds, and drawing more would slide the pivot under the flip.
@@ -1833,8 +1839,6 @@ export function isGroupRowSelected(groupId?: number): boolean {
   return anyGroupRowSelected(state.activeRow);
 }
 
-/** Show this group's detail strip? Deliberately BROADER than the header highlight — see
- *  `groupDetailShown`, which the panel used to hand-roll beside it. */
 /** The DRAWING layer a frame tool should act on, or null. Through `targetLayerId`, so a layer's own
  *  track row counts as its layer — which is what `isRowSelected` already lights. Branching on
  *  `activeRow.kind === "layer"` here made "Clear frame" report a non-drawing row while the layer's

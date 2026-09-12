@@ -86,6 +86,8 @@
     /** The pointer that owns this gesture. move/up/cancel are on WINDOW, where pointer capture
      *  cannot isolate them, so a second contact would otherwise drive and settle this drag. */
     pointerId: number;
+    /** Latched at grab — see the same field on Canvas's `refDrag`. */
+    keepProportions: boolean;
   } | null = null;
   let dragUndo: ReturnType<typeof beginStructuralEdit> | null = null;
   let dragFreeze: {
@@ -290,6 +292,7 @@
       keyFrame,
       lastT: null,
       pointerId: e.pointerId,
+      keepProportions: appState.keepProportions,
     };
     appState.transformDragFrame = keyFrame; // see the note in Canvas.finishTransformDragUndo
     window.addEventListener("pointermove", onDragMove);
@@ -310,7 +313,7 @@
     }
     e.preventDefault();
     const p = inverseChain(d.outer, vp.screenToCanvas(e.clientX, e.clientY));
-    const nt = dragTransform(d.handle, d.startT, d.center, d.start, p, appState.keepProportions);
+    const nt = dragTransform(d.handle, d.startT, d.center, d.start, p, d.keepProportions);
     d.setT(nt);
     d.lastT = nt; // settle compares what was WRITTEN — see the note in Canvas.onTransformDrag
     bump();

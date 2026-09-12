@@ -4,13 +4,16 @@
  * Two-stage flow:
  *   1. Select: drag rect or lasso path → marching ants on the actual shape (no lift, no handles).
  *   2. Transform: drag inside the selection → pixels are lifted into a floating canvas;
- *      bounding-box handles appear (corners=non-uniform scale, sides=skew, rotate handle, drag inside=move).
+ *      bounding-box handles appear (corners scale — proportionally unless Keep proportions is off —
+ *      sides stretch one axis, rotate handle, drag inside=move).
  *
  * Transform is a 6-parameter affine matrix applied around the rect's local coordinates.
  * Press Enter to commit, Escape to cancel.
  */
 
 import type { ComposeStep } from "./ref-transform";
+// The gizmo's magnitude floor, shared rather than re-derived: one definition of "a scale may not reach 0".
+import { floorScale } from "./ref-transform";
 import { rigidDeformGrid } from "./rigid-grid";
 import { mapDocPolyToCell, mapDocRectToCell, needsMap } from "./selection-map";
 
@@ -130,6 +133,13 @@ export function cornerScaleMatrix(
     const k = len2 !== 0 ? ((mouseLocal.x - ax) * denomX + (mouseLocal.y - ay) * denomY) / len2 : 1;
     sx = sy = k;
   }
+  // FLOORED, sign kept — the gizmo's own `floorScale`, for the reason it exists there. Released
+  // exactly on the anchor the factor is 0, the matrix is SINGULAR, and the next `invert(matrix)`
+  // (hit-testing, and the following drag's `mouseLocal`) is NaN: the float stops responding and can
+  // never be grabbed again. Guarding the divisor alone could not catch this — the divisor is the
+  // rect's own width. Crossing the anchor still mirrors; it just cannot land on zero.
+  sx = floorScale(sx);
+  sy = floorScale(sy);
   // T(ax, ay) · Scale(sx, sy) · T(−ax, −ay)
   return { a: sx, b: 0, c: 0, d: sy, e: ax * (1 - sx), f: ay * (1 - sy) };
 }
@@ -144,12 +154,12 @@ export function sideStretchMatrix(
   if (handle === "l" || handle === "r") {
     const ax = handle === "r" ? r.x : r.x + r.w;
     const denom = (handle === "r" ? r.x + r.w : r.x) - ax;
-    const sx = denom !== 0 ? (mouseLocal.x - ax) / denom : 1;
+    const sx = floorScale(denom !== 0 ? (mouseLocal.x - ax) / denom : 1); // see cornerScaleMatrix
     return { a: sx, b: 0, c: 0, d: 1, e: ax * (1 - sx), f: 0 };
   }
   const ay = handle === "b" ? r.y : r.y + r.h;
   const denom = (handle === "b" ? r.y + r.h : r.y) - ay;
-  const sy = denom !== 0 ? (mouseLocal.y - ay) / denom : 1;
+  const sy = floorScale(denom !== 0 ? (mouseLocal.y - ay) / denom : 1); // see cornerScaleMatrix
   return { a: 1, b: 0, c: 0, d: sy, e: 0, f: ay * (1 - sy) };
 }
 
