@@ -6170,3 +6170,42 @@ the window's own edge, which reads as painted ON it.
   the two things positioned from DIFFERENT origins — the playhead LINE (scroller content) and the frame
   BADGE (a child of the ruler row): identical centres at frames 1/5/10 (161 / 257 / 377, i.e. exactly
   one 24px column apart), so the inset shifted them as one.
+
+**Equal air either side of a gutter glyph (2026-09-12).** Reported on the group chevron: *"could we
+decrease the left padding to have equal spacing on both size of the chevron"*, then *"I'd move 1px back
+to the right"*. The gutter's labels padded 8px from the rail but spaced their own items 4px apart, so
+every glyph carried twice the room on its left as on its right.
+- Base padding 8px → 5px on the group header, the layer row and AudioLane's label, with the derived
+  indents moved in step: member rows 23px, property tracks 14px, 32px under a grouped owner. 4px
+  equalises it exactly; the extra pixel is the one asked back after seeing it.
+- Measured in WebKit after: chevron 8.8 left / 7.8 right, root square 7.1 / 6.1, names all at x=24.
+  An INDENTED row cannot be symmetric — its left gap *is* the indent (member 25.1 / 6.1).
+
+**The Animate bar acts only on the selected row (2026-09-12).** Asked from a screenshot of a member
+layer's row showing four Animate buttons: *"when child layer is selected, should we see a group
+animation button on the toolbar?"* — and, on the transform twin of it, *"same with transform of
+course"*. Answer: no, and the fall-through went.
+- `animationBar`'s layer branch no longer appends `animate-group` / `animate-group-opacity` for a
+  member's group (`groupOf` import gone with it). A member row offers its own transform and opacity;
+  a fully animated member row goes `empty` instead of falling through. The GROUP branch is untouched,
+  so the actions still exist one tap away on the group's own row — which `animateGroup` already
+  selects for you on the way in.
+- **Why now, when the 2026-08-18 spec put it there deliberately** (its non-goals list "Selecting the
+  group header. Animate group hangs off a member layer"): that premise expired when group rows became
+  selectable. Two things then made it wrong rather than merely redundant — since the scope became
+  row-derived (2026-09-11) `transformScopeOf` reads `"layer"` on a member row, so the canvas drag, the
+  gizmo and `animateTargetGroup` all decline to touch the group there, leaving this bar the last
+  control acting on an unselected row; and the four buttons included two identical `Blend` glyphs
+  (layer opacity and group opacity), separated only by `title`, which on iPad cannot be read before
+  the tap that activates it. `animateTargetGroup` had refused a duplicated double-set for that exact
+  reason on a ref member already.
+- **One glyph per PROPERTY, not per owner:** `Spline` for a transform, `Blend` for an opacity, layer or
+  group alike (`Group` import dropped). They can no longer collide, and while both owners were on the
+  bar together the opacity pair was already the same glyph — so the distinct group icon was never what
+  told them apart. The selected row says whose these are; the titles still name the group.
+- A REFERENCE in a group now offers nothing on the bar (it offered the group's pair before) — refs are
+  guides, and the group animates from its own row.
+- Tests: 4 member-row group tests replaced by 3 (member row offers only its own; does not offer the
+  group's; fully animated member row is empty), the locked-member dim moved to a group row, and the
+  ref-in-group test flipped to `empty`. 1308 passing (was 1309).
+- **Owed:** an iPad pass — this is a visible change to the timeline bar's button set.
