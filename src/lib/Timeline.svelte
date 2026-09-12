@@ -1342,12 +1342,18 @@
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
-    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 24px
-     *  or from 12px. The row itself lands at owner + 6px, deliberately NOT owner + a full level:
-     *  a property is not a nesting depth, it is an attribute of the row above, and a full step
-     *  would put a GROUP's tracks at 24px — exactly the indent its member LAYERS use, trading one
-     *  "these look like layers" for another. The half-step lands on 18 and 30, and the layer
-     *  indents are 12 and 24, so it cannot collide with either by construction. */
+    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 26px
+     *  or from 8px. The row lands at owner + 9px, deliberately NOT owner + a full level: a property
+     *  is not a nesting depth, it is an attribute of the row above, and a full step would put a
+     *  GROUP's tracks at 26px — exactly the indent its member LAYERS use, trading one "these look
+     *  like layers" for another. The half-step lands on 17 and 35, and the layer indents are 8 and
+     *  26, so it cannot collide with either by construction.
+     *
+     *  READ by the row (`pl-[17px]` / `pl-[35px]`) since 2026-09-12. Until then it was computed here
+     *  and ignored there, which hardcoded EVERY track row at 26: a grouped layer's tracks sat at
+     *  their owner's own indent (reported: "in the root these have indent but when grouped then
+     *  not") and a group's own tracks sat on its members' indent — the very collision this comment
+     *  says the design avoids. A field that nothing reads cannot hold a layout together. */
     indent: boolean;
     /** Which group's BLOCK this row sits inside, for the spine — not the same question as
      *  `indent`. A group's OWN track row is not indented (it is the group's, not a member's) but it
@@ -2924,9 +2930,10 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
               <button
-                class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[26px] text-left hover:bg-surface-hover {spec.selected
+                class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[17px] text-left hover:bg-surface-hover {spec.selected
                   ? 'text-text-secondary'
                   : 'text-text-muted/80'}"
+                class:pl-[35px]={spec.indent}
                 class:group-rail={spec.groupId != null}
                 class:bg-surface={!spec.selected}
                 class:ui-selected={spec.selected}
@@ -2965,14 +2972,14 @@
                    so it would appear twice on one row meaning two things.
                    12px against the layer rows' 13px: near enough to sit in the same optical column,
                    small enough that this row still reads as subordinate to the one above it. -->
-                <!-- `justify-start`, not `justify-center` like the layer rows' type slot. This row's
-                   glyph has to line up with the GROUP LABEL's left edge (26px = the header's `pl-2`
-                   plus its chevron and gap; every number here is derived from that base padding, so
-                   changing it moves all of them), and centring a 12px icon in
-                   a 14px slot put its ink 1px right of it — close enough to read as a miss. Starting
-                   it at the padding edge makes the alignment exact and independent of the icon's
-                   width, so swapping the glyph cannot silently break it. The slot keeps its `w-3.5`,
-                   which is what holds the LABEL column steady. -->
+                <!-- `justify-start`, not `justify-center` like the layer rows' type slot: the glyph then
+                   starts exactly at this row's own padding edge (17px, or 35px under a grouped owner),
+                   which puts it a half-step right of the OWNER's glyph — the relationship the indent is
+                   for. Centring a 12px icon in a 14px slot put its ink 1px right of that, close enough
+                   to read as a miss; starting it at the edge is exact and independent of the icon's
+                   width, so swapping the glyph cannot silently break it. (Until 2026-09-12 this aligned
+                   with the GROUP LABEL's left edge instead, which is what a hardcoded 26px made it mean.)
+                   The slot keeps its `w-3.5`, which is what holds the LABEL column steady. -->
                 <span class="flex w-3.5 shrink-0 justify-start" role="presentation">
                   <GitCommitHorizontal size={12} />
                 </span>

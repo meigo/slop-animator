@@ -6087,3 +6087,20 @@ the entry above.
 - **Playhead-dependent, unlike the row's strip** (cached against `version`), so it re-reads while
   scrubbing: one cached `isCellEmpty` per VISIBLE row, against the per-frame walk `computeTimelineGlyphs`
   already does for the same row. Asked once per row (`{@const}`) and shared by the icon and its title.
+
+**Track rows indent from their OWNER (2026-09-12).** Reported as *"the indentation of animation
+(opacity/transform) rows of drawing layers. in the root these have indent but when grouped then not"*.
+- **Root cause: a field computed and never read.** `TrackRowSpec.indent` is set for every track row
+  (true when the owner is a group member, false for a group's own track) and nothing consumed it — the
+  row hardcoded `pl-[26px]`. So a ROOT layer's tracks only looked indented because their owner sits at
+  8px; a GROUPED layer's tracks matched their owner exactly (26 vs 26), and a group's OWN tracks landed
+  on 26 — the member-layer indent, i.e. the collision `indent`'s own comment says the design avoids. One
+  hardcoded number produced both faults; the field's comment had described the intended rule all along.
+- **Fix:** the row reads it — `pl-[17px]`, `pl-[35px]` when `indent`. Owner + a 9px HALF-step, never a
+  full level: a property is an attribute of the row above, not a nesting depth. Measured after: group
+  header 8 / its tracks 17, grouped layer 26 / its tracks 35, root layer 8 / its tracks 17 — no track on
+  8 or 26, so none can be mistaken for a layer row.
+- The field's comment carried stale numbers (12/24, tracks at 18/30) from before the gutter's 2026-09-09
+  padding change, and the glyph comment still claimed the row's icon aligns with the GROUP LABEL's left
+  edge — which is only what a hardcoded 26 made it mean. Both now state today's geometry.
+- Verified in desktop WebKit by measuring every row kind's padding and name x. **Owed:** an iPad look.
