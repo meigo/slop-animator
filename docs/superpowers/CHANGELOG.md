@@ -6154,3 +6154,19 @@ bar at x=5, the gutter's at 0.
 - **Known, accepted:** the grip's hover tint now paints over the rail and the left half of a selected
   row's accent bar. Only while the pointer is on the grip, and never on iPad, which has no hover. Narrow
   the tint to 2px if it ever reads badly.
+
+**The gutter's indicator lines sit 1px in from the window edge (2026-09-12).** Reported as *"in gutter
+indicator lines seem to be on top of the app/panel border instead of next to it"* — then, once the DOM
+showed nothing of ours to their left: *"might be a chrome but still shift indicator lines to the right
+1px in that case to be beside it"*. Flush at x=0 the rail and a selected row's accent bar butt against
+the window's own edge, which reads as painted ON it.
+- **Fix on the SCROLLER, not the rows:** `-mx-2` (which cancelled the root's `p-2` outright) became
+  `-mr-2 -ml-[7px]`, leaving exactly 1px of inset. Everything inside moves together — gutter, frame
+  strip, ruler, and the absolutely-positioned playhead / play-range / guide lines. Nudging the rail or
+  the label alone would have moved the NAMES relative to the cells, or the cells relative to the ruler.
+- 1px also matches the layer panel, whose lines sit at x=1 behind its own `border-l`, so the two
+  surfaces agree again after yesterday's full-bleed pass.
+- Measured after: rail and accent bar at x=1 (were 0), names at 27 (were 26). Alignment cross-checked by
+  the two things positioned from DIFFERENT origins — the playhead LINE (scroller content) and the frame
+  BADGE (a child of the ruler row): identical centres at frames 1/5/10 (161 / 257 / 377, i.e. exactly
+  one 24px column apart), so the inset shifted them as one.
