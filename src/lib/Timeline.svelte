@@ -3460,7 +3460,7 @@
                   <!-- Trimmed-away source, dimmed so you can drag a handle back to recover it. -->
                   <div class="pointer-events-none absolute inset-0 bg-media-clip-dim"></div>
                   <div
-                    class="absolute inset-y-0.5 box-border cursor-grab overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
+                    class="absolute inset-y-0.5 box-border flex cursor-grab items-center overflow-hidden rounded-sm border border-media-clip-border bg-media-clip"
                     style="left: {keptLeft}px; width: {kept.spanFrames *
                       CELL_W}px; touch-action: none"
                     role="presentation"
@@ -3470,8 +3470,14 @@
                     onpointerup={clipUp}
                     onpointercancel={clipUp}
                   >
-                    <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
-                    <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
+                    <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip.
+                         A FLEX CHILD of a `flex items-center` box, not a `block`: the label's line box
+                         is taller than the clip's content area (24px of `text-xs/6` inside 18px here,
+                         20px of `text-xs/5` in the image span), so laid out in flow it started at the
+                         content top and sat 3px BELOW the block's centre — reported as the labels on
+                         reference spans wanting to be centred. `items-center` splits that overflow
+                         evenly instead, and `min-w-0` is what still lets `truncate` shrink it. -->
+                    <span class="relative z-10 min-w-0 flex-1 truncate px-2.5">{ref.name}</span>
                   </div>
                   {#if tailFrames > 0}
                     <div
@@ -3525,7 +3531,7 @@
                    row's clip hangs past the end, which says nothing about this image. -->
                 {@const s = span ?? { start: 0, end: Math.max(0, appState.project.frameCount - 1) }}
                 <div
-                  class="relative my-0.5 box-border h-5 overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
+                  class="relative my-0.5 box-border flex h-5 items-center overflow-hidden rounded-sm border bg-media-clip text-xs/5 text-text"
                   class:border-media-clip-border={span !== null}
                   class:cursor-grab={span !== null}
                   class:border-dashed={span === null}
@@ -3544,8 +3550,10 @@
                   onpointerup={rangeUp}
                   onpointercancel={rangeUp}
                 >
-                  <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip. -->
-                  <span class="relative z-10 block truncate px-2.5">{ref.name}</span>
+                  <!-- px-2.5 clears the 8px trim handles so a long name cannot slide under a grip;
+                       `min-w-0 flex-1` makes it a shrinkable flex child so the box can centre it
+                       vertically (see the video clip's label above). -->
+                  <span class="relative z-10 min-w-0 flex-1 truncate px-2.5">{ref.name}</span>
                   <!-- The grips are the ONLY marking these handles have: cursor-ew-resize does nothing
                      on iPad (no cursor, no hover), which is the platform this app is used on most. The
                      bars are pointer-events-none so the handle div stays the event target.

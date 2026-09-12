@@ -6209,3 +6209,32 @@ course"*. Answer: no, and the fall-through went.
   group's; fully animated member row is empty), the locked-member dim moved to a group row, and the
   ref-in-group test flipped to `empty`. 1308 passing (was 1309).
 - **Owed:** an iPad pass — this is a visible change to the timeline bar's button set.
+
+**A group member's grip sits in its group's chevron column again (2026-09-12).** Reported from the
+layer panel: *"grab handle of group children … seems to be offset to the right compared to group
+chevron"*. It was, by 3px.
+- **Cause: a regression from this morning's glyph tidy-up.** The member indent has been 19px since
+  2026-09-09, derived as the group chevron's 15px box plus its 4px gap — the DISCLOSURE COLUMN, so a
+  child's first control lands on its parent's chevron. Then the chevron box gained `-ml-0.5 mr-0.5`
+  (the 2px shift that evened out its own left/right air) and the column moved left without the indent
+  following. Measured with the panel at x=957: group chevron 981, member grip 984.
+- **Fix: `pl-[19px]` → `pl-[16px]`** on the member row — 15 + 4 − 2, the same derivation with the
+  chevron's own offset included. Measured after: member grip 981, on the chevron exactly; its square
+  1000 and name 1018 came 3px left with it. The `.ui-selected` bar and the rail are unaffected — both
+  paint at the BORDER box, which padding does not move (the reason this indent lives on the row rather
+  than on `.group-members`).
+- The TIMELINE gutter is a separate derivation (no grips there) and was not touched.
+
+**Reference-span labels sit on their clip's centre line (2026-09-12).** Reported as *"check the labels
+on reference spans, could be vertically centered"*. They were low — measurably so.
+- **Cause: a line box taller than the block it sits in.** Both labels were `block` elements in flow, so
+  their line box started at the content top. The video clip inherits `text-xs/6` (a 24px line) into a
+  box that is 20px with a 1px border, i.e. 18px of content; the image span inherits `text-xs/5` (20px)
+  into the same 18px. In flow that put the text's centre 3px below the clip's (626 against 623) on a
+  video and 1px below on an image, with the surplus clipped off the BOTTOM only.
+- **Fix: centre it instead of relying on leading.** Both boxes gain `flex items-center`, and both labels
+  become `min-w-0 flex-1` rather than `block` — `min-w-0` is what keeps `truncate` working on a flex
+  child. `items-center` splits the overflow evenly, so what is clipped is symmetric and well clear of
+  the 12px glyphs. Measured after: label centre 623 on both, equal to the box centre.
+- The absolutely-positioned trim grips are out of flow, so flex layout leaves them where they were, and
+  `px-2.5` still keeps a long name from sliding under one.

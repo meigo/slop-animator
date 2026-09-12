@@ -222,17 +222,20 @@
        stays at x=0, landing on the group rail drawn there. Put the same padding on the
        `.group-members` container instead and the bar moves with it, which is what made a selected
        member draw a second line beside the rail.
-       19px = the group header's chevron (15) plus its gap (4), i.e. the DISCLOSURE COLUMN — so a
-       member's eye/lock/name land on exactly the same x as its group's, which is the standard tree
-       rule (a child's content aligns under the parent's; the nesting is carried by the guide line,
-       here the rail). It was 13px, which put every child column 6px LEFT of its parent's: children
-       reading as less indented than their group, a near-miss that looks like an error rather than a
-       step. Measured before: group eye/lock/name at 41/60/79, member at 35/54/73. -->
+       16px = the DISCLOSURE COLUMN, i.e. where the group header's chevron actually starts: its 15px
+       box plus the 4px gap, LESS the 2px the chevron box is pulled left by its own `-ml-0.5`. A
+       member's first control (the grip) therefore lands exactly on its group's chevron, which is
+       where a tree puts a child's first control; the nesting is carried by the guide line, here the
+       rail. It was 13px (every child column 6px LEFT of its parent's — children reading as less
+       indented than their group), then 19px = 15 + 4, correct until the chevron gained `-ml-0.5
+       mr-0.5` on 2026-09-12 and the column moved 2px left without this following it. Measured with
+       the panel at x=957: group chevron 981, member grip 984 — reported as the grip sitting right of
+       the chevron. Keep this in step with that `-ml-0.5` or the two drift again. -->
   <div
     data-layer-id={layer.id}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
     class:group-rail={layer.groupId != null}
-    class:pl-[19px]={layer.groupId != null}
+    class:pl-[16px]={layer.groupId != null}
     class:ui-selected={active}
     onclick={() => setActiveLayer(layer.id)}
     role="presentation"
