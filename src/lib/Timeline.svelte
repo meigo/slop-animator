@@ -1342,12 +1342,12 @@
     /** The owner's name, for the row's and the marker's titles — the status bar reads them, and on
      *  iPad a tap on the row is the only route to that text. */
     owner: string;
-    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 26px
-     *  or from 8px. The row lands at owner + 9px, deliberately NOT owner + a full level: a property
+    /** True when the OWNER is a group member — i.e. whether this row's half-step starts from 23px
+     *  or from 5px. The row lands at owner + 9px, deliberately NOT owner + a full level: a property
      *  is not a nesting depth, it is an attribute of the row above, and a full step would put a
-     *  GROUP's tracks at 26px — exactly the indent its member LAYERS use, trading one "these look
-     *  like layers" for another. The half-step lands on 17 and 35, and the layer indents are 8 and
-     *  26, so it cannot collide with either by construction.
+     *  GROUP's tracks at 23px — exactly the indent its member LAYERS use, trading one "these look
+     *  like layers" for another. The half-step lands on 14 and 32, and the layer indents are 5 and
+     *  23, so it cannot collide with either by construction.
      *
      *  READ by the row (`pl-[17px]` / `pl-[35px]`) since 2026-09-12. Until then it was computed here
      *  and ignored there, which hardcoded EVERY track row at 26: a grouped layer's tracks sat at
@@ -2464,7 +2464,8 @@
        Without it the gutter began 8px in while the strip was CLIPPED flush on the right — a margin on
        one side only — and a selected row's accent bar and background both started at that 8px, so a
        row looked inset from a panel it actually fills. The 8px is handed back to the gutter's LABELS
-       (`pl-3` where they were `px-1`, `pl-6` where a group member was `pl-4`), so every icon and name
+       (`pl-3` where they were `px-1`, `pl-6` where a group member was `pl-4` — both since retuned to
+       `pl-[5px]`/`pl-[23px]` on 2026-09-12, see the glyph-spacing note), so every icon and name
        stays at the screen position it had; what moved is the row BACKGROUND, which now reaches 0, and
        the frame strip, which gains the reclaimed 8px at each end. -->
   <div
@@ -2806,7 +2807,7 @@
             style="min-width: {stripMinW}px"
           >
             <div
-              class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 hover:bg-surface-hover"
+              class="group-rail shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[5px] hover:bg-surface-hover"
               class:bg-surface={!groupLit}
               class:ui-selected={groupLit}
               class:text-text={groupLit}
@@ -2936,10 +2937,10 @@
                  brush does not yank you out of drawing. A layer-owned track also lights its
                  owner via `isRowSelected`; a group track does not light a member. -->
               <button
-                class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[17px] text-left hover:bg-surface-hover {spec.selected
+                class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[14px] text-left hover:bg-surface-hover {spec.selected
                   ? 'text-text-secondary'
                   : 'text-text-muted/80'}"
-                class:pl-[35px]={spec.indent}
+                class:pl-[32px]={spec.indent}
                 class:group-rail={spec.groupId != null}
                 class:bg-surface={!spec.selected}
                 class:ui-selected={spec.selected}
@@ -2979,7 +2980,7 @@
                    12px against the layer rows' 13px: near enough to sit in the same optical column,
                    small enough that this row still reads as subordinate to the one above it. -->
                 <!-- `justify-start`, not `justify-center` like the layer rows' type slot: the glyph then
-                   starts exactly at this row's own padding edge (17px, or 35px under a grouped owner),
+                   starts exactly at this row's own padding edge (14px, or 32px under a grouped owner),
                    which puts it a half-step right of the OWNER's glyph — the relationship the indent is
                    for. Centring a 12px icon in a 14px slot put its ink 1px right of that, close enough
                    to read as a miss; starting it at the edge is exact and independent of the icon's
@@ -3130,9 +3131,9 @@
             style="min-width: {stripMinW}px"
           >
             <button
-              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-2 text-left hover:bg-surface-hover"
+              class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[5px] text-left hover:bg-surface-hover"
               class:group-rail={layer.groupId != null}
-              class:pl-[26px]={layer.groupId != null}
+              class:pl-[23px]={layer.groupId != null}
               class:bg-surface={!isRowSelected(layer.id)}
               class:ui-selected={isRowSelected(layer.id)}
               class:text-text={isRowSelected(layer.id)}
