@@ -6048,3 +6048,59 @@ layer-scoped and still say "select a layer first".
 - Tests: `canRemoveGroup` (3) and the panel's group branch (5) — 1305 total. Verified in desktop WebKit:
   the title, the delete, the undo, and a refusal that holds when the group carries the last drawing layer.
   **Owed:** an iPad tap.
+
+**Layer rows: the type slot is always filled, and the chevron sits 2px left (2026-09-12).** Asked as
+*"when chevron or icon are missing (drawing layer) there are large gaps there"* — the 15px slot that
+carries a group's chevron and a reference's Image/Film glyph was EMPTY on drawing layers, which are most
+rows, so the commonest row read as a hole between the grip and the name.
+- **A quiet square fills it**, `text-muted/60` at 13px (the reference glyphs' size, so the column has one
+  weight), and it earns its ink: FILLED when the layer has something on the frame at the playhead, an
+  empty outline when that frame is blank. Filled-vs-outline rather than solid-vs-dashed, and 13 rather
+  than 12, after a first pass was reported as "smaller than icons of other layers" with the two states
+  "barely visible" apart. `fill="currentColor"` overrides lucide's own `fill="none"` (the component
+  spreads caller props after its defaults), so one glyph covers both states. The question and the cache are
+  the timeline's own (`resolvedDisplayKeyCell` + `isCellEmpty`, per-canvas revision), so the panel and the
+  strip cannot disagree about what is empty.
+- **Mirrored into the timeline gutter the same day** — see the entry below; the first pass left the
+  gutter's slot blank on the theory that its ◆/◇ strip already says this per frame, which the sticky
+  gutter disproves. (The 2026-08-18 rule that both surfaces reserve the slot is unchanged — this is
+  about what fills it.)
+- **The chevron moved 2px left** (`-ml-0.5 mr-0.5`), reported as "a pixel or 2 on the left side of the
+  group's chevron more that we could cut off". Measured: the glyph carries ~3.75px of its own padding, so
+  its ink sat ~12px from the grip's dots and ~8px from the name. The box shifts left and gives the 2px
+  back on its right, so the ink balances and the NAME does not move — group and layer names stay on one
+  column (measured after: names 46/65, chevron slot 25, type slots 27).
+- Verified in desktop WebKit: chevron / solid square / dashed square / image on the four row kinds, with
+  the name x unchanged. **Owed:** an iPad look.
+
+
+**The gutter's drawing layers get the square too (2026-09-12).** Asked as *"timeline gutter. should we
+copy drawing layer icons over there as well?"* — yes, and it reverses the ruling made an hour earlier in
+the entry above.
+- **Why the first ruling was wrong:** it argued the row's own ◆/◇ strip already answers "is this frame
+  blank?", so a second mark would compete. But the gutter is STICKY and the strip scrolls horizontally —
+  scrolled away from the playhead's column, the row's own answer is off screen, which is exactly when the
+  question is asked. One glyph, one meaning, on both surfaces.
+- Same shape and rule as the panel: filled = ink on the frame at the playhead, outline = blank, 13px
+  beside the Film/Image glyphs, `text-muted/60` so it stays quieter than they are. The reference rows,
+  the property rows' own glyph and every name position are untouched — the slot was already reserved.
+- **Playhead-dependent, unlike the row's strip** (cached against `version`), so it re-reads while
+  scrubbing: one cached `isCellEmpty` per VISIBLE row, against the per-frame walk `computeTimelineGlyphs`
+  already does for the same row. Asked once per row (`{@const}`) and shared by the icon and its title.
+
+**Track rows indent from their OWNER (2026-09-12).** Reported as *"the indentation of animation
+(opacity/transform) rows of drawing layers. in the root these have indent but when grouped then not"*.
+- **Root cause: a field computed and never read.** `TrackRowSpec.indent` is set for every track row
+  (true when the owner is a group member, false for a group's own track) and nothing consumed it — the
+  row hardcoded `pl-[26px]`. So a ROOT layer's tracks only looked indented because their owner sits at
+  8px; a GROUPED layer's tracks matched their owner exactly (26 vs 26), and a group's OWN tracks landed
+  on 26 — the member-layer indent, i.e. the collision `indent`'s own comment says the design avoids. One
+  hardcoded number produced both faults; the field's comment had described the intended rule all along.
+- **Fix:** the row reads it — `pl-[17px]`, `pl-[35px]` when `indent`. Owner + a 9px HALF-step, never a
+  full level: a property is an attribute of the row above, not a nesting depth. Measured after: group
+  header 8 / its tracks 17, grouped layer 26 / its tracks 35, root layer 8 / its tracks 17 — no track on
+  8 or 26, so none can be mistaken for a layer row.
+- The field's comment carried stale numbers (12/24, tracks at 18/30) from before the gutter's 2026-09-09
+  padding change, and the glyph comment still claimed the row's icon aligns with the GROUP LABEL's left
+  edge — which is only what a hardcoded 26 made it mean. Both now state today's geometry.
+- Verified in desktop WebKit by measuring every row kind's padding and name x. **Owed:** an iPad look.
