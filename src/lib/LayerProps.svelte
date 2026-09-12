@@ -419,7 +419,7 @@
      Each target is its own `{#key}`: a slider must UNMOUNT when the selection moves on, because its
      settle-on-unmount action is the backstop that closes an open opacity undo bracket. -->
 <div
-  class="flex min-h-8 flex-wrap items-center gap-1 border-b border-border pl-2 pr-1 py-1 text-text-secondary"
+  class="flex min-h-8 flex-wrap items-center gap-1 border-b border-border pl-2 pr-[5px] py-1 text-text-secondary"
 >
   {#if wt.kind === "audio"}
     <span class="text-xs text-text-muted">Audio — edit it in the timeline</span>

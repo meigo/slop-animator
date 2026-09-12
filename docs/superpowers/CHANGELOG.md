@@ -6256,3 +6256,43 @@ landscape: *"ipad rounds bottom corners and crops some texts on the status bar"*
   space this text needs — there is nothing to read.
 - **Owed:** the iPad pass that reported it. 20px is sized from the screenshot's geometry, not measured
   on the device; if it reads too airy, 16px still clears a 24px radius.
+
+**The status bar says "frame", and the counter stops reserving width (2026-09-12).** Asked as *"is
+there any reason that the 'f' is in fixed position separated from the numbers and having large gap when
+current frame number is small?"* and *"as there is mostly plenty of room there, can we write it out
+fully — frame instead of f"*.
+- **The gap was a reservation doing less than it looked.** `frameDigits`ch of `min-width` on an
+  `inline-block text-right` box around the frame number (added 2026-08-11 against a 9 → 10 reflow) is
+  22.7px on a 100-frame project, so frame 9 right-aligned its 7.6px digit inside it and left a ~15px
+  hole after the label. What the reservation bought: this readout is the LAST flex item in a
+  `justify-between` row, so its RIGHT edge is pinned and `/N · tool · layer` never moves whatever the
+  number does — measured across frames 1/9/10/99/100, tail fixed at ~1028 and right edge at 1160. Only
+  the label and number shift, by one digit (7.6px), and only AT a digit boundary: left edge 985.1 for
+  frames 1–9, 977.5 for 10–99, 970 at 100. The left edge is not stable anyway — switching tool or layer
+  changes this string's width on every press.
+- **`tabular-nums` stays** and is the whole stabiliser now: it equalizes digit WIDTH, so scrubbing
+  within a digit count moves nothing at all. That half of the 2026-08-11 pair was always the load-
+  bearing one; only the reserved-width half is superseded.
+- **"f" → "frame".** The abbreviation existed to keep the line short; there is room for the word at
+  every width this bar is used at.
+- A measurement trap worth remembering: probing this by setting `style.minWidth = ""` to "restore" the
+  reserved case WIPES the inline style Svelte wrote, and Svelte will not re-add it until the value
+  changes — so both passes measure the unreserved layout and the reservation looks inert. Read
+  `getComputedStyle` before trusting a toggle like that.
+
+**The layer panel's right-hand icons share one edge (2026-09-12).** Asked as *"it feels that right side
+padding of layers is smaller than for example in the gutter (eye icons). It would be actually cool if
+right sides of all icons in the layer panel would align — bin, pen, eye icons"*. Both halves were real.
+- **Equal padding was the cause, not the cure.** All three containers already ended their BOX at 1176
+  (4px inside a panel ending at 1180) — the icons disagreed because their boxes hold different amounts
+  of air: the header's 16px bin in a 28px `size-7` button (6px a side) landed at 1170, the strip's 13px
+  pencil in a 20px `size-5` box (3.5px) at 1172.5, and a row's 15px eye in the same 20px box (2.5px) at
+  1173.5. The eye's 6.5px was also the tightest gap in the app's right edge, which is what read as less
+  padding than the gutter's eye (9px from its label edge).
+- **Fix: right padding is now per-container and deliberately unequal** — `8.5px − the box's own air`.
+  Header `p-1` → `py-1 pl-1 pr-[2.5px]`, properties strip `pr-1` → `pr-[5px]`, layer rows and group
+  header rows `pr-1` → `pr-[6px]`. Measured after: bin, pencil and every row's eye all at 1171.5, i.e.
+  8.5px from the panel edge — between the old 6.5 and 10, so the panel also breathes slightly more.
+- The header is written as three padding utilities rather than `p-1` plus a `pr-*` override: two
+  padding utilities on one element leave the winner to stylesheet order rather than to the reader.
+- The TIMELINE gutter was not touched — its icons sit against a column boundary, not the window edge.

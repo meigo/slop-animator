@@ -245,7 +245,9 @@
          — so every row's toggles line up whatever its nesting or kind. The per-layer CONTROLS moved to
          the properties strip above the list (LayerProps) on 2026-09-11, so a row never grows when
          selected and the one under the Pencil never moves. -->
-    <div class="flex items-center gap-1 py-1 pr-1 pl-2">
+    <!-- `pr-[6px]`: 8.5 − 2.5px of air around the 15px eye in its `size-5` box, so the eye's right
+         edge matches the header's bin and the strip's pencil (see the header's note). -->
+    <div class="flex items-center gap-1 py-1 pr-[6px] pl-2">
       <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
         ><GripVertical size={14} /></span
       >
@@ -395,7 +397,15 @@
        hit area, because the 4px only changed owner. The HEADER keeps its own `p-1`, and the
        properties strip its `pl-2`: both are direct children, and padding the panel ROOT instead would
        inset the header's bottom border and leave it short of the left edge. -->
-  <div class="flex items-center gap-1 p-1 border-b border-border">
+  <!-- Right padding is per-container and deliberately UNEQUAL (2026-09-12): the three right-hand
+       icons of this panel — the header's bin, the properties strip's pencil, a row's eye — sit in
+       boxes of different sizes, so equal padding put their optical edges 3.5px apart (bin 1170,
+       pencil 1172.5, eye 1173.5 in a panel ending at 1180). Each padding is `8.5px − the box's own
+       air`, which lands all three icon edges on 8.5px from the panel edge: this 28px button holds a
+       16px icon (6px of air) so it takes 2.5px. Written as `py-1 pl-1 pr-[2.5px]` rather than `p-1`
+       plus an override, since two padding utilities on one element leave the winner to stylesheet
+       order rather than to the reader. -->
+  <div class="flex items-center gap-1 py-1 pl-1 pr-[2.5px] border-b border-border">
     <!-- `min-w-0 truncate` + flex-1 (basis 0): the title only takes LEFTOVER space, so on a narrow panel it
          gives way before the buttons shrink; they stay full 28px targets at the default width. -->
     <span class="min-w-0 flex-1 truncate px-1 text-xs font-semibold text-text-secondary"
@@ -468,7 +478,7 @@
                member row's hover erased the line under it. -->
           <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
             <div
-              class="group-rail flex items-center gap-1 py-1 pr-1 pl-2 hover:bg-surface-hover"
+              class="group-rail flex items-center gap-1 py-1 pr-[6px] pl-2 hover:bg-surface-hover"
               class:ui-selected={groupLit}
               role="presentation"
             >
