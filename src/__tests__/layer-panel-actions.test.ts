@@ -132,3 +132,65 @@ describe("layerPanelActions — non-layer working row", () => {
     expect(r.remove.enabled).toBe(false);
   });
 });
+
+describe("layerPanelActions — selected group", () => {
+  const g = group;
+
+  it("Delete acts on the group and names how many layers go with it", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1), draw(2, { groupId: 7 }), draw(3, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.groupId).toBe(7);
+    expect(a.remove).toEqual({ enabled: true, title: "Delete group and its 2 layers" });
+  });
+
+  it("says 1 layer in the singular, and nothing at all for an empty group", () => {
+    const one = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1), draw(2, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(one.remove.title).toBe("Delete group and its 1 layer");
+    const empty = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1)],
+      groups: [g(7)],
+    });
+    expect(empty.remove).toEqual({ enabled: true, title: "Delete group" });
+  });
+
+  it("refuses when it would take the project's last drawing layer", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [ref(1), draw(2, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.remove).toEqual({
+      enabled: false,
+      title: "Delete group — a project needs at least one drawing layer",
+    });
+  });
+
+  it("a group-owned track deletes the group too, and the other actions still want a layer", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "track", owner: "group", id: 7, prop: "transform" },
+      layers: [draw(1), draw(2, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.groupId).toBe(7);
+    expect(a.remove.enabled).toBe(true);
+    expect(a.layerId).toBeNull();
+    expect(a.duplicate.enabled).toBe(false);
+    expect(a.merge.enabled).toBe(false);
+    expect(a.group.enabled).toBe(false);
+    expect(a.duplicate.title).toMatch(/select a layer first/);
+  });
+
+  it("audio still has no target at all", () => {
+    const a = layerPanelActions({ activeRow: { kind: "audio" }, layers: [draw(1)], groups: [] });
+    expect(a.groupId).toBeNull();
+    expect(a.remove).toEqual({ enabled: false, title: "Delete layer — select a layer first" });
+  });
+});

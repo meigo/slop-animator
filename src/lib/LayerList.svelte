@@ -24,6 +24,7 @@
     bump,
     addLayerToProject,
     removeLayer,
+    removeGroup,
     duplicateLayer,
     mergeDown,
     renameLayer,
@@ -408,7 +409,9 @@
       title={panel.remove.title}
       aria-disabled={!panel.remove.enabled}
       onclick={() => {
-        if (panel.remove.enabled && panel.layerId != null) removeLayer(panel.layerId);
+        if (!panel.remove.enabled) return;
+        if (panel.groupId != null) removeGroup(panel.groupId);
+        else if (panel.layerId != null) removeLayer(panel.layerId);
       }}><Trash2 size={16} /></button
     >
   </div>

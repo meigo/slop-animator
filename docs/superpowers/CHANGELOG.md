@@ -6028,3 +6028,23 @@ BUTTONS (26px at 224px, 16px at 170px) because the "Layers" title never gave way
 read "Lay…" at the DEFAULT width, caught in a screenshot, not in the numbers. Measured now: 224px → title
 53/53px (fits), all five buttons 28px; at the real minimum (`MIN_PANEL_WIDTH` 184) the buttons stay 28px
 and the title truncates.
+
+**Delete a group with its layers (2026-09-12).** Asked as *"group, with all the child layers, could also
+be deletable"*. The panel header's Delete was dead on a group row (every header action asked for a
+LAYER); it now answers a group — and only Delete does, since Duplicate / Merge down / New group are
+layer-scoped and still say "select a layer first".
+- **The rule** is `canRemoveLayer`'s at group scale, as `canRemoveGroup(layers, groups, groupId)`: the
+  group exists, and deleting it with everything inside leaves at least one drawing layer. It takes the
+  GROUPS as well as the layers — like `whyNotMergeDown` — because an empty group (removable) and an id
+  no group carries (not) are indistinguishable from the layers alone; a first pass without them made its
+  own test fail, which is what that argument buys.
+- **Titles** name the cost before the press: "Delete group and its 2 layers" / "… its 1 layer" / "Delete
+  group" (empty) / "Delete group — a project needs at least one drawing layer" when refused.
+- **`removeGroup`** mirrors `removeLayer`'s guards at group scale: discard a live lift first (it would
+  otherwise bank into a removed canvas), pause any video reference inside, drop the members and the
+  group in ONE `commitStructural`, and fall the selection back to the first remaining drawing layer.
+- **No confirmation**, matching Delete layer: one ⌘Z brings the group and every layer back. Undo restores
+  the DOCUMENT, not the selected row — it lands on the fallback layer, exactly as after deleting a layer.
+- Tests: `canRemoveGroup` (3) and the panel's group branch (5) — 1305 total. Verified in desktop WebKit:
+  the title, the delete, the undo, and a refusal that holds when the group carries the last drawing layer.
+  **Owed:** an iPad tap.

@@ -3,6 +3,7 @@ import {
   createCellCanvas,
   cloneCanvas,
   isDrawingLayer,
+  canRemoveGroup,
   canRemoveLayer,
   rasterizeKeyframePlan,
   refVisibleSpan,
@@ -753,6 +754,26 @@ export function removeLayer(id: number) {
     if (removed.kind === "ref" && removed.media.type === "video") removed.media.el.pause();
     if (state.activeLayerId === id) {
       const firstDrawing = layers.find(isDrawingLayer);
+      if (firstDrawing) setActiveLayer(firstDrawing.id);
+    }
+  });
+}
+
+/** Delete a group AND every layer in it, as one undo entry. Same guards as `removeLayer`, at group
+ *  scale: a live lift is discarded first (it would otherwise bank into a removed canvas), any video
+ *  reference inside is paused, and the selection falls back to the first remaining drawing layer. */
+export function removeGroup(groupId: number) {
+  const g = state.project.groups.find((x) => x.id === groupId);
+  if (!g) return;
+  if (!canRemoveGroup(state.project.layers, state.project.groups, groupId)) return; // would take the last drawing layer
+  liftGuard.discard?.();
+  commitStructural(() => {
+    const doomed = state.project.layers.filter((l) => l.groupId === groupId);
+    for (const l of doomed) if (l.kind === "ref" && l.media.type === "video") l.media.el.pause();
+    state.project.layers = state.project.layers.filter((l) => l.groupId !== groupId);
+    state.project.groups = state.project.groups.filter((x) => x.id !== groupId);
+    if (doomed.some((l) => l.id === state.activeLayerId)) {
+      const firstDrawing = state.project.layers.find(isDrawingLayer);
       if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
   });
