@@ -6224,3 +6224,17 @@ chevron"*. It was, by 3px.
   paint at the BORDER box, which padding does not move (the reason this indent lives on the row rather
   than on `.group-members`).
 - The TIMELINE gutter is a separate derivation (no grips there) and was not touched.
+
+**Reference-span labels sit on their clip's centre line (2026-09-12).** Reported as *"check the labels
+on reference spans, could be vertically centered"*. They were low — measurably so.
+- **Cause: a line box taller than the block it sits in.** Both labels were `block` elements in flow, so
+  their line box started at the content top. The video clip inherits `text-xs/6` (a 24px line) into a
+  box that is 20px with a 1px border, i.e. 18px of content; the image span inherits `text-xs/5` (20px)
+  into the same 18px. In flow that put the text's centre 3px below the clip's (626 against 623) on a
+  video and 1px below on an image, with the surplus clipped off the BOTTOM only.
+- **Fix: centre it instead of relying on leading.** Both boxes gain `flex items-center`, and both labels
+  become `min-w-0 flex-1` rather than `block` — `min-w-0` is what keeps `truncate` working on a flex
+  child. `items-center` splits the overflow evenly, so what is clipped is symmetric and well clear of
+  the 12px glyphs. Measured after: label centre 623 on both, equal to the box centre.
+- The absolutely-positioned trim grips are out of flow, so flex layout leaves them where they were, and
+  `px-2.5` still keeps a long name from sliding under one.
