@@ -2454,7 +2454,13 @@
   <!-- `overscroll-contain`: reaching either end must not hand the scroll to an ancestor. Chaining is
        what lets iOS decide the gesture belongs to the page and fire `pointercancel` at us mid-pan,
        which both aborts the custom pan and (correctly) suppresses its fling. -->
-  <!-- `-mx-2` cancels the root's `p-2` horizontally so the scrollport spans the panel edge to edge.
+  <!-- Cancels the root's `p-2` horizontally so the scrollport spans the panel edge to edge — all but
+       ONE pixel on the left (`-ml-[7px]`, 2026-09-12): flush at x=0 the rail and a selected row's accent
+       bar butt against the window's own edge and read as painted ON it ("shift indicator lines to the
+       right 1px in that case to be beside it"). 1px also matches the layer panel, whose lines sit at 1
+       behind its `border-l`. The inset is on the SCROLLER, not on the rows: everything inside — gutter,
+       strip, ruler, and the absolutely-positioned playhead/range/guide lines — moves together, where
+       nudging the rail alone would have drifted the cells 1px out of step with the ruler.
        Without it the gutter began 8px in while the strip was CLIPPED flush on the right — a margin on
        one side only — and a selected row's accent bar and background both started at that 8px, so a
        row looked inset from a panel it actually fills. The 8px is handed back to the gutter's LABELS
@@ -2462,7 +2468,7 @@
        stays at the screen position it had; what moved is the row BACKGROUND, which now reaches 0, and
        the frame strip, which gains the reclaimed 8px at each end. -->
   <div
-    class="timeline-grid relative -mx-2 flex-1 min-h-0 overflow-auto overscroll-contain"
+    class="timeline-grid relative -mr-2 ml-[-7px] flex-1 min-h-0 overflow-auto overscroll-contain"
     bind:this={gridWrapper}
     onscroll={(e) => (gridScrollLeft = e.currentTarget.scrollLeft)}
   >
