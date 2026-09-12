@@ -1,7 +1,6 @@
 import type { ActiveRow } from "./active-row";
 import {
   groupHasLockedLayer,
-  groupOf,
   isLayerLocked,
   isLayerVisible,
   layerAcceptsPropertyTracks,
@@ -125,21 +124,17 @@ export function animationBar(args: {
     });
   }
 
-  const g = groupOf(layer, groups);
-  if (g && !g.tracks?.transform) {
-    items.push({
-      action: "animate-group",
-      groupId: g.id,
-      blocked: groupAnimateBlocked(g, layers),
-    });
-  }
-  if (g && !g.tracks?.opacity) {
-    items.push({
-      action: "animate-group-opacity",
-      groupId: g.id,
-      blocked: groupAnimateBlocked(g, layers),
-    });
-  }
-
+  // NO fall-through to the layer's GROUP: a member row offers the layer's own actions only, and a
+  // fully animated member row goes empty rather than offering its group's. Until group headers were
+  // selectable a member row was the only route to Animate group — the 2026-08-18 spec lists
+  // "Selecting the group header" as a non-goal and says the control "hangs off a member layer" —
+  // but the group branch above serves the group's own row now, so the route survives one tap away.
+  // Two reasons it had to go once that existed. (1) Since the Transform tool's scope became
+  // row-derived (2026-09-11) `transformScopeOf` reads "layer" on a member row, so the canvas drag,
+  // the gizmo and `animateTargetGroup` all decline to touch the group there; this bar was the last
+  // control still acting on a row the user had not selected. (2) It rendered FOUR buttons of which
+  // two were the same glyph (layer and group opacity are both `Blend`), separated only by `title` —
+  // and on iPad a tap IS the activation, so the title cannot be read first. `animateTargetGroup`
+  // had already refused a duplicated double-set for exactly that reason on a ref member.
   return items.length === 0 ? { kind: "empty" } : { kind: "start", items };
 }

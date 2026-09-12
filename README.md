@@ -32,8 +32,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - A layer's **opacity can be animated** too: key it at any frame for a fade, or set a segment to
   hold for a hard cut
 - A **group** can be faded as one thing as well — member opacity × group opacity. The **Group**
-  slider sits on the group header in the layer panel (even when collapsed); Animate from a
-  selected member on the timeline bar, same as Animate group transform
+  slider sits on the group header in the layer panel (even when collapsed); Animate from the
+  group's own row on the timeline bar, same as Animate group transform
 - Animate, add-key (current frame), easing, step, delete-key and stop live on the
   timeline bar and follow the selected row. Drawing frame tools hide while a
   property row is selected, so the two keying strips are never on screen together
@@ -101,7 +101,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1288); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1308); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

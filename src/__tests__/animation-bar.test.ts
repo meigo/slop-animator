@@ -69,59 +69,44 @@ describe("animationBar — start", () => {
     expect(bar).toEqual({ kind: "empty" });
   });
 
-  it("offers Animate group only when the layer is in a group that is not yet animated", () => {
-    const g = group(10);
-    const bar = args({
-      layers: [draw(1, { groupId: 10 })],
-      groups: [g],
-    });
-    expect(bar.kind).toBe("start");
-    if (bar.kind !== "start") return;
-    expect(bar.items.map((i) => i.action)).toEqual([
-      "animate-transform",
-      "animate-opacity",
-      "animate-group",
-      "animate-group-opacity",
-    ]);
-  });
-
-  it("omits Animate group when the group already has a track", () => {
-    const bar = args({
-      layers: [draw(1, { groupId: 10 })],
-      groups: [
-        group(10, {
-          tracks: {
-            transform: {
-              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
-              box: null,
-            },
-          },
-        }),
-      ],
-    });
-    expect(bar.kind).toBe("start");
-    if (bar.kind !== "start") return;
-    expect(bar.items.map((i) => i.action)).not.toContain("animate-group");
-  });
-
-  it("offers Animate group opacity when the member's group has no opacity track", () => {
+  it("a member row offers only the layer's own actions — the group has its own row", () => {
     const bar = args({
       layers: [draw(1, { groupId: 10 })],
       groups: [group(10)],
     });
     expect(bar.kind).toBe("start");
     if (bar.kind !== "start") return;
-    expect(bar.items.map((i) => i.action)).toContain("animate-group-opacity");
+    expect(bar.items.map((i) => i.action)).toEqual(["animate-transform", "animate-opacity"]);
   });
 
-  it("omits Animate group opacity once the group track exists", () => {
+  it("a member row whose group is still un-animated does not offer to animate it", () => {
     const bar = args({
       layers: [draw(1, { groupId: 10 })],
-      groups: [group(10, { tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } })],
+      groups: [group(10)],
     });
     expect(bar.kind).toBe("start");
     if (bar.kind !== "start") return;
+    expect(bar.items.map((i) => i.action)).not.toContain("animate-group");
     expect(bar.items.map((i) => i.action)).not.toContain("animate-group-opacity");
+  });
+
+  it("a fully animated member row is empty rather than falling through to its group", () => {
+    const bar = args({
+      layers: [
+        draw(1, {
+          groupId: 10,
+          tracks: {
+            transform: {
+              keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 } }],
+              box: null,
+            },
+            opacity: { keys: [{ frame: 0, v: 100 }] },
+          },
+        }),
+      ],
+      groups: [group(10)],
+    });
+    expect(bar).toEqual({ kind: "empty" });
   });
 
   it("dims transform/opacity when the layer is locked, and says locked not hidden", () => {
@@ -144,6 +129,7 @@ describe("animationBar — start", () => {
 
   it("dims Animate group when a member is locked", () => {
     const bar = args({
+      activeRow: { kind: "group", id: 10 },
       layers: [draw(1, { groupId: 10, locked: true })],
       groups: [group(10)],
     });
@@ -199,7 +185,7 @@ describe("animationBar — start", () => {
     expect(args({ layers: [ref] })).toEqual({ kind: "empty" });
   });
 
-  it("an image ref in a group still offers Animate group, not layer props", () => {
+  it("a ref in a group offers nothing — it is a guide, and the group animates from its own row", () => {
     const ref = {
       kind: "ref",
       id: 1,
@@ -213,10 +199,7 @@ describe("animationBar — start", () => {
       media: { type: "image", el: {} as HTMLImageElement },
       transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     } as Layer;
-    const bar = args({ layers: [ref], groups: [group(10)] });
-    expect(bar.kind).toBe("start");
-    if (bar.kind !== "start") return;
-    expect(bar.items.map((i) => i.action)).toEqual(["animate-group", "animate-group-opacity"]);
+    expect(args({ layers: [ref], groups: [group(10)] })).toEqual({ kind: "empty" });
   });
 });
 

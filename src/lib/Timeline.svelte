@@ -20,7 +20,6 @@
     EyeOff,
     Spline,
     Blend,
-    Group,
     CircleStop,
     Repeat,
   } from "@lucide/svelte";
@@ -2159,8 +2158,10 @@
       >
     {/if}
 
-    <!-- Animation tools: follow the selected row (layer → Animate icons; track → key tools + Stop).
-         Sit with the other per-row tools. Does not switch the tool. -->
+    <!-- Animation tools: follow the selected row, and act ONLY on it (layer row → that layer's
+         Animate icons; group row → the group's; track → key tools + Stop). A member row does not
+         offer its group's — select the group's row for those. Sit with the other per-row tools.
+         Does not switch the tool. -->
     {#if animBar.kind !== "empty"}
       <span class="mx-3 h-5 w-px bg-border"></span>
     {/if}
@@ -2196,10 +2197,15 @@
             else animateGroup(item.groupId);
           }}
         >
-          {#if item.action === "animate-transform"}<Spline size={16} />
-          {:else if item.action === "animate-opacity" || item.action === "animate-group-opacity"}
+          <!-- One glyph per PROPERTY, not per owner: `Spline` animates a transform and `Blend` an
+               opacity, whether the row is a layer's or a group's. They can no longer collide, because
+               the bar only ever shows one owner's actions (`animationBar` stopped falling through
+               from a member to its group) — and while both owners WERE on the bar at once, the two
+               opacity buttons were already the same `Blend` glyph, so a distinct group icon was
+               never what told them apart. The selected row says whose these are; `title` names it. -->
+          {#if item.action === "animate-opacity" || item.action === "animate-group-opacity"}
             <Blend size={16} />
-          {:else}<Group size={16} />{/if}
+          {:else}<Spline size={16} />{/if}
         </button>
       {/each}
     {:else if animBar.kind === "keys"}
