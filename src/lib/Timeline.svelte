@@ -8,6 +8,7 @@
     Trash2,
     Image,
     Film,
+    Square,
     ChevronsRight,
     ChevronsLeft,
     Layers,
@@ -107,6 +108,7 @@
     isLayerEditable,
     isLayerLocked,
     isLayerAnimated,
+    resolvedDisplayKeyCell,
     isGroupAnimated,
     isLayerVisible,
     countKeyframesPastLengthIn,
@@ -3103,6 +3105,13 @@
         {:else}
           {@const layer = row.layer}
           {@const animated = isLayerAnimated(layer)}
+          <!-- The type slot's square (below) and its title ask this ONCE. Playhead-dependent, unlike
+               the row's ◆/◇ strip (cached against `version`), so it re-reads while scrubbing — one
+               cached `isCellEmpty` per visible row, against the per-frame walk `computeTimelineGlyphs`
+               already does for the same row. -->
+          {@const inkCell =
+            layer.kind === "draw" ? resolvedDisplayKeyCell(layer, appState.playhead) : null}
+          {@const inked = !!inkCell && !isCellEmpty(inkCell.cell.canvas, appState.version)}
           <div
             class="flex w-max items-center border-b border-border"
             style="min-width: {stripMinW}px"
@@ -3137,12 +3146,20 @@
                  `pl-1`, since the scroller went full-bleed (`-mx-2`) and handed its 8px to the labels.
                  The marker column is a separate sticky element pinned
                  at LABEL_W, so it stays aligned regardless. -->
+              <!-- A DRAWING layer fills the slot too, as in the layer panel (2026-09-12): a filled square
+                   means ink on this frame, an outline means blank. The gutter is sticky while the cells
+                   scroll, so it answers "is this layer empty here?" when the playhead's own column is off
+                   screen. Muted, so it stays quieter than the reference glyphs beside it. -->
               <span
-                class="flex w-3.5 shrink-0 justify-center"
+                class={`flex w-3.5 shrink-0 justify-center ${
+                  layer.kind === "draw" ? "text-text-muted/60" : ""
+                }`}
                 role="presentation"
                 title={layer.kind === "ref"
                   ? "Reference layer — a guide only, not included in exports"
-                  : ""}
+                  : inked
+                    ? "Drawing layer — ink on this frame"
+                    : "Drawing layer — blank on this frame"}
               >
                 {#if layer.kind === "ref"}
                   {#if layer.media.type === "video" || (layer.media.type === "missing" && layer.media.was === "video")}
@@ -3150,6 +3167,10 @@
                   {:else}
                     <Image size={13} />
                   {/if}
+                {:else if inked}
+                  <Square size={13} fill="currentColor" />
+                {:else}
+                  <Square size={13} />
                 {/if}
               </span>
               <!-- min-w-0: a flex child will not shrink below its content without it, so `truncate`

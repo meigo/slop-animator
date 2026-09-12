@@ -6061,10 +6061,10 @@ rows, so the commonest row read as a hole between the grip and the name.
   spreads caller props after its defaults), so one glyph covers both states. The question and the cache are
   the timeline's own (`resolvedDisplayKeyCell` + `isCellEmpty`, per-canvas revision), so the panel and the
   strip cannot disagree about what is empty.
-- **Not mirrored into the timeline gutter**, and deliberately: a row there is followed by its own strip of
-  ◆/◇ saying the same thing per frame, so a second ink mark beside them would compete. The gutter's slot
-  stays blank for drawing layers. (The 2026-08-18 rule that both surfaces reserve the slot is unchanged —
-  this is about what fills it.)
+- **Mirrored into the timeline gutter the same day** — see the entry below; the first pass left the
+  gutter's slot blank on the theory that its ◆/◇ strip already says this per frame, which the sticky
+  gutter disproves. (The 2026-08-18 rule that both surfaces reserve the slot is unchanged — this is
+  about what fills it.)
 - **The chevron moved 2px left** (`-ml-0.5 mr-0.5`), reported as "a pixel or 2 on the left side of the
   group's chevron more that we could cut off". Measured: the glyph carries ~3.75px of its own padding, so
   its ink sat ~12px from the grip's dots and ~8px from the name. The box shifts left and gives the 2px
@@ -6072,3 +6072,18 @@ rows, so the commonest row read as a hole between the grip and the name.
   column (measured after: names 46/65, chevron slot 25, type slots 27).
 - Verified in desktop WebKit: chevron / solid square / dashed square / image on the four row kinds, with
   the name x unchanged. **Owed:** an iPad look.
+
+
+**The gutter's drawing layers get the square too (2026-09-12).** Asked as *"timeline gutter. should we
+copy drawing layer icons over there as well?"* — yes, and it reverses the ruling made an hour earlier in
+the entry above.
+- **Why the first ruling was wrong:** it argued the row's own ◆/◇ strip already answers "is this frame
+  blank?", so a second mark would compete. But the gutter is STICKY and the strip scrolls horizontally —
+  scrolled away from the playhead's column, the row's own answer is off screen, which is exactly when the
+  question is asked. One glyph, one meaning, on both surfaces.
+- Same shape and rule as the panel: filled = ink on the frame at the playhead, outline = blank, 13px
+  beside the Film/Image glyphs, `text-muted/60` so it stays quieter than they are. The reference rows,
+  the property rows' own glyph and every name position are untouched — the slot was already reserved.
+- **Playhead-dependent, unlike the row's strip** (cached against `version`), so it re-reads while
+  scrubbing: one cached `isCellEmpty` per VISIBLE row, against the per-frame walk `computeTimelineGlyphs`
+  already does for the same row. Asked once per row (`{@const}`) and shared by the icon and its title.
