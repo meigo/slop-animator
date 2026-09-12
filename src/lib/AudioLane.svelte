@@ -326,10 +326,13 @@
 
 {#if state.project.audio}
   <div class="flex w-max items-center border-b border-border" style="min-width: {minWidth}px">
-    <!-- `pl-2`, matching the layer rows: the timeline scroller is full-bleed, so the 8px that used to
-         come from its `p-2` lives on the gutter labels now. -->
+    <!-- `pl-[5px]`, matching the layer rows: the gutter's base padding is one pixel over the 4px gap
+         BETWEEN its items, so a glyph sits with near-equal air either side (2026-09-12 — at 8px every
+         glyph had 4px more room on its left, reported on the group chevron; 4px equalised it exactly and
+         5px is the pixel asked back). Keep this in step with Timeline's own labels or this row's name
+         falls out of the column. -->
     <div
-      class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 pr-1 pl-2 cursor-pointer"
+      class="shrink-0 sticky left-0 z-20 flex items-center gap-1 h-7 pr-1 pl-[5px] cursor-pointer"
       class:bg-surface={!isAudioRowSelected()}
       class:text-text-secondary={!isAudioRowSelected()}
       class:ui-selected={isAudioRowSelected()}
