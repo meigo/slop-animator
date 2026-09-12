@@ -363,6 +363,18 @@ export function canRemoveLayer(layers: Layer[], id: number): boolean {
   return layers.filter(isDrawingLayer).length > 1;
 }
 
+/** Whether `removeGroup` will act: the group exists, and deleting it with every layer inside would
+ *  leave the project at least one drawing layer — `canRemoveLayer`'s rule at group scale. An EMPTY
+ *  group is always removable; a group of references is too, for the same reason a reference is. */
+export function canRemoveGroup(layers: Layer[], groups: LayerGroup[], groupId: number): boolean {
+  // Takes the groups as well as the layers — like `whyNotMergeDown` — so "does this group exist?"
+  // is a real question here rather than one the caller has to ask first: an EMPTY group is
+  // removable, an id nothing names is not, and the layers alone cannot tell those apart.
+  if (!groups.some((g) => g.id === groupId)) return false;
+  const drawing = layers.filter(isDrawingLayer);
+  return drawing.filter((l) => l.groupId !== groupId).length >= 1;
+}
+
 /** Whether `duplicateLayer` will act — it clones pixels, so only drawing layers duplicate. */
 export function canDuplicateLayer(layers: Layer[], id: number): boolean {
   const layer = layers.find((l) => l.id === id);

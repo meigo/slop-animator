@@ -1,6 +1,7 @@
-import { targetLayerId, type ActiveRow } from "./active-row";
+import { targetLayerId, workingTarget, type ActiveRow } from "./active-row";
 import {
   canDuplicateLayer,
+  canRemoveGroup,
   canRemoveLayer,
   whyNotMergeDown,
   type Layer,
@@ -13,6 +14,9 @@ export type PanelButton = { enabled: boolean; title: string };
 export interface LayerPanelActions {
   /** Layer the header would act on, or null when the working row is not a layer. */
   layerId: number | null;
+  /** Group the header's Delete would act on, or null when the working row is not a group. Delete is
+   *  the ONLY header action a group answers: Duplicate/Merge/New group are layer-scoped. */
+  groupId: number | null;
   duplicate: PanelButton;
   merge: PanelButton;
   group: PanelButton;
@@ -39,12 +43,32 @@ export function layerPanelActions(args: {
   const layerId = targetLayerId(args.activeRow);
 
   if (layerId == null) {
+    // A GROUP row (or a group-owned track) answers Delete — the group and every layer in it — while
+    // the layer-scoped actions still ask for a layer. Audio answers nothing.
+    const wt = workingTarget(args.activeRow);
+    const groupId = wt.kind === "group" && args.groups.some((g) => g.id === wt.id) ? wt.id : null;
+    const members = groupId == null ? 0 : args.layers.filter((l) => l.groupId === groupId).length;
+    const canDelGroup = groupId != null && canRemoveGroup(args.layers, args.groups, groupId);
     return {
       layerId: null,
+      groupId,
       duplicate: { enabled: false, title: `Duplicate layer — ${SELECT_LAYER}` },
       merge: { enabled: false, title: `Merge down — ${SELECT_LAYER}` },
       group: { enabled: false, title: `New group — ${SELECT_LAYER}` },
-      remove: { enabled: false, title: `Delete layer — ${SELECT_LAYER}` },
+      remove:
+        groupId == null
+          ? { enabled: false, title: `Delete layer — ${SELECT_LAYER}` }
+          : canDelGroup
+            ? {
+                enabled: true,
+                title: members
+                  ? `Delete group and its ${members} layer${members === 1 ? "" : "s"}`
+                  : "Delete group",
+              }
+            : {
+                enabled: false,
+                title: "Delete group — a project needs at least one drawing layer",
+              },
     };
   }
 
@@ -54,6 +78,7 @@ export function layerPanelActions(args: {
 
   return {
     layerId,
+    groupId: null,
     duplicate: {
       enabled: canDup,
       title: canDup ? "Duplicate layer" : "Duplicate layer — only drawing layers duplicate",

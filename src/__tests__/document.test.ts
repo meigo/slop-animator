@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  canRemoveGroup,
   groupHasLockedLayer,
   canRemoveLayer,
   rasterizeKeyframePlan,
@@ -1214,5 +1215,25 @@ describe("whyNotEditable names the group when the group is the blocker", () => {
 
   it("still returns null for an editable layer in a healthy group", () => {
     expect(whyNotEditable(layer(), [group()])).toBeNull();
+  });
+});
+
+describe("canRemoveGroup", () => {
+  const g = { id: 5, name: "G", collapsed: false, visible: true };
+  const dl = (id: number, groupId: number | null = null) =>
+    ({ ...createDrawingLayer(1, `L${id}`), id, groupId }) as Layer;
+
+  it("removes a group whose members are not the project's last drawing layers", () => {
+    expect(canRemoveGroup([dl(1), dl(2, 5), dl(3, 5)], [g], 5)).toBe(true);
+  });
+
+  it("refuses when every remaining layer would be a reference (or none)", () => {
+    expect(canRemoveGroup([dl(1, 5)], [g], 5)).toBe(false);
+    expect(canRemoveGroup([dl(1, 5), dl(2, 5)], [g], 5)).toBe(false);
+  });
+
+  it("an empty group is removable, and an id no group carries is not", () => {
+    expect(canRemoveGroup([dl(1)], [g], 5)).toBe(true);
+    expect(canRemoveGroup([dl(1)], [g], 99)).toBe(false);
   });
 });
