@@ -270,6 +270,20 @@ describe("mirrorTransformTrack", () => {
       expect(got.rotation).toBeCloseTo(want.rotation, 9);
     }
   });
+  it("mirrors VALUES on the v axis too, not just the h axis", () => {
+    // The h case above is value-checked; without this, hard-coding "h" inside mirrorTransformTrack
+    // passes the whole suite while every vertical flip of an animated layer is wrong.
+    const m = mirrorTransformTrack(track, c0, "v", 100);
+    for (const f of [0, 3, 7, 10]) {
+      const want = mirrorTransform(transformAt(layerOf(track), f), c0, "v", 100);
+      const got = transformAt(layerOf(m), f);
+      expect(got.dy).toBeCloseTo(want.dy, 9);
+      expect(got.scaleY).toBeCloseTo(want.scaleY, 9);
+      expect(got.rotation).toBeCloseTo(want.rotation, 9);
+      expect(got.dx).toBeCloseTo(transformAt(layerOf(track), f).dx, 9); // x untouched by a v mirror
+    }
+  });
+
   it("keeps frames, easing, sampling and box, and leaves the input untouched", () => {
     const before = JSON.stringify(track);
     const m = mirrorTransformTrack(track, c0, "v", 100);

@@ -106,3 +106,30 @@ describe("cornerScaleMatrix", () => {
     expect(m.d).toBeCloseTo(2, 12);
   });
 });
+
+describe("degenerate drags cannot kill the float", () => {
+  // A handle released exactly on its anchor gives a scale of 0: the matrix is singular and the next
+  // `invert()` yields NaN, so the float stops hit-testing — it cannot be grabbed again. The factor is
+  // floored the way the gizmo's own scale is (MIN_SCALE, sign kept).
+  it("a side dropped on the anchored edge floors instead of collapsing", () => {
+    const onAnchor = sideStretchMatrix("r", rect, { x: rect.x, y: 0 }); // r's anchor is the LEFT edge
+    expect(Math.abs(onAnchor.a)).toBeCloseTo(0.05, 12);
+    expect(Number.isFinite(onAnchor.e)).toBe(true);
+    const past = sideStretchMatrix("r", rect, { x: rect.x - 100, y: 0 });
+    expect(past.a).toBeLessThan(0); // still mirrors past the anchor
+    expect(Math.abs(past.a)).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it("a corner dropped on the anchored corner floors on both axes, proportional or free", () => {
+    for (const keep of [true, false]) {
+      const m = cornerScaleMatrix("br", rect, { x: rect.x, y: rect.y }, keep);
+      expect(Math.abs(m.a)).toBeCloseTo(0.05, 12);
+      expect(Math.abs(m.d)).toBeCloseTo(0.05, 12);
+    }
+  });
+
+  it("an ordinary drag is untouched by the floor", () => {
+    const m = sideStretchMatrix("r", rect, { x: 90, y: 0 });
+    expect(m.a).toBeCloseTo(2, 12);
+  });
+});

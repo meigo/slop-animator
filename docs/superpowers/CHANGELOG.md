@@ -6104,3 +6104,36 @@ the entry above.
   padding change, and the glyph comment still claimed the row's icon aligns with the GROUP LABEL's left
   edge — which is only what a hardcoded 26 made it mean. Both now state today's geometry.
 - Verified in desktop WebKit by measuring every row kind's padding and name x. **Owed:** an iPad look.
+
+**Code review of two days' work, and its follow-ups (2026-09-12).** Asked for after the run of changes
+below: *"i feel we should run a code review as much has been changed during a day or two"*. Four
+reviewers over 37 commits / 38 files (~3050 added, ~1774 removed), split by subsystem — transform model
+and maths, canvas + store, layer panel, timeline — each given the diff as a file, the intent, the
+gotchas that bind it, and what was ALREADY verified (so "needs an iPad pass" could not come back as a
+finding). **0 Critical, 0 Important. 10 Minor.** What they cleared is worth as much as what they found:
+the mirror closed form and compose order re-derived by hand, the legacy `{scale}` migration traced
+(including the older `t → v` key promotion running BEFORE it), the shared `transformDragGuard.settle`
+slot, and the gutter fixes checked against both scroll axes, few/many rows and the audio lane.
+- **Fixed — a selection could be made ungrabbable.** `cornerScaleMatrix`/`sideStretchMatrix` guarded the
+  DIVISOR but not the result, so a handle released exactly on its anchor gave a scale of 0 → a singular
+  matrix → `invert()` NaN in the hit test and the next drag's `mouseLocal`: the float stopped responding
+  for good. Both now floor through the gizmo's own `floorScale` (sign kept, so crossing the anchor still
+  mirrors). This supersedes the 2026-09-11 ruling that the selection needs no floor — that reasoning was
+  incomplete: the consequence is a DEAD float, not a thin one. Tests: the anchor case for a side and for
+  a corner (proportional and free), plus an ordinary drag proving the floor does not touch it.
+- **Fixed — a blind spot, not a bug:** `mirrorTransformTrack`'s `"v"` case asserted frames/easing/box but
+  never a VALUE, so hard-coding `"h"` inside it would have passed the whole suite while breaking every
+  vertical flip of an animated layer. Value assertions added; the implementation was already correct.
+- **Fixed — a fill blocked by a marquee blamed alpha lock** (the lock won the ternary outright). The
+  message now names whichever refused it, or both.
+- **Fixed — defence in depth:** neither flip action discarded a live lift (no reachable path found, but
+  every sibling structural action does it), and a docblock orphaned by `isGroupDetailShown`'s removal.
+- **Changed — Keep proportions is LATCHED at grab** in both transform drag paths, as the selection
+  already did: toggling mid-gesture no longer changes the drag in flight. Verified in WebKit: on → a
+  diagonal corner drag gives 1.25 × 1.25; off → 1.30 × 1.05.
+- **Left alone, with reasons:** `floorScale(-0)` picks the positive sign at exactly zero (a 5% sliver
+  either way, on one frame of a flip); `applyPreferences` writes `keepProportions` unguarded (deliberate —
+  absent means on). **Dropped as a misread:** `isCellEmpty`'s unused `_version` is documented two lines
+  above its signature — callers pass it so THEIR derived state re-runs; the cache keys on an ink stamp.
+- Also fixed while in the file: `selection.ts`'s header still described the sides as SKEWING, replaced
+  yesterday. A stale statement reads as live.

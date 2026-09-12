@@ -578,11 +578,17 @@
       // (only the DEFERRED closures above have to resolve by id).
       if (materialized) restoreTrackById(layerId, materialized.before);
       // Must not no-op in silence: this is pixel-identical to a fill that worked.
-      appState.statusHint = alphaLock
-        ? "Nothing filled — alpha lock only recolours existing pixels, or they are already this color"
-        : selection?.state === "selected"
-          ? "Nothing filled — that area is outside the selection, or already this color"
-          : "Nothing filled — that area is already this color";
+      // Name what actually refused it. Alpha lock used to win this ternary outright, so a marquee that
+      // clipped the whole region was reported as a lock problem — a different thing to go and undo.
+      const clipped = selection?.state === "selected";
+      appState.statusHint =
+        alphaLock && clipped
+          ? "Nothing filled — the selection clipped it, or alpha lock found no pixels there to recolour"
+          : alphaLock
+            ? "Nothing filled — alpha lock only recolours existing pixels, or they are already this color"
+            : clipped
+              ? "Nothing filled — that area is outside the selection, or already this color"
+              : "Nothing filled — that area is already this color";
       return;
     }
     history.push(
@@ -810,6 +816,9 @@
     // Did this gesture actually write a transform? Drives commit-vs-drop when we settle without a
     // readable end transform (undo/tool-switch), instead of committing an empty entry.
     dirty: boolean;
+    /** Latched at grab, like every other drag input here: toggling Keep proportions mid-gesture must
+     *  not change what the drag in flight is doing (the selection latches it the same way). */
+    keepProportions: boolean;
   } | null = null;
   // One undo step per completed transform drag: snapshot at grab, commit at release iff the
   // transform changed; on a no-op, revert the grab-time transformBox freeze instead (spec 2026-08-09).
@@ -1033,6 +1042,7 @@
         groupId: g?.id ?? null,
         keyFrame: appState.playhead,
         dirty: false,
+        keepProportions: appState.keepProportions,
       };
       // The status hint promises "a drag keys frame N"; publish the frozen frame so it names the
       // one that will actually be written rather than a playhead that may move under a held drag.
@@ -1052,7 +1062,7 @@
       // An earlier round gated this write on the value actually changing, but the gate also
       // skipped bump() (the repaint trigger): returning to the grab point mid-drag then left the
       // canvas visibly stuck at its last-drawn position. Reverted; gate removed on purpose.
-      const nt = dragTransform(d.handle, d.startT, d.center, d.start, pc, appState.keepProportions);
+      const nt = dragTransform(d.handle, d.startT, d.center, d.start, pc, d.keepProportions);
       setT(nt);
       // Compare what was WRITTEN, not a read-back. With `sampleEvery > 1` a track quantises the
       // sampled frame, so reading at a frame off the grid returns a lerp toward the key rather than
