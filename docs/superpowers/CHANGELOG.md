@@ -6209,3 +6209,18 @@ course"*. Answer: no, and the fall-through went.
   group's; fully animated member row is empty), the locked-member dim moved to a group row, and the
   ref-in-group test flipped to `empty`. 1308 passing (was 1309).
 - **Owed:** an iPad pass — this is a visible change to the timeline bar's button set.
+
+**A group member's grip sits in its group's chevron column again (2026-09-12).** Reported from the
+layer panel: *"grab handle of group children … seems to be offset to the right compared to group
+chevron"*. It was, by 3px.
+- **Cause: a regression from this morning's glyph tidy-up.** The member indent has been 19px since
+  2026-09-09, derived as the group chevron's 15px box plus its 4px gap — the DISCLOSURE COLUMN, so a
+  child's first control lands on its parent's chevron. Then the chevron box gained `-ml-0.5 mr-0.5`
+  (the 2px shift that evened out its own left/right air) and the column moved left without the indent
+  following. Measured with the panel at x=957: group chevron 981, member grip 984.
+- **Fix: `pl-[19px]` → `pl-[16px]`** on the member row — 15 + 4 − 2, the same derivation with the
+  chevron's own offset included. Measured after: member grip 981, on the chevron exactly; its square
+  1000 and name 1018 came 3px left with it. The `.ui-selected` bar and the rail are unaffected — both
+  paint at the BORDER box, which padding does not move (the reason this indent lives on the row rather
+  than on `.group-members`).
+- The TIMELINE gutter is a separate derivation (no grips there) and was not touched.
