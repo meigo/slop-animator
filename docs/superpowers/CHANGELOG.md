@@ -6137,3 +6137,20 @@ slot, and the gutter fixes checked against both scroll axes, few/many rows and t
   above its signature — callers pass it so THEIR derived state re-runs; the cache keys on an ink stamp.
 - Also fixed while in the file: `selection.ts`'s header still described the sides as SKEWING, replaced
   yesterday. A stale statement reads as live.
+
+**The layer panel's rows go full-bleed (2026-09-12).** Reported as *"in gutter we have vertical
+indicator lines on the edge but in layer panel we have a padding"* — with the cause guessed correctly in
+the same breath: *"we have a panel resize hover indicator also there and that might be a reason of it"*.
+It was. The list reserved 4px (`pl-1`) so the grip's 8px hit area stayed clear of the drag handles, and
+the rail and the selected row's accent bar sat inside that reservation. Measured before: panel rail and
+bar at x=5, the gutter's at 0.
+- **Fix:** the 4px changed OWNER — off the list, into each row's own padding (`p-1` → `py-1 pr-1 pl-2`,
+  on the layer row and the group header alike). A row's BORDER box now starts at the panel's edge, and
+  `.group-rail`'s background-image and `.ui-selected`'s inset bar start with it; the padding still puts
+  every interactive thing at 8px, so the grip's hit area is as clear as before. The same trick the
+  member rows already used for their indent, and the one the gutter used going full-bleed on 2026-09-09.
+- Measured after: rail, accent bar and row box at x=1 (the panel's own 1px border — flush), drag handle
+  still at 9px, names unchanged at 46 (root) and 65 (member), list padding 0.
+- **Known, accepted:** the grip's hover tint now paints over the rail and the left half of a selected
+  row's accent bar. Only while the pointer is on the grip, and never on iPad, which has no hover. Narrow
+  the tint to 2px if it ever reads badly.
