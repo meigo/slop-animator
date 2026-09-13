@@ -26,9 +26,10 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Animation**
 
 - Frame-by-frame timeline with keyframes and holds, scrubbing, and playback
-- **Timeline markers** in their own strip under the ruler — a short label on any frame for
-  navigation or a to-do note. Tap to jump, tap again to rename or delete, drag to move; markers
-  follow inserted and deleted frames and are saved with the project
+- **Timeline markers** — a short label on any frame for navigation or a to-do note, added from the
+  timeline bar or with `n`. They get their own lane pinned under the ruler, shown once a marker
+  exists. Tap to jump, tap again to rename or delete, drag to move; markers follow inserted and
+  deleted frames and are saved with the project
 - Animated properties get their own timeline rows under the layer or group they belong to —
   collapse them away when you are drawing, open them when you are timing (a group's header
   chevron still hides members; the Spline chevron folds only its tracks)

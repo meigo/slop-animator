@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { Flag, Plus, Trash2 } from "@lucide/svelte";
-  import { untrack } from "svelte";
+  import { Bookmark, Trash2 } from "@lucide/svelte";
+  import { tick, untrack } from "svelte";
   import {
     state as appState,
-    addMarkerAtPlayhead,
     renameMarkerAt,
     deleteMarkerAt,
     moveMarkerTo,
@@ -155,10 +154,6 @@
   function touchMove(e: PointerEvent) {
     if (e.pointerType === "touch") onTouchMove(e);
   }
-  /** Same as AudioLane's buttons: a finger on a control is a pan, never a press. */
-  function ignoreTouchClick(e: PointerEvent) {
-    if (e.pointerType === "touch") e.preventDefault();
-  }
 
   // ── Editor popover ───────────────────────────────────────────────────────────────────────────
   // `position: fixed`, because the timeline's scroll box clips anything `absolute` (the
@@ -168,7 +163,10 @@
   let editing: { frame: number; left: number; top: number } | null = $state(null);
   let draft = $state("");
 
-  function openEditor(frame: number) {
+  async function openEditor(frame: number) {
+    // The lane only renders while a marker is visible, so the marker a caller just added may have
+    // mounted it in this same update — wait for the DOM before measuring where to anchor.
+    await tick();
     if (!frameAreaEl) return;
     const r = frameAreaEl.getBoundingClientRect();
     editing = {
@@ -231,11 +229,6 @@
     e.stopPropagation();
   }
 
-  function addAtPlayhead() {
-    addMarkerAtPlayhead(); // no-op when the frame already has one — the editor opens on it either way
-    openEditor(appState.playhead);
-  }
-
   // The playhead moving away closes the editor, saving — same as pressing outside.
   $effect(() => {
     const ph = appState.playhead;
@@ -252,103 +245,102 @@
   });
 </script>
 
-<!-- Pinned under the ruler inside Timeline's sticky header, and styled as PART of that header: the
-     ruler's tones (lighter `surface-active` over the name column and the frames, `surface` past the
-     last frame) and the header's closing divider in `text-muted`, so it reads as the time band rather
-     than as another track. OPAQUE on purpose — rows scroll underneath it. -->
-<div
-  class="flex w-max items-stretch border-b border-text-muted bg-surface"
-  style="min-width: {minWidth}px"
->
-  <!-- Name column: same box and padding as AudioLane's label, so the text sits in the column. -->
+<!-- Pinned under the ruler inside Timeline's sticky header. Rendered only while at least one marker is
+     VISIBLE (inside the document) — the component itself stays mounted so `markerActions.openEditor`
+     stays registered for the timeline-bar button and the `n` key. Its tone sits BETWEEN the ruler's
+     `surface-active` and the rows' `surface` (`.lane-tone` over the name column and up to the last
+     frame, `surface` past it) and the header's closing divider is `text-muted`, so it reads as its own
+     lane of the time band rather than as another track. OPAQUE on purpose — rows scroll under it. -->
+{#if shown.length > 0}
   <div
-    class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 bg-surface-active pr-1 pl-[5px] text-text-secondary"
-    role="presentation"
-    style="width: {labelW}px; touch-action: none"
-    onpointerdown={touchDown}
-    onpointermove={touchMove}
-    onpointerup={onTouchUp}
-    onpointercancel={onTouchUp}
+    class="flex w-max items-stretch border-b border-text-muted bg-surface"
+    style="min-width: {minWidth}px"
   >
-    <Flag size={13} class="shrink-0" />
-    <span class="truncate flex-1">Markers</span>
-    <button
-      type="button"
-      class="shrink-0 text-text-secondary hover:text-text"
-      title="Add marker at playhead (N)"
-      onpointerdown={ignoreTouchClick}
-      onclick={addAtPlayhead}><Plus size={13} /></button
-    >
-  </div>
-  <!-- The rows' lock/hidden glyph column: empty here, reserved so the frame columns line up. -->
-  <div
-    class="shrink-0 sticky z-20 h-6 bg-surface-active border-r border-text-muted"
-    style="left: {labelW}px; width: {markerW}px"
-  ></div>
-  <div
-    bind:this={frameAreaEl}
-    class="relative h-6 flex-1"
-    role="presentation"
-    style="touch-action: none"
-    onpointerdown={touchDown}
-    onpointermove={touchMove}
-    onpointerup={onTouchUp}
-    onpointercancel={onTouchUp}
-  >
-    <!-- The ruler's lighter band, ending at the last frame like the ruler's tick strip does. -->
+    <!-- Name column: same box and padding as AudioLane's label, so the text sits in the column. -->
     <div
-      class="pointer-events-none absolute inset-y-0 left-0 bg-surface-active"
-      style="width: {appState.project.frameCount * cellW}px"
+      class="lane-tone shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[5px] text-text-secondary"
+      role="presentation"
+      style="width: {labelW}px; touch-action: none"
+      onpointerdown={touchDown}
+      onpointermove={touchMove}
+      onpointerup={onTouchUp}
+      onpointercancel={onTouchUp}
+    >
+      <!-- No add button here: it lives in the timeline bar (Playbar), since this lane is not shown
+         until a marker exists. -->
+      <Bookmark size={13} class="shrink-0" />
+      <span class="truncate flex-1">Markers</span>
+    </div>
+    <!-- The rows' lock/hidden glyph column: empty here, reserved so the frame columns line up. -->
+    <div
+      class="lane-tone shrink-0 sticky z-20 h-6 border-r border-text-muted"
+      style="left: {labelW}px; width: {markerW}px"
     ></div>
-    <!-- This strip's slice of the play-range and playhead lines: the scroller draws them through the
+    <div
+      bind:this={frameAreaEl}
+      class="relative h-6 flex-1"
+      role="presentation"
+      style="touch-action: none"
+      onpointerdown={touchDown}
+      onpointermove={touchMove}
+      onpointerup={onTouchUp}
+      onpointercancel={onTouchUp}
+    >
+      <!-- The lane's band, ending at the last frame like the ruler's tick strip does. -->
+      <div
+        class="lane-tone pointer-events-none absolute inset-y-0 left-0"
+        style="width: {appState.project.frameCount * cellW}px"
+      ></div>
+      <!-- This strip's slice of the play-range and playhead lines: the scroller draws them through the
          rows, but this strip is opaque and pinned over them. Same x as the scroller's (frame area
          origin = the scroller's GUTTER_W). No z-index, and before the markers in the DOM, so a flag's
          label paints over a line and the sticky z-20 name column covers the lines when scrolled left
          (they cannot leak under the gutter: the name cell is this frame area's full height). -->
-    {#if playRange}
-      {#each [playRange.start * cellW, (playRange.end + 1) * cellW - 1] as x (x)}
-        <div
-          class="pointer-events-none absolute inset-y-0 w-px"
-          style="left: {x}px; background: var(--color-warn)"
-        ></div>
-      {/each}
-    {/if}
-    <div
-      class="pointer-events-none absolute inset-y-0 w-px bg-danger"
-      style="left: {appState.playhead * cellW + cellW / 2}px; transform: translateX(-50%)"
-    ></div>
-    {#each shown as m (m.frame)}
-      {@const col = dragFrom === m.frame && dragFrame !== null ? dragFrame : m.frame}
-      <button
-        type="button"
-        tabindex="-1"
-        class="absolute inset-y-0 flex min-w-6 cursor-grab items-start"
-        class:z-10={dragFrom === m.frame}
-        style="left: {col * cellW}px; touch-action: none"
-        title="Marker: {m.label || 'unlabelled'} · tap to jump, tap again to edit, drag to move"
-        onpointerdown={(e) => markerDown(e, m.frame)}
-      >
-        <!-- stem: full-strength on the playhead's frame, muted elsewhere -->
-        <span
-          class="pointer-events-none absolute inset-y-0 left-0 w-px {appState.playhead === m.frame
-            ? 'bg-text'
-            : 'bg-text-muted'}"
-        ></span>
-        <!-- 8×4 downward flag, tip on the column edge -->
-        <span
-          class="pointer-events-none absolute top-0 left-[-4px] h-1 w-2 bg-text"
-          style="clip-path: polygon(0 0, 100% 0, 50% 100%)"
-        ></span>
-        {#if m.label}
+      {#if playRange}
+        {#each [playRange.start * cellW, (playRange.end + 1) * cellW - 1] as x (x)}
+          <div
+            class="pointer-events-none absolute inset-y-0 w-px"
+            style="left: {x}px; background: var(--color-warn)"
+          ></div>
+        {/each}
+      {/if}
+      <div
+        class="pointer-events-none absolute inset-y-0 w-px bg-danger"
+        style="left: {appState.playhead * cellW + cellW / 2}px; transform: translateX(-50%)"
+      ></div>
+      {#each shown as m (m.frame)}
+        {@const col = dragFrom === m.frame && dragFrame !== null ? dragFrame : m.frame}
+        <button
+          type="button"
+          tabindex="-1"
+          class="absolute inset-y-0 flex min-w-6 cursor-grab items-start"
+          class:z-10={dragFrom === m.frame}
+          style="left: {col * cellW}px; touch-action: none"
+          title="Marker: {m.label || 'unlabelled'} · tap to jump, tap again to edit, drag to move"
+          onpointerdown={(e) => markerDown(e, m.frame)}
+        >
+          <!-- stem: full-strength on the playhead's frame, muted elsewhere -->
           <span
-            class="pointer-events-none mt-[5px] ml-1 max-w-20 truncate rounded-sm bg-text px-1 text-[10px]/[14px] font-semibold text-surface"
-            >{m.label}</span
-          >
-        {/if}
-      </button>
-    {/each}
+            class="pointer-events-none absolute inset-y-0 left-0 w-px {appState.playhead === m.frame
+              ? 'bg-text'
+              : 'bg-text-muted'}"
+          ></span>
+          <!-- 8×4 downward flag, tip on the column edge -->
+          <span
+            class="pointer-events-none absolute top-0 left-[-4px] h-1 w-2 bg-text"
+            style="clip-path: polygon(0 0, 100% 0, 50% 100%)"
+          ></span>
+          {#if m.label}
+            <span
+              class="pointer-events-none mt-[5px] ml-1 max-w-20 truncate rounded-sm bg-text px-1 text-[10px]/[14px] font-semibold text-surface"
+              >{m.label}</span
+            >
+          {/if}
+        </button>
+      {/each}
+    </div>
   </div>
-</div>
+{/if}
 
 {#if editing}
   <div
@@ -379,3 +371,11 @@
     >
   </div>
 {/if}
+
+<style>
+  /* Between the ruler (`surface-active`) and the rows (`surface`), derived from both tokens so the
+     marker lane stays in between if either is ever retuned. */
+  .lane-tone {
+    background: color-mix(in srgb, var(--color-surface-active) 50%, var(--color-surface));
+  }
+</style>

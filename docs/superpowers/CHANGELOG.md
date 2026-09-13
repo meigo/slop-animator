@@ -6318,6 +6318,22 @@ notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, pla
   `text-muted` divider. Opaque, so it draws its own slice of the playhead and play-range lines (no
   5-frame guides, like the ruler), unlayered and before the flags so labels paint over them and the
   sticky name cell covers them when scrolled. Spec amendment 8.
+  > **SUPERSEDED 2026-09-14** (tones and the ＋, next bullet): the lane now has its own mid tone and no
+  > ＋ of its own.
+- **Own tone, toolbar button, shown only with markers (2026-09-14).** Asked as *"marker lane could be
+  distinctive maybe with bg color between the ruler and layer lanes. And we could move marker adding
+  button to the main toolbar and show marker lane only if there are any markers"*.
+  - **Tone:** `.lane-tone`, `color-mix(in srgb, surface-active 50%, surface)` (≈ #262629), over the
+    name/glyph cells and a band up to the last frame (`surface` past it) — between the ruler and the
+    rows, derived from both tokens so it follows them.
+  - **Button:** `BookmarkPlus` "Add marker at playhead (N)" in the timeline bar's range group, right
+    after Out and BEFORE the conditional clear ✕, so the ✕ appearing never shifts it. The lane's ＋ is
+    gone; the lane label's icon became `Bookmark` to match.
+  - **Shown only with markers:** the lane renders while at least one marker is VISIBLE (inside the
+    document). `MarkerStrip` itself stays mounted, so `markerActions.openEditor` stays registered for
+    the button and `n`; `openEditor` awaits `tick()` so it measures a lane that mounted in the same
+    update. The header grows/shrinks by one row as the first marker is added / the last deleted.
+    Spec amendment 9.
 - **Not the compositor's gestures.** Its rename is double-click and delete is Alt+click — neither
   reachable with a Pencil. Here: tap = jump, tap again (playhead already on it) = popover with label
   + Delete, drag = move. A drag only PREVIEWS; one `moveMarkerTo` on release is the gesture, so there

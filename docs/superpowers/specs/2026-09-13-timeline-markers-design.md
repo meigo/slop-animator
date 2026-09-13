@@ -353,3 +353,15 @@ below overrides the section it names.
    the header with a `text-muted` bottom divider. Being opaque, it draws its own slice of the playhead
    line and the play-range lines (no 5-frame guides, like the ruler). A side effect: the editor
    popover can no longer open detached because the strip scrolled out of view vertically.
+9. **§6, own tone, toolbar button, lane shown only with markers** (2026-09-14, asked right after
+   amendment 8: "marker lane could be distinctive maybe with bg color between the ruler and layer
+   lanes. And we could move marker adding button to the main toolbar and show marker lane only if
+   there are any markers"). Supersedes amendment 8's tones, the Decisions rows "Add button" and
+   "Placement … always shown", and §6's ＋ in the name column. The lane's tone is a 50/50
+   `color-mix` of `surface-active` and `surface` (name/glyph cells and a band up to the last frame;
+   `surface` past it). The add button is `BookmarkPlus` "Add marker at playhead (N)" in the timeline
+   bar's range group, after Out and before the conditional clear ✕; the lane has no ＋ and its label
+   icon is `Bookmark`. The lane renders only while at least one marker is inside the document; the
+   `MarkerStrip` component stays mounted so `markerActions.openEditor` is always registered, and
+   `openEditor` awaits `tick()` before measuring. The header height changes by one row when the first
+   marker appears or the last disappears — the brainstorming concern about that jump is accepted.

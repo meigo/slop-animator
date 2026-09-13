@@ -2589,7 +2589,9 @@
          the marker strip, so the markers stay pinned under the ruler. One sticky element, not a
          second sticky row stacked under the first — stacked opaque sticky layers are what iOS WebKit
          misorders (gotcha #14). This row is `relative` so its absolute badge/tip/handles keep their
-         containing block. -->
+         containing block. The wrapper repeats the row's `w-max` + `min-width` on purpose: a sticky
+         element's OWN box has to span the strip, or it stops pinning once the content scrolls past
+         its width (the same lesson as the scroller's `w-max min-w-full`). -->
       <div class="sticky top-0 z-35 w-max" style="min-width: {stripMinW}px">
         <div
           class="relative flex w-max items-stretch border-b border-border bg-surface"
@@ -2789,7 +2791,8 @@
         </div>
 
         <!-- marker strip: labelled per-frame markers (MarkerStrip.svelte), pinned under the ruler as
-           part of the sticky header above. It is opaque, so it draws its own slice of the playhead and
+           part of the sticky header above, and rendered only while a marker is visible (the add
+           button is in the timeline bar). It is opaque, so it draws its own slice of the playhead and
            play-range lines (the scroller's lines pass beneath it, as they do beneath the ruler). -->
         <MarkerStrip
           cellW={CELL_W}
