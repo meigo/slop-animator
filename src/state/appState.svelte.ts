@@ -1741,8 +1741,9 @@ export function deleteMarkerAt(frame: number): void {
  *  source or `from === to` is simply nothing to do. */
 export function moveMarkerTo(from: number, to: number): boolean {
   const ms = state.project.markers ?? [];
-  if (from !== to && markerAt(ms, to)) return false;
-  const next = moveMarker(ms, from, to);
+  const dest = Math.max(0, to);
+  if (from !== dest && markerAt(ms, dest)) return false;
+  const next = moveMarker(ms, from, dest);
   if (next !== ms) commitMarkers(next);
   return true;
 }
