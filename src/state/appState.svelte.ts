@@ -58,6 +58,7 @@ import {
   MAX_SAMPLE_EVERY,
   type RefTransform,
   type Project,
+  type Marker,
   type Layer,
   type LayerEditBlock,
   whyNotEditable,
@@ -161,6 +162,16 @@ import {
   trimVideoTail,
   videoClipLayout,
 } from "../anim/clip-layout";
+import {
+  addMarker,
+  renameMarker,
+  removeMarker,
+  moveMarker,
+  markerAt,
+  truncateMarkers,
+  nextMarkerFrame,
+  prevMarkerFrame,
+} from "../anim/markers";
 
 export type Tool =
   | "brush"
@@ -427,6 +438,10 @@ export interface StructSnapshot {
    *  project with no audio at all. Nothing writes its fields in place (it has no UI), so unlike the
    *  decoded track it needs no separate scalars. */
   audioUndecoded: UndecodedAudio | null;
+  /** Timeline markers, by REFERENCE. Safe without a copy because nothing writes markers in place:
+   *  every writer (the actions below, the ripple, the length cut) assigns a new array. Undefined =
+   *  the project had none, and restoring that has to CLEAR a later add. */
+  markers: Marker[] | undefined;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -474,6 +489,7 @@ function snapshotStructure(): StructSnapshot {
     audioTrimInFrames: state.project.audio?.trimInFrames ?? null,
     audioTrimLenFrames: state.project.audio?.trimLenFrames ?? null,
     audioUndecoded: state.project.audioUndecoded ?? null,
+    markers: state.project.markers,
   };
 }
 function restoreStructure(s: StructSnapshot) {
@@ -548,6 +564,7 @@ function restoreStructure(s: StructSnapshot) {
     };
   });
   state.project.frameCount = s.frameCount;
+  state.project.markers = s.markers; // unconditional: undefined must clear markers added since
   if (s.width !== state.project.width || s.height !== state.project.height)
     state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
@@ -1688,6 +1705,62 @@ export function seekPlayhead(f: number): void {
   else audioEngine.scrub(clamped, state.project.fps);
 }
 
+/**
+ * Timeline markers. Each writer is ONE undo step through commitStructural, and every one checks for
+ * a no-op BEFORE committing — commitStructural always pushes, so a check inside the callback would
+ * leave a ⌘Z that visibly does nothing (see setAnimationLength). The pure ops return the same array
+ * when nothing changed, which is the check.
+ */
+function commitMarkers(next: Marker[]): void {
+  commitStructural(() => {
+    state.project.markers = next.length > 0 ? next : undefined;
+  });
+}
+
+/** Add an unlabelled marker on the playhead's frame. An occupied frame changes nothing — the caller
+ *  opens that marker's editor either way. */
+export function addMarkerAtPlayhead(): void {
+  const ms = state.project.markers ?? [];
+  const next = addMarker(ms, state.playhead);
+  if (next !== ms) commitMarkers(next);
+}
+
+export function renameMarkerAt(frame: number, label: string): void {
+  const ms = state.project.markers ?? [];
+  const next = renameMarker(ms, frame, label);
+  if (next !== ms) commitMarkers(next);
+}
+
+export function deleteMarkerAt(frame: number): void {
+  const ms = state.project.markers ?? [];
+  const next = removeMarker(ms, frame);
+  if (next !== ms) commitMarkers(next);
+}
+
+/** Move a marker. `false` means the destination already has one (the strip says so); a missing
+ *  source or `from === to` is simply nothing to do. */
+export function moveMarkerTo(from: number, to: number): boolean {
+  const ms = state.project.markers ?? [];
+  if (from !== to && markerAt(ms, to)) return false;
+  const next = moveMarker(ms, from, to);
+  if (next !== ms) commitMarkers(next);
+  return true;
+}
+
+/** Seek to the previous (−1) or next (+1) marker inside the document. */
+export function jumpToMarker(dir: -1 | 1): void {
+  const ms = state.project.markers ?? [];
+  const f =
+    dir === 1
+      ? nextMarkerFrame(ms, state.playhead, state.project.frameCount)
+      : prevMarkerFrame(ms, state.playhead);
+  if (f === null) {
+    state.statusHint = dir === 1 ? "No marker after this frame" : "No marker before this frame";
+    return;
+  }
+  seekPlayhead(f);
+}
+
 /** Mute/unmute the audio track (not undoable — matches set/removeAudioTrack). */
 /** Undoable, like every other writer of a field `StructSnapshot` captures — otherwise an unrelated
  *  undo would silently flip the mute back. */
@@ -2009,6 +2082,9 @@ export function applyAnimationLength(n: number): void {
   for (const layer of state.project.layers) {
     if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
   }
+  // Markers past the new end go with the cells they pointed at. Same undo story as the cells: the
+  // Length field's commitStructural and the ruler drag's begin/commit bracket both captured them.
+  if (state.project.markers) state.project.markers = truncateMarkers(state.project.markers, target);
   bump(); // refreshes document length and clamps the playhead
 }
 
@@ -2320,6 +2396,11 @@ export const poseActions: { active: () => boolean; apply: () => void; cancel: ()
  *  set-hold/delete-frame on the active cell, undo/redo) — otherwise a live selection/deform/pose lift
  *  would commit to a detached canvas or corrupt the undo baseline. */
 export const liftGuard: { discard: (() => void) | null } = { discard: null };
+
+/** MarkerStrip registers its editor here, so App's `n` key can open it after adding a marker. */
+export const markerActions: { openEditor: ((frame: number) => void) | null } = {
+  openEditor: null,
+};
 
 /** In-flight transform-drag settle hook: undo/redo must not run while a drag bracket is open —
  *  the registered settle commits (or discards) the bracket first. Set at grab, cleared at settle. */
