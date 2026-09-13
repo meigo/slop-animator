@@ -343,3 +343,13 @@ below overrides the section it names.
    `keydown` so no key typed anywhere inside it reaches App's shortcuts. The Delete button no longer
    takes focus on pointer press (`preventDefault` on its `pointerdown`), so a mouse/Safari click
    doesn't trigger that focusout and unmount the popover before the click itself lands.
+8. **§6, the strip is PINNED under the ruler and styled as part of the ruler header** (2026-09-14,
+   asked after the first merge-ready build: "markers row looks like all the others … and also sticky
+   and not scroll with other layers"). Supersedes the Decisions row "Strip scrolling" and §6's "not
+   vertically sticky". Timeline's `sticky top-0 z-35` moved from the ruler row to a header wrapper
+   holding the ruler row and the strip — one sticky element, not a second sticky row stacked under the
+   first (gotcha #14); the ruler row became `relative`. The strip uses the ruler's tones
+   (`surface-active` name/glyph cells and a band up to the last frame, `surface` past it) and closes
+   the header with a `text-muted` bottom divider. Being opaque, it draws its own slice of the playhead
+   line and the play-range lines (no 5-frame guides, like the ruler). A side effect: the editor
+   popover can no longer open detached because the strip scrolled out of view vertically.

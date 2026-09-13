@@ -21,6 +21,7 @@
     labelW,
     markerW,
     minWidth = 0,
+    playRange,
     onTouchDown,
     onTouchMove,
     onTouchUp,
@@ -32,6 +33,8 @@
     labelW: number;
     markerW: number;
     minWidth?: number;
+    /** The effective play range, for this strip's slice of the range lines (null = no range). */
+    playRange: { start: number; end: number } | null;
     onTouchDown: (e: PointerEvent) => void;
     onTouchMove: (e: PointerEvent) => boolean;
     /** Takes the event so a `pointercancel` does not fling (see Timeline's touchPanUp). */
@@ -249,10 +252,17 @@
   });
 </script>
 
-<div class="flex w-max items-stretch border-b border-border" style="min-width: {minWidth}px">
+<!-- Pinned under the ruler inside Timeline's sticky header, and styled as PART of that header: the
+     ruler's tones (lighter `surface-active` over the name column and the frames, `surface` past the
+     last frame) and the header's closing divider in `text-muted`, so it reads as the time band rather
+     than as another track. OPAQUE on purpose — rows scroll underneath it. -->
+<div
+  class="flex w-max items-stretch border-b border-text-muted bg-surface"
+  style="min-width: {minWidth}px"
+>
   <!-- Name column: same box and padding as AudioLane's label, so the text sits in the column. -->
   <div
-    class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 bg-surface pr-1 pl-[5px] text-text-secondary"
+    class="shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 bg-surface-active pr-1 pl-[5px] text-text-secondary"
     role="presentation"
     style="width: {labelW}px; touch-action: none"
     onpointerdown={touchDown}
@@ -272,7 +282,7 @@
   </div>
   <!-- The rows' lock/hidden glyph column: empty here, reserved so the frame columns line up. -->
   <div
-    class="shrink-0 sticky z-20 h-6 bg-surface border-r border-text-muted"
+    class="shrink-0 sticky z-20 h-6 bg-surface-active border-r border-text-muted"
     style="left: {labelW}px; width: {markerW}px"
   ></div>
   <div
@@ -285,6 +295,28 @@
     onpointerup={onTouchUp}
     onpointercancel={onTouchUp}
   >
+    <!-- The ruler's lighter band, ending at the last frame like the ruler's tick strip does. -->
+    <div
+      class="pointer-events-none absolute inset-y-0 left-0 bg-surface-active"
+      style="width: {appState.project.frameCount * cellW}px"
+    ></div>
+    <!-- This strip's slice of the play-range and playhead lines: the scroller draws them through the
+         rows, but this strip is opaque and pinned over them. Same x as the scroller's (frame area
+         origin = the scroller's GUTTER_W). No z-index, and before the markers in the DOM, so a flag's
+         label paints over a line and the sticky z-20 name column covers the lines when scrolled left
+         (they cannot leak under the gutter: the name cell is this frame area's full height). -->
+    {#if playRange}
+      {#each [playRange.start * cellW, (playRange.end + 1) * cellW - 1] as x (x)}
+        <div
+          class="pointer-events-none absolute inset-y-0 w-px"
+          style="left: {x}px; background: var(--color-warn)"
+        ></div>
+      {/each}
+    {/if}
+    <div
+      class="pointer-events-none absolute inset-y-0 w-px bg-danger"
+      style="left: {appState.playhead * cellW + cellW / 2}px; transform: translateX(-50%)"
+    ></div>
     {#each shown as m (m.frame)}
       {@const col = dragFrom === m.frame && dragFrame !== null ? dragFrame : m.frame}
       <button
