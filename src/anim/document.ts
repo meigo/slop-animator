@@ -501,6 +501,15 @@ export function isDrawingLayer(l: Layer): l is DrawingLayer {
   return l.kind === "draw";
 }
 
+/** A navigation/note mark on one document frame. Never rendered into an export.
+ *  Pure ops live in `markers.ts`; every write replaces the array (undo snapshots share it). */
+export interface Marker {
+  /** 0-based document frame, integer ≥ 0. Unique within `Project.markers`. */
+  frame: number;
+  /** One line, trimmed. "" = unlabelled (flag only). Never truncated by the model. */
+  label: string;
+}
+
 export interface Project {
   /** User-visible project name; becomes the save/export filename (sanitized). "" = unknown
    *  (old file being opened) — callers fill a fallback before the project goes live. */
@@ -521,6 +530,8 @@ export interface Project {
    *  only copy of the audio isn't destroyed by opening the project on a device that can't play it;
    *  never both — an `audio` import always clears it. */
   audioUndecoded?: UndecodedAudio | null;
+  /** Timeline markers, sorted by `frame`, at most one per frame. Absent = none. */
+  markers?: Marker[];
 }
 
 /**
