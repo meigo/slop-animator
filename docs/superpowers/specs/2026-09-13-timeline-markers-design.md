@@ -327,3 +327,19 @@ below overrides the section it names.
    playhead frame whether or not a marker was added, so the `"added" | "exists"` result had no reader.
 5. **§6, finger detection is `e.pointerType === "touch"`,** the same idiom `AudioLane.svelte` uses.
    Timeline's private `isFinePointer` is neither passed in nor moved.
+6. **§5, the loader keeps markers past `frameCount`.** Found in the final review: §3 says a marker
+   past the document length is HIDDEN by the strip, never deleted, because deleting outside an
+   undoable edit is a silent data change — but §5 as written had the loader drop
+   `frame >= frameCount` on load, which would silently delete a hidden marker on the very next
+   reload. `sanitizeMarkers(raw)` no longer takes a `frameCount` parameter; it drops only entries
+   whose frame is not an integer or is negative, and keeps everything else, including frames past
+   any length. §5 above is unchanged text and is superseded by this amendment.
+7. **§6, the editor popover also commits on `focusout`.** Found in the final review: a keyboard-only
+   focus change (Tab from the input to the Delete button, or iPad's "hide keyboard") leaves the
+   popover without any pointerdown for `clickOutside` to catch, so a typed `n`/⌘Z/Enter could reach
+   App's shortcuts with the popover still open — losing the draft, moving another marker onto the
+   edited frame before a stale commit, or toggling playback instead of deleting. The popover wrapper
+   now commits on `focusout` when focus leaves the popover entirely, and stops propagation of every
+   `keydown` so no key typed anywhere inside it reaches App's shortcuts. The Delete button no longer
+   takes focus on pointer press (`preventDefault` on its `pointerdown`), so a mouse/Safari click
+   doesn't trigger that focusout and unmount the popover before the click itself lands.

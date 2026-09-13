@@ -206,6 +206,28 @@
     node.select();
   }
 
+  let popoverEl: HTMLDivElement | undefined = $state();
+
+  /** Fix B (final review #2, Ruling 7): a keyboard-only focus change out of the popover — Tab to
+   *  Delete then Tab again, or iPad's "hide keyboard" — has no pointerdown for `clickOutside` to
+   *  catch, so the draft was silently lost (or a later App shortcut acted on the wrong marker).
+   *  Commit whenever focus actually leaves the popover; a focus move WITHIN it (e.g. onto the
+   *  Delete button) is not a close. */
+  function popoverFocusOut(e: FocusEvent) {
+    if (!editing || !popoverEl) return;
+    const next = e.relatedTarget as Node | null;
+    if (!next || !popoverEl.contains(next)) commitEdit();
+  }
+
+  /** Fix B: a key pressed while focus is anywhere in the popover (not just the input — e.g. the
+   *  focused Delete button) must not bubble to App's window `keydown` handler, or Tab-to-Delete then
+   *  Enter would toggle playback instead of activating the button. Don't preventDefault here: Enter
+   *  must still activate a focused button natively, and the input's own `editorKey` still runs
+   *  first and handles Enter/Escape itself. */
+  function popoverKeydown(e: KeyboardEvent) {
+    e.stopPropagation();
+  }
+
   function addAtPlayhead() {
     addMarkerAtPlayhead(); // no-op when the frame already has one — the editor opens on it either way
     openEditor(appState.playhead);
@@ -298,9 +320,13 @@
 
 {#if editing}
   <div
+    bind:this={popoverEl}
+    role="presentation"
     class="fixed z-50 flex items-center gap-1 rounded border border-border bg-surface p-1 shadow-lg"
     style="left: {editing.left}px; top: {editing.top}px; width: {EDITOR_W}px"
     use:clickOutside={commitEdit}
+    onfocusout={popoverFocusOut}
+    onkeydown={popoverKeydown}
   >
     <input
       class="min-w-0 flex-1 rounded-sm border border-border bg-surface px-1 text-xs text-text"
@@ -310,10 +336,13 @@
       use:focusSelect
       onkeydown={editorKey}
     />
+    <!-- Fix B: preventDefault on pointerdown keeps focus on the input through the press, so the new
+         popoverFocusOut above does not fire (and unmount this button) before the click lands. -->
     <button
       type="button"
       class="shrink-0 rounded-sm p-1 text-text-secondary hover:text-text"
       title="Delete marker"
+      onpointerdown={(e) => e.preventDefault()}
       onclick={deleteEdit}><Trash2 size={14} /></button
     >
   </div>

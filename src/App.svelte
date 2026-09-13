@@ -174,7 +174,7 @@
       e.preventDefault();
       addMarkerAtPlayhead();
       markerActions.openEditor?.(state.playhead);
-    } else if (e.key === "<" || e.key === ">") {
+    } else if ((e.key === "<" || e.key === ">") && !meta) {
       // Shift+, / Shift+. on most layouts — the marker-sized step next to , / . (one frame).
       e.preventDefault();
       jumpToMarker(e.key === "<" ? -1 : 1);

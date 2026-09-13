@@ -985,12 +985,15 @@ describe("marker persistence", () => {
     expect(loaded.markers).toBeUndefined();
   });
 
-  it("drops markers past the loaded document length", async () => {
+  it("keeps markers past the loaded document length (the strip hides them)", async () => {
     const markers = [
       { frame: 1, label: "in" },
       { frame: 9, label: "out" },
     ];
     const loaded = await loadProjectBlob(await saveProjectBlob(projectWith(5, markers)), 1);
-    expect(loaded.markers).toEqual([{ frame: 1, label: "in" }]);
+    expect(loaded.markers).toEqual([
+      { frame: 1, label: "in" },
+      { frame: 9, label: "out" },
+    ]);
   });
 });

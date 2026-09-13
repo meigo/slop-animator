@@ -160,11 +160,13 @@ describe("nextMarkerFrame / prevMarkerFrame", () => {
 
 describe("sanitizeMarkers", () => {
   it("returns undefined for anything that is not an array", () => {
-    expect(sanitizeMarkers(undefined, 10)).toBeUndefined();
-    expect(sanitizeMarkers({}, 10)).toBeUndefined();
-    expect(sanitizeMarkers("x", 10)).toBeUndefined();
+    expect(sanitizeMarkers(undefined)).toBeUndefined();
+    expect(sanitizeMarkers({})).toBeUndefined();
+    expect(sanitizeMarkers("x")).toBeUndefined();
   });
-  it("drops entries with a bad or out-of-range frame", () => {
+  it("drops entries with a bad frame but keeps frames past any document length", () => {
+    // A load must not silently delete a marker the strip merely hides (final review Ruling 6) — a
+    // frame past the document's current length (here 10) survives sanitizing untouched.
     const raw = [
       { frame: -1 },
       { frame: 1.5 },
@@ -174,26 +176,26 @@ describe("sanitizeMarkers", () => {
       7,
       { frame: 3, label: " ok " },
     ];
-    expect(sanitizeMarkers(raw, 10)).toEqual([mk(3, "ok")]);
+    expect(sanitizeMarkers(raw)).toEqual([mk(3, "ok"), mk(10)]);
   });
   it("turns a non-string label into an empty one", () => {
-    expect(sanitizeMarkers([{ frame: 1, label: 5 }], 10)).toEqual([mk(1)]);
+    expect(sanitizeMarkers([{ frame: 1, label: 5 }])).toEqual([mk(1)]);
   });
   it("sorts by frame", () => {
-    expect(sanitizeMarkers([{ frame: 5 }, { frame: 1 }], 10)).toEqual([mk(1), mk(5)]);
+    expect(sanitizeMarkers([{ frame: 5 }, { frame: 1 }])).toEqual([mk(1), mk(5)]);
   });
   it("joins duplicate frames in file order", () => {
     const raw = [
       { frame: 2, label: "x" },
       { frame: 2, label: "y" },
     ];
-    expect(sanitizeMarkers(raw, 10)).toEqual([mk(2, "x · y")]);
+    expect(sanitizeMarkers(raw)).toEqual([mk(2, "x · y")]);
   });
   it("keeps labels longer than the 40-character input cap", () => {
     const long = "a".repeat(60);
-    expect(sanitizeMarkers([{ frame: 0, label: long }], 1)).toEqual([mk(0, long)]);
+    expect(sanitizeMarkers([{ frame: 0, label: long }])).toEqual([mk(0, long)]);
   });
   it("returns undefined when nothing survives", () => {
-    expect(sanitizeMarkers([{ frame: 99 }], 10)).toBeUndefined();
+    expect(sanitizeMarkers([{ frame: -1 }, { frame: 1.5 }])).toBeUndefined();
   });
 });

@@ -751,8 +751,10 @@ export async function loadProjectBlob(
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
-  // After refreshLength, so markers are validated against the REAL length, not the stored field.
-  project.markers = sanitizeMarkers(json.markers, project.frameCount);
+  // sanitizeMarkers no longer takes a length: a marker past frameCount is kept (the strip hides it),
+  // not deleted — see its doc comment and spec amendment 6. Ordering after refreshLength is now
+  // harmless rather than load-bearing.
+  project.markers = sanitizeMarkers(json.markers);
   const aj = json.audio;
   const audioBytes = zip["audio/track"];
   if (aj && audioBytes) {

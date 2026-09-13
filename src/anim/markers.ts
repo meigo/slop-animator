@@ -97,18 +97,22 @@ export function prevMarkerFrame(ms: Marker[], frame: number): number | null {
 
 /**
  * Markers read back from a file. Anything that is not an array → undefined. Entries whose frame is
- * not an integer in `0 … frameCount − 1` are dropped; a non-string label becomes "". Labels are
- * trimmed but NOT length-capped (a joined label may exceed the input's 40). Duplicate frames are
- * joined in file order. Nothing left → undefined, so an empty list is never carried.
+ * not an integer or is negative are dropped; a non-string label becomes "". A frame past the
+ * document's length is KEPT — the strip only hides it (`frame < frameCount`), and a load must not
+ * silently delete a marker that a later length change could bring back into view (final review
+ * Ruling 6: §3 and §5 used to disagree, and the loader deleting hidden markers on reload was a
+ * silent data change). Labels are trimmed but NOT length-capped (a joined label may exceed the
+ * input's 40). Duplicate frames are joined in file order. Nothing left → undefined, so an empty
+ * list is never carried.
  */
-export function sanitizeMarkers(raw: unknown, frameCount: number): Marker[] | undefined {
+export function sanitizeMarkers(raw: unknown): Marker[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const valid: Marker[] = [];
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const r = entry as Record<string, unknown>;
     const f = r.frame;
-    if (typeof f !== "number" || !Number.isInteger(f) || f < 0 || f >= frameCount) continue;
+    if (typeof f !== "number" || !Number.isInteger(f) || f < 0) continue;
     valid.push({ frame: f, label: typeof r.label === "string" ? r.label.trim() : "" });
   }
   valid.sort(byFrame); // stable: equal frames keep file order for the join below
