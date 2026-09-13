@@ -21,7 +21,7 @@ import {
   collectFrameAssets,
   normalizeTransform,
 } from "../persist/project-file";
-import type { Project, Cell, DrawingLayer, ReferenceLayer } from "../anim/document";
+import type { Project, Cell, DrawingLayer, ReferenceLayer, Marker } from "../anim/document";
 
 function key(): Cell {
   return { kind: "key", canvas: {} as HTMLCanvasElement };
@@ -949,5 +949,48 @@ describe("alpha lock persistence", () => {
     zip["project.json"] = strToU8(JSON.stringify(json));
     const loaded = await loadProjectBlob(new Blob([zipSync(zip)]), 1);
     expect((loaded.layers[0] as DrawingLayer).alphaLock).toBeUndefined();
+  });
+});
+
+describe("marker persistence", () => {
+  // Holds only (createDrawingLayer) — no canvases, so save/load runs in node.
+  function projectWith(frames: number, markers?: Marker[]): Project {
+    const project = createProject();
+    project.layers = [createDrawingLayer(frames, "L")];
+    project.frameCount = frames;
+    project.markers = markers;
+    return project;
+  }
+
+  it("projectToJson writes markers, and nothing when there are none", () => {
+    expect(projectToJson(projectWith(4, [{ frame: 2, label: "beat" }])).markers).toEqual([
+      { frame: 2, label: "beat" },
+    ]);
+    expect(projectToJson(projectWith(4, [])).markers).toBeUndefined();
+    expect(projectToJson(projectWith(4)).markers).toBeUndefined();
+  });
+
+  it("round-trips markers through save/load, a long joined label intact", async () => {
+    const long = "fix hand · " + "x".repeat(50);
+    const markers = [
+      { frame: 0, label: "start" },
+      { frame: 7, label: long },
+    ];
+    const loaded = await loadProjectBlob(await saveProjectBlob(projectWith(10, markers)), 1);
+    expect(loaded.markers).toEqual(markers);
+  });
+
+  it("a save without markers loads with none", async () => {
+    const loaded = await loadProjectBlob(await saveProjectBlob(projectWith(3)), 1);
+    expect(loaded.markers).toBeUndefined();
+  });
+
+  it("drops markers past the loaded document length", async () => {
+    const markers = [
+      { frame: 1, label: "in" },
+      { frame: 9, label: "out" },
+    ];
+    const loaded = await loadProjectBlob(await saveProjectBlob(projectWith(5, markers)), 1);
+    expect(loaded.markers).toEqual([{ frame: 1, label: "in" }]);
   });
 });
