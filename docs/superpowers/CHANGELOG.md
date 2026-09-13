@@ -6296,3 +6296,30 @@ right sides of all icons in the layer panel would align — bin, pen, eye icons"
 - The header is written as three padding utilities rather than `p-1` plus a `pr-*` override: two
   padding utilities on one element leave the winner to stylesheet order rather than to the reader.
 - The TIMELINE gutter was not touched — its icons sit against a column boundary, not the window edge.
+
+**Timeline markers (2026-09-13).** Asked as *"what do you think about adding timeline markers feature
+(slop-compositor has it)"* — for "anything that needs navigational help or maybe even short todo
+notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, plan
+`docs/superpowers/plans/2026-09-13-timeline-markers.md`.
+- **Model:** `Project.markers?: Marker[]`, `{ frame, label }`, sorted, **one per frame, frame is the
+  identity** (no id). Pure ops in `src/anim/markers.ts`; every one returns the SAME array when nothing
+  changed, which is how the store actions skip no-op undo entries.
+- **Own strip, not the ruler.** The 29px ruler has no free space — the playhead badge covers its full
+  height and a pen there scrubs. `MarkerStrip.svelte` sits between the ruler and the audio lane and,
+  like the lane, is NOT vertically sticky (gotcha #14).
+- **Not the compositor's gestures.** Its rename is double-click and delete is Alt+click — neither
+  reachable with a Pencil. Here: tap = jump, tap again (playhead already on it) = popover with label
+  + Delete, drag = move. A drag only PREVIEWS; one `moveMarkerTo` on release is the gesture, so there
+  is no begin/revert bracket and `pointercancel` just drops the preview.
+- **Ripple:** in `rippleDocumentFrames`, same rule as `shiftStartFrame`. A delete that lands the
+  markers of `at` and `at+1` on one frame **joins their labels** ("a · b") rather than dropping one.
+  Per-layer frame edits do not move markers (same as audio/reference ranges).
+- **Length cut:** `applyAnimationLength` drops markers past the new end, inside both undo brackets.
+  Markers past `frameCount` reached any other way are hidden in the strip, never deleted silently.
+- **Undo:** `StructSnapshot.markers` by reference — safe only because nothing writes the array in
+  place. `restoreStructure` assigns it unconditionally so undoing the first add clears the field.
+- **Save:** optional `markers`, version stays 1, written only when non-empty; the loader drops
+  non-integer/out-of-range frames after `refreshLength`, and does NOT cap label length (joined
+  labels can exceed the input's 40).
+- **Keys:** `n` add + open editor, `<`/`>` previous/next marker.
+- **Verified in the browser (desktop Chrome, mouse, 2026-09-13):** the strip sits between the ruler and the first row with aligned columns; ＋ adds a flag on the playhead frame and focuses the label field, and ＋ on an occupied frame reopens that marker's editor; tap jumps, tap again edits, Escape closes without saving; dragging previews, lands on release, and is one ⌘Z / ⌘⇧Z step; dropping onto an occupied frame springs back with "Frame N already has a marker"; Delete in the popover removes the marker and ⌘Z restores it; deleting a frame joins two labels onto one frame ("a · fix hand"), ⌘Z splits them again, and adding a frame shifts later markers right; shortening Length removes markers past the end and ⌘Z brings them back; a reload restores markers from autosave; the popover stays inside the window at the right edge; `n` adds and opens the field without typing an "n"; `<`/`>` jump and show "No marker before/after this frame" at the ends; typing `n<>` into the label field triggers no shortcut. **Not verified:** edge auto-scroll while dragging past the timeline edge — the automation tab was hidden, so `requestAnimationFrame` never ran (inconclusive, not a failure); how renaming a marker clearing an active cell selection feels (spec §4 open question); ⌘N passing through to the browser. **Owed an iPad pass:** Pencil tap and drag on flags, finger pan on the strip, the on-screen keyboard appearing when ＋ focuses the field, popover placement with the keyboard up, and edge auto-scroll.

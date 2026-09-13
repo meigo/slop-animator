@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1288 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1351 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -214,6 +214,12 @@ source frame); property tracks (transform/opacity) play straight through the rem
 
 Transforms are per-axis (scaleX/scaleY; negative = mirrored): side handles stretch, corners keep
 proportions (toggle), Flip H/V in the Transform bar (2026-09-11).
+
+Shipped 2026-09-13: **Timeline markers** — `Project.markers?` (`{frame, label}`, sorted, one per
+frame, pure ops in `src/anim/markers.ts`) in a `MarkerStrip.svelte` row under the ruler. They ripple
+in `rippleDocumentFrames` (a delete joins two labels onto one frame), are cut by
+`applyAnimationLength`, sit in `StructSnapshot` by reference (never mutate the array), and save as an
+optional `markers` field. `n` adds, `<`/`>` jump. See the 2026-09-13 changelog entry.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

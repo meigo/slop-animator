@@ -26,6 +26,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Animation**
 
 - Frame-by-frame timeline with keyframes and holds, scrubbing, and playback
+- **Timeline markers** in their own strip under the ruler — a short label on any frame for
+  navigation or a to-do note. Tap to jump, tap again to rename or delete, drag to move; markers
+  follow inserted and deleted frames and are saved with the project
 - Animated properties get their own timeline rows under the layer or group they belong to —
   collapse them away when you are drawing, open them when you are timing (a group's header
   chevron still hides members; the Spline chevron folds only its tracks)
@@ -85,7 +88,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - `Space` tap = play/pause, `Space` hold = pan the canvas · `←/→` step a frame (`Shift` = 10) ·
   `Home`/`End` first/last · `↑/↓` change layer · `0` fit view
-- `1` — actual size (100%)
+- `1` — actual size (100%) · `n` add marker · `<`/`>` previous/next marker
 - `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `[`/`]` brush size · `o` onion ·
   `⌘Z`/`⌘⇧Z` undo/redo
 
@@ -101,7 +104,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1308); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1351); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
