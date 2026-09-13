@@ -18,6 +18,7 @@ import {
   type TransformTrack,
 } from "./document";
 import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
+import { shiftMarkers } from "./markers";
 
 /** The per-property value copiers the shifter needs. `document.ts` keeps its own copies private, and
  *  a transform is a flat object / an opacity a number, so both are one line here. */
@@ -347,8 +348,8 @@ export function shiftLayerTrackKeys(layer: Layer, at: number, delta: 1 | -1): vo
 }
 
 /** Shift everything that lives in DOCUMENT-FRAME space by one frame at `at`: layer transform-track
- *  keys, image reference ranges, video clip offsets, and the audio track. Drawing-layer cells are
- *  handled by the callers, which splice them directly. */
+ *  keys, image reference ranges, video clip offsets, the audio track, and timeline markers.
+ *  Drawing-layer cells are handled by the callers, which splice them directly. */
 function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void {
   for (const layer of project.layers) {
     // Track keys are document-frame space for BOTH layer kinds — without this, everything else
@@ -401,6 +402,10 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
     const next = shiftStartFrame(project.audio.offsetFrames, at, delta);
     if (next !== project.audio.offsetFrames) project.audio.offsetFrames = next;
   }
+  // Markers are document-frame space like the audio clip: they point at a moment, so they move
+  // with the frames around them. `shiftMarkers` returns a NEW array (undo holds the old one by
+  // reference) and joins the two labels a delete lands on one frame.
+  if (project.markers) project.markers = shiftMarkers(project.markers, at, delta);
 }
 
 /** Insert a hold at index `at` in EVERY drawing layer, ripple document-space clips, refresh length.
