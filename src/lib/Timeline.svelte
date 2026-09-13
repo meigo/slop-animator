@@ -155,6 +155,7 @@
   import { computeLoopGhostSpans, defaultLoopBack, loopButtonState } from "./timeline-loops";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
+  import MarkerStrip from "./MarkerStrip.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
   import TrackKeyControls from "./TrackKeyControls.svelte";
   import Playbar from "./Playbar.svelte";
@@ -2780,6 +2781,22 @@
           {/each}
         </div>
       </div>
+
+      <!-- marker strip: labelled per-frame markers (MarkerStrip.svelte). Not vertically sticky —
+           it scrolls with the rows like the audio lane; a pinned strip would be another sticky
+           layer, which is what gotcha #14 is about. -->
+      <MarkerStrip
+        cellW={CELL_W}
+        labelW={LABEL_W}
+        markerW={MARKER_W}
+        minWidth={stripMinW}
+        onTouchDown={touchPanDown}
+        onTouchMove={touchPanMove}
+        onTouchUp={touchPanUp}
+        onEdgeScrollStart={startEdgeScroll}
+        onEdgeScrollStop={stopEdgeScroll}
+        onEdgePointerX={(x) => (edgePointerX = x)}
+      />
 
       <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->
       <AudioLane
