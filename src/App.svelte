@@ -29,6 +29,9 @@
     cutTimelineSelection,
     pasteCells,
     deleteTimelineSelection,
+    addMarkerAtPlayhead,
+    jumpToMarker,
+    markerActions,
   } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
@@ -165,6 +168,16 @@
     } else if (e.key === "o") {
       state.onion.enabled = !state.onion.enabled;
       repaint();
+    } else if (e.key === "n" && !meta) {
+      // preventDefault: the editor's input takes focus during this keystroke, and the "n" must not
+      // be typed into it.
+      e.preventDefault();
+      addMarkerAtPlayhead();
+      markerActions.openEditor?.(state.playhead);
+    } else if (e.key === "<" || e.key === ">") {
+      // Shift+, / Shift+. on most layouts — the marker-sized step next to , / . (one frame).
+      e.preventDefault();
+      jumpToMarker(e.key === "<" ? -1 : 1);
     } else if (e.key === ",") seekPlayhead(state.playhead - 1);
     else if (e.key === ".") seekPlayhead(state.playhead + 1);
     // Playback/navigation keys. Arrows are free globally (the timeline ruler handles its own only
