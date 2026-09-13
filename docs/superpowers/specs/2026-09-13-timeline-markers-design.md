@@ -310,3 +310,20 @@ in the README.
   slop-animator has them too, in neutral colour, in their own strip instead of the ruler. That file
   is in the parent `slop/` folder, which is not a git repository, so the edit is made in place and
   there is nothing to commit.
+
+## Amendments from planning (2026-09-13)
+
+Found while writing the plan (`docs/superpowers/plans/2026-09-13-timeline-markers.md`). Each change
+below overrides the section it names.
+
+1. **§6, the popover does not close on scroll.** On iPad the on-screen keyboard can scroll the page
+   as it opens, which would close the popover the moment it appeared. It closes on an outside press,
+   Enter, Escape, Delete, or the playhead moving.
+2. **§6, the strip is `h-6` plus its border (25px),** matching the layer rows, not "about 20px".
+3. **§2, `nextMarkerFrame(ms, frame, frameCount)`** takes the frame count, so a marker past the
+   document end is never a jump target. `prevMarkerFrame(ms, frame)` doesn't need it, because the
+   playhead is always inside the document.
+4. **§4, `addMarkerAtPlayhead()` returns `void`.** Both callers (＋ and `n`) open the editor on the
+   playhead frame whether or not a marker was added, so the `"added" | "exists"` result had no reader.
+5. **§6, finger detection is `e.pointerType === "touch"`,** the same idiom `AudioLane.svelte` uses.
+   Timeline's private `isFinePointer` is neither passed in nor moved.
