@@ -256,20 +256,25 @@
     class="flex w-max items-stretch border-b border-text-muted bg-surface"
     style="min-width: {minWidth}px"
   >
-    <!-- Name column: same box and padding as AudioLane's label, so the text sits in the column. -->
+    <!-- Name column: same box and padding as AudioLane's label, so the icon sits where row names begin.
+         Icon only (2026-09-14): the lane appears only once a marker exists and the tags share the
+         bookmark shape, so a "Markers" word said nothing new. The icon stays because the lane can be
+         visible while every marker is scrolled out of view, and a blank band would not explain
+         itself. `title` feeds the status-bar hint (App mirrors the pressed element's title), so a
+         press on iPad still names the row. The cell itself is load-bearing: sticky and opaque, it
+         covers tags and lines scrolled left and keeps the frame columns aligned. No add button here
+         either — that lives in the timeline bar. -->
     <div
       class="lane-tone shrink-0 sticky left-0 z-20 flex h-6 items-center gap-1 pr-1 pl-[5px] text-text-secondary"
       role="presentation"
+      title="Markers"
       style="width: {labelW}px; touch-action: none"
       onpointerdown={touchDown}
       onpointermove={touchMove}
       onpointerup={onTouchUp}
       onpointercancel={onTouchUp}
     >
-      <!-- No add button here: it lives in the timeline bar (Playbar), since this lane is not shown
-         until a marker exists. -->
       <Bookmark size={13} class="shrink-0" />
-      <span class="truncate flex-1">Markers</span>
     </div>
     <!-- The rows' lock/hidden glyph column: empty here, reserved so the frame columns line up. -->
     <div

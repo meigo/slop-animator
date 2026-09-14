@@ -377,3 +377,10 @@ below overrides the section it names.
     ellipsis), a 5px notch cut into the right end by a `clip-path` polygon, at least 12px wide when
     unlabelled. Full `text` colour on the playhead's frame, `text-secondary` elsewhere; dark `surface`
     label text on both. No stem, no wedge. The button stays full lane height and ≥ 24px wide.
+11. **§6, the lane's gutter cell shows the Bookmark icon only** (2026-09-14, asked: "should we have a
+    label 'markers' at all in the gutter?"). The "Markers" word is removed: the lane appears only once
+    a marker exists, the tags share the bookmark shape with the icon and the toolbar button, and the
+    lane reads as part of the ruler header, whose own corner cell has no label. The icon stays,
+    because the lane can be visible while every marker is scrolled out of view horizontally and an
+    empty band would not explain itself. The cell keeps `title="Markers"` so a press shows the name
+    in the status bar, and the cell itself stays (sticky, opaque, aligned with the rows' gutter).

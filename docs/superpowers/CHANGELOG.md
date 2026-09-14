@@ -6351,6 +6351,12 @@ notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, pla
   - **Not needed any more:** the stem and wedge only repeated the ruler tick in a one-row lane, and
     were the parts that had to stay pixel-exact. The button keeps its full-height, ≥ 24px hit area.
     Spec amendment 10.
+- **Icon-only gutter cell (2026-09-14).** Asked as *"should we have a label 'markers' at all in the
+  gutter?"* The word went; the Bookmark icon stayed. The lane only appears once a marker exists and
+  the tags already share the bookmark shape, so the word added nothing — but the lane CAN be visible
+  with every marker scrolled out of view, and a blank band would not say what it is. The cell keeps
+  `title="Markers"` for the status-bar hint on press, and stays as a sticky opaque cell (it covers
+  scrolled tags/lines and keeps the columns aligned). Spec amendment 11.
 - **Not the compositor's gestures.** Its rename is double-click and delete is Alt+click — neither
   reachable with a Pencil. Here: tap = jump, tap again (playhead already on it) = popover with label
   + Delete, drag = move. A drag only PREVIEWS; one `moveMarkerTo` on release is the gesture, so there
