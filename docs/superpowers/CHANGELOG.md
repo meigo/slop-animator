@@ -6512,8 +6512,7 @@ share the pressure curve (maybe some more props). should separate these"*.
   `eraserPressureCurve` is added. An older pref without it starts the eraser as a copy of the brush
   curve (`eraserCurvePref`), so a tuned feel survives the split. Parsing moved into tested pure
   helpers in `preferences.ts` (`curvePointsPref`, `eraserCurvePref`).
-- **Owed an iPad pass:** bend the eraser curve, check the brush curve is unchanged, and reload to check
-  both curves are kept.
+- **Verified on the iPad (2026-09-14):** the user confirmed it works there ("works on ipad").
 
 **The play range's ✕ is always shown, next to In/Out (2026-09-14).** The user noticed the *"marker
 button is between playback range and it's delete button"*. The marker button had been placed before
