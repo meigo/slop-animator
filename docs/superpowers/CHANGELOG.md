@@ -6379,3 +6379,29 @@ notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, pla
   still open — the popover wrapper now commits when focus leaves it and swallows every `keydown`
   inside it, and the Delete button no longer steals focus on pointer press.
 - **Verified in the browser (desktop Chrome, mouse, 2026-09-13):** the strip sits between the ruler and the first row with aligned columns; ＋ adds a flag on the playhead frame and focuses the label field, and ＋ on an occupied frame reopens that marker's editor; tap jumps, tap again edits, Escape closes without saving; dragging previews, lands on release, and is one ⌘Z / ⌘⇧Z step; dropping onto an occupied frame springs back with "Frame N already has a marker"; Delete in the popover removes the marker and ⌘Z restores it; deleting a frame joins two labels onto one frame ("a · fix hand"), ⌘Z splits them again, and adding a frame shifts later markers right; shortening Length removes markers past the end and ⌘Z brings them back; a reload restores markers from autosave; the popover stays inside the window at the right edge; `n` adds and opens the field without typing an "n"; `<`/`>` jump and show "No marker before/after this frame" at the ends; typing `n<>` into the label field triggers no shortcut. **Not verified:** edge auto-scroll while dragging past the timeline edge — the automation tab was hidden, so `requestAnimationFrame` never ran (inconclusive, not a failure); how renaming a marker clearing an active cell selection feels (spec §4 open question); ⌘N passing through to the browser. **Owed an iPad pass:** Pencil tap and drag on flags, finger pan on the strip, the on-screen keyboard appearing when ＋ focuses the field, popover placement with the keyboard up, edge auto-scroll, popover placement when the marker's column is scrolled out of view horizontally (vertically it can no longer happen — the strip is pinned since 2026-09-14), and the pinned ruler + markers header painting correctly while rows scroll under it (gotcha #14 — desktop browsers cannot reproduce that bug).
+
+**Layer panel names and the marker label field match the timeline gutter at 14px (2026-09-14).**
+Asked with a screenshot as *"compare font sizes in the UI. Are layer panel and gutter using the same
+font size? And perhaps marker edit field could also have the same bigger font size"*. They did not
+match: the timeline gutter's row names carry no size class and inherit `text-sm` (14px) from the
+Timeline root (`Timeline.svelte`, `border-t … text-sm`), while the layers panel set `text-xs` (12px)
+explicitly on layer names, group names and both rename inputs, and the marker label field was
+`text-xs` too.
+- **Changed to `text-sm`:** the panel's layer-name span, group-name button, layer and group rename
+  inputs (`LayerList.svelte`), and the marker label field (`MarkerStrip.svelte`).
+- **Deliberately unchanged:** the panel's "Layers" header title stays `text-xs font-semibold` — a
+  section label, not a row name; ruler numbers, the marker tags' 10px text and the popover settings
+  panels are other scales.
+- **Row height does not move:** a panel row is sized by its 20px (`size-5`) icons plus `py-1`, and
+  `text-sm`'s 20px line height fits the same box, so names grow without the rows growing. The two
+  rename INPUTS are the exception, caught in the browser: at `text-sm` an input is its 20px line plus
+  a 1px border top and bottom = 22px, taller than the icons, so a row grew 28 → 30px the moment
+  renaming started (the old `text-xs` input was 16 + 2 = 18px and never pushed it). Both inputs now
+  carry `h-5` (20px, border included under Tailwind's border-box preflight).
+- **Names dimmed unless selected, like the gutter.** Asked right after: *"labels in layer panel are
+  too loud, could we dim these down and render in white only when selected, as the gutter does"*. At
+  14px the all-`text` list outshouted the timeline. The panel's layer-name span and group-name button
+  now take the gutter's exact rule — `text-text` when the row is lit (`active` for a layer, the
+  `groupHeaderSelected` `groupLit` for a group, the same flags that drive each row's `ui-selected`),
+  `text-text-secondary` otherwise. Only the NAME changes colour; the row's icons and toggles keep
+  their own classes, and the rename inputs stay full `text` while editing.

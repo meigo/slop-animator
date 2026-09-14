@@ -355,7 +355,7 @@
     onkeydown={popoverKeydown}
   >
     <input
-      class="min-w-0 flex-1 rounded-sm border border-border bg-surface px-1 text-xs text-text"
+      class="min-w-0 flex-1 rounded-sm border border-border bg-surface px-1 text-sm text-text"
       maxlength="40"
       placeholder="Label"
       bind:value={draft}

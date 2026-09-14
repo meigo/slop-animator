@@ -288,7 +288,7 @@
       {/if}
       {#if editingId === layer.id}
         <input
-          class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"
+          class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
           use:focusSelect
           bind:value={draft}
           onclick={(e) => e.stopPropagation()}
@@ -300,7 +300,14 @@
           onblur={() => commitEdit(layer.id)}
         />
       {:else}
-        <span class="flex-1 min-w-0 text-xs truncate">{layer.name}</span>
+        <!-- Dimmed unless this is the selected row, exactly as the timeline gutter's names are
+             (`text-text-secondary` / `text-text` beside `ui-selected`): at 14px an all-white list
+             read too loud next to the timeline. -->
+        <span
+          class="flex-1 min-w-0 text-sm truncate"
+          class:text-text={active}
+          class:text-text-secondary={!active}>{layer.name}</span
+        >
       {/if}
       {#if layer.kind === "draw"}
         <!-- Alpha lock ("lock transparency"): the checkerboard is the usual transparency glyph, and a
@@ -505,7 +512,7 @@
               </button>
               {#if editingGroupId === seg.group.id}
                 <input
-                  class="flex-1 min-w-0 text-xs bg-surface border border-border px-1 text-text"
+                  class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
                   use:focusSelect
                   bind:value={groupDraft}
                   onkeydown={(e) => {
@@ -516,7 +523,9 @@
                 />
               {:else}
                 <button
-                  class="min-w-0 flex-1 truncate text-left text-xs font-semibold"
+                  class="min-w-0 flex-1 truncate text-left text-sm font-semibold"
+                  class:text-text={groupLit}
+                  class:text-text-secondary={!groupLit}
                   title="Select group"
                   onclick={() => selectGroup(seg.group.id)}>{seg.group.name}</button
                 >
