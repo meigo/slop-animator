@@ -9,6 +9,9 @@
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
+  import ViewportDebug from "./lib/ViewportDebug.svelte";
+  /** TEMPORARY: `?debug-viewport` shows the iPad keyboard/viewport diagnostic readout. */
+  const debugViewport = new URLSearchParams(location.search).has("debug-viewport");
   import { onMount } from "svelte";
   import {
     seekPlayhead,
@@ -397,6 +400,9 @@
   <Timeline />
   <StatusBar />
 </div>
+{#if debugViewport}
+  <ViewportDebug />
+{/if}
 <ExportDialog />
 <SizeDialog />
 <ProjectSettingsDialog />
