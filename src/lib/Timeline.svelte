@@ -155,6 +155,7 @@
   import { computeLoopGhostSpans, defaultLoopBack, loopButtonState } from "./timeline-loops";
   import { clickOutside } from "./click-outside";
   import AudioLane from "./AudioLane.svelte";
+  import MarkerStrip from "./MarkerStrip.svelte";
   import TimelineSelectionBar from "./TimelineSelectionBar.svelte";
   import TrackKeyControls from "./TrackKeyControls.svelte";
   import Playbar from "./Playbar.svelte";
@@ -2583,12 +2584,20 @@
          z they painted OVER this row — layer names leaked across the ruler as you scrolled the tracks
          vertically. The ruler is the thing rows scroll UNDER, so it has to outrank them. The playhead
          badge is a child of this row and rides along; the gutter resize grip sits above it again
-         (z-40) so it stays grabbable at the ruler's level. -->
-      <div
-        class="sticky top-0 z-35 flex w-max items-stretch border-b border-border bg-surface"
-        style="min-width: {stripMinW}px"
-      >
-        <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
+         (z-40) so it stays grabbable at the ruler's level.
+         Since 2026-09-14 the `sticky top-0 z-35` lives on the HEADER wrapper that holds this row AND
+         the marker strip, so the markers stay pinned under the ruler. One sticky element, not a
+         second sticky row stacked under the first — stacked opaque sticky layers are what iOS WebKit
+         misorders (gotcha #14). This row is `relative` so its absolute badge/tip/handles keep their
+         containing block. The wrapper repeats the row's `w-max` + `min-width` on purpose: a sticky
+         element's OWN box has to span the strip, or it stops pinning once the content scrolls past
+         its width (the same lesson as the scroller's `w-max min-w-full`). -->
+      <div class="sticky top-0 z-35 w-max" style="min-width: {stripMinW}px">
+        <div
+          class="relative flex w-max items-stretch border-b border-border bg-surface"
+          style="min-width: {stripMinW}px"
+        >
+          <!-- `surface-active`, LIGHTER than the ruler strip around it, and deliberately so: this corner
            is the header over the row names, and the tone is what separates the ruler from the rows
            beneath it. Briefly changed to `bg-surface` on 2026-09-09 on the theory that a paler block
            was what made a selected first row look "cut from the top" — it was not. Measured with the
@@ -2598,13 +2607,13 @@
            edge above it, a 10%-accent tint looks like it begins somewhere arbitrary. Restored.
            This is a deliberate divergence from the shared doc's "Ruler: `panel` ground" — noted in
            SLOP-TIMELINE-UI.md, not drift. -->
-        <span
-          class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
-          style="width: {GUTTER_W}px"
-        >
-        </span>
-        {#if playRange}
-          <!-- Play-range handles: the wedge, the ruler's slice of the 1px line, and a 12px grab strip
+          <span
+            class="shrink-0 sticky left-0 z-20 bg-surface-active border-r border-text-muted"
+            style="width: {GUTTER_W}px"
+          >
+          </span>
+          {#if playRange}
+            <!-- Play-range handles: the wedge, the ruler's slice of the 1px line, and a 12px grab strip
              straddling the boundary so a thin line is still grabbable. The rest of each line runs
              down through the tracks from the scroller (see "play-range lines" there): the ruler is
              opaque and paints over anything the scroller draws beneath it.
@@ -2617,49 +2626,49 @@
              symmetric head in SHAPE — red against amber is the worst pair for the common colour
              blindnesses. Was 2px and ruler-height only (`h-6`, which went stale when the ruler became
              29px); now 1px and full height, as asked 2026-09-10. -->
-          {#each [{ edge: "in" as const, x: playRange.start * CELL_W }, { edge: "out" as const, x: (playRange.end + 1) * CELL_W }] as h (h.edge)}
-            <div
-              class="absolute inset-y-0 z-10 w-3 cursor-ew-resize hover:bg-text/10"
-              style="left: {GUTTER_W + h.x - 6}px; touch-action: none"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Play-range {h.edge}-point — drag to move"
-              title="Play-range {h.edge}-point — drag to move, tap to seek"
-              onpointerdown={(e) => rangeHandleDown(e, h.edge)}
-              onpointermove={rangeHandleMove}
-              onpointerup={rangeHandleUp}
-              onpointercancel={rangeHandleUp}
-            >
-              <span
-                class="pointer-events-none absolute inset-y-0 w-px"
-                style="left: {h.edge === 'in' ? 6 : 5}px; background: var(--color-warn)"
-              ></span>
-              <span
-                class="pointer-events-none absolute top-0"
-                style="left: {h.edge === 'in'
-                  ? 6
-                  : 1}px; width: 0; height: 0; border-top: 5px solid var(--color-warn); {h.edge ===
-                'in'
-                  ? 'border-right'
-                  : 'border-left'}: 5px solid transparent"
-              ></span>
-            </div>
-          {/each}
-        {/if}
-        <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
+            {#each [{ edge: "in" as const, x: playRange.start * CELL_W }, { edge: "out" as const, x: (playRange.end + 1) * CELL_W }] as h (h.edge)}
+              <div
+                class="absolute inset-y-0 z-10 w-3 cursor-ew-resize hover:bg-text/10"
+                style="left: {GUTTER_W + h.x - 6}px; touch-action: none"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Play-range {h.edge}-point — drag to move"
+                title="Play-range {h.edge}-point — drag to move, tap to seek"
+                onpointerdown={(e) => rangeHandleDown(e, h.edge)}
+                onpointermove={rangeHandleMove}
+                onpointerup={rangeHandleUp}
+                onpointercancel={rangeHandleUp}
+              >
+                <span
+                  class="pointer-events-none absolute inset-y-0 w-px"
+                  style="left: {h.edge === 'in' ? 6 : 5}px; background: var(--color-warn)"
+                ></span>
+                <span
+                  class="pointer-events-none absolute top-0"
+                  style="left: {h.edge === 'in'
+                    ? 6
+                    : 1}px; width: 0; height: 0; border-top: 5px solid var(--color-warn); {h.edge ===
+                  'in'
+                    ? 'border-right'
+                    : 'border-left'}: 5px solid transparent"
+                ></span>
+              </div>
+            {/each}
+          {/if}
+          <!-- Current-frame badge riding the playhead (Blender/compositor-style). z-10 keeps it UNDER
            the sticky gutter (z-20) so it slides out of sight instead of floating over the names.
            `danger`, not `accent`: in accent it was the same blue as the property keys, the span
            diamonds and the row selection, so the one mark you track during playback blended into the
            marks it has to be read against. The family doc reserves red for exactly this. -->
-        <div
-          class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
-          style="left: {GUTTER_W +
-            appState.playhead * CELL_W +
-            CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
-        >
-          {appState.playhead + 1}
-        </div>
-        <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
+          <div
+            class="absolute top-0 z-10 h-[29px] px-1 flex items-center justify-center rounded bg-danger text-accent-text text-xs tabular-nums pointer-events-none"
+            style="left: {GUTTER_W +
+              appState.playhead * CELL_W +
+              CELL_W / 2}px; min-width: {CELL_W}px; transform: translateX(-50%)"
+          >
+            {appState.playhead + 1}
+          </div>
+          <!-- …and its downward tip, hanging BELOW the ruler into the tracks so the handle points at
            the frame it marks. The badge is the ruler's full 24px, so its number centres exactly
            where the ruler's own labels do (those are `text-xs/6` in an `h-6` cell — same box, same
            centre), and this starts where the badge ends.
@@ -2671,16 +2680,16 @@
            one of them a selected row's tint. Not drawing the tip when it would be over the names has
            no such problem, and it is also what the artist would expect: the playhead is off-screen.
            If the badge's height changes, this `top` must change with it. -->
-        {#if !playheadBehindGutter}
-          <div
-            class="absolute z-10 pointer-events-none"
-            style="left: {GUTTER_W +
-              appState.playhead * CELL_W +
-              CELL_W /
-                2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
-          ></div>
-        {/if}
-        <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
+          {#if !playheadBehindGutter}
+            <div
+              class="absolute z-10 pointer-events-none"
+              style="left: {GUTTER_W +
+                appState.playhead * CELL_W +
+                CELL_W /
+                  2}px; top: 29px; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--color-danger)"
+            ></div>
+          {/if}
+          <!-- `tabindex=-1`, NOT 0: ←/→/Home/End work globally (App.svelte), so a tab stop here granted
            no capability — it only added a stray stop. The tabindex CANNOT go entirely, even though
            `rulerKey` duplicates those same four global keys: `role="slider"` is an interactive role
            and svelte-check fails the build without one (a11y_interactive_supports_focus). role/aria
@@ -2691,44 +2700,44 @@
            play rang the whole ruler. Suppressing it costs nothing real: an element Tab cannot reach
            can never receive keyboard focus, so the ring here could only ever have been a false
            positive. -->
-        <div
-          bind:this={rulerEl}
-          class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
-          style="touch-action: none"
-          role="slider"
-          tabindex="-1"
-          aria-label="Scrub frames"
-          aria-valuemin={1}
-          aria-valuemax={appState.project.frameCount}
-          aria-valuenow={appState.playhead + 1}
-          onpointerdown={rulerDown}
-          onpointermove={rulerMove}
-          onpointerup={rulerUp}
-          onpointercancel={rulerUp}
-          onkeydown={rulerKey}
-        >
-          <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
+          <div
+            bind:this={rulerEl}
+            class="ruler-no-ring flex cursor-ew-resize select-none bg-surface-active"
+            style="touch-action: none"
+            role="slider"
+            tabindex="-1"
+            aria-label="Scrub frames"
+            aria-valuemin={1}
+            aria-valuemax={appState.project.frameCount}
+            aria-valuenow={appState.playhead + 1}
+            onpointerdown={rulerDown}
+            onpointermove={rulerMove}
+            onpointerup={rulerUp}
+            onpointercancel={rulerUp}
+            onkeydown={rulerKey}
+          >
+            <!-- Length handle at the ruler's right edge. Sits INSIDE the ruler row so it scrolls with
              the frames it measures; absolutely positioned so it adds no column.
              z-10 like the playhead badge beside it: the ruler's own sticky gutter spacer is z-20 and
              comes EARLIER in the DOM, so at equal z this handle would win and paint over the spacer
              once the animation's end is scrolled behind it. -->
-          <div
-            class="absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-text/10"
-            style="left: {GUTTER_W +
-              appState.project.frameCount * CELL_W -
-              4}px; touch-action: none"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Drag to set the animation length"
-            title="Drag to set the animation length"
-            onpointerdown={lenGripDown}
-            onpointermove={lenGripMove}
-            onpointerup={lenGripUp}
-            onpointercancel={lenGripUp}
-          ></div>
-          {#each Array(appState.project.frameCount) as _, f (f)}
-            {@const r = playRange}
-            <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
+            <div
+              class="absolute inset-y-0 z-10 w-2 cursor-ew-resize hover:bg-text/10"
+              style="left: {GUTTER_W +
+                appState.project.frameCount * CELL_W -
+                4}px; touch-action: none"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Drag to set the animation length"
+              title="Drag to set the animation length"
+              onpointerdown={lenGripDown}
+              onpointermove={lenGripMove}
+              onpointerup={lenGripUp}
+              onpointercancel={lenGripUp}
+            ></div>
+            {#each Array(appState.project.frameCount) as _, f (f)}
+              {@const r = playRange}
+              <!-- Flash's ruler: a SHORT tick at the top edge and another at the bottom, with the
                number centred in the clear band between them. The two bands are disjoint, so a label
                can never collide with a tick — at any zoom, at any digit count.
                It was a full-height `border-r` with the label centred THROUGH it, which worked only
@@ -2761,24 +2770,43 @@
                where there is no preceding cell to carry a border.
                The 5-frame background guides moved with it and MUST stay in step; they are the same
                boundary drawn behind the rows. -->
-            <div
-              class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
-              style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
-                ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
-                : ''}"
-            >
-              {rulerLabel(f)}
-              {#each ["top-0", "bottom-0"] as edge (edge)}
-                <span
-                  class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
-                    ? 'h-1 bg-text-muted'
-                    : 'h-[3px] bg-text-muted/35'}"
-                  role="presentation"
-                ></span>
-              {/each}
-            </div>
-          {/each}
+              <div
+                class="relative box-border h-[29px] text-xs/[29px] text-center text-text-secondary"
+                style="width: {CELL_W}px; {r && f >= r.start && f <= r.end
+                  ? 'background: color-mix(in srgb, var(--color-warn) 15%, transparent);'
+                  : ''}"
+              >
+                {rulerLabel(f)}
+                {#each ["top-0", "bottom-0"] as edge (edge)}
+                  <span
+                    class="absolute right-0 w-px {edge} {(f + 2) % 5 === 0
+                      ? 'h-1 bg-text-muted'
+                      : 'h-[3px] bg-text-muted/35'}"
+                    role="presentation"
+                  ></span>
+                {/each}
+              </div>
+            {/each}
+          </div>
         </div>
+
+        <!-- marker strip: labelled per-frame markers (MarkerStrip.svelte), pinned under the ruler as
+           part of the sticky header above, and rendered only while a marker is visible (the add
+           button is in the timeline bar). It is opaque, so it draws its own slice of the playhead and
+           play-range lines (the scroller's lines pass beneath it, as they do beneath the ruler). -->
+        <MarkerStrip
+          cellW={CELL_W}
+          labelW={LABEL_W}
+          markerW={MARKER_W}
+          minWidth={stripMinW}
+          {playRange}
+          onTouchDown={touchPanDown}
+          onTouchMove={touchPanMove}
+          onTouchUp={touchPanUp}
+          onEdgeScrollStart={startEdgeScroll}
+          onEdgeScrollStop={stopEdgeScroll}
+          onEdgePointerX={(x) => (edgePointerX = x)}
+        />
       </div>
 
       <!-- audio waveform lane (scrolls with the ruler + rows; only when an audio track is set) -->

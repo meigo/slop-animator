@@ -3,6 +3,7 @@ import type {
   Cell,
   DrawingLayer,
   Layer,
+  Marker,
   Project,
   ReferenceLayer,
   TransformTrack,
@@ -980,5 +981,65 @@ describe("clearFrameIsNoOp", () => {
 
   it("is NOT a no-op past the stored track when an inked key still holds", () => {
     expect(clearFrameIsNoOp([key()], 5, isEmpty)).toBe(false);
+  });
+});
+
+describe("document ripple carries markers", () => {
+  function proj(frames: number, markers?: Marker[]) {
+    const p = {
+      name: "t",
+      width: 10,
+      height: 10,
+      fps: 12,
+      bgColor: "#fff",
+      frameCount: frames,
+      boil: defaultBoilConfig(),
+      groups: [],
+      layers: [layer(Array.from({ length: frames }, () => ({ kind: "hold" })))],
+      audio: null,
+      markers,
+    } as Project;
+    (p.layers[0] as DrawingLayer).id = 1;
+    return p;
+  }
+
+  it("insertFrameAllLayers moves markers at and after the new frame", () => {
+    const p = proj(6, [
+      { frame: 1, label: "a" },
+      { frame: 3, label: "b" },
+    ]);
+    insertFrameAllLayers(p, 3);
+    expect(p.markers).toEqual([
+      { frame: 1, label: "a" },
+      { frame: 4, label: "b" },
+    ]);
+  });
+
+  it("deleteFrameAllLayers joins a marker on the deleted frame with the next one", () => {
+    const p = proj(6, [
+      { frame: 2, label: "a" },
+      { frame: 3, label: "b" },
+      { frame: 5, label: "c" },
+    ]);
+    deleteFrameAllLayers(p, 2);
+    expect(p.markers).toEqual([
+      { frame: 2, label: "a · b" },
+      { frame: 4, label: "c" },
+    ]);
+  });
+
+  it("replaces the markers array rather than mutating it (undo snapshots hold it by reference)", () => {
+    const before: Marker[] = [{ frame: 4, label: "x" }];
+    const p = proj(6, before);
+    insertFrameAllLayers(p, 0);
+    expect(before).toEqual([{ frame: 4, label: "x" }]);
+    expect(p.markers).not.toBe(before);
+  });
+
+  it("a project without markers stays without them", () => {
+    const p = proj(3);
+    insertFrameAllLayers(p, 0);
+    deleteFrameAllLayers(p, 0);
+    expect(p.markers).toBeUndefined();
   });
 });

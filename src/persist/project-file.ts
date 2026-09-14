@@ -31,6 +31,7 @@ import { decodeAudioBytes } from "../audio/decode";
 import { mediaFromBlob } from "../anim/reference";
 import { putMedia } from "./media-store";
 import { floorScale } from "../core/ref-transform";
+import { sanitizeMarkers } from "../anim/markers";
 
 export interface DrawingLayerJson {
   id: number;
@@ -176,6 +177,8 @@ export interface ProjectJson {
     trimInFrames?: number;
     trimLenFrames?: number;
   } | null;
+  /** Timeline markers, sorted, one per frame. Absent = none (and in every pre-2026-09-13 save). */
+  markers?: { frame: number; label: string }[];
 }
 
 /** Normalise a persisted boil blob. Old saves used `scale`; weight has a different meaning, so old
@@ -281,6 +284,11 @@ export function projectToJson(project: Project): ProjectJson {
     // dropping the entry here (and the bytes in saveProjectBlob) would delete the audio from the
     // only copy of the project on the first autosave after opening it.
     audio: audioJson(project),
+    // Written only when there is something to write. Copied field by field so a future Marker field
+    // is an explicit save-format decision, not an accident of the in-memory shape.
+    markers: project.markers?.length
+      ? project.markers.map((m) => ({ frame: m.frame, label: m.label }))
+      : undefined,
   };
 }
 
@@ -743,6 +751,10 @@ export async function loadProjectBlob(
     audio: null,
   };
   refreshLength(project); // independent per-layer lengths → derive document length from the layers
+  // sanitizeMarkers no longer takes a length: a marker past frameCount is kept (the strip hides it),
+  // not deleted — see its doc comment and spec amendment 6. Ordering after refreshLength is now
+  // harmless rather than load-bearing.
+  project.markers = sanitizeMarkers(json.markers);
   const aj = json.audio;
   const audioBytes = zip["audio/track"];
   if (aj && audioBytes) {

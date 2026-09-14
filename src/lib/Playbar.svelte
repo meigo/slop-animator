@@ -8,12 +8,15 @@
     setPlayRangeIn,
     setPlayRangeOut,
     clearPlayRange,
+    addMarkerAtPlayhead,
+    markerActions,
   } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
   import { clickOutside } from "./click-outside";
   import {
     ArrowLeftToLine,
     ArrowRightToLine,
+    BookmarkPlus,
     ChevronLeft,
     ChevronRight,
     Pause,
@@ -113,6 +116,19 @@
       title="Set range out-point at the playhead"
       aria-label="Set range out"
       onclick={setPlayRangeOut}><ArrowRightToLine size={16} /></button
+    >
+    <!-- Add marker: in this group because markers and the play range both mark a moment on the
+         timeline. BEFORE the conditional clear ✕ below, so that ✕ appearing never moves it — button
+         positions on this bar must not shift. Same action as the `n` key: add at the playhead (or
+         open the marker already there) and open its label field. -->
+    <button
+      class={btn}
+      title="Add marker at playhead (N)"
+      aria-label="Add marker"
+      onclick={() => {
+        addMarkerAtPlayhead();
+        markerActions.openEditor?.(appState.playhead);
+      }}><BookmarkPlus size={16} /></button
     >
     <!-- Clear only: no numeric range readout. The ruler draws the range in place, with warn edge
          markers over numbered frames, so the extent is legible where it lives; this ✕ is what says a

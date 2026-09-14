@@ -6296,3 +6296,112 @@ right sides of all icons in the layer panel would align — bin, pen, eye icons"
 - The header is written as three padding utilities rather than `p-1` plus a `pr-*` override: two
   padding utilities on one element leave the winner to stylesheet order rather than to the reader.
 - The TIMELINE gutter was not touched — its icons sit against a column boundary, not the window edge.
+
+**Timeline markers (2026-09-13).** Asked as *"what do you think about adding timeline markers feature
+(slop-compositor has it)"* — for "anything that needs navigational help or maybe even short todo
+notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, plan
+`docs/superpowers/plans/2026-09-13-timeline-markers.md`.
+- **Model:** `Project.markers?: Marker[]`, `{ frame, label }`, sorted, **one per frame, frame is the
+  identity** (no id). Pure ops in `src/anim/markers.ts`; every one returns the SAME array when nothing
+  changed, which is how the store actions skip no-op undo entries.
+- **Own strip, not the ruler.** The 29px ruler has no free space — the playhead badge covers its full
+  height and a pen there scrubs. `MarkerStrip.svelte` sits between the ruler and the audio lane.
+  > **SUPERSEDED 2026-09-14** (same entry, next bullet below): it shipped first as a non-sticky row like
+  > the audio lane; it is now PINNED as part of the ruler header.
+- **Pinned in the ruler header (2026-09-14).** Asked as *"markers row looks like all the others,
+  perhaps it should be distinctive in some way. and also sticky and not scroll with other layers"*.
+  Timeline's `sticky top-0 z-35` moved from the ruler row to a header WRAPPER holding the ruler row and
+  the strip — still ONE sticky element (a second opaque sticky row stacked under the ruler is exactly
+  what gotcha #14 warns iOS WebKit misorders); the ruler row became `relative` so its absolute badge,
+  tip and handles keep their containing block. The strip takes the ruler's tones (`surface-active`
+  name/glyph cells and a band up to the last frame, `surface` past it) and closes the header with a
+  `text-muted` divider. Opaque, so it draws its own slice of the playhead and play-range lines (no
+  5-frame guides, like the ruler), unlayered and before the flags so labels paint over them and the
+  sticky name cell covers them when scrolled. Spec amendment 8.
+  > **SUPERSEDED 2026-09-14** (tones and the ＋, next bullet): the lane now has its own mid tone and no
+  > ＋ of its own.
+- **Own tone, toolbar button, shown only with markers (2026-09-14).** Asked as *"marker lane could be
+  distinctive maybe with bg color between the ruler and layer lanes. And we could move marker adding
+  button to the main toolbar and show marker lane only if there are any markers"*.
+  - **Tone:** `.lane-tone`, `color-mix(in srgb, surface-active 50%, surface)` (≈ #262629), over the
+    name/glyph cells and a band up to the last frame (`surface` past it) — between the ruler and the
+    rows, derived from both tokens so it follows them.
+  - **Button:** `BookmarkPlus` "Add marker at playhead (N)" in the timeline bar's range group, right
+    after Out and BEFORE the conditional clear ✕, so the ✕ appearing never shifts it. The lane's ＋ is
+    gone; the lane label's icon became `Bookmark` to match.
+  - **Shown only with markers:** the lane renders while at least one marker is VISIBLE (inside the
+    document). `MarkerStrip` itself stays mounted, so `markerActions.openEditor` stays registered for
+    the button and `n`; `openEditor` awaits `tick()` so it measures a lane that mounted in the same
+    update. The header grows/shrinks by one row as the first marker is added / the last deleted.
+    Spec amendment 9.
+- **A marker is one sideways-bookmark tag (2026-09-14).** Asked with a zoomed screenshot: *"wedge and
+  line not aligned with ruler tick and each other … are these needed at all, perhaps only badge is
+  enough? Maybe can try some distinctive shape - similar to icon for example but rotated 90 degrees?"*
+  Replaces the downward flag + 1px stem + pill label.
+  - **Why it was misaligned — three pixel columns for one position:** the ruler tick is `right-0
+    w-px` in the PREVIOUS cell (1px left of the frame boundary), the stem was `left-0 w-px` in the
+    marker's own cell (1px right of it), and the wedge was centred ON the boundary. At 2× DPR each is
+    two device pixels apart, which the screenshot showed.
+  - **Now:** the button sits at `max(0, col * cellW - 1)` and holds one 16px tag whose SQUARE left
+    edge starts on the tick's own pixel column (clamped on frame 1, which has no tick — the review
+    caught that its first pixel would sit under the sticky name column's divider); the label sits inside (`max-w-20`, ellipsis); a 5px notch is cut
+    into the right end by `.marker-tag`'s `clip-path`, like the Bookmark icon on its side (matching
+    the lane label and the toolbar's `BookmarkPlus`). Unlabelled = a 12px notched tag. The playhead's
+    marker is full `text`, others `text-secondary` — the brightness replaces the old brighter stem.
+  - **Not needed any more:** the stem and wedge only repeated the ruler tick in a one-row lane, and
+    were the parts that had to stay pixel-exact. The button keeps its full-height, ≥ 24px hit area.
+    Spec amendment 10.
+- **Icon-only gutter cell (2026-09-14).** Asked as *"should we have a label 'markers' at all in the
+  gutter?"* The word went; the Bookmark icon stayed. The lane only appears once a marker exists and
+  the tags already share the bookmark shape, so the word added nothing — but the lane CAN be visible
+  with every marker scrolled out of view, and a blank band would not say what it is. The cell keeps
+  `title="Markers"` for the status-bar hint on press, and stays as a sticky opaque cell (it covers
+  scrolled tags/lines and keeps the columns aligned). Spec amendment 11.
+- **Not the compositor's gestures.** Its rename is double-click and delete is Alt+click — neither
+  reachable with a Pencil. Here: tap = jump, tap again (playhead already on it) = popover with label
+  + Delete, drag = move. A drag only PREVIEWS; one `moveMarkerTo` on release is the gesture, so there
+  is no begin/revert bracket and `pointercancel` just drops the preview.
+- **Ripple:** in `rippleDocumentFrames`, same rule as `shiftStartFrame`. A delete that lands the
+  markers of `at` and `at+1` on one frame **joins their labels** ("a · b") rather than dropping one.
+  Per-layer frame edits do not move markers (same as audio/reference ranges).
+- **Length cut:** `applyAnimationLength` drops markers past the new end, inside both undo brackets.
+  Markers past `frameCount` reached any other way are hidden in the strip, never deleted silently.
+- **Undo:** `StructSnapshot.markers` by reference — safe only because nothing writes the array in
+  place. `restoreStructure` assigns it unconditionally so undoing the first add clears the field.
+- **Save:** optional `markers`, version stays 1, written only when non-empty; the loader drops only
+  non-integer/negative frames and keeps markers past the document length (hidden in the strip, per
+  §3), so a reload never silently deletes a note — a final-review fix of a §3/§5 contradiction. Does
+  NOT cap label length (joined labels can exceed the input's 40).
+- **Keys:** `n` add + open editor, `<`/`>` previous/next marker.
+- **Editor popover also commits on `focusout`** (final review fix, spec amendment 7): a
+  keyboard-only focus change out of the popover (Tab to Delete, iPad "hide keyboard") has no
+  pointerdown for `clickOutside` to catch, so it used to reach App's shortcuts with stale state
+  still open — the popover wrapper now commits when focus leaves it and swallows every `keydown`
+  inside it, and the Delete button no longer steals focus on pointer press.
+- **Verified in the browser (desktop Chrome, mouse, 2026-09-13):** the strip sits between the ruler and the first row with aligned columns; ＋ adds a flag on the playhead frame and focuses the label field, and ＋ on an occupied frame reopens that marker's editor; tap jumps, tap again edits, Escape closes without saving; dragging previews, lands on release, and is one ⌘Z / ⌘⇧Z step; dropping onto an occupied frame springs back with "Frame N already has a marker"; Delete in the popover removes the marker and ⌘Z restores it; deleting a frame joins two labels onto one frame ("a · fix hand"), ⌘Z splits them again, and adding a frame shifts later markers right; shortening Length removes markers past the end and ⌘Z brings them back; a reload restores markers from autosave; the popover stays inside the window at the right edge; `n` adds and opens the field without typing an "n"; `<`/`>` jump and show "No marker before/after this frame" at the ends; typing `n<>` into the label field triggers no shortcut. **Not verified:** edge auto-scroll while dragging past the timeline edge — the automation tab was hidden, so `requestAnimationFrame` never ran (inconclusive, not a failure); how renaming a marker clearing an active cell selection feels (spec §4 open question); ⌘N passing through to the browser. **Owed an iPad pass:** Pencil tap and drag on flags, finger pan on the strip, the on-screen keyboard appearing when ＋ focuses the field, popover placement with the keyboard up, edge auto-scroll, popover placement when the marker's column is scrolled out of view horizontally (vertically it can no longer happen — the strip is pinned since 2026-09-14), and the pinned ruler + markers header painting correctly while rows scroll under it (gotcha #14 — desktop browsers cannot reproduce that bug).
+
+**Layer panel names and the marker label field match the timeline gutter at 14px (2026-09-14).**
+Asked with a screenshot as *"compare font sizes in the UI. Are layer panel and gutter using the same
+font size? And perhaps marker edit field could also have the same bigger font size"*. They did not
+match: the timeline gutter's row names carry no size class and inherit `text-sm` (14px) from the
+Timeline root (`Timeline.svelte`, `border-t … text-sm`), while the layers panel set `text-xs` (12px)
+explicitly on layer names, group names and both rename inputs, and the marker label field was
+`text-xs` too.
+- **Changed to `text-sm`:** the panel's layer-name span, group-name button, layer and group rename
+  inputs (`LayerList.svelte`), and the marker label field (`MarkerStrip.svelte`).
+- **Deliberately unchanged:** the panel's "Layers" header title stays `text-xs font-semibold` — a
+  section label, not a row name; ruler numbers, the marker tags' 10px text and the popover settings
+  panels are other scales.
+- **Row height does not move:** a panel row is sized by its 20px (`size-5`) icons plus `py-1`, and
+  `text-sm`'s 20px line height fits the same box, so names grow without the rows growing. The two
+  rename INPUTS are the exception, caught in the browser: at `text-sm` an input is its 20px line plus
+  a 1px border top and bottom = 22px, taller than the icons, so a row grew 28 → 30px the moment
+  renaming started (the old `text-xs` input was 16 + 2 = 18px and never pushed it). Both inputs now
+  carry `h-5` (20px, border included under Tailwind's border-box preflight).
+- **Names dimmed unless selected, like the gutter.** Asked right after: *"labels in layer panel are
+  too loud, could we dim these down and render in white only when selected, as the gutter does"*. At
+  14px the all-`text` list outshouted the timeline. The panel's layer-name span and group-name button
+  now take the gutter's exact rule — `text-text` when the row is lit (`active` for a layer, the
+  `groupHeaderSelected` `groupLit` for a group, the same flags that drive each row's `ui-selected`),
+  `text-text-secondary` otherwise. Only the NAME changes colour; the row's icons and toggles keep
+  their own classes, and the rename inputs stay full `text` while editing.
