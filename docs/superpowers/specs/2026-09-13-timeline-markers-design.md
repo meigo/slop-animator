@@ -418,3 +418,6 @@ below overrides the section it names.
     fixed 80px cap (`max-w-20`). `markerTagRoom` in `timeline-grid.ts` gives each tag the space up to
     the next later tag less 2px, and the last tag the rest of the lane with an 80px floor. Labels
     truncate only where a neighbour is in the way.
+18. **The marker button comes after the play range's ✕, which is always shown** (2026-09-14, user
+    choice). This supersedes amendment 9's "after Out and before the conditional clear ✕". The ✕ is
+    disabled and dimmed with no range, so the order is In · Out · ✕ · marker and no button shifts.

@@ -123,9 +123,25 @@
       aria-label="Set range out"
       onclick={setPlayRangeOut}><ArrowRightToLine size={16} /></button
     >
+    <!-- Clear only: no numeric range readout. The ruler draws the range in place, with warn edge
+         markers over numbered frames, so the extent is legible where it lives, and the status bar
+         already carries the frame readout. The family layout agrees (SLOP-TIMELINE-UI.md §"transport
+         row": set in / set out / clear, and the readout it names is the playhead's, not the range's)
+         — slop-video-compositor reports range changes through its status line transiently rather than
+         parking numbers in the bar.
+         ALWAYS rendered, disabled and dimmed while no range is set (2026-09-14). It used to appear only
+         with a range, which forced the marker button in front of it (a button after it would jump
+         sideways) and split the range group apart. Now the order is In · Out · ✕ · marker and nothing
+         on the bar moves; a lit ✕ is what says a range is set. -->
+    <button
+      class="{btn} disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+      title={appState.playback.range ? "Clear play range" : "No play range set"}
+      aria-label="Clear play range"
+      disabled={!appState.playback.range}
+      onclick={clearPlayRange}><X size={16} /></button
+    >
     <!-- Add / delete marker: in this group because markers and the play range both mark a moment on
-         the timeline. BEFORE the conditional clear ✕ below, so that ✕ appearing never moves it — button
-         positions on this bar must not shift. On an empty frame it adds a marker and opens its label
+         the timeline. After the range's always-present ✕, so its position never shifts. On an empty frame it adds a marker and opens its label
          field. On a frame that has one it becomes a warn-coloured delete, `BookmarkOff` because
          its strike-through changes the silhouette where BookmarkX's small ✕ went unnoticed (2026-09-14, saves the
          tap-again + Delete round trip; undoable). The `n` key stays add-or-edit on purpose: a key
@@ -149,17 +165,6 @@
           markerActions.openEditor?.(appState.playhead);
         }}><BookmarkPlus size={16} /></button
       >
-    {/if}
-    <!-- Clear only: no numeric range readout. The ruler draws the range in place, with warn edge
-         markers over numbered frames, so the extent is legible where it lives; this ✕ is what says a
-         range is SET, and the status bar already carries the frame readout. The family layout agrees
-         (SLOP-TIMELINE-UI.md §"transport row": set in / set out / clear, and the readout it names is
-         the playhead's, not the range's) — slop-video-compositor reports range changes through its
-         status line transiently rather than parking numbers in the bar. The one case the label
-         served was a range scrolled off-screen; the answer to that is a transient status message,
-         not permanent chrome competing for a bar that already wraps in iPad portrait. -->
-    {#if appState.playback.range}
-      <button class={btn} title="Clear play range" onclick={clearPlayRange}><X size={16} /></button>
     {/if}
   </div>
 {:else}

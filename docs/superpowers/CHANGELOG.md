@@ -6498,6 +6498,18 @@ space on the right (no next marker near it) it could render the whole text"*.
   dragged onto an occupied frame is not counted as a neighbour.
 - Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
 
+**The play range's ✕ is always shown, next to In/Out (2026-09-14).** The user noticed the *"marker
+button is between playback range and it's delete button"*. The marker button had been placed before
+the ✕ because the ✕ appeared only while a range was set, and a button after it would jump sideways.
+The user chose to keep the ✕ always shown instead.
+- **Order:** In · Out · ✕ · marker. The ✕ is disabled and dimmed (`disabled:opacity-40`, the app's
+  disabled-button style) while no range is set. Nothing on the bar moves when a range is set or
+  cleared.
+- **Trade-off, accepted:** the bar carries one more 28px button all the time. Before, the ✕ only
+  showing up also meant "a range is set"; now the ✕ being lit says it.
+- This supersedes the 2026-09-13 note that put the marker button "after Out and BEFORE the conditional
+  clear ✕". Markers spec amendment 18.
+
 **The marker delete button uses BookmarkOff (2026-09-14).** The user said: *"bookmark-x is semantically correct but
 the x is really small to notice the change, so let's try bookmark-off"*. At 16px, BookmarkX's ✕ is a
 few pixels inside the same outline as BookmarkPlus, so the add/delete swap was easy to miss.
