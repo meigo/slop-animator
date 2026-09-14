@@ -1762,8 +1762,12 @@
 
     // Press anywhere INSIDE the current selection (key or empty) → move the whole block; a plain tap
     // collapses to that cell (handled in rowUp). The whole selection rect is the drag handle, not
-    // just its ◆ cells. (A new marquee from within the bounds is still available via long-press.)
+    // just its ◆ cells. A press inside the selection ALWAYS moves, however long the artist pauses
+    // before dragging (2026-09-14): the long-press → marquee armed above is cancelled here, because a
+    // Pencil press that rests a moment before moving flipped into a new selection box instead. To box
+    // a new range over a selected one, tap outside to deselect first.
     if (inSelection(layer.id, frame) && editable) {
+      cancelLongPress();
       dragMode = "moveblock";
       moveGrabFrame = frame;
       moveDelta = 0;
@@ -1882,6 +1886,10 @@
     // Both shared hooks are released only if THIS drag still owns them: a settle for a row drag that
     // is not live must not kill another gesture's edge-scroll tick or clear its settle hook.
     stopEdgeScroll("row");
+    // A drag that has been ended must not come back as a marquee: rowDown arms the long-press before
+    // it knows which gesture this is, and a settle mid-press used to leave that timer running, so it
+    // fired 400ms later with `dragRowEl` already cleared and grew a selection offset by the gutter.
+    cancelLongPress();
     if (transformDragGuard.settle === settleRowDrag) transformDragGuard.settle = null;
     dragRowEl = null;
     dragMode = "none";

@@ -6429,3 +6429,24 @@ re-test.
   app.css trade-off note now names the marker bar.
 - **Owed an iPad pass:** add a marker from the bar button and with a tap-again — the bar appears at the
   top above the keyboard, the app does not shift, and no blank space remains after the keyboard closes.
+
+**Moving a selected keyframe works again (2026-09-14).** Reported as *"I can't move the keyframes
+anymore"* (iPad and desktop), then with a screen recording: *"after 400ms the drag starts to expand
+selection with offset instead of moving"*; last known good "2-3 days ago".
+- **Root cause (regression from `d0685f1`, 2026-09-11, "the Transform tool follows the selected
+  row"):** Canvas's tool effect reads `transformScope()` — which reads `activeRow` — and called
+  `transformDragGuard.settle?.()` on EVERY re-run. `setActiveLayer` assigns a fresh `activeRow` object
+  even when the layer is already selected, and every timeline row press calls it. So pressing a
+  selected key armed `moveblock` and registered `settleRowDrag`, the effect re-ran a microtask later
+  and `resetRowDrag` ended the drag: the pointer moved nothing. `resetRowDrag` also left the
+  long-press timer running, so a press held ~400ms turned into a marquee — measured from a cleared
+  `dragRowEl`, i.e. from the page edge, which is the gutter-width offset in the recording.
+- **How it was proved:** logging `rowDown`/`rowMoveAt`/`rowUp` showed `moveblock` entered and then
+  `dragMode` "marquee" with `dragRowEl` gone; dispatching the gesture with microtask flushes between
+  press and move failed on `main` (`K.K` unchanged) but moved on `028dbcb`, the parent of `d0685f1`
+  (`K...K`). Firing press+move in one tick moved on both, which is why a first synthetic test passed.
+  The store's `moveTimelineSelection` was fine throughout.
+- **Fix:** the Canvas effect settles only when the tool or the scope VALUE changed; `resetRowDrag`
+  cancels the long-press; and a press inside the selection cancels it too, so it always moves however
+  long the artist pauses (user's call). Long-press outside a selection still starts a marquee; to box
+  a new range over a selected one, deselect first.
