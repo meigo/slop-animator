@@ -6334,6 +6334,23 @@ notes". Spec `docs/superpowers/specs/2026-09-13-timeline-markers-design.md`, pla
     the button and `n`; `openEditor` awaits `tick()` so it measures a lane that mounted in the same
     update. The header grows/shrinks by one row as the first marker is added / the last deleted.
     Spec amendment 9.
+- **A marker is one sideways-bookmark tag (2026-09-14).** Asked with a zoomed screenshot: *"wedge and
+  line not aligned with ruler tick and each other … are these needed at all, perhaps only badge is
+  enough? Maybe can try some distinctive shape - similar to icon for example but rotated 90 degrees?"*
+  Replaces the downward flag + 1px stem + pill label.
+  - **Why it was misaligned — three pixel columns for one position:** the ruler tick is `right-0
+    w-px` in the PREVIOUS cell (1px left of the frame boundary), the stem was `left-0 w-px` in the
+    marker's own cell (1px right of it), and the wedge was centred ON the boundary. At 2× DPR each is
+    two device pixels apart, which the screenshot showed.
+  - **Now:** the button sits at `max(0, col * cellW - 1)` and holds one 16px tag whose SQUARE left
+    edge starts on the tick's own pixel column (clamped on frame 1, which has no tick — the review
+    caught that its first pixel would sit under the sticky name column's divider); the label sits inside (`max-w-20`, ellipsis); a 5px notch is cut
+    into the right end by `.marker-tag`'s `clip-path`, like the Bookmark icon on its side (matching
+    the lane label and the toolbar's `BookmarkPlus`). Unlabelled = a 12px notched tag. The playhead's
+    marker is full `text`, others `text-secondary` — the brightness replaces the old brighter stem.
+  - **Not needed any more:** the stem and wedge only repeated the ruler tick in a one-row lane, and
+    were the parts that had to stay pixel-exact. The button keeps its full-height, ≥ 24px hit area.
+    Spec amendment 10.
 - **Not the compositor's gestures.** Its rename is double-click and delete is Alt+click — neither
   reachable with a Pencil. Here: tap = jump, tap again (playhead already on it) = popover with label
   + Delete, drag = move. A drag only PREVIEWS; one `moveMarkerTo` on release is the gesture, so there

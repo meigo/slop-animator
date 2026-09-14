@@ -365,3 +365,15 @@ below overrides the section it names.
    `MarkerStrip` component stays mounted so `markerActions.openEditor` is always registered, and
    `openEditor` awaits `tick()` before measuring. The header height changes by one row when the first
    marker appears or the last disappears — the brainstorming concern about that jump is accepted.
+10. **§6, a marker is one sideways-bookmark tag** (2026-09-14, asked with a zoomed screenshot: "wedge
+    and line not aligned with ruler tick and each other … are these needed at all, perhaps only badge
+    is enough? Maybe can try some distinctive shape - similar to icon for example but rotated 90
+    degrees?"). Supersedes §6's "Marker — Look" (downward flag, 1px stem, pill label). The misalignment
+    was three different pixel columns: the ruler tick is `right-0 w-px` in the PREVIOUS cell (one px
+    left of the boundary), the stem `left-0 w-px` in the marker's own cell (one px right of it), and
+    the wedge centred on the boundary. Now: the button sits at `max(0, col * cellW - 1)` (frame 1 has no
+    tick; the name column's divider is its edge) and holds a single
+    16px tag — square left edge on the tick's pixel column, label inside (10px/600, `max-w-20`,
+    ellipsis), a 5px notch cut into the right end by a `clip-path` polygon, at least 12px wide when
+    unlabelled. Full `text` colour on the playhead's frame, `text-secondary` elsewhere; dark `surface`
+    label text on both. No stem, no wedge. The button stays full lane height and ≥ 24px wide.

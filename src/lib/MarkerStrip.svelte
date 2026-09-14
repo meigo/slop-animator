@@ -313,29 +313,26 @@
         <button
           type="button"
           tabindex="-1"
-          class="absolute inset-y-0 flex min-w-6 cursor-grab items-start"
+          class="absolute inset-y-0 flex min-w-6 cursor-grab items-center"
           class:z-10={dragFrom === m.frame}
-          style="left: {col * cellW}px; touch-action: none"
+          style="left: {Math.max(0, col * cellW - 1)}px; touch-action: none"
           title="Marker: {m.label || 'unlabelled'} · tap to jump, tap again to edit, drag to move"
           onpointerdown={(e) => markerDown(e, m.frame)}
         >
-          <!-- stem: full-strength on the playhead's frame, muted elsewhere -->
+          <!-- A bookmark on its side, and the marker's ONLY mark (2026-09-14; the flag + stem it
+               replaces never lined up with the ruler tick). The button sits 1px left of the frame
+               cell because Timeline draws each ruler tick as `right-0 w-px` in the PREVIOUS cell, so
+               the tag's SQUARE left edge starts on the tick's own pixel column. Clamped at 0: frame 1
+               has no tick, and 1px further left would sit under the sticky name column's divider,
+               which is that frame's edge. The notched right end
+               is `.marker-tag`'s clip-path. Full text colour on the playhead's frame, the dimmer
+               secondary colour elsewhere — that brightness is the "you are on it" signal. -->
           <span
-            class="pointer-events-none absolute inset-y-0 left-0 w-px {appState.playhead === m.frame
+            class="marker-tag pointer-events-none block h-4 max-w-20 min-w-3 truncate pr-2 pl-1 text-[10px]/4 font-semibold text-surface {appState.playhead ===
+            m.frame
               ? 'bg-text'
-              : 'bg-text-muted'}"
-          ></span>
-          <!-- 8×4 downward flag, tip on the column edge -->
-          <span
-            class="pointer-events-none absolute top-0 left-[-4px] h-1 w-2 bg-text"
-            style="clip-path: polygon(0 0, 100% 0, 50% 100%)"
-          ></span>
-          {#if m.label}
-            <span
-              class="pointer-events-none mt-[5px] ml-1 max-w-20 truncate rounded-sm bg-text px-1 text-[10px]/[14px] font-semibold text-surface"
-              >{m.label}</span
-            >
-          {/if}
+              : 'bg-text-secondary'}">{m.label}</span
+          >
         </button>
       {/each}
     </div>
@@ -377,5 +374,11 @@
      marker lane stays in between if either is ever retuned. */
   .lane-tone {
     background: color-mix(in srgb, var(--color-surface-active) 50%, var(--color-surface));
+  }
+  /* The marker tag: square on the left (the frame's exact start), a 5px notch cut into the right end
+     like the Bookmark icon turned on its side. The tag's right padding (8px) keeps the label and its
+     ellipsis clear of the notch. */
+  .marker-tag {
+    clip-path: polygon(0 0, 100% 0, calc(100% - 5px) 50%, 100% 100%, 0 100%);
   }
 </style>
