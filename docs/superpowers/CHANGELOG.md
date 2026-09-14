@@ -6486,6 +6486,18 @@ gutter and timeline are too loud. let's try the same color other gridlines have"
   running full height. The colour was simply the rows' at the time, so every gutter edge still matches.
 - Markers spec amendment 15. Owed an iPad eyeball, since the divider may now be too faint on that screen.
 
+**Marker labels use the free space to their right (2026-09-14).** From a screenshot: *"if marker has
+space on the right (no next marker near it) it could render the whole text"*.
+- **Before:** every tag was capped at `max-w-20` (80px), so "This is a lo…" was cut short with the lane
+  empty beside it.
+- **Now:** `markerTagRoom(cols, frameCount, cellW)` in `timeline-grid.ts` is a pure function with
+  tests. It lets each tag run up to the next later tag's left edge, less a 2px gap. The last tag gets
+  the rest of the lane, but never less than the old 80px, so a marker near the end still shows a
+  readable label. `MarkerStrip.svelte` applies it as an inline `max-width`.
+- **During a drag,** the room is worked out from the preview columns, so labels make way live. A tag
+  dragged onto an occupied frame is not counted as a neighbour.
+- Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
+
 **The marker delete button uses BookmarkOff (2026-09-14).** The user said: *"bookmark-x is semantically correct but
 the x is really small to notice the change, so let's try bookmark-off"*. At 16px, BookmarkX's ✕ is a
 few pixels inside the same outline as BookmarkPlus, so the add/delete swap was easy to miss.

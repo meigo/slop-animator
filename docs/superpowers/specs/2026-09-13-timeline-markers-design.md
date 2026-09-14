@@ -414,3 +414,7 @@ below overrides the section it names.
     colour as the row dividers.
 16. **The delete state's icon is `BookmarkOff`, not `BookmarkX`** (2026-09-14, amends 14): the ✕ was
     too small to notice the swap; the strike-through changes the silhouette.
+17. **A tag's label uses the room up to the next tag** (2026-09-14, user request). This replaces the
+    fixed 80px cap (`max-w-20`). `markerTagRoom` in `timeline-grid.ts` gives each tag the space up to
+    the next later tag less 2px, and the last tag the rest of the lane with an 80px floor. Labels
+    truncate only where a neighbour is in the way.

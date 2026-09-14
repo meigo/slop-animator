@@ -119,3 +119,26 @@ export function anchoredScrollLeft(
   const contentX = (w: number) => gutterW + frame * w + w / 2;
   return Math.max(0, contentX(toW) - (contentX(fromW) - scrollLeft));
 }
+
+/** The marker tag's label room before 2026-09-14 (`max-w-20`), kept as the floor for the LAST tag so
+ *  a marker near the document end still shows a readable label past the lane's end. */
+export const MARKER_TAG_MIN_ROOM = 80;
+
+/** Max width in px for each marker tag, given the columns the tags sit on (in any order — a dragged
+ *  tag is previewed on its drag column). A tag may run up to the next later tag's left edge less a
+ *  2px gap, so a lone marker shows its whole label and crowded ones truncate instead of overlapping.
+ *  The last tag gets the rest of the lane, floored at MARKER_TAG_MIN_ROOM. A tag on the SAME column
+ *  (dragged onto an occupied frame) is not a neighbour. */
+export function markerTagRoom(
+  cols: readonly number[],
+  frameCount: number,
+  cellW: number,
+): number[] {
+  return cols.map((c) => {
+    let next = Infinity;
+    for (const o of cols) if (o > c && o < next) next = o;
+    return next === Infinity
+      ? Math.max(MARKER_TAG_MIN_ROOM, (frameCount - c) * cellW)
+      : (next - c) * cellW - 2;
+  });
+}
