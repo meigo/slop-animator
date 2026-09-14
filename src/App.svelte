@@ -296,9 +296,17 @@
     const onFocusOut = () => requestAnimationFrame(resetPageScroll);
     document.addEventListener("focusout", onFocusOut);
     window.visualViewport?.addEventListener("resize", resetPageScroll);
+    // Measured on the iPad (?debug-viewport, 2026-09-14): after the keyboard closes, iOS leaves the
+    // visual viewport 79px SHORTER than the layout viewport (vvH 813 vs innerHeight/clientHeight 892),
+    // so the document has 79px to scroll — and it is scrolled a moment LATER (window scrollY/html
+    // scrollTop 79, #app rect top -79), after focusout and the resize have already fired. Resetting on
+    // the page's own `scroll` catches that. Element scrollers (timeline, layer list) do not fire
+    // `scroll` on window, so this never touches them; on desktop the page never scrolls at all.
+    window.addEventListener("scroll", resetPageScroll, { passive: true });
     return () => {
       document.removeEventListener("focusout", onFocusOut);
       window.visualViewport?.removeEventListener("resize", resetPageScroll);
+      window.removeEventListener("scroll", resetPageScroll);
     };
   });
 
