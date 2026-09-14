@@ -6406,6 +6406,10 @@ explicitly on layer names, group names and both rename inputs, and the marker la
   `text-text-secondary` otherwise. Only the NAME changes colour; the row's icons and toggles keep
   their own classes, and the rename inputs stay full `text` while editing.
 
+> **SUPERSEDED in part** by *Chrome for iPad keyboard gap: accepted as a Chrome bug* (next entry, same
+> day). The placement change stands. The "root cause" below does not: the shift happens after any
+> keyboard in Chrome, wherever the field is.
+
 **The marker label editor opens at the top of the window (2026-09-14).** Reported from the iPad with
 two screenshots: *"on creating marker, the popup rendered under the toolbar"* and *"after creation
 large empty space created under the status bar"*. Root cause, from the app's own record: `#app` is
@@ -6429,6 +6433,26 @@ re-test.
   app.css trade-off note now names the marker bar.
 - **Owed an iPad pass:** add a marker from the bar button and with a tap-again — the bar appears at the
   top above the keyboard, the app does not shift, and no blank space remains after the keyboard closes.
+
+**Chrome for iPad keyboard gap: accepted as a Chrome bug (2026-09-14).** After the marker bar moved to
+the top, the iPad re-test said *"works, but the empty space still under the app created"*. The user
+then narrowed it down: *"whenever the on-screen keyboard is opened"* (layer rename too), *"safari is ok,
+problem is with chrome"*, and the gap survives a reload and clears only in a new tab.
+- **Measured** with a temporary `?debug-viewport` readout on the device: after the keyboard closes,
+  `visualViewport.height` stays 813 on an 892px screen (`clientHeight`). The document briefly scrolls by
+  79px. The final screenshot shows every page value back at 0 (window scroll, `#app` rect, every
+  element's `scrollTop`), yet the app is still pushed up about 79px with a blank band below. The offset
+  is in Chrome's native view, which page code cannot reach.
+- **Tried and failed**, each deployed and tested on the iPad:
+  1. Marker editor at the top. Kept, since it is better on its own.
+  2. Resetting page scroll on focusout, visual-viewport resize and window `scroll`. Kept, because it
+     does undo the real 79px document scroll.
+  3. Sizing html/body/#app to `visualViewport.height` (`4439f8e`, reverted). It made a permanent blank
+     band, which showed that Chrome under-reports the visible height.
+  4. `touch-action: none` on html/body (`40b5e07`, reverted). No change.
+- **Decision:** accepted as a Chrome for iOS bug; no further page-side workaround. Workarounds for the
+  user: open a new tab, use Safari, or add to Home Screen. CLAUDE.md gotcha #15 was rewritten to match,
+  and the diagnostic readout was removed.
 
 **Moving a selected keyframe works again (2026-09-14).** Reported as *"I can't move the keyframes
 anymore"* (iPad and desktop), then with a screen recording: *"after 400ms the drag starts to expand

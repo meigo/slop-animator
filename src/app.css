@@ -147,9 +147,9 @@ body {
    document rules stop a scrollbar appearing on desktop, this stops the iPad pan.
    Trade-off, accepted: iOS can no longer scroll a focused input into view above the keyboard. The
    app's inputs live in centred dialogs, the layer panel, or the marker label bar at the top of the
-   window, so none sits at the very bottom. KEEP IT THAT WAY (CLAUDE.md gotcha #15): the marker
-   editor first shipped inside the timeline and, on iPad, pushed the whole app up and left blank
-   space under the status bar. App.svelte also snaps a shifted page back to 0 as a safety net. */
+   window, so none sits at the very bottom. KEEP IT THAT WAY. App.svelte also snaps a scrolled page
+   back to 0. Chrome for iPad's leftover blank space after ANY keyboard is a separate Chrome bug that
+   no CSS here fixes — CLAUDE.md gotcha #15 lists what was tried. */
 #app {
   position: fixed;
   inset: 0;

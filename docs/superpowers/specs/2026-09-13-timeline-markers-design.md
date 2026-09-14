@@ -398,3 +398,7 @@ below overrides the section it names.
     on press. `markerActions.openEditor` is registered by the editor and is synchronous again (no lane
     to measure). App.svelte also snaps a shifted page back to scroll 0 on focusout and visual-viewport
     resize, as a safety net. CLAUDE.md gotcha #15.
+13. **Amendment 12's cause is wrong; its placement stands** (2026-09-14). The blank space and app
+    shift came back in Chrome for iPad after ANY keyboard, even for fields at the top, and never in
+    Safari. It is a Chrome bug outside the page's reach and has been accepted; see the CHANGELOG entry
+    *Chrome for iPad keyboard gap: accepted as a Chrome bug*. The editor stays at the top of the window.

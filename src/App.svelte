@@ -9,9 +9,6 @@
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
-  import ViewportDebug from "./lib/ViewportDebug.svelte";
-  /** TEMPORARY: `?debug-viewport` shows the iPad keyboard/viewport diagnostic readout. */
-  const debugViewport = new URLSearchParams(location.search).has("debug-viewport");
   import { onMount } from "svelte";
   import {
     seekPlayhead,
@@ -296,12 +293,13 @@
     const onFocusOut = () => requestAnimationFrame(resetPageScroll);
     document.addEventListener("focusout", onFocusOut);
     window.visualViewport?.addEventListener("resize", resetPageScroll);
-    // Measured on the iPad (?debug-viewport, 2026-09-14): after the keyboard closes, iOS leaves the
-    // visual viewport 79px SHORTER than the layout viewport (vvH 813 vs innerHeight/clientHeight 892),
-    // so the document has 79px to scroll — and it is scrolled a moment LATER (window scrollY/html
-    // scrollTop 79, #app rect top -79), after focusout and the resize have already fired. Resetting on
-    // the page's own `scroll` catches that. Element scrollers (timeline, layer list) do not fire
-    // `scroll` on window, so this never touches them; on desktop the page never scrolls at all.
+    // Measured in Chrome for iPad (2026-09-14): after the keyboard closes, the visual viewport stays
+    // 79px SHORTER than the screen (vvH 813 vs clientHeight 892), so the document has 79px to scroll —
+    // and it is scrolled a moment LATER (window scrollY 79), after focusout and the resize have already
+    // fired. Resetting on the page's own `scroll` catches that. It does NOT remove the visible shift in
+    // Chrome: with every page measurement back at 0 the picture stays pushed up with a blank band
+    // below, because that offset lives in Chrome's native view (CLAUDE.md gotcha #15). Element
+    // scrollers (timeline, layer list) do not fire `scroll` on window, so this never touches them.
     window.addEventListener("scroll", resetPageScroll, { passive: true });
     return () => {
       document.removeEventListener("focusout", onFocusOut);
@@ -408,9 +406,6 @@
   <Timeline />
   <StatusBar />
 </div>
-{#if debugViewport}
-  <ViewportDebug />
-{/if}
 <ExportDialog />
 <SizeDialog />
 <ProjectSettingsDialog />
