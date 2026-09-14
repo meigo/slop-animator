@@ -168,3 +168,21 @@ describe("anchoredScrollLeft", () => {
     expect(anchoredScrollLeft(0, 32, 12, 0, G)).toBe(0);
   });
 });
+
+import { markerTagRoom, MARKER_TAG_MIN_ROOM } from "../lib/timeline-grid";
+
+describe("markerTagRoom", () => {
+  it("runs a tag up to the next tag's left edge, less a 2px gap", () => {
+    expect(markerTagRoom([3, 10], 100, 12)).toEqual([7 * 12 - 2, (100 - 10) * 12]);
+  });
+  it("gives the last tag the rest of the lane, but never less than the old fixed room", () => {
+    expect(markerTagRoom([95], 100, 12)).toEqual([MARKER_TAG_MIN_ROOM]);
+    expect(markerTagRoom([0], 100, 12)).toEqual([100 * 12]);
+  });
+  it("uses the nearest LATER column whatever the input order (a dragged tag is out of order)", () => {
+    expect(markerTagRoom([20, 5, 8], 30, 10)).toEqual([(30 - 20) * 10, 28, 118]);
+  });
+  it("ignores a tag on the same column (dragged onto an occupied frame)", () => {
+    expect(markerTagRoom([4, 4, 6], 10, 10)).toEqual([18, 18, MARKER_TAG_MIN_ROOM]);
+  });
+});

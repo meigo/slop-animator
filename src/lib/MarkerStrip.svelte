@@ -6,7 +6,7 @@
     seekPlayhead,
     markerActions,
   } from "../state/appState.svelte";
-  import { moveCancelPx } from "./timeline-grid";
+  import { markerTagRoom, moveCancelPx } from "./timeline-grid";
 
   // Grid metrics and gestures passed from Timeline, exactly as AudioLane takes them, so the strip's
   // columns line up with the rows and a finger pans the same scroller.
@@ -47,6 +47,16 @@
     (appState.project.markers ?? []).filter((m) => m.frame < appState.project.frameCount),
   );
 
+  let dragFrom: number | null = $state(null);
+  let dragFrame: number | null = $state(null);
+
+  /** The column each shown tag is drawn on: its frame, or the drag preview's for the dragged one. */
+  const cols = $derived(
+    shown.map((m) => (dragFrom === m.frame && dragFrame !== null ? dragFrame : m.frame)),
+  );
+  /** Label room per tag: up to the next tag, so a lone marker shows its whole label (2026-09-14). */
+  const room = $derived(markerTagRoom(cols, appState.project.frameCount, cellW));
+
   let frameAreaEl: HTMLDivElement | undefined = $state();
 
   // ── Tap / drag ───────────────────────────────────────────────────────────────────────────────
@@ -62,8 +72,6 @@
     onPlayhead: boolean;
     dragging: boolean;
   } | null = null;
-  let dragFrom: number | null = $state(null);
-  let dragFrame: number | null = $state(null);
 
   function markerDown(e: PointerEvent, frame: number) {
     // A finger bubbles to the frame area, which pans; only Pencil/mouse edit markers.
@@ -220,8 +228,8 @@
         class="pointer-events-none absolute inset-y-0 w-px bg-danger"
         style="left: {appState.playhead * cellW + cellW / 2}px; transform: translateX(-50%)"
       ></div>
-      {#each shown as m (m.frame)}
-        {@const col = dragFrom === m.frame && dragFrame !== null ? dragFrame : m.frame}
+      {#each shown as m, i (m.frame)}
+        {@const col = cols[i]}
         <button
           type="button"
           tabindex="-1"
@@ -238,12 +246,16 @@
                has no tick, and 1px further left would sit under the sticky name column's divider,
                which is that frame's edge. The notched right end
                is `.marker-tag`'s clip-path. Full text colour on the playhead's frame, the dimmer
-               secondary colour elsewhere — that brightness is the "you are on it" signal. -->
+               secondary colour elsewhere — that brightness is the "you are on it" signal.
+               Width: the label runs up to the next tag (`markerTagRoom`) and truncates only when a
+               neighbour is in the way. It was a fixed `max-w-20` until 2026-09-14, which cut a lone
+               marker's label short with empty lane beside it. -->
           <span
-            class="marker-tag pointer-events-none block h-4 max-w-20 min-w-3 truncate pr-2 pl-1 text-[10px]/4 font-semibold text-surface {appState.playhead ===
+            class="marker-tag pointer-events-none block h-4 min-w-3 truncate pr-2 pl-1 text-[10px]/4 font-semibold text-surface {appState.playhead ===
             m.frame
               ? 'bg-text'
-              : 'bg-text-secondary'}">{m.label}</span
+              : 'bg-text-secondary'}"
+            style="max-width: {room[i]}px">{m.label}</span
           >
         </button>
       {/each}
