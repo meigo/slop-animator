@@ -139,6 +139,14 @@ body,
 html,
 body {
   overflow: hidden;
+  /* No page-level pan gesture at all (2026-09-14). Chrome for iPad, after any on-screen keyboard,
+     believes the visible area is ~79px shorter than it really is (visualViewport.height 813 on a 892px
+     screen; survives a reload, cleared only by a new tab), so it lets a finger drag pan the whole page
+     by that much — toolbars slide off the top and blank space shows underneath. Measured: the scroll
+     came from the user's own drags (scrollY 79 → 124). App.svelte's scroll reset only snaps back
+     AFTER a pan; this stops the gesture from starting. Inner scrollers (layer list, timeline, dialog
+     bodies) are unaffected: touch-action is only intersected up to the nearest scroll container. */
+  touch-action: none;
 }
 /* …and `overflow: hidden` on the document is only a HINT on iOS — WebKit still lets a touch drag
    pan the app when its content exceeds the viewport, which is how the toolbars scrolled off the top
