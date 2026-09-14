@@ -127,7 +127,13 @@ body,
   html,
   body,
   #app {
-    height: 100dvh;
+    /* `--app-h` is the height the browser ACTUALLY shows, set by App.svelte from
+       `visualViewport.height` whenever no text field is focused. Chrome for iPad (2026-09-14): once
+       an on-screen keyboard has opened in a tab, that tab's visible area stays ~79px shorter than
+       `100dvh` — even after a reload, until a new tab — so a 100dvh app overflowed, the page
+       scrolled and blank space appeared under the status bar. Sizing to the visible area removes the
+       overflow. Everywhere else the two are equal; before the script runs this is plain 100dvh. */
+    height: var(--app-h, 100dvh);
   }
 }
 /* The PAGE never scrolls — only the panes inside it do. Without this, any content that overflows

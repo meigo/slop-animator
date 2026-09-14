@@ -293,9 +293,36 @@
       if (window.scrollY !== 0 || (document.scrollingElement?.scrollTop ?? 0) !== 0)
         window.scrollTo(0, 0);
     };
-    const onFocusOut = () => requestAnimationFrame(resetPageScroll);
+    // Size the app to the visible area (`--app-h`, read by app.css) instead of trusting 100dvh. Chrome
+    // for iPad keeps a tab's visual viewport ~79px short after any on-screen keyboard — it survives a
+    // reload and only a new tab clears it — so a 100dvh app overflowed and the page scrolled. Skipped
+    // while a text field is focused: the keyboard is up then and the visible area is a fraction of the
+    // screen; the app keeps its last height instead of squashing, and re-measures once focus leaves.
+    const isTyping = () => {
+      const a = document.activeElement as HTMLElement | null;
+      if (!a) return false;
+      if (a.isContentEditable || a.tagName === "TEXTAREA") return true;
+      if (a.tagName !== "INPUT") return false;
+      const type = (a as HTMLInputElement).type;
+      return !["range", "checkbox", "radio", "color", "button", "submit", "file"].includes(type);
+    };
+    const syncAppHeight = () => {
+      const vv = window.visualViewport;
+      if (!vv || isTyping()) return;
+      document.documentElement.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
+    };
+    const onViewportResize = () => {
+      syncAppHeight();
+      resetPageScroll();
+    };
+    syncAppHeight();
+    const onFocusOut = () =>
+      requestAnimationFrame(() => {
+        syncAppHeight();
+        resetPageScroll();
+      });
     document.addEventListener("focusout", onFocusOut);
-    window.visualViewport?.addEventListener("resize", resetPageScroll);
+    window.visualViewport?.addEventListener("resize", onViewportResize);
     // Measured on the iPad (?debug-viewport, 2026-09-14): after the keyboard closes, iOS leaves the
     // visual viewport 79px SHORTER than the layout viewport (vvH 813 vs innerHeight/clientHeight 892),
     // so the document has 79px to scroll — and it is scrolled a moment LATER (window scrollY/html
@@ -305,7 +332,7 @@
     window.addEventListener("scroll", resetPageScroll, { passive: true });
     return () => {
       document.removeEventListener("focusout", onFocusOut);
-      window.visualViewport?.removeEventListener("resize", resetPageScroll);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
       window.removeEventListener("scroll", resetPageScroll);
     };
   });
