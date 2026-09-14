@@ -6406,6 +6406,72 @@ explicitly on layer names, group names and both rename inputs, and the marker la
   `text-text-secondary` otherwise. Only the NAME changes colour; the row's icons and toggles keep
   their own classes, and the rename inputs stay full `text` while editing.
 
+> **SUPERSEDED in part** by *Chrome for iPad keyboard gap: accepted as a Chrome bug* (next entry, same
+> day). The placement change stands. The "root cause" below does not: the shift happens after any
+> keyboard in Chrome, wherever the field is.
+
+**The marker label editor opens at the top of the window (2026-09-14).** Reported from the iPad with
+two screenshots: *"on creating marker, the popup rendered under the toolbar"* and *"after creation
+large empty space created under the status bar"*. Root cause, from the app's own record: `#app` is
+`position: fixed` (app.css, the 2026-08-16 "page itself must not scroll" fix), and the accepted
+trade-off written there is that iOS cannot scroll a focused input above the on-screen keyboard —
+"fine only while no input sits at the very bottom of the window". The marker popover was the first
+input to break that: it opened inside the timeline, exactly where the keyboard appears, so WebKit
+shifted the whole app up (popover tucked under the timeline toolbar) and left it shifted after the
+keyboard closed. Nothing in `src` read `visualViewport` or reset the page scroll. Not reproducible in
+desktop browsers — diagnosed from the screenshots and the app.css/CHANGELOG record, fixed for an iPad
+re-test.
+- **Fix:** the editor moved out of `MarkerStrip` into `MarkerEditor.svelte`, mounted in App in a
+  zero-height anchor under the tool options row: a centred bar `Marker · frame N [label] [Delete]`
+  that the keyboard can never cover. Behaviour unchanged (pre-filled + focused; commits on outside
+  press / Enter / focus leaving / playhead moving; Escape discards; keys stay inside; Delete keeps
+  focus on press). `markerActions.openEditor` is now registered by the editor and synchronous again —
+  there is no lane to measure, so the `tick()` wait went with it.
+- **Safety net:** App.svelte snaps the page back to scroll 0 on `focusout` (next frame) and on
+  `visualViewport` resize. It cleans up a shift; it does not prevent one.
+- **Rule for next time:** CLAUDE.md gotcha #15 — no text input may open low in the window on iPad; the
+  app.css trade-off note now names the marker bar.
+- **Owed an iPad pass:** add a marker from the bar button and with a tap-again — the bar appears at the
+  top above the keyboard, the app does not shift, and no blank space remains after the keyboard closes.
+
+**Chrome for iPad keyboard gap: accepted as a Chrome bug (2026-09-14).** After the marker bar moved to
+the top, the iPad re-test said *"works, but the empty space still under the app created"*. The user
+then narrowed it down: *"whenever the on-screen keyboard is opened"* (layer rename too), *"safari is ok,
+problem is with chrome"*, and the gap survives a reload and clears only in a new tab.
+- **Measured** with a temporary `?debug-viewport` readout on the device: after the keyboard closes,
+  `visualViewport.height` stays 813 on an 892px screen (`clientHeight`). The document briefly scrolls by
+  79px. The final screenshot shows every page value back at 0 (window scroll, `#app` rect, every
+  element's `scrollTop`), yet the app is still pushed up about 79px with a blank band below. The offset
+  is in Chrome's native view, which page code cannot reach.
+- **Tried and failed**, each deployed and tested on the iPad:
+  1. Marker editor at the top. Kept, since it is better on its own.
+  2. Resetting page scroll on focusout, visual-viewport resize and window `scroll`. Kept, because it
+     does undo the real 79px document scroll.
+  3. Sizing html/body/#app to `visualViewport.height` (`4439f8e`, reverted). It made a permanent blank
+     band, which showed that Chrome under-reports the visible height.
+  4. `touch-action: none` on html/body (`40b5e07`, reverted). No change.
+- **Decision:** accepted as a Chrome for iOS bug; no further page-side workaround. Workarounds for the
+  user: open a new tab, use Safari, or add to Home Screen. CLAUDE.md gotcha #15 was rewritten to match,
+  and the diagnostic readout was removed.
+
+**The marker button deletes the marker under the playhead (2026-09-14).** Asked for as *"If marker is
+active change icon to bookmark-x or bookmark-off and delete bookmark on click. would save one
+tap/click this way"*.
+- **Behaviour:** `Playbar.svelte` derives `markerHere = markerAt(markers, playhead)`. On an empty frame
+  the button is unchanged: `BookmarkPlus`, add, and open the label field. On a frame with a marker it
+  becomes `BookmarkX` in `text-warn` with the tooltip "Delete marker “label” at playhead", and a click
+  runs `deleteMarkerAt(playhead)`. That is one undo step, since `commitMarkers` goes through
+  `commitStructural`. Before this, pressing the button on an occupied frame only opened the editor.
+- **Taps:** deleting took three (tap the tag to jump, tap again, Delete). Now it takes two, or one when
+  the playhead is already there.
+- **Kept on purpose:**
+  - `n` stays add-or-edit, so a key pressed without looking never deletes a note.
+  - The editor bar keeps its Delete, because that is where attention is once it is open.
+  - Renaming is still tap-again on the tag.
+  - `BookmarkX` was chosen over `BookmarkOff`, which reads as "markers off".
+- The button is the same size in both states and swaps in place, so positions on the bar don't shift.
+- **Owed an iPad pass:** tap a marker tag, then the amber button: the marker goes, and undo brings it back.
+
 **Moving a selected keyframe works again (2026-09-14).** Reported as *"I can't move the keyframes
 anymore"* (iPad and desktop), then with a screen recording: *"after 400ms the drag starts to expand
 selection with offset instead of moving"*; last known good "2-3 days ago".

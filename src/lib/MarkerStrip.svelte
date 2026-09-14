@@ -1,17 +1,12 @@
 <script lang="ts">
-  import { Bookmark, Trash2 } from "@lucide/svelte";
-  import { tick, untrack } from "svelte";
+  import { Bookmark } from "@lucide/svelte";
   import {
     state as appState,
-    renameMarkerAt,
-    deleteMarkerAt,
     moveMarkerTo,
     seekPlayhead,
     markerActions,
   } from "../state/appState.svelte";
-  import { markerAt } from "../anim/markers";
   import { moveCancelPx } from "./timeline-grid";
-  import { clickOutside } from "./click-outside";
 
   // Grid metrics and gestures passed from Timeline, exactly as AudioLane takes them, so the strip's
   // columns line up with the rows and a finger pans the same scroller.
@@ -128,7 +123,7 @@
       if (to !== null && to !== from && !moveMarkerTo(from, to))
         appState.statusHint = `Frame ${to + 1} already has a marker`;
     } else if (onPlayhead) {
-      openEditor(from);
+      markerActions.openEditor?.(from); // the app-level MarkerEditor (top of the window)
     } else {
       seekPlayhead(from);
     }
@@ -154,100 +149,12 @@
   function touchMove(e: PointerEvent) {
     if (e.pointerType === "touch") onTouchMove(e);
   }
-
-  // ── Editor popover ───────────────────────────────────────────────────────────────────────────
-  // `position: fixed`, because the timeline's scroll box clips anything `absolute` (the
-  // `.curve-popup` trap). It does NOT close on scroll: on iPad the on-screen keyboard can scroll the
-  // page as it opens, which would close the popover the instant it appeared.
-  const EDITOR_W = 220;
-  let editing: { frame: number; left: number; top: number } | null = $state(null);
-  let draft = $state("");
-
-  async function openEditor(frame: number) {
-    // The lane only renders while a marker is visible, so the marker a caller just added may have
-    // mounted it in this same update — wait for the DOM before measuring where to anchor.
-    await tick();
-    if (!frameAreaEl) return;
-    const r = frameAreaEl.getBoundingClientRect();
-    editing = {
-      frame,
-      left: Math.max(8, Math.min(window.innerWidth - EDITOR_W - 8, r.left + frame * cellW - 4)),
-      top: Math.max(8, Math.min(window.innerHeight - 48, r.bottom + 4)),
-    };
-    draft = markerAt(appState.project.markers ?? [], frame)?.label ?? "";
-  }
-
-  function commitEdit() {
-    if (!editing) return;
-    const { frame } = editing;
-    editing = null;
-    renameMarkerAt(frame, draft); // no-op (no undo entry) when unchanged or the marker is gone
-  }
-
-  function deleteEdit() {
-    if (!editing) return;
-    const { frame } = editing;
-    editing = null;
-    deleteMarkerAt(frame);
-  }
-
-  function editorKey(e: KeyboardEvent) {
-    e.stopPropagation(); // typing n / < / > must not reach App's shortcuts
-    if (e.key === "Enter") {
-      e.preventDefault();
-      commitEdit();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      editing = null;
-    }
-  }
-
-  function focusSelect(node: HTMLInputElement) {
-    node.focus();
-    node.select();
-  }
-
-  let popoverEl: HTMLDivElement | undefined = $state();
-
-  /** Fix B (final review #2, Ruling 7): a keyboard-only focus change out of the popover — Tab to
-   *  Delete then Tab again, or iPad's "hide keyboard" — has no pointerdown for `clickOutside` to
-   *  catch, so the draft was silently lost (or a later App shortcut acted on the wrong marker).
-   *  Commit whenever focus actually leaves the popover; a focus move WITHIN it (e.g. onto the
-   *  Delete button) is not a close. */
-  function popoverFocusOut(e: FocusEvent) {
-    if (!editing || !popoverEl) return;
-    const next = e.relatedTarget as Node | null;
-    if (!next || !popoverEl.contains(next)) commitEdit();
-  }
-
-  /** Fix B: a key pressed while focus is anywhere in the popover (not just the input — e.g. the
-   *  focused Delete button) must not bubble to App's window `keydown` handler, or Tab-to-Delete then
-   *  Enter would toggle playback instead of activating the button. Don't preventDefault here: Enter
-   *  must still activate a focused button natively, and the input's own `editorKey` still runs
-   *  first and handles Enter/Escape itself. */
-  function popoverKeydown(e: KeyboardEvent) {
-    e.stopPropagation();
-  }
-
-  // The playhead moving away closes the editor, saving — same as pressing outside.
-  $effect(() => {
-    const ph = appState.playhead;
-    untrack(() => {
-      if (editing && editing.frame !== ph) commitEdit();
-    });
-  });
-
-  $effect(() => {
-    markerActions.openEditor = openEditor;
-    return () => {
-      if (markerActions.openEditor === openEditor) markerActions.openEditor = null;
-    };
-  });
 </script>
 
 <!-- Pinned under the ruler inside Timeline's sticky header. Rendered only while at least one marker is
-     VISIBLE (inside the document) — the component itself stays mounted so `markerActions.openEditor`
-     stays registered for the timeline-bar button and the `n` key. Its tone sits BETWEEN the ruler's
+     VISIBLE (inside the document). The label editor is NOT here: it is the app-level
+     `MarkerEditor.svelte` at the top of the window (CLAUDE.md gotcha #15), which registers
+     `markerActions.openEditor`; a tap-again on a tag calls it. Its tone sits BETWEEN the ruler's
      `surface-active` and the rows' `surface` (`.lane-tone` over the name column and up to the last
      frame, `surface` past it) and the header's closing divider is `text-muted`, so it reads as its own
      lane of the time band rather than as another track. OPAQUE on purpose — rows scroll under it. -->
@@ -341,36 +248,6 @@
         </button>
       {/each}
     </div>
-  </div>
-{/if}
-
-{#if editing}
-  <div
-    bind:this={popoverEl}
-    role="presentation"
-    class="fixed z-50 flex items-center gap-1 rounded border border-border bg-surface p-1 shadow-lg"
-    style="left: {editing.left}px; top: {editing.top}px; width: {EDITOR_W}px"
-    use:clickOutside={commitEdit}
-    onfocusout={popoverFocusOut}
-    onkeydown={popoverKeydown}
-  >
-    <input
-      class="min-w-0 flex-1 rounded-sm border border-border bg-surface px-1 text-sm text-text"
-      maxlength="40"
-      placeholder="Label"
-      bind:value={draft}
-      use:focusSelect
-      onkeydown={editorKey}
-    />
-    <!-- Fix B: preventDefault on pointerdown keeps focus on the input through the press, so the new
-         popoverFocusOut above does not fire (and unmount this button) before the click lands. -->
-    <button
-      type="button"
-      class="shrink-0 rounded-sm p-1 text-text-secondary hover:text-text"
-      title="Delete marker"
-      onpointerdown={(e) => e.preventDefault()}
-      onclick={deleteEdit}><Trash2 size={14} /></button
-    >
   </div>
 {/if}
 

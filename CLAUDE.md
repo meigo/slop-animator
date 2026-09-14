@@ -177,6 +177,17 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     on the device, after a first guess (a min-height floor) failed. Don't layer an opaque sticky box
     BEHIND sticky content; make it occupy only the space where nothing else is (Timeline's gutter
     filler below the last row). See the 2026-09-11 changelog entries.
+15. **Chrome for iPad leaves the app shifted up after ANY on-screen keyboard — a Chrome bug, accepted
+    (2026-09-14).** It is not caused by where the field sits (a layer rename at the top triggers it too), and
+    Safari is fine. Measured on the device: after the keyboard closes, `visualViewport.height` stays 813
+    on an 892px screen. The app shows pushed up about 79px, toolbars hidden, with a blank band below.
+    That survives a reload and only a new tab clears it. With every page measurement back at 0 (window
+    scroll, `#app` rect, every element's `scrollTop`), the picture stays shifted, so the offset is in
+    Chrome's native view, out of the page's reach. Tried and failed: moving the marker editor to the
+    top, resetting page scroll, sizing the app to `visualViewport.height` (made a permanent blank
+    band), and `touch-action: none` on html/body. Don't retry those. Still true, and why inputs stay
+    in dialogs, the layer panel or the top bar: `#app` is `position: fixed`, so iOS cannot scroll a
+    field above the keyboard. Desktop browsers reproduce none of this.
 
 ## Current state (all shipped & merged to `main`)
 

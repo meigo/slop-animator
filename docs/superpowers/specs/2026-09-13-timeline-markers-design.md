@@ -384,3 +384,26 @@ below overrides the section it names.
     because the lane can be visible while every marker is scrolled out of view horizontally and an
     empty band would not explain itself. The cell keeps `title="Markers"` so a press shows the name
     in the status bar, and the cell itself stays (sticky, opaque, aligned with the rows' gutter).
+12. **§6, the label editor opens at the top of the window, not beside the marker** (2026-09-14, iPad
+    report with screenshots: "on creating marker, the popup rendered under the toolbar … and after
+    creation large empty space created under the status bar"). Supersedes §6's "Editor popover" and
+    amendment 1's placement. Cause: `#app` is `position: fixed` (app.css), whose documented cost is
+    that iOS cannot scroll a focused input above the keyboard; the popover opened in the timeline,
+    where the keyboard appears, so WebKit shifted the whole app up, the popover landed under the
+    toolbar, and the page stayed shifted after the keyboard closed. Now: `MarkerEditor.svelte`,
+    mounted in App in a zero-height anchor under the tool options row, a centred bar
+    `Marker · frame N [label] [Delete]` (14px, max-w-sm). Same behaviour as before — opens pre-filled
+    and focused; commits on outside press, Enter, focus leaving the bar, or the playhead moving;
+    Escape closes without saving; keys inside never reach App's shortcuts; Delete does not take focus
+    on press. `markerActions.openEditor` is registered by the editor and is synchronous again (no lane
+    to measure). App.svelte also snaps a shifted page back to scroll 0 on focusout and visual-viewport
+    resize, as a safety net. CLAUDE.md gotcha #15.
+13. **Amendment 12's cause is wrong; its placement stands** (2026-09-14). The blank space and app
+    shift came back in Chrome for iPad after ANY keyboard, even for fields at the top, and never in
+    Safari. It is a Chrome bug outside the page's reach and has been accepted; see the CHANGELOG entry
+    *Chrome for iPad keyboard gap: accepted as a Chrome bug*. The editor stays at the top of the window.
+14. **The timeline bar's marker button deletes the marker under the playhead** (2026-09-14, user
+    request, to save a tap). It supersedes amendment 4's "both callers open the editor" for the BUTTON
+    only. With a marker on the playhead's frame, the button shows `BookmarkX` in the warn
+    colour and deletes that marker in one undo step. Otherwise it adds and opens the editor as before.
+    The `n` key keeps add-or-edit, so a blind keystroke never deletes. The editor bar keeps its Delete.
