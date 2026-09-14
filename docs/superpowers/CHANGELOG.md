@@ -6454,6 +6454,24 @@ problem is with chrome"*, and the gap survives a reload and clears only in a new
   user: open a new tab, use Safari, or add to Home Screen. CLAUDE.md gotcha #15 was rewritten to match,
   and the diagnostic readout was removed.
 
+**The marker button deletes the marker under the playhead (2026-09-14).** Asked for as *"If marker is
+active change icon to bookmark-x or bookmark-off and delete bookmark on click. would save one
+tap/click this way"*.
+- **Behaviour:** `Playbar.svelte` derives `markerHere = markerAt(markers, playhead)`. On an empty frame
+  the button is unchanged: `BookmarkPlus`, add, and open the label field. On a frame with a marker it
+  becomes `BookmarkX` in `text-warn` with the tooltip "Delete marker “label” at playhead", and a click
+  runs `deleteMarkerAt(playhead)`. That is one undo step, since `commitMarkers` goes through
+  `commitStructural`. Before this, pressing the button on an occupied frame only opened the editor.
+- **Taps:** deleting took three (tap the tag to jump, tap again, Delete). Now it takes two, or one when
+  the playhead is already there.
+- **Kept on purpose:**
+  - `n` stays add-or-edit, so a key pressed without looking never deletes a note.
+  - The editor bar keeps its Delete, because that is where attention is once it is open.
+  - Renaming is still tap-again on the tag.
+  - `BookmarkX` was chosen over `BookmarkOff`, which reads as "markers off".
+- The button is the same size in both states and swaps in place, so positions on the bar don't shift.
+- **Owed an iPad pass:** tap a marker tag, then the amber button: the marker goes, and undo brings it back.
+
 **Moving a selected keyframe works again (2026-09-14).** Reported as *"I can't move the keyframes
 anymore"* (iPad and desktop), then with a screen recording: *"after 400ms the drag starts to expand
 selection with offset instead of moving"*; last known good "2-3 days ago".

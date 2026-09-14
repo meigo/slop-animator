@@ -402,3 +402,8 @@ below overrides the section it names.
     shift came back in Chrome for iPad after ANY keyboard, even for fields at the top, and never in
     Safari. It is a Chrome bug outside the page's reach and has been accepted; see the CHANGELOG entry
     *Chrome for iPad keyboard gap: accepted as a Chrome bug*. The editor stays at the top of the window.
+14. **The timeline bar's marker button deletes the marker under the playhead** (2026-09-14, user
+    request, to save a tap). It supersedes amendment 4's "both callers open the editor" for the BUTTON
+    only. With a marker on the playhead's frame, the button shows `BookmarkX` in the warn
+    colour and deletes that marker in one undo step. Otherwise it adds and opens the editor as before.
+    The `n` key keeps add-or-edit, so a blind keystroke never deletes. The editor bar keeps its Delete.

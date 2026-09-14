@@ -9,14 +9,17 @@
     setPlayRangeOut,
     clearPlayRange,
     addMarkerAtPlayhead,
+    deleteMarkerAt,
     markerActions,
   } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
+  import { markerAt } from "../anim/markers";
   import { clickOutside } from "./click-outside";
   import {
     ArrowLeftToLine,
     ArrowRightToLine,
     BookmarkPlus,
+    BookmarkX,
     ChevronLeft,
     ChevronRight,
     Pause,
@@ -58,6 +61,9 @@
   }
 
   let { variant = "transport" }: { variant?: "transport" | "settings" } = $props();
+
+  /** The marker on the playhead's frame, if any — turns the add-marker button into delete. */
+  const markerHere = $derived(markerAt(appState.project.markers ?? [], appState.playhead));
 
   const btn =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border shrink-0";
@@ -117,19 +123,32 @@
       aria-label="Set range out"
       onclick={setPlayRangeOut}><ArrowRightToLine size={16} /></button
     >
-    <!-- Add marker: in this group because markers and the play range both mark a moment on the
-         timeline. BEFORE the conditional clear ✕ below, so that ✕ appearing never moves it — button
-         positions on this bar must not shift. Same action as the `n` key: add at the playhead (or
-         open the marker already there) and open its label field. -->
-    <button
-      class={btn}
-      title="Add marker at playhead (N)"
-      aria-label="Add marker"
-      onclick={() => {
-        addMarkerAtPlayhead();
-        markerActions.openEditor?.(appState.playhead);
-      }}><BookmarkPlus size={16} /></button
-    >
+    <!-- Add / delete marker: in this group because markers and the play range both mark a moment on
+         the timeline. BEFORE the conditional clear ✕ below, so that ✕ appearing never moves it — button
+         positions on this bar must not shift. On an empty frame it adds a marker and opens its label
+         field. On a frame that has one it becomes a warn-coloured delete (2026-09-14, saves the
+         tap-again + Delete round trip; undoable). The `n` key stays add-or-edit on purpose: a key
+         pressed without looking must never delete a note. Renaming is tap-again on the tag. -->
+    {#if markerHere}
+      <button
+        class={btn.replace("text-text-secondary", "text-warn")}
+        title={markerHere.label
+          ? `Delete marker “${markerHere.label}” at playhead`
+          : "Delete marker at playhead"}
+        aria-label="Delete marker"
+        onclick={() => deleteMarkerAt(appState.playhead)}><BookmarkX size={16} /></button
+      >
+    {:else}
+      <button
+        class={btn}
+        title="Add marker at playhead (N)"
+        aria-label="Add marker"
+        onclick={() => {
+          addMarkerAtPlayhead();
+          markerActions.openEditor?.(appState.playhead);
+        }}><BookmarkPlus size={16} /></button
+      >
+    {/if}
     <!-- Clear only: no numeric range readout. The ruler draws the range in place, with warn edge
          markers over numbered frames, so the extent is legible where it lives; this ✕ is what says a
          range is SET, and the status bar already carries the frame readout. The family layout agrees
