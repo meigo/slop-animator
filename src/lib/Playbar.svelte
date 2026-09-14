@@ -19,7 +19,7 @@
     ArrowLeftToLine,
     ArrowRightToLine,
     BookmarkPlus,
-    BookmarkX,
+    BookmarkOff,
     ChevronLeft,
     ChevronRight,
     Pause,
@@ -126,7 +126,8 @@
     <!-- Add / delete marker: in this group because markers and the play range both mark a moment on
          the timeline. BEFORE the conditional clear ✕ below, so that ✕ appearing never moves it — button
          positions on this bar must not shift. On an empty frame it adds a marker and opens its label
-         field. On a frame that has one it becomes a warn-coloured delete (2026-09-14, saves the
+         field. On a frame that has one it becomes a warn-coloured delete, `BookmarkOff` because
+         its strike-through changes the silhouette where BookmarkX's small ✕ went unnoticed (2026-09-14, saves the
          tap-again + Delete round trip; undoable). The `n` key stays add-or-edit on purpose: a key
          pressed without looking must never delete a note. Renaming is tap-again on the tag. -->
     {#if markerHere}
@@ -136,7 +137,7 @@
           ? `Delete marker “${markerHere.label}” at playhead`
           : "Delete marker at playhead"}
         aria-label="Delete marker"
-        onclick={() => deleteMarkerAt(appState.playhead)}><BookmarkX size={16} /></button
+        onclick={() => deleteMarkerAt(appState.playhead)}><BookmarkOff size={16} /></button
       >
     {:else}
       <button

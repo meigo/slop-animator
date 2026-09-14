@@ -407,3 +407,10 @@ below overrides the section it names.
     only. With a marker on the playhead's frame, the button shows `BookmarkX` in the warn
     colour and deletes that marker in one undo step. Otherwise it adds and opens the editor as before.
     The `n` key keeps add-or-edit, so a blind keystroke never deletes. The editor bar keeps its Delete.
+15. **The lane's dividers use the grid's `border` colour** (2026-09-14; the user said "too loud, let's
+    try the same color other gridlines have"). This supersedes amendment 8's `text-muted` bottom
+    divider. The lane's bottom edge and its gutter edge, and the gutter's right edge on every timeline
+    row (ruler corner, property rows, audio lane, gutter filler), are now `border-border`, the same
+    colour as the row dividers.
+16. **The delete state's icon is `BookmarkOff`, not `BookmarkX`** (2026-09-14, amends 14): the ✕ was
+    too small to notice the swap; the strike-through changes the silhouette.

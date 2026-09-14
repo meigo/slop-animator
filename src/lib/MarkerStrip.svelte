@@ -156,11 +156,11 @@
      `MarkerEditor.svelte` at the top of the window (CLAUDE.md gotcha #15), which registers
      `markerActions.openEditor`; a tap-again on a tag calls it. Its tone sits BETWEEN the ruler's
      `surface-active` and the rows' `surface` (`.lane-tone` over the name column and up to the last
-     frame, `surface` past it) and the header's closing divider is `text-muted`, so it reads as its own
+     frame, `surface` past it) and its dividers are the grid's own `border` (2026-09-14: `text-muted` read too loud), so it reads as its own
      lane of the time band rather than as another track. OPAQUE on purpose — rows scroll under it. -->
 {#if shown.length > 0}
   <div
-    class="flex w-max items-stretch border-b border-text-muted bg-surface"
+    class="flex w-max items-stretch border-b border-border bg-surface"
     style="min-width: {minWidth}px"
   >
     <!-- Name column: same box and padding as AudioLane's label, so the icon sits where row names begin.
@@ -185,7 +185,7 @@
     </div>
     <!-- The rows' lock/hidden glyph column: empty here, reserved so the frame columns line up. -->
     <div
-      class="lane-tone shrink-0 sticky z-20 h-6 border-r border-text-muted"
+      class="lane-tone shrink-0 sticky z-20 h-6 border-r border-border"
       style="left: {labelW}px; width: {markerW}px"
     ></div>
     <div

@@ -6469,8 +6469,28 @@ tap/click this way"*.
   - The editor bar keeps its Delete, because that is where attention is once it is open.
   - Renaming is still tap-again on the tag.
   - `BookmarkX` was chosen over `BookmarkOff`, which reads as "markers off".
+    > **SUPERSEDED** the same day by *The marker delete button uses BookmarkOff* (below).
 - The button is the same size in both states and swaps in place, so positions on the bar don't shift.
 - **Owed an iPad pass:** tap a marker tag, then the amber button: the marker goes, and undo brings it back.
+
+**Quieter timeline dividers (2026-09-14).** From a screenshot: *"border under the marker row and between
+gutter and timeline are too loud. let's try the same color other gridlines have"*.
+- **Change:** the dividers below changed from `border-text-muted` (#8a8a93) to `border-border` (#2e2e35),
+  the colour of the row dividers and the ruler's bottom edge:
+  - The marker lane's bottom edge and its gutter edge (`MarkerStrip.svelte`).
+  - The gutter's right edge on the ruler corner, the three property-row marker cells and the gutter
+    filler (`Timeline.svelte`), and on the audio lane label (`AudioLane.svelte`).
+- **Checked in the desktop dev app:** the computed colour of all three reads rgb(46,46,53): the marker lane bottom,
+  the ruler corner's right edge and a layer row's bottom.
+- The 2026-08-16 entry that gave the gutter filler `border-r border-text-muted` was about the line
+  running full height. The colour was simply the rows' at the time, so every gutter edge still matches.
+- Markers spec amendment 15. Owed an iPad eyeball, since the divider may now be too faint on that screen.
+
+**The marker delete button uses BookmarkOff (2026-09-14).** The user said: *"bookmark-x is semantically correct but
+the x is really small to notice the change, so let's try bookmark-off"*. At 16px, BookmarkX's ✕ is a
+few pixels inside the same outline as BookmarkPlus, so the add/delete swap was easy to miss.
+BookmarkOff's diagonal strike changes the whole silhouette. The amber colour, tooltip and behaviour
+are unchanged. Markers spec amendment 16.
 
 **Moving a selected keyframe works again (2026-09-14).** Reported as *"I can't move the keyframes
 anymore"* (iPad and desktop), then with a screen recording: *"after 400ms the drag starts to expand
