@@ -6498,6 +6498,23 @@ space on the right (no next marker near it) it could render the whole text"*.
   dragged onto an occupied frame is not counted as a neighbour.
 - Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
 
+**The eraser has its own pressure curve (2026-09-14).** Reported as *"the brush and eraser seem to
+share the pressure curve (maybe some more props). should separate these"*.
+- **Found:** every other stroke setting was already per tool. `state.brush` and `state.eraser` each
+  hold a full `ToolSettings`, and all readers go through `activeStroke()` or the same tool check:
+  size, opacity, Press, stream, smooth, taper, brush type, nib, pooling and paint-behind, plus the
+  `[`/`]` keys and the brush cursor. The one shared thing was the single module-level
+  `pressureCurve`. Canvas evaluated it for every stroke, and the Brush settings panel edited it.
+- **Fix:** `pressureCurves = { brush, eraser }` and `activePressureCurve()` in appState. Canvas
+  evaluates the active tool's curve. ToolOptions makes one editor per curve and attaches the active
+  tool's with `replaceChildren`. The panel label reads "Eraser pressure curve" while erasing.
+- **Prefs:** `pressureCurve` stays the brush curve, so the key keeps its meaning. A new
+  `eraserPressureCurve` is added. An older pref without it starts the eraser as a copy of the brush
+  curve (`eraserCurvePref`), so a tuned feel survives the split. Parsing moved into tested pure
+  helpers in `preferences.ts` (`curvePointsPref`, `eraserCurvePref`).
+- **Owed an iPad pass:** bend the eraser curve, check the brush curve is unchanged, and reload to check
+  both curves are kept.
+
 **The play range's ✕ is always shown, next to In/Out (2026-09-14).** The user noticed the *"marker
 button is between playback range and it's delete button"*. The marker button had been placed before
 the ✕ because the ✕ appeared only while a range was set, and a button after it would jump sideways.

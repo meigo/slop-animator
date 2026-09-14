@@ -51,3 +51,38 @@ describe("keepProportions", () => {
     );
   });
 });
+
+import { curvePointsPref, eraserCurvePref } from "../persist/preferences";
+
+describe("pressure curve prefs", () => {
+  const brush = { cp1: { x: 0.1, y: 0.4 }, cp2: { x: 0.6, y: 0.9 } };
+  const eraser = { cp1: { x: 0.5, y: 0.1 }, cp2: { x: 0.9, y: 0.5 } };
+
+  it("keeps only numeric {x, y} control points", () => {
+    expect(curvePointsPref(brush)).toEqual(brush);
+    expect(curvePointsPref({ cp1: { x: "0.1", y: 0.4 }, cp2: { x: 0.6, y: 0.9 } })).toEqual({
+      cp2: { x: 0.6, y: 0.9 },
+    });
+    expect(curvePointsPref(null)).toEqual({});
+    expect(curvePointsPref("curve")).toEqual({});
+  });
+
+  it("the eraser uses its own stored curve", () => {
+    const p = parsePreferences(
+      JSON.stringify({ pressureCurve: brush, eraserPressureCurve: eraser }),
+    );
+    expect(eraserCurvePref(p)).toEqual(eraser);
+  });
+
+  // Before 2026-09-14 one curve drove both tools. A user who tuned it must not find the eraser
+  // suddenly linear, so an older pref without an eraser curve starts the eraser as a copy.
+  it("an older pref without an eraser curve gives the eraser the brush curve", () => {
+    expect(eraserCurvePref(parsePreferences(JSON.stringify({ pressureCurve: brush })))).toEqual(
+      brush,
+    );
+  });
+
+  it("no stored curve at all applies nothing", () => {
+    expect(eraserCurvePref({})).toEqual({});
+  });
+});

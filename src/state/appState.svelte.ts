@@ -143,8 +143,8 @@ import {
   withRangeIn,
   withRangeOut,
 } from "../anim/playback";
-import type { Preferences } from "../persist/preferences";
-import { keepProportionsPref } from "../persist/preferences";
+import type { CurvePrefs, Preferences } from "../persist/preferences";
+import { curvePointsPref, eraserCurvePref, keepProportionsPref } from "../persist/preferences";
 import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
 import {
   clampPanelWidth,
@@ -2193,7 +2193,14 @@ export function gatherPreferences(): Preferences {
     layerPanelWidth: state.layerPanelWidth,
     timelineLabelWidth: state.timelineLabelWidth,
     timelineCellW: state.timelineCellW,
-    pressureCurve: { cp1: { ...pressureCurve.cp1 }, cp2: { ...pressureCurve.cp2 } },
+    pressureCurve: {
+      cp1: { ...pressureCurves.brush.cp1 },
+      cp2: { ...pressureCurves.brush.cp2 },
+    },
+    eraserPressureCurve: {
+      cp1: { ...pressureCurves.eraser.cp1 },
+      cp2: { ...pressureCurves.eraser.cp2 },
+    },
     keepProportions: state.keepProportions,
   };
 }
@@ -2217,14 +2224,13 @@ export function applyPreferences(p: Partial<Preferences>): void {
     state.timelineLabelWidth = clampGutterLabelWidth(p.timelineLabelWidth, window.innerWidth);
   if (typeof p.timelineCellW === "number")
     state.timelineCellW = clampTimelineCellW(p.timelineCellW);
-  if (p.pressureCurve && typeof p.pressureCurve === "object") {
-    const { cp1, cp2 } = p.pressureCurve;
-    if (cp1 && typeof cp1.x === "number" && typeof cp1.y === "number")
-      pressureCurve.cp1 = { x: cp1.x, y: cp1.y };
-    if (cp2 && typeof cp2.x === "number" && typeof cp2.y === "number")
-      pressureCurve.cp2 = { x: cp2.x, y: cp2.y };
-    pressureCurve.buildLUT();
-  }
+  const applyCurve = (curve: PressureCurve, pts: Partial<CurvePrefs>) => {
+    if (pts.cp1) curve.cp1 = pts.cp1;
+    if (pts.cp2) curve.cp2 = pts.cp2;
+    curve.buildLUT();
+  };
+  applyCurve(pressureCurves.brush, curvePointsPref(p.pressureCurve));
+  applyCurve(pressureCurves.eraser, eraserCurvePref(p));
   state.keepProportions = keepProportionsPref(p);
 }
 
@@ -2437,8 +2443,14 @@ export function redo(): void {
   resyncAudioAfterHistory();
 }
 
-/** Shared pressure-response curve, remaps raw pen pressure before drawing. Imperative widget. */
-export const pressureCurve = new PressureCurve();
+/** Pressure-response curves, remapping raw pen pressure before drawing. Imperative widgets, one per
+ *  stroke tool like `state.brush`/`state.eraser` (until 2026-09-14 one curve drove both). */
+export const pressureCurves = { brush: new PressureCurve(), eraser: new PressureCurve() };
+
+/** The curve for the active drawing tool — the eraser's own, everything else the brush's. */
+export function activePressureCurve(): PressureCurve {
+  return state.tool === "eraser" ? pressureCurves.eraser : pressureCurves.brush;
+}
 
 /** Set the active layer (and select its row). */
 export function setActiveLayer(id: number): void {

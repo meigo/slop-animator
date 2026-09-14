@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import {
     state as appState,
-    pressureCurve,
+    pressureCurves,
     bumpCurve,
     activeLayer,
     selectionActions,
@@ -60,19 +60,25 @@
 
   let brushSettingsOpen = $state(false);
   let curvePopupEl: HTMLDivElement = $state()!;
-  let curveEditor: (HTMLElement & { redraw: () => void }) | null = null;
+  let curveEditors: Record<"brush" | "eraser", HTMLElement & { redraw: () => void }> | null = null;
 
   onMount(() => {
-    curveEditor = createCurveEditor(pressureCurve, bumpCurve);
+    curveEditors = {
+      brush: createCurveEditor(pressureCurves.brush, bumpCurve),
+      eraser: createCurveEditor(pressureCurves.eraser, bumpCurve),
+    };
   });
 
-  // Re-attach the curve editor whenever the panel's host div is (re)created — the editor is a single
-  // imperative canvas made once in onMount, and appendChild MOVES it, so opening the panel adopts it
-  // and closing simply detaches it. Redraw on the same pass, so it reflects a restored curve.
+  // Attach the ACTIVE tool's curve editor whenever the panel's host div is (re)created or the tool
+  // changes. Each editor is an imperative canvas made once in onMount, bound to its own curve (the
+  // eraser got its own on 2026-09-14). `replaceChildren` MOVES the editor in and drops the other
+  // tool's, and closing the panel simply detaches it. Redraw on the same pass, so it reflects a
+  // restored curve.
   $effect(() => {
-    if (brushSettingsOpen && curvePopupEl && curveEditor) {
-      curvePopupEl.appendChild(curveEditor);
-      curveEditor.redraw();
+    const editor = curveEditors?.[appState.tool === "eraser" ? "eraser" : "brush"];
+    if (brushSettingsOpen && curvePopupEl && editor) {
+      curvePopupEl.replaceChildren(editor);
+      editor.redraw();
     }
   });
 </script>
@@ -271,7 +277,9 @@
               <input type="checkbox" bind:checked={stroke.drawBehind} /> Behind
             </label>
           {/if}
-          <span class="text-text-secondary">Pressure curve</span>
+          <span class="text-text-secondary"
+            >{appState.tool === "eraser" ? "Eraser pressure curve" : "Pressure curve"}</span
+          >
           <div class="flex justify-center" bind:this={curvePopupEl}></div>
         </div>
       {/if}

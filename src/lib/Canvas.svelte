@@ -26,7 +26,7 @@
     activeStroke,
     bump,
     repaint,
-    pressureCurve,
+    activePressureCurve,
     toggleEraser,
     applyEyedropper,
     beginStructuralEdit,
@@ -715,7 +715,8 @@
         return { ...p, x: q.x, y: q.y };
       });
     }
-    const curved = inPts.map((p) => ({ ...p, pressure: pressureCurve.evaluate(p.pressure) }));
+    const curve = activePressureCurve();
+    const curved = inPts.map((p) => ({ ...p, pressure: curve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
     const stroke = activeStroke();
     const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
