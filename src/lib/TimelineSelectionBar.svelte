@@ -96,12 +96,25 @@
     void labelW; // labelW reserved for future absolute layouts; keep the prop stable
   }
 
-  // Re-place whenever the selection or the document changes (rows can move) — AND on every scroll of
-  // the container. The clamp above is computed FROM `scrollTop`/`clientHeight`, which no reactive
-  // dependency tracks: without the listener it was computed once and never again, so scrolling after
-  // selecting left the bar glued to a stale position, ending up under the ruler or out of view.
-  // Reading barEl re-runs the effect once the bar mounts so its measured height corrects the
-  // first-frame estimate.
+  // A scroll of the grid HIDES the bar; the selection stays (2026-09-14). Re-placing on scroll kept
+  // the bar inside the visible rows vertically, but horizontally it rode along with the keys — and at
+  // z-45 (above the sticky ruler, see the markup) that slid it over the sticky gutter. The bar is
+  // hidden for the selection it was dismissed on, keyed by value, so a different selection shows it
+  // again. So does `rect` going null and coming back — which is what pressing inside the selection
+  // does, since Timeline passes null during a block move and during a marquee.
+  const selKey = $derived(
+    rect ? `${rect.layerIds.join(",")}:${rect.startFrame}-${rect.endFrame}` : "",
+  );
+  let dismissedKey = $state<string | null>(null);
+  const hidden = $derived(dismissedKey !== null && dismissedKey === selKey);
+  $effect(() => {
+    if (!rect) dismissedKey = null;
+  });
+
+  // Re-place whenever the selection or the document changes (rows can move). Reading barEl re-runs
+  // the effect once the bar mounts so its measured height corrects the first-frame estimate. The
+  // clamp reads `scrollTop`/`clientHeight`, which nothing reactive tracks — fine now that a scroll
+  // hides the bar instead of leaving it at a stale position.
   $effect(() => {
     if (!container || !rect) return;
     // read appState.version so the effect re-runs on structural changes
@@ -110,7 +123,7 @@
     void barEl;
     place();
     const el = container;
-    const onScroll = () => place();
+    const onScroll = () => (dismissedKey = selKey);
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   });
@@ -124,7 +137,7 @@
     "w-6 h-6 rounded flex items-center justify-center text-text hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-transparent";
 </script>
 
-{#if rect}
+{#if rect && !hidden}
   <!-- z-45: ABOVE the sticky ruler row (z-35) and the gutter resize grip (z-40). At z-30 the ruler
        painted over this bar and — having no pointer-events:none — swallowed its taps, so pressing
        Copy/Cut/Paste/Delete scrubbed the playhead instead. Reachable immediately whenever a

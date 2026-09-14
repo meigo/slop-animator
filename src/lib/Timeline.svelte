@@ -3651,7 +3651,7 @@
 
     <TimelineSelectionBar
       container={gridWrapper}
-      rect={dragMode === "moveblock" ? null : selRect}
+      rect={dragMode === "moveblock" || dragMode === "marquee" ? null : selRect}
       cellW={CELL_W}
       labelW={GUTTER_W}
     />

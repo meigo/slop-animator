@@ -6498,6 +6498,26 @@ space on the right (no next marker near it) it could render the whole text"*.
   dragged onto an occupied frame is not counted as a neighbour.
 - Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
 
+**The timeline selection bar hides when the timeline scrolls (2026-09-14).** Reported as *"key edit
+popup could close on timeline scroll. currently it scrolls along with timeline and is on top of the
+gutter"*.
+- **Before:** the Copy/Cut/Paste/Delete bar was re-placed on every scroll. Vertically it was clamped
+  into the visible rows, but horizontally it followed the selected keys. It sits at z-45, above the
+  sticky ruler, so its taps are not swallowed. That meant a sideways scroll slid it over the sticky
+  gutter.
+- **Now:** a scroll of the grid hides the bar, and the selection stays, so ⌘C/⌘V still work. The bar
+  comes back when the selection changes. It hides the selection it was dismissed for (`dismissedKey`
+  = layer ids + frame span), so any other selection shows again. It also comes back when the bar's
+  `rect` goes null and returns, which is what a press inside the selection does, since the block move
+  passes null.
+- **Marquee:** Timeline now also passes `rect = null` while a marquee drag is running, not only during
+  a block move. Edge auto-scroll during a marquee therefore can't dismiss a bar that would flicker per
+  column, and the bar appears when the marquee is released.
+- Chosen over clearing the selection on scroll: a finger pan or a small wheel nudge would otherwise
+  throw away a multi-row selection.
+- Programmatic scrolls count too. The only two are playback's page-follow and the zoom's playhead
+  anchor, and both hiding the bar is intended.
+
 **The eraser has its own pressure curve (2026-09-14).** Reported as *"the brush and eraser seem to
 share the pressure curve (maybe some more props). should separate these"*.
 - **Found:** every other stroke setting was already per tool. `state.brush` and `state.eraser` each
