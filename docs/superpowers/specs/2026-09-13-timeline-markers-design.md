@@ -412,3 +412,5 @@ below overrides the section it names.
     divider. The lane's bottom edge and its gutter edge, and the gutter's right edge on every timeline
     row (ruler corner, property rows, audio lane, gutter filler), are now `border-border`, the same
     colour as the row dividers.
+16. **The delete state's icon is `BookmarkOff`, not `BookmarkX`** (2026-09-14, amends 14): the ✕ was
+    too small to notice the swap; the strike-through changes the silhouette.
