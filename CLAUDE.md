@@ -177,6 +177,15 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     on the device, after a first guess (a min-height floor) failed. Don't layer an opaque sticky box
     BEHIND sticky content; make it occupy only the space where nothing else is (Timeline's gutter
     filler below the last row). See the 2026-09-11 changelog entries.
+15. **No text input may open low in the window on iPad.** `#app` is `position: fixed` (app.css) so the
+    page can never be dragged, and the accepted cost is that iOS cannot scroll a focused field above
+    the on-screen keyboard cleanly: a field the keyboard would cover makes WebKit shift the whole app
+    up, tuck overlays under the toolbars, and leave blank space under the status bar after the
+    keyboard closes. The marker label editor shipped inside the timeline and did exactly that
+    (2026-09-14); it now opens as a bar at the top of the window (`MarkerEditor.svelte`, mounted in
+    App). Put new text inputs in centred dialogs, the layer panel, or at the top. App.svelte snaps a
+    shifted page back to 0 as a safety net, but that only cleans up — it does not stop the shift.
+    Desktop browsers cannot reproduce any of this.
 
 ## Current state (all shipped & merged to `main`)
 

@@ -384,3 +384,17 @@ below overrides the section it names.
     because the lane can be visible while every marker is scrolled out of view horizontally and an
     empty band would not explain itself. The cell keeps `title="Markers"` so a press shows the name
     in the status bar, and the cell itself stays (sticky, opaque, aligned with the rows' gutter).
+12. **§6, the label editor opens at the top of the window, not beside the marker** (2026-09-14, iPad
+    report with screenshots: "on creating marker, the popup rendered under the toolbar … and after
+    creation large empty space created under the status bar"). Supersedes §6's "Editor popover" and
+    amendment 1's placement. Cause: `#app` is `position: fixed` (app.css), whose documented cost is
+    that iOS cannot scroll a focused input above the keyboard; the popover opened in the timeline,
+    where the keyboard appears, so WebKit shifted the whole app up, the popover landed under the
+    toolbar, and the page stayed shifted after the keyboard closed. Now: `MarkerEditor.svelte`,
+    mounted in App in a zero-height anchor under the tool options row, a centred bar
+    `Marker · frame N [label] [Delete]` (14px, max-w-sm). Same behaviour as before — opens pre-filled
+    and focused; commits on outside press, Enter, focus leaving the bar, or the playhead moving;
+    Escape closes without saving; keys inside never reach App's shortcuts; Delete does not take focus
+    on press. `markerActions.openEditor` is registered by the editor and is synchronous again (no lane
+    to measure). App.svelte also snaps a shifted page back to scroll 0 on focusout and visual-viewport
+    resize, as a safety net. CLAUDE.md gotcha #15.

@@ -6405,3 +6405,27 @@ explicitly on layer names, group names and both rename inputs, and the marker la
   `groupHeaderSelected` `groupLit` for a group, the same flags that drive each row's `ui-selected`),
   `text-text-secondary` otherwise. Only the NAME changes colour; the row's icons and toggles keep
   their own classes, and the rename inputs stay full `text` while editing.
+
+**The marker label editor opens at the top of the window (2026-09-14).** Reported from the iPad with
+two screenshots: *"on creating marker, the popup rendered under the toolbar"* and *"after creation
+large empty space created under the status bar"*. Root cause, from the app's own record: `#app` is
+`position: fixed` (app.css, the 2026-08-16 "page itself must not scroll" fix), and the accepted
+trade-off written there is that iOS cannot scroll a focused input above the on-screen keyboard —
+"fine only while no input sits at the very bottom of the window". The marker popover was the first
+input to break that: it opened inside the timeline, exactly where the keyboard appears, so WebKit
+shifted the whole app up (popover tucked under the timeline toolbar) and left it shifted after the
+keyboard closed. Nothing in `src` read `visualViewport` or reset the page scroll. Not reproducible in
+desktop browsers — diagnosed from the screenshots and the app.css/CHANGELOG record, fixed for an iPad
+re-test.
+- **Fix:** the editor moved out of `MarkerStrip` into `MarkerEditor.svelte`, mounted in App in a
+  zero-height anchor under the tool options row: a centred bar `Marker · frame N [label] [Delete]`
+  that the keyboard can never cover. Behaviour unchanged (pre-filled + focused; commits on outside
+  press / Enter / focus leaving / playhead moving; Escape discards; keys stay inside; Delete keeps
+  focus on press). `markerActions.openEditor` is now registered by the editor and synchronous again —
+  there is no lane to measure, so the `tick()` wait went with it.
+- **Safety net:** App.svelte snaps the page back to scroll 0 on `focusout` (next frame) and on
+  `visualViewport` resize. It cleans up a shift; it does not prevent one.
+- **Rule for next time:** CLAUDE.md gotcha #15 — no text input may open low in the window on iPad; the
+  app.css trade-off note now names the marker bar.
+- **Owed an iPad pass:** add a marker from the bar button and with a tap-again — the bar appears at the
+  top above the keyboard, the app does not shift, and no blank space remains after the keyboard closes.

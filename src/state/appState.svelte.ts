@@ -2398,7 +2398,8 @@ export const poseActions: { active: () => boolean; apply: () => void; cancel: ()
  *  would commit to a detached canvas or corrupt the undo baseline. */
 export const liftGuard: { discard: (() => void) | null } = { discard: null };
 
-/** MarkerStrip registers its editor here, so App's `n` key can open it after adding a marker. */
+/** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`
+ *  key and a tap on a marker in the strip can all open it. */
 export const markerActions: { openEditor: ((frame: number) => void) | null } = {
   openEditor: null,
 };

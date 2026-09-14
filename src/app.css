@@ -146,7 +146,10 @@ body {
    fixed element has no scrollable overflow to give, so there is nothing to drag. Keep both — the
    document rules stop a scrollbar appearing on desktop, this stops the iPad pan.
    Trade-off, accepted: iOS can no longer scroll a focused input into view above the keyboard. The
-   app's inputs live in centred dialogs or the layer panel, so none sits at the very bottom. */
+   app's inputs live in centred dialogs, the layer panel, or the marker label bar at the top of the
+   window, so none sits at the very bottom. KEEP IT THAT WAY (CLAUDE.md gotcha #15): the marker
+   editor first shipped inside the timeline and, on iPad, pushed the whole app up and left blank
+   space under the status bar. App.svelte also snaps a shifted page back to 0 as a safety net. */
 #app {
   position: fixed;
   inset: 0;

@@ -8,6 +8,7 @@
   import ExportDialog from "./lib/ExportDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
+  import MarkerEditor from "./lib/MarkerEditor.svelte";
   import { onMount } from "svelte";
   import {
     seekPlayhead,
@@ -279,6 +280,25 @@
     state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save Project) so this work isn't lost.`;
   }
 
+  // The PAGE must never scroll — `app.css` pins `#app` so it cannot be dragged. iOS can still shift it
+  // to reveal a focused text field above the on-screen keyboard, and does not always shift it back:
+  // the result is the app pushed up with blank space under the status bar. Snap it back whenever
+  // focus leaves a field or the visual viewport resizes (the keyboard opening or closing). A no-op
+  // wherever the page is already at 0, which is always on desktop.
+  onMount(() => {
+    const resetPageScroll = () => {
+      if (window.scrollY !== 0 || (document.scrollingElement?.scrollTop ?? 0) !== 0)
+        window.scrollTo(0, 0);
+    };
+    const onFocusOut = () => requestAnimationFrame(resetPageScroll);
+    document.addEventListener("focusout", onFocusOut);
+    window.visualViewport?.addEventListener("resize", resetPageScroll);
+    return () => {
+      document.removeEventListener("focusout", onFocusOut);
+      window.visualViewport?.removeEventListener("resize", resetPageScroll);
+    };
+  });
+
   onMount(async () => {
     applyPreferences(loadPreferences());
     try {
@@ -365,6 +385,11 @@
 <div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
   <ToolOptions />
+  <!-- Zero-height anchor: the marker label editor overlays the top of the canvas area from here, far
+       from where the iPad keyboard appears (CLAUDE.md gotcha #15). -->
+  <div class="relative h-0">
+    <MarkerEditor />
+  </div>
   <div class="flex-1 flex min-h-0">
     <Canvas />
     <LayerList />
