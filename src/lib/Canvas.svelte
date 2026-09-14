@@ -2123,12 +2123,23 @@
     };
   });
 
+  // The tool and transform scope this effect last settled for. Plain (not $state): only the effect
+  // reads them, to tell a real switch from a re-run.
+  let settledTool: typeof appState.tool | null = null;
+  let settledScope: ReturnType<typeof transformScope> | null = null;
   $effect(() => {
     const t = appState.tool;
     // Reading the scope makes it a dependency: switching either mid-drag must settle the open
     // transform bracket, or it leaks into the next gesture and one undo reverts both (gotcha #6).
-    void transformScope();
-    transformDragGuard.settle?.();
+    const scope = transformScope();
+    // …but settle only when one of them actually CHANGED. The scope is read through `activeRow`,
+    // and `setActiveLayer` assigns a fresh row object even when the layer is already selected — which
+    // every timeline row press does. Settling on each re-run therefore ended the timeline's own row
+    // drag a microtask after it began: pressing a selected key armed `moveblock`, this effect ran,
+    // `settleRowDrag` reset it, and the drag moved nothing (regression from d0685f1, 2026-09-11).
+    if (t !== settledTool || scope !== settledScope) transformDragGuard.settle?.();
+    settledTool = t;
+    settledScope = scope;
     if (!selection) {
       // Prime here too: leaving the flag false on an early first run would cost the artist TWO tool
       // switches before the first lift, for a guard that only exists to skip the restored preference.
