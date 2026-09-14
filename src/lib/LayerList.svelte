@@ -52,6 +52,7 @@
   import { layerPanelActions } from "../anim/layer-panel-actions";
   import { clampPanelWidth } from "../anim/panel-layout";
   import LayerProps from "./LayerProps.svelte";
+  import { isDoubleTap, type Tap } from "./double-tap";
 
   let listEl: HTMLDivElement;
   let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
@@ -90,6 +91,20 @@
     if (editingGroupId !== id) return;
     renameGroup(id, groupDraft);
     editingGroupId = null;
+  }
+
+  // Double-tap a layer or group NAME to rename it (2026-09-14); the pencil in the properties strip
+  // stays as the discoverable route. Timed by hand (`isDoubleTap`) because iPad touch does not fire
+  // `dblclick` reliably. The first tap has already selected the row through the normal click, and
+  // selecting never moves a row (the controls live in the strip above), so the second tap lands on
+  // the same name. Only the name listens: two quick taps on an eye or lock stay two toggles.
+  let lastNameTap: Tap | null = null;
+  function nameTap(e: MouseEvent, target: string, rename: () => void) {
+    const tap: Tap = { target, t: e.timeStamp, x: e.clientX, y: e.clientY };
+    if (isDoubleTap(lastNameTap, tap)) {
+      lastNameTap = null;
+      rename();
+    } else lastNameTap = tap;
   }
 
   function focusSelect(node: HTMLInputElement) {
@@ -306,7 +321,11 @@
         <span
           class="flex-1 min-w-0 text-sm truncate"
           class:text-text={active}
-          class:text-text-secondary={!active}>{layer.name}</span
+          class:text-text-secondary={!active}
+          role="presentation"
+          title="Double-tap to rename"
+          onclick={(e) => nameTap(e, `layer:${layer.id}`, () => startEdit(layer))}
+          >{layer.name}</span
         >
       {/if}
       {#if layer.kind === "draw"}
@@ -526,8 +545,11 @@
                   class="min-w-0 flex-1 truncate text-left text-sm font-semibold"
                   class:text-text={groupLit}
                   class:text-text-secondary={!groupLit}
-                  title="Select group"
-                  onclick={() => selectGroup(seg.group.id)}>{seg.group.name}</button
+                  title="Select group · double-tap to rename"
+                  onclick={(e) => {
+                    selectGroup(seg.group.id);
+                    nameTap(e, `group:${seg.group.id}`, () => startGroupEdit(seg.group));
+                  }}>{seg.group.name}</button
                 >
               {/if}
               <!-- The alpha-lock column, empty: groups have no pixels of their own, and the slot keeps

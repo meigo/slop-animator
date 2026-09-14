@@ -37,6 +37,10 @@ Out of scope (YAGNI):
 
 3. **Trigger: a pencil (✎) icon per row.** Click/tap the pencil to enter edit mode. Chosen over
    double-click because the app is used on iPad (touch), where `dblclick`/double-tap is unreliable.
+   > **AMENDED 2026-09-14:** a double-tap on a layer or group NAME also renames. It is timed by hand
+   > (`src/lib/double-tap.ts`) rather than with `dblclick`, which removes the reason given here; the
+   > pencil (now in the properties strip) stays. See the CHANGELOG entry *Double-tap a layer or group
+   > name to rename it*.
    An explicit icon is discoverable and works identically across mouse and touch.
 
 4. **Both layer kinds renameable.** Drawing and reference layers both have `name`; both get the pencil.

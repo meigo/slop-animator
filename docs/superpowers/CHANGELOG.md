@@ -6498,6 +6498,24 @@ space on the right (no next marker near it) it could render the whole text"*.
   dragged onto an occupied frame is not counted as a neighbour.
 - Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
 
+**Double-tap a layer or group name to rename it (2026-09-14).** Asked for as *"double click/tap for
+renaming would also be convenient instead of looking for specific button from the header"*.
+- **Why it was not done before:** the 2026-06-15 rename spec chose the pencil button because iPad
+  touch does not fire `dblclick` reliably. That objection is about the browser event, not the
+  gesture. `isDoubleTap` in `src/lib/double-tap.ts` is a pure, tested helper that pairs two clicks on
+  the same target within 300ms (the canvas's one-finger double-tap window) and 10px of each other.
+  The spec now carries an amendment note.
+- **Where:** only on the NAME. The layer row's name span and the group header's name button call
+  `nameTap`, and a double-tap opens the same inline input the strip's pencil opens. The eye, lock,
+  alpha lock, chevron and grip do not listen, so two quick taps on a toggle stay two toggles.
+- **Single taps stay immediate.** The first tap selects as before, with no delay while it waits for
+  a second. Selecting never moves a row, since the controls live in the strip above the list, so the
+  second tap lands on the same name.
+- **Discoverability:** the pencil in the properties strip stays. The name's `title` ("Double-tap to
+  rename") shows in the status bar on a press, including on iPad.
+- **Not in the timeline gutter yet:** a finger drag pans there, so a double-tap would need its own
+  stay-still check. It will be added if wanted.
+
 **The timeline selection bar hides when the timeline scrolls (2026-09-14).** Reported as *"key edit
 popup could close on timeline scroll. currently it scrolls along with timeline and is on top of the
 gutter"*.
