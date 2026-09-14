@@ -107,6 +107,13 @@
     } else lastNameTap = tap;
   }
 
+  /** Focus the rename input with the whole name selected — the rename convention (Finder, Photoshop,
+   *  Procreate, Figma): typing replaces, a tap or arrow drops the caret in.
+   *  ORDER-DEPENDENT: Svelte runs an element's directives in attribute order, so `use:focusSelect`
+   *  must come AFTER `bind:value`. Written before it (as both inputs here were until 2026-09-15),
+   *  select() ran on an empty field, the binding then filled in the name, and it opened with a caret
+   *  at the end — on every device. MarkerEditor had the right order, which is why only its text
+   *  came up selected. */
   function focusSelect(node: HTMLInputElement) {
     node.focus();
     node.select();
@@ -304,8 +311,8 @@
       {#if editingId === layer.id}
         <input
           class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
-          use:focusSelect
           bind:value={draft}
+          use:focusSelect
           onclick={(e) => e.stopPropagation()}
           onpointerdown={(e) => e.stopPropagation()}
           onkeydown={(e) => {
@@ -532,8 +539,8 @@
               {#if editingGroupId === seg.group.id}
                 <input
                   class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
-                  use:focusSelect
                   bind:value={groupDraft}
+                  use:focusSelect
                   onkeydown={(e) => {
                     if (e.key === "Enter") commitGroupEdit(seg.group.id);
                     else if (e.key === "Escape") editingGroupId = null;

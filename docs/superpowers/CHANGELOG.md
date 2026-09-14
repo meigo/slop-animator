@@ -6498,6 +6498,23 @@ space on the right (no next marker near it) it could render the whole text"*.
   dragged onto an occupied frame is not counted as a neighbour.
 - Labels are capped at 40 characters, so a lone tag is at most about 230px wide.
 
+**The rename field opens with the whole name selected (2026-09-15).** Reported as *"marker text is
+fully selected on edit, labels not"*, seen with an iPad double-tap.
+- **Convention:** a rename field opens with the whole name selected (Finder, the Photoshop and
+  Procreate layer panels, Figma, code editors), so typing replaces it and a tap or arrow key places
+  the caret.
+- **Cause, measured in the desktop dev app:** the rename input opened with selection `7-7` of a
+  7-character name, a caret at the end, so this was not iPad-specific. Both inputs used the same
+  `focus()` + `select()` action as MarkerEditor. The difference was attribute order. Svelte runs
+  directives in attribute order, and `LayerList.svelte` had `use:focusSelect` BEFORE `bind:value`,
+  so select() ran on an empty field and the binding then filled in the name. MarkerEditor has
+  `bind:value` first.
+- **A first guess was wrong and was removed before commit:** that the double-tap under the new field
+  placed a caret, answered with a 500ms selection guard. The same measurement disproved it, since the
+  guard saw the value change from "" and stood down at once.
+- **Fix:** `bind:value` before `use:focusSelect` on the layer and group rename inputs, and an
+  ORDER-DEPENDENT note on `focusSelect`.
+
 **Double-tap a layer or group name to rename it (2026-09-14).** Asked for as *"double click/tap for
 renaming would also be convenient instead of looking for specific button from the header"*.
 - **Why it was not done before:** the 2026-06-15 rename spec chose the pencil button because iPad
