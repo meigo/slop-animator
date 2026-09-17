@@ -6607,3 +6607,47 @@ selection with offset instead of moving"*; last known good "2-3 days ago".
   cancels the long-press; and a press inside the selection cancels it too, so it always moves however
   long the artist pauses (user's call). Long-press outside a selection still starts a marquee; to box
   a new range over a selected one, deselect first.
+
+**Single-frame PNG export (2026-09-17).** The user asked: *"single frame png export would also be
+useful"*. The Export dialog gains **PNG (current frame) — `name-f0007.png`** beside the PSD button.
+- It is the playhead frame, like PSD, and ignores the In/Out range. It is rendered by
+  `renderFramePng` (`src/export/png-sequence.ts`), which the sequence loop now calls too, so the
+  single PNG and that frame of the zip cannot drift apart: boil applied, references excluded,
+  transparent when `transparentBg` is set. That is also the difference from PSD, which leaves boil out.
+- The filename comes from `currentFrameFileName` (`src/export/frames.ts`), now shared with the PSD
+  name (tested). The busy panel is the PSD one ("Writing PNG…", no bar, no Cancel).
+- The In/Out note in the dialog said "exporting frames X–Y" even though the PSD button ignores the
+  range. It now says the range applies to the PNG sequence and the videos only.
+- **README correction:** `d77cb6a` (2026-09-10) said the play range "never reaches an export". That
+  was wrong. Export has honoured the range since `d964f64` (2026-08-17), and that code is unchanged.
+- **Verified in desktop Chrome (dev server, anchor click stubbed):** the button produces `untitled-f0001.png` (image/png, 1280×720, "Done.", no console errors); the refactored sequence still zips; the range note and playhead-tracking filenames render. **VERIFIED on iPad 2026-09-17** (exported through Save to Files).
+
+**Save to Files on iPad/iPhone (2026-09-17).** Every save and export was an `<a download>` click,
+so on iPad each one landed in Downloads as a new, often renumbered, copy. The user asked for the
+Save to Files option after reviewing an outside write-up of the platform limits.
+- **Platform facts it rests on:** iPadOS Safari has no `showSaveFilePicker`, and Chrome on iPad is
+  WebKit with the same limits. So no web page can overwrite a file the user picked. The share sheet
+  (`navigator.share({ files })`) and its **Save to Files** option is the closest a page gets: the
+  user picks a folder, but it is still a new file each time. Safari only opens the sheet during a
+  recent tap, so a slow build can outlive the tap (`NotAllowedError`).
+- **Design:**
+  - `src/export/share.ts` detects iPad and iPhone (`isAppleTouch`: an iPad reports `MacIntel`, so a
+    Mac platform with touch points counts as iPad) and sorts share errors: `AbortError` → dismissed,
+    `NotAllowedError` → needs another tap, anything else → failed. Both are unit-tested.
+  - `src/lib/deliver-file.ts` downloads when `canShare` rejects the file type. With `tryDirect` it
+    opens the sheet on the original tap. Otherwise, or when that tap has expired, it sets
+    `appState.shareReady`, and `ShareReadyDialog.svelte` offers Save to Files… / Download instead /
+    Cancel.
+  - **File → Save to Files…** (Apple touch only) tries the direct share. Exports never do, since a
+    render always outlasts the tap. On iPad a finished export closes the Export dialog and opens the
+    ready dialog, which carries the "exported without audio" note. Desktop behaviour is unchanged.
+- **Honest wording:** `share()` also resolves for AirDrop or Copy, so success reads "Sent X to the
+  share sheet", never "Saved". For a project it still clears the unsaved-work warning, the same way
+  a download does (and still not the "autosave is off" one). A dismissed sheet reads "Not saved".
+- **Verified in desktop Chrome with `navigator.share` stubbed, via the store probe:** the dialog
+  renders; a dismissed share keeps it open with "Not saved"; a successful share closes it, sets the
+  status line and clears `persistAlert`.
+- **iPad, 2026-09-17: saving again to the same folder offers Replace, and it works.** So Save to
+  Files gives a real overwrite in practice: iPadOS asks, not this code. Save to Files is offered for
+  every export type, and File → Save to Files opened the sheet directly (one tap). **VERIFIED on
+  iPad.**

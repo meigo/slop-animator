@@ -220,6 +220,10 @@ interface AnimState {
    *  file. The dialog's backdrop stops pointers only, so the global key handler reads this instead. */
   exportBusy: boolean;
   settingsOpen: boolean;
+  /** A finished file waiting for a tap on "Save to Files…" (iPad/iPhone; see `lib/deliver-file.ts`).
+   *  `note` carries what the flow that built it would have said (e.g. "exported without audio"),
+   *  `error` the last share attempt's failure. Null when the dialog is closed. */
+  shareReady: { file: File; isProject: boolean; note: string; error: string } | null;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
   onion: OnionConfig;
   /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
@@ -333,6 +337,7 @@ export const state: AnimState = $state({
   exportOpen: false,
   exportBusy: false,
   settingsOpen: false,
+  shareReady: null,
   sizeDialog: { open: false, mode: "new" },
   onion: {
     enabled: false,

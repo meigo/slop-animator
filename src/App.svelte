@@ -6,6 +6,7 @@
   import Timeline from "./lib/Timeline.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import ExportDialog from "./lib/ExportDialog.svelte";
+  import ShareReadyDialog from "./lib/ShareReadyDialog.svelte";
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
@@ -407,5 +408,6 @@
   <StatusBar />
 </div>
 <ExportDialog />
+<ShareReadyDialog />
 <SizeDialog />
 <ProjectSettingsDialog />

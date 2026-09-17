@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frameFileName, evenDimensions } from "../export/frames";
+import { frameFileName, currentFrameFileName, evenDimensions } from "../export/frames";
 
 describe("frameFileName", () => {
   it("zero-pads to at least 4 digits, 1-based", () => {
@@ -8,6 +8,16 @@ describe("frameFileName", () => {
   });
   it("widens padding for large frame counts", () => {
     expect(frameFileName(0, 20000)).toBe("frame_00001.png");
+  });
+});
+
+describe("currentFrameFileName", () => {
+  it("names a single-frame export by its 1-based timeline frame, padded like the sequence", () => {
+    expect(currentFrameFileName("walk", 6, 24, "psd")).toBe("walk-f0007.psd");
+    expect(currentFrameFileName("walk", 6, 24, "png")).toBe("walk-f0007.png");
+  });
+  it("widens padding for large frame counts", () => {
+    expect(currentFrameFileName("walk", 0, 20000, "png")).toBe("walk-f00001.png");
   });
 });
 
