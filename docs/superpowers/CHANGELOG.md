@@ -6607,3 +6607,17 @@ selection with offset instead of moving"*; last known good "2-3 days ago".
   cancels the long-press; and a press inside the selection cancels it too, so it always moves however
   long the artist pauses (user's call). Long-press outside a selection still starts a marquee; to box
   a new range over a selected one, deselect first.
+
+**Single-frame PNG export (2026-09-17).** The user asked: *"single frame png export would also be
+useful"*. The Export dialog gains **PNG (current frame) — `name-f0007.png`** beside the PSD button.
+- It is the playhead frame, like PSD, and ignores the In/Out range. It is rendered by
+  `renderFramePng` (`src/export/png-sequence.ts`), which the sequence loop now calls too, so the
+  single PNG and that frame of the zip cannot drift apart: boil applied, references excluded,
+  transparent when `transparentBg` is set. That is also the difference from PSD, which leaves boil out.
+- The filename comes from `currentFrameFileName` (`src/export/frames.ts`), now shared with the PSD
+  name (tested). The busy panel is the PSD one ("Writing PNG…", no bar, no Cancel).
+- The In/Out note in the dialog said "exporting frames X–Y" even though the PSD button ignores the
+  range. It now says the range applies to the PNG sequence and the videos only.
+- **README correction:** `d77cb6a` (2026-09-10) said the play range "never reaches an export". That
+  was wrong. Export has honoured the range since `d964f64` (2026-08-17), and that code is unchanged.
+- **Verified in desktop Chrome (dev server, anchor click stubbed):** the button produces `untitled-f0001.png` (image/png, 1280×720, "Done.", no console errors); the refactored sequence still zips; the range note and playhead-tracking filenames render. **Owed an iPad pass.**

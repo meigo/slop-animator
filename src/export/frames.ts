@@ -11,6 +11,17 @@ export function frameFileName(i: number, total: number): string {
   return `frame_${String(i + 1).padStart(framePad(total), "0")}.png`;
 }
 
+/** Filename for a single-frame export (PSD / PNG) of timeline frame `frame` (0-based):
+ *  `stem-f0007.ext`, 1-based and padded like the sequence's own names. */
+export function currentFrameFileName(
+  stem: string,
+  frame: number,
+  frameCount: number,
+  ext: string,
+): string {
+  return `${stem}-f${String(frame + 1).padStart(framePad(frameCount), "0")}.${ext}`;
+}
+
 /**
  * Round dimensions UP to even (H.264 and most encoders require even width & height).
  *

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { state as appState, DPR, playbackController, liftGuard } from "../state/appState.svelte";
-  import { exportPngSequence } from "../export/png-sequence";
+  import { exportCanvas, exportPngSequence, renderFramePng } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
   import { isAbort, yieldToEventLoop } from "../export/progress";
-  import { framePad } from "../export/frames";
+  import { currentFrameFileName } from "../export/frames";
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -23,10 +23,13 @@
   let controller: AbortController | null = null;
   // Which format is running, so the busy panel (and Cancel) can special-case PSD: it is one
   // synchronous encode with a single yield to let this paint, not a per-frame loop, so there is no
-  // progress to report and nothing an abort could reach mid-encode.
-  let activeKind: "png" | "psd" | VideoFormat | null = $state(null);
+  // progress to report and nothing an abort could reach mid-encode. The single-frame PNG is the same:
+  // one render and one encode, so it shares that panel.
+  type ExportKind = "png" | "png-frame" | "psd" | VideoFormat;
+  let activeKind: ExportKind | null = $state(null);
+  const singleFrame = (k: ExportKind | null) => k === "psd" || k === "png-frame";
   function cancel() {
-    if (!busy || finalising || activeKind === "psd") return;
+    if (!busy || finalising || singleFrame(activeKind)) return;
     controller?.abort();
     status = "Cancelling…"; // the loop stops at its next frame boundary
   }
@@ -41,13 +44,15 @@
   const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
   const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
 
-  // PSD is the CURRENT frame (playhead), not the range — a "PSD sequence" isn't a thing this
-  // format needs. 1-based, per the brief: the same numbering the PNG sequence shows the artist
-  // elsewhere. Padded to the project's own frame-count width so the filename doesn't look out of
-  // step with frame_0007.png-style names the app already produces.
-  const psdFrame = $derived(appState.playhead + 1);
+  // PSD and the single PNG are the CURRENT frame (playhead), not the range. 1-based, per the brief:
+  // the same numbering the PNG sequence shows the artist elsewhere. Padded to the project's own
+  // frame-count width so the filename doesn't look out of step with frame_0007.png-style names the
+  // app already produces.
   const psdFilename = $derived(
-    `${stem}-f${String(psdFrame).padStart(framePad(appState.project.frameCount), "0")}.psd`,
+    currentFrameFileName(stem, appState.playhead, appState.project.frameCount, "psd"),
+  );
+  const pngFrameFilename = $derived(
+    currentFrameFileName(stem, appState.playhead, appState.project.frameCount, "png"),
   );
 
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
@@ -62,7 +67,7 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function run(kind: "png" | "psd" | VideoFormat) {
+  async function run(kind: ExportKind) {
     if (busy) return;
     busy = true;
     activeKind = kind;
@@ -79,7 +84,7 @@
     done = 0;
     finalising = false;
     total = range.end - range.start + 1;
-    status = `Exporting ${kind.toUpperCase()}…`;
+    status = `Exporting ${kind === "png-frame" ? "PNG" : kind.toUpperCase()}…`;
     const onProgress = (d: number, t: number) => {
       done = d;
       total = t;
@@ -90,6 +95,19 @@
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
         downloadBlob(blob, `${stem}.zip`);
+        status = "Done.";
+      } else if (kind === "png-frame") {
+        // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil
+        // included). toBlob is async, but the render before it is not — yield once so "Writing
+        // PNG…" paints first.
+        await yieldToEventLoop();
+        const blob = await renderFramePng(
+          exportCanvas(appState.project, DPR),
+          appState.project,
+          appState.playhead,
+          DPR,
+        );
+        downloadBlob(blob, pngFrameFilename);
         status = "Done.";
       } else if (kind === "psd") {
         // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
@@ -150,7 +168,7 @@
              this codebase avoids. Once finalising, `cancel()` no-ops and the title says why. -->
         <button
           title={busy
-            ? activeKind === "psd"
+            ? singleFrame(activeKind)
               ? "Writing — finishes on its own in a moment, nothing to stop"
               : finalising
                 ? "Finalising — the file is being assembled and can no longer be stopped"
@@ -162,13 +180,15 @@
           }}>✕</button
         >
       </div>
-      {#if busy && activeKind === "psd"}
+      {#if busy && singleFrame(activeKind)}
         <!-- No bar, no Cancel: there is exactly one yield (to paint this line) before the whole
              encode runs synchronously, so there is no per-frame count to show and nothing an abort
              could interrupt mid-encode — a Cancel button here would set "Cancelling…" only to be
              overwritten by "Done." the instant the encode finishes, which is the same misleading
              flash this line exists to avoid. -->
-        <span class="text-xs text-text-secondary">Writing PSD…</span>
+        <span class="text-xs text-text-secondary"
+          >Writing {activeKind === "psd" ? "PSD" : "PNG"}…</span
+        >
       {:else if busy}
         <!-- The formats are replaced rather than disabled: while a render is running the only
              decision left is whether to let it finish. -->
@@ -199,6 +219,12 @@
           PNG sequence — {stem}.zip
         </button>
         <button
+          class="border border-border rounded py-1 hover:bg-surface-hover"
+          onclick={() => run("png-frame")}
+        >
+          PNG (current frame) — {pngFrameFilename}
+        </button>
+        <button
           class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
           disabled={!videoOk}
           onclick={() => run("mp4")}>MP4 video — {stem}.mp4</button
@@ -217,8 +243,9 @@
       {/if}
       {#if partial}
         <span class="text-xs text-warn">
-          In/Out range is set — exporting frames {range.start + 1}–{range.end + 1} of
-          {appState.project.frameCount}. Clear it on the playbar to export everything.
+          In/Out range is set — the PNG sequence and videos export frames {range.start +
+            1}–{range.end + 1} of {appState.project.frameCount}. Clear it on the playbar to export
+          everything. The current-frame exports are not affected.
         </span>
       {/if}
       {#if refCount > 0}

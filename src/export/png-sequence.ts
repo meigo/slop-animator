@@ -5,6 +5,36 @@ import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
 
 /**
+ * Render one frame (drawing layers over the paper background, reference layers excluded) into
+ * `canvas` and encode it as PNG. The sequence export and the single-frame export both go through
+ * this, so the two can never disagree about what a frame looks like.
+ */
+export async function renderFramePng(
+  canvas: HTMLCanvasElement,
+  project: Project,
+  frame: number,
+  dpr: number,
+): Promise<Blob> {
+  const ctx = canvas.getContext("2d")!;
+  renderFrame(ctx, project, frame, dpr, {
+    drawBg: !project.transparentBg,
+    includeReference: false,
+    boil: project.boil.enabled ? project.boil : undefined,
+  });
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
+  );
+}
+
+/** A fresh canvas at the project's export size. */
+export function exportCanvas(project: Project, dpr: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = project.width * dpr;
+  canvas.height = project.height * dpr;
+  return canvas;
+}
+
+/**
  * Render every frame (drawing layers over the paper background, reference layers excluded)
  * to a PNG and return a zip Blob containing `frame_0001.png`, `frame_0002.png`, ….
  */
@@ -14,10 +44,7 @@ export async function exportPngSequence(
   range: { start: number; end: number },
   { signal, onProgress }: ExportProgress = {},
 ): Promise<Blob> {
-  const canvas = document.createElement("canvas");
-  canvas.width = project.width * dpr;
-  canvas.height = project.height * dpr;
-  const ctx = canvas.getContext("2d")!;
+  const canvas = exportCanvas(project, dpr);
 
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
   // The play In/Out range, inclusive. Filenames number the OUTPUT sequence from 1, not the source
@@ -32,14 +59,7 @@ export async function exportPngSequence(
     // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
     // frame: a zip silently missing frame 240 reads as a complete export.
     try {
-      renderFrame(ctx, project, f, dpr, {
-        drawBg: !project.transparentBg,
-        includeReference: false,
-        boil: project.boil.enabled ? project.boil : undefined,
-      });
-      const blob = await new Promise<Blob>((resolve, reject) =>
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
-      );
+      const blob = await renderFramePng(canvas, project, f, dpr);
       // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
       // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
       files[frameFileName(f - range.start, total)] = [
