@@ -105,10 +105,11 @@ describe("scrubbedValue", () => {
   it("returns exactly the start value when dragged back to the press point", () => {
     expect(scrubbedValue({ ...fps, dx: 0 })).toBe(24);
   });
-  it("is measured from the press, not accumulated", () => {
-    // 80px out then back to 8px is the same as going straight to 8px.
-    expect(scrubbedValue({ ...fps, dx: 8 })).toBe(scrubbedValue({ ...fps, dx: 8 }));
-    expect(scrubbedValue({ ...fps, dx: 800 })).toBe(60); // clamped, not wrapped
+  it("is measured from the press, so a far excursion does not shift the origin", () => {
+    // Out to the clamp and back to +1 step lands on 25, not on 60-something: each sample is
+    // startValue + dx, never a running total of the moves before it.
+    expect(scrubbedValue({ ...fps, dx: 800 })).toBe(60);
+    expect(scrubbedValue({ ...fps, dx: 8 })).toBe(25);
   });
   it("clamps to min and max", () => {
     expect(scrubbedValue({ ...fps, dx: 10000 })).toBe(60);
@@ -279,14 +280,18 @@ Create `src/lib/NumberField.svelte`:
 
   let input: HTMLInputElement | undefined;
   let draft = $state(show(value));
-  /** The field owns the text while it is focused or being dragged; outside that the store does. */
-  let editing = $state(false);
+  /** The field owns the text while it is focused OR being dragged; outside that the store does.
+   *  Two flags, not one: the drag BLURS the field on its first move, and a single flag cleared by
+   *  that blur would let the effect below snap the text back to the stored value on every move of
+   *  a field that only writes on release (Length, Track step). */
+  let focused = $state(false);
+  let dragging = $state(false);
 
   // Re-sync when the value changes from OUTSIDE this field — undo, a preset button, a timeline
-  // drag. Guarded by `editing`, or it would overwrite what is being typed or dragged.
+  // drag. Guarded, or it would overwrite what is being typed or dragged.
   $effect(() => {
     const next = show(value);
-    if (!editing && draft !== next) draft = next;
+    if (!focused && !dragging && draft !== next) draft = next;
   });
 
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
@@ -312,7 +317,7 @@ Create `src/lib/NumberField.svelte`:
     if (!scrub.moved) {
       if (Math.abs(dx) < SCRUB_THRESHOLD_PX) return;
       scrub.moved = true;
-      editing = true;
+      dragging = true;
       input?.blur(); // a caret blinking in a field being scrubbed is a lie
     }
     const next = scrubbedValue({
@@ -334,7 +339,7 @@ Create `src/lib/NumberField.svelte`:
     window.removeEventListener("pointercancel", onPointerUp);
     const moved = scrub?.moved ?? false;
     scrub = null;
-    editing = false;
+    dragging = false;
     if (!moved) return; // a tap: the field is focused for typing, nothing is written
     const v = Number(draft);
     if (Number.isFinite(v)) onCommit(clamp(v));
@@ -396,10 +401,11 @@ Create `src/lib/NumberField.svelte`:
   value={draft}
   oninput={(e) => (draft = e.currentTarget.value)}
   onpointerdown={onPointerDown}
-  onfocus={() => (editing = true)}
+  onfocus={() => (focused = true)}
   onblur={() => {
-    editing = false;
-    commitDraft();
+    focused = false;
+    // The blur the drag itself fires (first move) must not commit: the drag commits on release.
+    if (!dragging) commitDraft();
   }}
   onkeydown={onKeyDown}
 />
