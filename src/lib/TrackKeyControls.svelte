@@ -12,7 +12,7 @@
    *
    * The track is resolved from the `TrackRef` rather than passed in, so the ref and the track can
    * never disagree — and so the Step field can read the RESOLVED value straight back out of the
-   * store after the action (see its handler).
+   * store after the action, via `NumberField`'s own re-sync effect (not a handler here).
    */
   import { DiamondPlus, DiamondMinus, ClipboardCopy, ClipboardPaste } from "@lucide/svelte";
   import NumberField from "./NumberField.svelte";

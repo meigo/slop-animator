@@ -59,11 +59,12 @@
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
 
   // Non-reactive on purpose: nothing renders from it.
-  let scrub: { startX: number; startValue: number; moved: boolean } | null = null;
+  let scrub: { startX: number; startValue: number; moved: boolean; lastEmitted: number } | null =
+    null;
 
   function onPointerDown(e: PointerEvent) {
     if (disabled || e.button !== 0) return;
-    scrub = { startX: e.clientX, startValue: value, moved: false };
+    scrub = { startX: e.clientX, startValue: value, moved: false, lastEmitted: value };
     // NO preventDefault: the browser still focuses the field and places the caret, so a press that
     // never travels is an ordinary tap-to-type.
     window.addEventListener("pointermove", onPointerMove);
@@ -91,8 +92,14 @@
       min,
       max,
     });
-    draft = show(next);
-    onInput?.(next);
+    draft = show(next); // the display follows the pointer even when the number itself didn't move
+    // Pose Gap's onInput reruns silhouette-trace/dilate/Delaunay/geodesic-weights on every call, so a
+    // slow drag across a wide range must not fire it for every pointermove that lands on the same
+    // quantised value — only when the number actually changes.
+    if (next !== scrub.lastEmitted) {
+      scrub.lastEmitted = next;
+      onInput?.(next);
+    }
   }
 
   function onPointerUp() {
@@ -100,15 +107,39 @@
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
     const moved = scrub?.moved ?? false;
+    const startValue = scrub?.startValue ?? value;
     scrub = null;
     dragging = false;
     if (!moved) return; // a tap: the field is focused for typing, nothing is written
+    swallowNextClick();
     const v = Number(draft);
-    if (Number.isFinite(v)) onCommit(clamp(v));
+    if (!Number.isFinite(v)) return;
+    const c = clamp(v);
+    if (c !== startValue) onCommit(c); // a drag that returns to its origin writes nothing
+  }
+
+  /** A drag that ends outside this field's ancestor panel (a 320px dialog, a fast W/H drag) still
+   *  makes the browser fire a `click` on the nearest common ancestor once the pointer releases — for
+   *  a modal backdrop with `onclick={close}`, that closes the dialog and discards the values just
+   *  dragged in. Swallow exactly the one click this gesture produces, in the capture phase so it
+   *  never reaches the backdrop's handler. Bounded two ways so it can't leak and eat a later,
+   *  unrelated click: removed on the first click it sees, and also on a timeout in case no click
+   *  follows (rare, but observed to vary by browser/input type). */
+  function swallowNextClick() {
+    const timer = setTimeout(() => window.removeEventListener("click", swallow, true), 400);
+    function swallow(e: MouseEvent) {
+      e.stopPropagation();
+      e.preventDefault();
+      clearTimeout(timer);
+      window.removeEventListener("click", swallow, true);
+    }
+    window.addEventListener("click", swallow, true);
   }
 
   /** Write a typed value. A draft equal to the current value writes NOTHING, so tabbing through a
-   *  field cannot push an empty undo entry. */
+   *  field cannot push an empty undo entry. Rounded to the field's own display precision (`dp`) —
+   *  NOT snapped to the step grid, so typing 1281 into canvas width keeps 1281; only the drag path
+   *  snaps. */
   function commitDraft() {
     if (disabled) {
       draft = show(value);
@@ -119,7 +150,7 @@
       draft = show(value);
       return;
     }
-    const c = clamp(v);
+    const c = Number(clamp(v).toFixed(dp));
     if (c === value) {
       draft = show(value); // normalise what is displayed (e.g. "07" → "7")
       return;
@@ -130,8 +161,12 @@
 
   function onKeyDown(e: KeyboardEvent) {
     // The global handler drops single-key shortcuts whose target is an INPUT (App.svelte), but a
-    // field is exactly where a stray `b`/`e`/`f` would be most annoying, so stop them here too.
-    e.stopPropagation();
+    // field is exactly where a stray `b`/`e`/`f` would be most annoying, so stop them here too. BUT
+    // App.svelte handles Cmd/Ctrl+Z ABOVE that INPUT/TEXTAREA guard on purpose (undo/redo must work
+    // no matter what has focus), and Svelte 5 delegates `keydown` at the document, so stopping
+    // propagation unconditionally would keep that event from ever reaching `<svelte:window>`. Only
+    // block the plain single-key shortcuts; let a Ctrl/Meta chord through.
+    if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
     if (e.key === "Enter") {
       input?.blur();
       return;

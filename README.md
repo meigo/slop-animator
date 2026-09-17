@@ -10,10 +10,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 ## Features (current state)
 
-- Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
-
 **Drawing**
 
+- Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
   so outlines and flats stay separate; eyedropper, lasso selection with float/transform
@@ -97,6 +96,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - `1` — actual size (100%) · `n` add marker · `<`/`>` previous/next marker
 - `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `[`/`]` brush size · `o` onion ·
   `⌘Z`/`⌘⇧Z` undo/redo
+- In a numeric field: `↑`/`↓` change it by one step (`Shift` = ten), `Enter` commits, `Escape`
+  restores
 
 ## Running it
 

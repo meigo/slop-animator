@@ -6688,7 +6688,9 @@ the keyboard.
   starting on top of a field.
 - **Lost the desktop spinner:** a text input has none. Arrow Up/Down now step ±1, Shift ±10,
   replacing it — but only while the field is focused, and (deferred, not fixed) they compute from
-  the committed `value`, so an uncommitted typed draft is discarded on an arrow press.
+  the committed `value`, so an uncommitted typed draft is discarded on an arrow press. Starting a
+  DRAG on a field you have just typed into discards it the same way — the drag also reads the
+  stored `value`, not the draft.
 - **Other deferred minors, recorded not fixed:** the window pointer listeners have no `onDestroy`
   cleanup (matches existing convention — `RefTransformGizmo`, `pressure-curve.ts`); a stale doc
   comment at `TrackKeyControls.svelte:13-15` still says the resolved-value readback happens in the
