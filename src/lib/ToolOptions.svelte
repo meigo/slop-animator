@@ -1,5 +1,6 @@
 <script lang="ts">
   import { sliderFill } from "./slider-fill";
+  import NumberField from "./NumberField.svelte";
   import { onMount } from "svelte";
   import {
     state as appState,
@@ -104,14 +105,17 @@
         bind:value={stroke.size}
         style={sliderFill(stroke.size, 0.5, 60)}
       />
-      <input
+      <NumberField
         class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-        type="number"
-        min="0.5"
-        max="60"
-        step="0.5"
-        bind:value={stroke.size}
+        value={stroke.size}
+        min={0.5}
+        max={60}
+        step={0.5}
+        pxPerStep={4}
         title="Brush size"
+        ariaLabel="Brush size"
+        onInput={(v) => (stroke.size = v)}
+        onCommit={(v) => (stroke.size = v)}
       />
     </label>
     <!-- Fixed SQUARE, not padding: the presets are 1-2 digits, so padding alone makes each button
