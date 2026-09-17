@@ -6,6 +6,7 @@
   // group (or its track) → the group, audio → a note. Everything below the target resolution was
   // MOVED here verbatim from LayerList.svelte, comments included; only the template is new.
   import { sliderFill } from "./slider-fill";
+  import NumberField from "./NumberField.svelte";
   import {
     Blend,
     Pencil,
@@ -518,14 +519,22 @@
           title="Playback speed (× real time)"
         >
           speed
-          <input
+          <NumberField
             class="w-9 text-xs bg-surface border border-border px-0.5 text-text"
-            type="number"
-            step="0.1"
-            min="0.1"
-            max="8"
-            bind:value={layer.speed}
-            oninput={bump}
+            value={layer.speed}
+            min={0.1}
+            max={8}
+            step={0.1}
+            title="Playback speed (× real time)"
+            ariaLabel="Video playback speed"
+            onInput={(v) => {
+              layer.speed = v;
+              bump();
+            }}
+            onCommit={(v) => {
+              layer.speed = v;
+              bump();
+            }}
           />×
         </label>
       {/if}

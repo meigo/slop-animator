@@ -56,6 +56,7 @@
   import RefTransformGizmo from "./RefTransformGizmo.svelte";
   import BrushCursor from "./BrushCursor.svelte";
   import LayerBoundsHint from "./LayerBoundsHint.svelte";
+  import NumberField from "./NumberField.svelte";
   import { editBlockLabel, loopEditLabel } from "./status-hint";
   import {
     transformBaseRect,
@@ -87,7 +88,7 @@
   import { contentBoxLogical, groupBoxLogical, contentBounds, markInkChanged } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
-  import { outlineFillFailed, clampGap, MAX_GAP } from "../core/fill-holes";
+  import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -2454,18 +2455,20 @@
             title="Bridge breaks in the outline, up to about twice this many pixels"
           >
             Gap
-            <input
+            <NumberField
               class="w-10 text-xs bg-surface border border-border rounded px-1 text-text"
-              type="number"
-              min="0"
-              max={MAX_GAP}
               value={appState.pose.gap}
-              onchange={(e) => {
-                // Read + clamp rather than `bind:value`, which writes `null` into a `number` field
-                // when emptied and takes a typed 50 straight through (`max` is advisory). Writing the
-                // clamped value back to the DOM makes the snap visible.
-                appState.pose.gap = clampGap(e.currentTarget.value);
-                e.currentTarget.value = String(appState.pose.gap);
+              min={0}
+              max={MAX_GAP}
+              step={1}
+              title="Bridge breaks in the outline, up to about twice this many pixels"
+              ariaLabel="Fill gap"
+              onInput={(v) => {
+                appState.pose.gap = v;
+                rebuildPoseMesh();
+              }}
+              onCommit={(v) => {
+                appState.pose.gap = v;
                 rebuildPoseMesh();
               }}
             />

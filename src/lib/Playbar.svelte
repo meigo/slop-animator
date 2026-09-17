@@ -15,6 +15,7 @@
   import { countKeyframesPastLength } from "../anim/document";
   import { markerAt } from "../anim/markers";
   import { clickOutside } from "./click-outside";
+  import NumberField from "./NumberField.svelte";
   import {
     ArrowLeftToLine,
     ArrowRightToLine,
@@ -41,23 +42,20 @@
     appState.project.fps = Math.max(1, Math.min(60, Math.round(v)));
     bump();
   }
-  function commitLength(e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const n = Math.max(1, Math.min(9999, Math.floor(+input.value)));
-    if (n !== appState.project.frameCount) {
-      if (n < appState.project.frameCount) {
-        const dropped = countKeyframesPastLength(appState.project, n);
-        if (
-          dropped > 0 &&
-          !confirm(`Shorten to ${n} frames? This removes ${dropped} keyframe(s).`)
-        ) {
-          input.value = String(appState.project.frameCount); // cancelled — revert the field
-          return;
-        }
-      }
-      setAnimationLength(n);
+  // Called once per gesture (release of a drag, Enter, or blur) — never per pointermove, so the
+  // confirm below cannot fire mid-drag and a drag cannot leave a trail of undo entries.
+  function commitLength(n: number) {
+    const target = Math.max(1, Math.min(9999, Math.floor(n)));
+    if (target === appState.project.frameCount) return;
+    if (target < appState.project.frameCount) {
+      const dropped = countKeyframesPastLength(appState.project, target);
+      if (
+        dropped > 0 &&
+        !confirm(`Shorten to ${target} frames? This removes ${dropped} keyframe(s).`)
+      )
+        return; // cancelled — NumberField re-reads the unchanged store value and snaps back
     }
-    input.value = String(appState.project.frameCount); // normalize the displayed value (clamp / no-op)
+    setAnimationLength(target);
   }
 
   let { variant = "transport" }: { variant?: "transport" | "settings" } = $props();
@@ -184,13 +182,16 @@
       >
         <div class="flex items-center gap-2">
           <span class="text-text-secondary w-8">fps</span>
-          <input
+          <NumberField
             class="w-12 bg-surface border border-border text-text px-1"
-            type="number"
-            min="1"
-            max="60"
             value={appState.project.fps}
-            onchange={(e) => setFps(+e.currentTarget.value)}
+            min={1}
+            max={60}
+            step={1}
+            title="Frames per second"
+            ariaLabel="Frames per second"
+            onInput={setFps}
+            onCommit={setFps}
           />
           <div class="flex gap-px ml-auto">
             {#each FPS_PRESETS as p (p)}
@@ -207,13 +208,16 @@
                type-an-exact-number path. -->
         <label class="flex items-center justify-between gap-2"
           >Length
-          <input
+          <NumberField
             class="w-16 bg-surface border border-border text-text px-1"
-            type="number"
-            min="1"
-            max="9999"
             value={appState.project.frameCount}
-            onchange={commitLength}
+            min={1}
+            max={9999}
+            step={1}
+            pxPerStep={6}
+            title="Animation length in frames"
+            ariaLabel="Animation length in frames"
+            onCommit={commitLength}
           />
         </label>
       </div>
