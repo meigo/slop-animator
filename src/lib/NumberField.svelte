@@ -41,7 +41,7 @@
   const show = (v: number) => v.toFixed(dp);
 
   let input: HTMLInputElement | undefined;
-  let draft = $state(show(value));
+  let draft = $state(untrack(() => show(value)));
   /** The field owns the text while it is focused OR being dragged; outside that the store does.
    *  Two flags, not one: the drag BLURS the field on its first move, and a single flag cleared by
    *  that blur would let the effect below snap the text back to the stored value on every move of
@@ -63,9 +63,7 @@
 
   function onPointerDown(e: PointerEvent) {
     if (disabled || e.button !== 0) return;
-    // Capture the starting value for scrubbing without reactivity
-    const startValue = untrack(() => value);
-    scrub = { startX: e.clientX, startValue, moved: false };
+    scrub = { startX: e.clientX, startValue: value, moved: false };
     // NO preventDefault: the browser still focuses the field and places the caret, so a press that
     // never travels is an ordinary tap-to-type.
     window.addEventListener("pointermove", onPointerMove);
@@ -112,6 +110,10 @@
   /** Write a typed value. A draft equal to the current value writes NOTHING, so tabbing through a
    *  field cannot push an empty undo entry. */
   function commitDraft() {
+    if (disabled) {
+      draft = show(value);
+      return;
+    }
     const v = Number(draft);
     if (!Number.isFinite(v) || draft.trim() === "") {
       draft = show(value);
@@ -141,6 +143,7 @@
     }
     // Replaces the spinner arrows the text input does not have.
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      if (disabled) return;
       e.preventDefault();
       const next = clamp(value + (e.key === "ArrowUp" ? 1 : -1) * step * (e.shiftKey ? 10 : 1));
       if (next === value) return;
@@ -159,6 +162,7 @@
   class="{klass} touch-none tabular-nums {disabled ? '' : 'cursor-ew-resize'}"
   type="text"
   inputmode="decimal"
+  readonly={disabled}
   aria-label={ariaLabel}
   aria-disabled={disabled}
   title={title ? `${title} · Drag to change` : "Drag to change"}
