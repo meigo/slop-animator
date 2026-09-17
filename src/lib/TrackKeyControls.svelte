@@ -15,6 +15,7 @@
    * store after the action (see its handler).
    */
   import { DiamondPlus, DiamondMinus, ClipboardCopy, ClipboardPaste } from "@lucide/svelte";
+  import NumberField from "./NumberField.svelte";
   import {
     state as appState,
     addTrackKey,
@@ -205,24 +206,18 @@
     title={stepTitle}
   >
     Step
-    <input
+    <NumberField
       class={STEP}
-      class:pointer-events-none={!!blocked}
-      aria-disabled={!!blocked}
-      type="number"
-      min="1"
-      max={MAX_SAMPLE_EVERY}
       value={track.sampleEvery ?? 1}
-      onchange={(e) => {
-        const el = e.currentTarget as HTMLInputElement;
-        if (!blocked) setTrackSampleEvery(trackRef, Number(el.value));
-        // Write the RESOLVED value back. The action early-returns when the clamp lands on the value
-        // already stored, so the bound expression never changes and Svelte leaves the DOM alone:
-        // typing `0` and blurring left the field showing 0 while the store held 1. Re-read from the
-        // STORE, not from the `track` snapshot this handler closed over — that is the value the
-        // action actually settled on. `MAX_SAMPLE_EVERY` is clamped in the action, not just by this
-        // input's `max`, because a browser accepts a typed value beyond an advisory max.
-        el.value = String(trackForRef(appState.project, trackRef)?.sampleEvery ?? 1);
+      min={1}
+      max={MAX_SAMPLE_EVERY}
+      step={1}
+      pxPerStep={10}
+      title={stepTitle}
+      ariaLabel="Sample every N frames"
+      disabled={!!blocked}
+      onCommit={(v) => {
+        if (!blocked) setTrackSampleEvery(trackRef, v);
       }}
     />
   </label>
