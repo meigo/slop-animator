@@ -6671,7 +6671,7 @@ the keyboard.
 - **Nine fields converted**, each with its own `step`/`pxPerStep`: brush size 0.5/4, fps (Playbar +
   Project Settings) 1/8, Length 1/6, canvas W/H 8/4, pose gap 1/8, video speed 0.1/8, track step
   1/10.
-- **Three commit shapes**, so a drag never pushes one undo entry per pointermove: **live and not
+- **Two commit shapes**, so a drag never pushes one undo entry per pointermove: **live and not
   undoable** (brush size, both fps fields, pose gap, video speed, canvas W/H — `onInput` and
   `onCommit` both write, matching what the old `oninput`/`onchange` handler wrote); **commit on
   release** (Length, Track step — no `onInput`; the field shows the scrubbed number while dragging

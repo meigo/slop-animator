@@ -241,7 +241,7 @@ optional `markers` field. `n` adds, `<`/`>` jump. See the 2026-09-13 changelog e
 Shipped 2026-09-18: **Drag-to-change number fields** — all nine numeric inputs (brush size, fps ×2,
 Length, canvas W/H, pose gap, video speed, track step) are `NumberField.svelte` + `core/scrub.ts`:
 press and drag sideways to scrub the value (Shift = finer steps), or tap to type as before. See the
-2026-09-18 changelog entry for the per-field step table and the three undo-commit shapes.
+2026-09-18 changelog entry for the per-field step table and the two undo-commit shapes.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
