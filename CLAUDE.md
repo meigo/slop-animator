@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1372 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1384 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -188,6 +188,12 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     band), and `touch-action: none` on html/body. Don't retry those. Still true, and why inputs stay
     in dialogs, the layer panel or the top bar: `#app` is `position: fixed`, so iOS cannot scroll a
     field above the keyboard. Desktop browsers reproduce none of this.
+16. **A `type="number"` input owns pointer gestures for its own spinner, so a numeric field that
+    needs to be press-and-drag-scrubbable (2026-09-18, `NumberField.svelte`) must be
+    `type="text" inputmode="decimal"` instead** — a `type="number"` field never sees the pointermove
+    that would drive the drag. It still needs `touch-action: none` (gotcha #10) and stays an
+    `<input>` so `App.svelte`'s INPUT/TEXTAREA guard keeps single-key tool shortcuts out while it's
+    focused.
 
 ## Current state (all shipped & merged to `main`)
 
@@ -231,6 +237,11 @@ frame, pure ops in `src/anim/markers.ts`) in a `MarkerStrip.svelte` row under th
 in `rippleDocumentFrames` (a delete joins two labels onto one frame), are cut by
 `applyAnimationLength`, sit in `StructSnapshot` by reference (never mutate the array), and save as an
 optional `markers` field. `n` adds, `<`/`>` jump. See the 2026-09-13 changelog entry.
+
+Shipped 2026-09-18: **Drag-to-change number fields** — all nine numeric inputs (brush size, fps ×2,
+Length, canvas W/H, pose gap, video speed, track step) are `NumberField.svelte` + `core/scrub.ts`:
+press and drag sideways to scrub the value (Shift = finer steps), or tap to type as before. See the
+2026-09-18 changelog entry for the per-field step table and the three undo-commit shapes.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

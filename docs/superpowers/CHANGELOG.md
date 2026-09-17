@@ -6651,3 +6651,55 @@ Save to Files option after reviewing an outside write-up of the platform limits.
   Files gives a real overwrite in practice: iPadOS asks, not this code. Save to Files is offered for
   every export type, and File → Save to Files opened the sheet directly (one tap). **VERIFIED on
   iPad.**
+
+**Drag-to-change number fields (2026-09-18).** The user asked: *"some numeric fields are used in the
+UI but these are not comfortable to use. in slop-compositor inspector values can be changed by
+dragging. could this be adapted here as well?"* The iPad case is stronger here than in the sibling
+app: a tap raises the on-screen keyboard, and Chrome for iPad leaves the app shifted after any
+keyboard (gotcha #15, an accepted Chrome bug) — a drag never focuses the field, so it never raises
+the keyboard.
+- **Component:** `src/lib/NumberField.svelte`, on top of the pure arithmetic in `src/core/scrub.ts`
+  (`SCRUB_THRESHOLD_PX` = 3px of travel before a press becomes a drag; `FINE_FACTOR` = 4 — Shift
+  costs 4× the travel per step, i.e. finer control on the SAME grid, unlike the compositor's Shift,
+  which multiplies the step by 0.1; `stepDecimals`; `scrubbedValue` = `startValue + round(dx /
+  (pxPerStep × fine)) × step`, snapped to the grid anchored at `min`, clamped, then float-cleaned to
+  the step's own decimals). 12 unit tests.
+- **Why `type="text" inputmode="decimal"`, not `type="number"`:** a number input owns pointer
+  gestures for its own spinner, which is exactly the gesture the drag needs. It stays an `<input>` so
+  `App.svelte`'s INPUT/TEXTAREA guard still keeps single-key tool shortcuts (`b`/`e`/`f`…) out while
+  it is focused.
+- **Nine fields converted**, each with its own `step`/`pxPerStep`: brush size 0.5/4, fps (Playbar +
+  Project Settings) 1/8, Length 1/6, canvas W/H 8/4, pose gap 1/8, video speed 0.1/8, track step
+  1/10.
+- **Three commit shapes**, so a drag never pushes one undo entry per pointermove: **live and not
+  undoable** (brush size, both fps fields, pose gap, video speed, canvas W/H — `onInput` and
+  `onCommit` both write, matching what the old `oninput`/`onchange` handler wrote); **commit on
+  release** (Length, Track step — no `onInput`; the field shows the scrubbed number while dragging
+  and writes once, on `pointerup`).
+- **Spec amendment — Length:** the spec's §4 case 2 planned Length as live-inside-one-undo-bracket
+  (`onInput` writing through `applyAnimationLength`, bracketed by `beginStructuralEdit`/
+  `commitStructuralEdit`). That was wrong: `Playbar.commitLength` asks `confirm()` before shortening
+  past keyframes, and a live drag would have fired that dialog on every pointermove instead of once
+  on release. Length shipped commit-on-release instead, the same shape as Track step.
+  `commitLength` changed signature from `(e: Event)` to `(n: number)`; its clamp and confirm are
+  unchanged. §4 case 2 is marked superseded in the spec.
+- **`touch-action: none`** on the field (gotcha #10) — without it iPad would treat the drag as a
+  scroll and cancel the pointer stream. Accepted trade-off: a panel can no longer be finger-scrolled
+  starting on top of a field.
+- **Lost the desktop spinner:** a text input has none. Arrow Up/Down now step ±1, Shift ±10,
+  replacing it — but only while the field is focused, and (deferred, not fixed) they compute from
+  the committed `value`, so an uncommitted typed draft is discarded on an arrow press.
+- **Other deferred minors, recorded not fixed:** the window pointer listeners have no `onDestroy`
+  cleanup (matches existing convention — `RefTransformGizmo`, `pressure-curve.ts`); a stale doc
+  comment at `TrackKeyControls.svelte:13-15` still says the resolved-value readback happens in the
+  field's own handler, which now lives inside `NumberField`.
+- **Verified in desktop Chrome (dev server):** brush size drag right 40px → 12 → 17.5 (step 0.5 at
+  4px/step), drag left 24px → −3, Shift-drag 40px → +2.5, with both synthetic and real mouse drags;
+  tap-to-type (click focuses, type "12" + Enter commits and re-renders "12.0", Escape leaves the
+  store untouched), Arrow Up/Shift+Arrow Down; the field renders as `type=text inputmode=decimal`,
+  `touch-action: none`, `cursor: ew-resize`, title "… · Drag to change"; Length: a 60px drag took 10
+  → 20 frames and ONE ⌘Z returned it to 10 with nothing left to undo; fps: a 40px drag took 12 → 17
+  with no undo entry (correct — fps is not undoable). **Not verified in the browser:** the
+  shorten-past-keyframes confirm (a native `confirm()` blocks browser automation), and pose gap /
+  video speed / canvas W-H / track step were not individually driven (same component, reviewed
+  statically). An iPad pass is still owed.

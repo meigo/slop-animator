@@ -167,6 +167,10 @@ pointermove — a 30-frame drag left 30 entries in the history").
    `commitStructuralEdit()` at the call site, so the whole drag is ONE undo entry and a drag that
    ends where it started pushes none (`commitStructuralEdit` no-ops on an unchanged snapshot).
    `applyAnimationLength` already discards live lifts (gotcha #9) on its own.
+
+   > **SUPERSEDED 2026-09-18 by the plan's "Spec amendment":** Length is commit-on-release, like Track
+   > step. `commitLength` asks for confirmation before dropping keyframes, and a live drag would fire
+   > that dialog per pointermove.
 3. **Commit on release** — Track step. `setTrackSampleEvery` commits per call and has no
    non-committing variant; writing one would be new store surface for one field. So no `onInput`:
    the field shows the scrubbed number while dragging and writes once on `onCommit`. Its existing

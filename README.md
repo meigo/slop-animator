@@ -10,6 +10,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 ## Features (current state)
 
+- Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
+
 **Drawing**
 
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
@@ -108,7 +110,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1372); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1384); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
