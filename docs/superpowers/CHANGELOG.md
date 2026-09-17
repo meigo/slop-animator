@@ -6646,6 +6646,8 @@ Save to Files option after reviewing an outside write-up of the platform limits.
   a download does (and still not the "autosave is off" one). A dismissed sheet reads "Not saved".
 - **Verified in desktop Chrome with `navigator.share` stubbed, via the store probe:** the dialog
   renders; a dismissed share keeps it open with "Not saved"; a successful share closes it, sets the
-  status line and clears `persistAlert`. **Owed an iPad pass.** Still unknown: whether the sheet
-  offers Save to Files for zip/psd/mp4/webm, whether Files offers Replace for a same-named file, and
-  whether a small project's Save to Files opens the sheet in one tap.
+  status line and clears `persistAlert`.
+- **iPad, 2026-09-17: saving again to the same folder offers Replace, and it works.** So Save to
+  Files gives a real overwrite in practice: iPadOS asks, not this code. Not yet reported: whether the
+  sheet offers Save to Files for psd/mp4/webm as well as zip, and whether a small project's Save to
+  Files opens the sheet in one tap.
