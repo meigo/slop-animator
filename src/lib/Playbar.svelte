@@ -15,6 +15,7 @@
   import { countKeyframesPastLength } from "../anim/document";
   import { markerAt } from "../anim/markers";
   import { clickOutside } from "./click-outside";
+  import NumberField from "./NumberField.svelte";
   import {
     ArrowLeftToLine,
     ArrowRightToLine,
@@ -184,13 +185,16 @@
       >
         <div class="flex items-center gap-2">
           <span class="text-text-secondary w-8">fps</span>
-          <input
+          <NumberField
             class="w-12 bg-surface border border-border text-text px-1"
-            type="number"
-            min="1"
-            max="60"
             value={appState.project.fps}
-            onchange={(e) => setFps(+e.currentTarget.value)}
+            min={1}
+            max={60}
+            step={1}
+            title="Frames per second"
+            ariaLabel="Frames per second"
+            onInput={setFps}
+            onCommit={setFps}
           />
           <div class="flex gap-px ml-auto">
             {#each FPS_PRESETS as p (p)}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { state as appState, bump } from "../state/appState.svelte";
+  import NumberField from "./NumberField.svelte";
 
   function close() {
     appState.settingsOpen = false;
@@ -78,13 +79,16 @@
         <span class="text-text-secondary text-xs uppercase tracking-wide">Playback</span>
         <label class="flex items-center gap-2 text-text-secondary">
           fps
-          <input
-            type="number"
-            min="1"
-            max="60"
+          <NumberField
             class="w-20 bg-surface border border-border text-text px-1"
             value={appState.project.fps}
-            oninput={(e) => setFps(e.currentTarget.valueAsNumber)}
+            min={1}
+            max={60}
+            step={1}
+            title="Frames per second"
+            ariaLabel="Frames per second"
+            onInput={setFps}
+            onCommit={setFps}
           />
         </label>
       </div>

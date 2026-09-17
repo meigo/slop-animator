@@ -1,5 +1,6 @@
 <script lang="ts">
   import { state as appState, replaceProject, resizeProject } from "../state/appState.svelte";
+  import NumberField from "./NumberField.svelte";
   import { createProject } from "../anim/document";
   import { clearAutosave } from "../persist/autosave";
   import { clearAllMedia } from "../persist/media-store";
@@ -99,22 +100,32 @@
       <div class="flex items-center gap-3">
         <label class="flex items-center gap-1 text-text-secondary"
           >W
-          <input
+          <NumberField
             class="w-20 bg-surface border border-border text-text px-1"
-            type="number"
-            min="16"
-            max="8192"
-            bind:value={w}
+            value={w}
+            min={16}
+            max={8192}
+            step={8}
+            pxPerStep={4}
+            title="Canvas width in pixels"
+            ariaLabel="Canvas width"
+            onInput={(v) => (w = v)}
+            onCommit={(v) => (w = v)}
           /></label
         >
         <label class="flex items-center gap-1 text-text-secondary"
           >H
-          <input
+          <NumberField
             class="w-20 bg-surface border border-border text-text px-1"
-            type="number"
-            min="16"
-            max="8192"
-            bind:value={h}
+            value={h}
+            min={16}
+            max={8192}
+            step={8}
+            pxPerStep={4}
+            title="Canvas height in pixels"
+            ariaLabel="Canvas height"
+            onInput={(v) => (h = v)}
+            onCommit={(v) => (h = v)}
           /></label
         >
       </div>
