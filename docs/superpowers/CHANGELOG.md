@@ -6620,7 +6620,7 @@ useful"*. The Export dialog gains **PNG (current frame) — `name-f0007.png`** b
   range. It now says the range applies to the PNG sequence and the videos only.
 - **README correction:** `d77cb6a` (2026-09-10) said the play range "never reaches an export". That
   was wrong. Export has honoured the range since `d964f64` (2026-08-17), and that code is unchanged.
-- **Verified in desktop Chrome (dev server, anchor click stubbed):** the button produces `untitled-f0001.png` (image/png, 1280×720, "Done.", no console errors); the refactored sequence still zips; the range note and playhead-tracking filenames render. **Owed an iPad pass.**
+- **Verified in desktop Chrome (dev server, anchor click stubbed):** the button produces `untitled-f0001.png` (image/png, 1280×720, "Done.", no console errors); the refactored sequence still zips; the range note and playhead-tracking filenames render. **VERIFIED on iPad 2026-09-17** (exported through Save to Files).
 
 **Save to Files on iPad/iPhone (2026-09-17).** Every save and export was an `<a download>` click,
 so on iPad each one landed in Downloads as a new, often renumbered, copy. The user asked for the
@@ -6648,6 +6648,6 @@ Save to Files option after reviewing an outside write-up of the platform limits.
   renders; a dismissed share keeps it open with "Not saved"; a successful share closes it, sets the
   status line and clears `persistAlert`.
 - **iPad, 2026-09-17: saving again to the same folder offers Replace, and it works.** So Save to
-  Files gives a real overwrite in practice: iPadOS asks, not this code. Not yet reported: whether the
-  sheet offers Save to Files for psd/mp4/webm as well as zip, and whether a small project's Save to
-  Files opens the sheet in one tap.
+  Files gives a real overwrite in practice: iPadOS asks, not this code. Save to Files is offered for
+  every export type, and File → Save to Files opened the sheet directly (one tap). **VERIFIED on
+  iPad.**
