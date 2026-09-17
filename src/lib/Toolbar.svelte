@@ -27,6 +27,8 @@
   } from "../persist/project-file";
   import { pruneMedia } from "../persist/media-store";
   import { downloadBlob } from "../export/download";
+  import { saveToFilesAvailable } from "../export/share";
+  import { deliverToFiles } from "./deliver-file";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
     Paintbrush,
@@ -149,7 +151,9 @@
     }
   }
 
-  async function saveProject() {
+  const canSaveToFiles = saveToFilesAvailable();
+
+  async function saveProject(toFiles = false) {
     // This is the user's backup. A failure here (OOM zipping a large project on iPad) used to be an
     // unhandled rejection with no message at all — no file appeared and nothing said why, which is
     // exactly the state in which someone closes the tab believing they are saved.
@@ -158,7 +162,17 @@
       const name = `${sanitizeFilename(appState.project.name)}.zip`;
       let embedFailed = false; // latched, not written straight to the hint: the success line below
       const blob = await saveProjectBlob(appState.project, true, () => (embedFailed = true));
-      downloadBlob(blob, name);
+      if (toFiles) {
+        const note = embedFailed
+          ? "a reference couldn't be embedded, so it's saved without it"
+          : "";
+        const r = await deliverToFiles(new File([blob], name, { type: blob.type }), {
+          isProject: true,
+          tryDirect: true,
+          note,
+        });
+        if (r !== "downloaded") return; // the helper / ready dialog reports the rest
+      } else downloadBlob(blob, name);
       // The work is on disk, so retire any autosave warning — EXCEPT the one saying autosave is off
       // for the session, which a save does not fix: everything drawn after this is still unprotected.
       if (!appState.autosaveOff) appState.persistAlert = "";
@@ -274,6 +288,17 @@
             close();
           }}>Save</button
         >
+        {#if canSaveToFiles}
+          <!-- iPad/iPhone: the share sheet's Save to Files instead of a numbered download. -->
+          <button
+            class={menuItem}
+            title="Save the project zip to a folder you pick in Files"
+            onclick={() => {
+              saveProject(true);
+              close();
+            }}>Save to Files…</button
+          >
+        {/if}
         <button
           class={menuItem}
           onclick={() => {

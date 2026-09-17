@@ -84,6 +84,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB, global preferences
 - A project name drives the save and export filenames
 - MP4/WebM export via [mediabunny](https://github.com/Vanilagy/mediabunny)
+- **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away)
 - **PNG export of the current frame** — a single image, rendered exactly like that frame of the PNG sequence (line boil included, transparent when the background is)
 - **PSD export of the current frame** for paint-up in Photoshop — visible layers keep their names and their opacity stays live, groups arrive as real folders, transforms are baked into the pixels, and a merged composite ships alongside. Reference layers and line boil are left out, so a PSD looks cleaner than a PNG of the same frame when boil is on
 
@@ -107,7 +108,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1366); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1372); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

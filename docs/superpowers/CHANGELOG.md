@@ -6621,3 +6621,31 @@ useful"*. The Export dialog gains **PNG (current frame) — `name-f0007.png`** b
 - **README correction:** `d77cb6a` (2026-09-10) said the play range "never reaches an export". That
   was wrong. Export has honoured the range since `d964f64` (2026-08-17), and that code is unchanged.
 - **Verified in desktop Chrome (dev server, anchor click stubbed):** the button produces `untitled-f0001.png` (image/png, 1280×720, "Done.", no console errors); the refactored sequence still zips; the range note and playhead-tracking filenames render. **Owed an iPad pass.**
+
+**Save to Files on iPad/iPhone (2026-09-17).** Every save and export was an `<a download>` click,
+so on iPad each one landed in Downloads as a new, often renumbered, copy. The user asked for the
+Save to Files option after reviewing an outside write-up of the platform limits.
+- **Platform facts it rests on:** iPadOS Safari has no `showSaveFilePicker`, and Chrome on iPad is
+  WebKit with the same limits. So no web page can overwrite a file the user picked. The share sheet
+  (`navigator.share({ files })`) and its **Save to Files** option is the closest a page gets: the
+  user picks a folder, but it is still a new file each time. Safari only opens the sheet during a
+  recent tap, so a slow build can outlive the tap (`NotAllowedError`).
+- **Design:**
+  - `src/export/share.ts` detects iPad and iPhone (`isAppleTouch`: an iPad reports `MacIntel`, so a
+    Mac platform with touch points counts as iPad) and sorts share errors: `AbortError` → dismissed,
+    `NotAllowedError` → needs another tap, anything else → failed. Both are unit-tested.
+  - `src/lib/deliver-file.ts` downloads when `canShare` rejects the file type. With `tryDirect` it
+    opens the sheet on the original tap. Otherwise, or when that tap has expired, it sets
+    `appState.shareReady`, and `ShareReadyDialog.svelte` offers Save to Files… / Download instead /
+    Cancel.
+  - **File → Save to Files…** (Apple touch only) tries the direct share. Exports never do, since a
+    render always outlasts the tap. On iPad a finished export closes the Export dialog and opens the
+    ready dialog, which carries the "exported without audio" note. Desktop behaviour is unchanged.
+- **Honest wording:** `share()` also resolves for AirDrop or Copy, so success reads "Sent X to the
+  share sheet", never "Saved". For a project it still clears the unsaved-work warning, the same way
+  a download does (and still not the "autosave is off" one). A dismissed sheet reads "Not saved".
+- **Verified in desktop Chrome with `navigator.share` stubbed, via the store probe:** the dialog
+  renders; a dismissed share keeps it open with "Not saved"; a successful share closes it, sets the
+  status line and clears `persistAlert`. **Owed an iPad pass.** Still unknown: whether the sheet
+  offers Save to Files for zip/psd/mp4/webm, whether Files offers Replace for a same-named file, and
+  whether a small project's Save to Files opens the sheet in one tap.

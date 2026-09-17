@@ -4,6 +4,8 @@
   import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
   import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
+  import { saveToFilesAvailable } from "../export/share";
+  import { deliverToFiles } from "./deliver-file";
   import { sanitizeFilename } from "../persist/project-file";
   import { effectiveRange } from "../anim/playback";
   import { isAbort, yieldToEventLoop } from "../export/progress";
@@ -34,6 +36,20 @@
     status = "Cancelling…"; // the loop stops at its next frame boundary
   }
   const videoOk = isVideoExportSupported();
+  // iPad/iPhone: a finished export goes to the Save to Files dialog instead of downloading. A render
+  // always outlasts the tap that started it, so the sheet is never opened directly from here.
+  const toFiles = saveToFilesAvailable();
+
+  /** Hand the finished file over. Returns whether the export dialog should close (the ready dialog
+   *  replaces it); a type the share sheet won't take downloads as before and the dialog stays. */
+  async function deliver(blob: Blob, filename: string, note = ""): Promise<boolean> {
+    if (!toFiles) {
+      downloadBlob(blob, filename);
+      return false;
+    }
+    const file = new File([blob], filename, { type: blob.type });
+    return (await deliverToFiles(file, { isProject: false, tryDirect: false, note })) === "ready";
+  }
   const stem = $derived(sanitizeFilename(appState.project.name));
   // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
   // point of the note is "these are guides", not "these would otherwise have shown".
@@ -91,10 +107,11 @@
       // The loop yields after each frame, so this assignment actually reaches the screen.
       finalising = d === t;
     };
+    let closeAfter = false;
     try {
       if (kind === "png") {
         const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
-        downloadBlob(blob, `${stem}.zip`);
+        closeAfter = await deliver(blob, `${stem}.zip`);
         status = "Done.";
       } else if (kind === "png-frame") {
         // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil
@@ -107,7 +124,7 @@
           appState.playhead,
           DPR,
         );
-        downloadBlob(blob, pngFrameFilename);
+        closeAfter = await deliver(blob, pngFrameFilename);
         status = "Done.";
       } else if (kind === "psd") {
         // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
@@ -122,7 +139,7 @@
         // exposed to.
         await yieldToEventLoop();
         const bytes = exportPsdFrame(appState.project, appState.playhead, DPR);
-        downloadBlob(
+        closeAfter = await deliver(
           new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/vnd.adobe.photoshop" }),
           psdFilename,
         );
@@ -132,8 +149,9 @@
           signal,
           onProgress,
         });
-        downloadBlob(blob, `${stem}.${kind}`);
-        status = warning ? `Done — exported without audio: ${warning}.` : "Done.";
+        const note = warning ? `exported without audio: ${warning}` : "";
+        closeAfter = await deliver(blob, `${stem}.${kind}`, note);
+        status = warning ? `Done — ${note}.` : "Done.";
       }
     } catch (e) {
       // A cancel is not a failure — reporting it as one would read as a bug in the export.
@@ -144,6 +162,10 @@
       controller = null;
       activeKind = null;
       appState.exportBusy = false;
+    }
+    if (closeAfter) {
+      appState.exportOpen = false;
+      status = "";
     }
   }
 </script>
