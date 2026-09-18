@@ -216,6 +216,8 @@ const PALETTE_SAMPLES = 5;
 export interface GifExportOptions extends ExportProgress {
   /** 1 = document size, 0.5 = half. Clamped into (0, 1]. */
   scale?: number;
+  /** Palette size; the dialog offers 64 / 128 / 256. Default 64. */
+  colors?: number;
 }
 
 /**
@@ -229,7 +231,7 @@ export async function exportGif(
   project: Project,
   dpr: number,
   range: { start: number; end: number },
-  { signal, onProgress, scale = 1 }: GifExportOptions = {},
+  { signal, onProgress, scale = 1, colors = PALETTE_COLORS }: GifExportOptions = {},
 ): Promise<Blob> {
   const s = Math.min(1, Math.max(0.01, scale));
   const w = Math.max(1, Math.round(project.width * dpr * s));
@@ -277,7 +279,7 @@ export async function exportGif(
     merged.set(a, at);
     at += a.length;
   }
-  const palette = quantize(merged, PALETTE_COLORS, { format });
+  const palette = quantize(merged, colors, { format });
 
   // ── Encode ────────────────────────────────────────────────────────────────────────────────────
   const gif = GIFEncoder();
@@ -361,97 +363,103 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: The Export dialog
+### Task 3: GIF in the Export dialog
 
-> **SUPERSEDED 2026-09-19 by the export-options spec** (`2026-09-19-export-dialog-options-design.md`):
-> the dialog is being rebuilt as a format list plus options FIRST, so this task becomes "add GIF as
-> one format, wired to the shared Size and the new Colours control" — not two buttons. Tasks 1, 2 and
-> 4 stand as written; Task 2's `scale` option is exactly what the shared Size control feeds.
+> Rewritten 2026-09-19 against the dialog as it now EXISTS (the export-options rework landed first),
+> replacing the two-button version this task originally described.
 
 **Files:**
+- Modify: `src/state/appState.svelte.ts` (re-add `gifColors` to `ExportOptions`)
 - Modify: `src/lib/ExportDialog.svelte`
 
 **Interfaces:**
 - Consumes: `exportGif` (Task 2).
 - Produces: nothing for later tasks.
 
-- [ ] **Step 1: Wire the kinds**
+The dialog already has: a grouped format list built from a `formatRow(format, label, enabled)`
+snippet; a `Size` row (100/50/25% with a pixel label); a `Range` row (All / In-Out / Custom with two
+`NumberField`s); a video-only `Quality` row; a filename line; one `Export` button; and `run()`
+switching on `opts.format`. GIF slots into all of it.
 
-In `src/lib/ExportDialog.svelte`, add the import beside the other exporters:
+- [ ] **Step 1: The colours setting**
+
+`gifColors` was removed from `ExportOptions` when the dialog rework shipped, because nothing read it.
+Add it back in `src/state/appState.svelte.ts`, beside `videoQuality`:
 
 ```ts
-  import { exportGif } from "../export/gif";
+  /** GIF palette size. 64 is indistinguishable from 256 on ink over paper and makes a smaller file;
+   *  the choice exists for painted work. */
+  gifColors: number;
 ```
 
-Widen the kind union (it currently reads `type ExportKind = "png" | "png-frame" | "psd" | VideoFormat;`):
+and `gifColors: 64,` in `defaultExportOptions()`.
 
-```ts
-  type ExportKind = "png" | "png-frame" | "psd" | "gif" | "gif-half" | VideoFormat;
+- [ ] **Step 2: The format row**
+
+In `src/lib/ExportDialog.svelte`, add an Animation group between Image and Video:
+
+```svelte
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Animation</span>
+        <div class="grid grid-cols-2 gap-1">
+          {@render formatRow("gif", "GIF")}
+        </div>
 ```
 
-`singleFrame()` is unchanged — a GIF is a per-frame loop, so it gets the progress bar and Cancel that
-the PNG sequence and the videos use.
+`formatRow`'s `enabled` defaults to true, so GIF becomes selectable by this alone.
 
-The status line builds from the kind, so give GIF its own label. Replace:
+- [ ] **Step 3: Let it run**
 
-```ts
-    status = `Exporting ${kind === "png-frame" ? "PNG" : kind.toUpperCase()}…`;
-```
+Three places currently keep GIF unreachable. All three go:
 
-with:
-
-```ts
-    const label =
-      kind === "png-frame" ? "PNG" : kind === "gif-half" ? "GIF (half size)" : kind.toUpperCase();
-    status = `Exporting ${label}…`;
-```
-
-- [ ] **Step 2: Add the branch**
-
-In `run()`, add this branch immediately after the `if (kind === "png") { … }` block and before
-`else if (kind === "png-frame")`:
+1. `formatAvailable` — drop the `opts.format !== "gif"` clause so it reads
+   `opts.format === "mp4" || opts.format === "webm" ? videoOk : true`, and delete the comment above
+   it that explains the exclusion.
+2. `outputName` — GIF falls through to the existing `` `${stem}.${opts.format}` `` arm, which already
+   produces `name.gif`. Nothing to change; confirm it rather than adding a branch.
+3. `run()` — replace the throwing `else` with the real branch:
 
 ```ts
-      } else if (kind === "gif" || kind === "gif-half") {
+      } else if (format === "gif") {
         const blob = await exportGif(appState.project, DPR, range, {
           signal,
           onProgress,
-          scale: kind === "gif-half" ? 0.5 : 1,
+          scale,
+          colors: opts.gifColors,
         });
         closeAfter = await deliver(blob, `${stem}.gif`);
         status = "Done.";
+      } else {
 ```
 
-Both sizes deliver as `${stem}.gif`: they are the same export at a different resolution, and a
-`-half` suffix in the filename is noise in the place the file finally lands.
+Keep a final `else` that throws for an unhandled format — it is what stops a future format from
+silently exporting video, and the type checker needs the narrowing.
 
-- [ ] **Step 3: Add the buttons**
+- [ ] **Step 4: The colours row**
 
-In the format list, directly after the existing "PNG sequence" button and before "PNG (current
-frame)", add:
+Beside the video `Quality` row, shown only for GIF:
 
 ```svelte
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover"
-          onclick={() => run("gif")}
-        >
-          GIF — {stem}.gif
-        </button>
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover"
-          onclick={() => run("gif-half")}
-        >
-          GIF, half size — {stem}.gif
-        </button>
+        {#if opts.format === "gif"}
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Colours</span>
+            {#each [64, 128, 256] as c (c)}
+              <button
+                class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
+                class:ui-on={opts.gifColors === c}
+                aria-pressed={opts.gifColors === c}
+                onclick={() => (appState.exportOptions.gifColors = c)}>{c}</button
+              >
+            {/each}
+          </div>
+        {/if}
 ```
 
-- [ ] **Step 4: Add the transparency note**
+- [ ] **Step 5: The transparency note**
 
-GIF transparency is one bit per pixel, which is worth saying exactly where it bites. Beside the
-existing reference-layer and boil notes, add:
+GIF transparency is one bit per pixel. Beside the existing reference-layer and boil notes:
 
 ```svelte
-      {#if appState.project.transparentBg}
+      {#if appState.project.transparentBg && opts.format === "gif"}
         <span class="text-xs text-text-secondary">
           GIF transparency is per pixel, on or off — soft edges against the transparent background
           will harden.
@@ -459,16 +467,16 @@ existing reference-layer and boil notes, add:
       {/if}
 ```
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 6: Verify**
 
-Run: `npm run build && npm test`
-Expected: 0 errors, 0 warnings; tests pass (the count from Task 1's run).
+Run: `npm run build && npm test && npm run lint`
+Expected: 0 errors, 0 warnings; tests pass; lint clean.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/lib/ExportDialog.svelte
-git commit -m "feat(gif): GIF and half-size GIF in the export dialog
+git add src/state/appState.svelte.ts src/lib/ExportDialog.svelte
+git commit -m "feat(gif): GIF as an export format, with a colours setting
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
