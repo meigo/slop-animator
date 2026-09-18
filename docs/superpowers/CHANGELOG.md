@@ -6737,3 +6737,25 @@ Distort / Mesh warp, never the Pose tool.
 - **Flagged, not touched** (out of the reported scope): the Pose tool repaints twice per pointermove
   with no frame coalescing, ~600 `drawImage` (one per mesh triangle) each time — it does NOT do the
   per-move recomposite, so it is not this bug, but it is the next candidate if pose ever feels heavy.
+
+**The pose mesh repaints once per animation frame, not twice per pointer move (2026-09-18).** Follow-up
+to the selection-drag fix above, from the same measurement pass: the Pose tool's handle drag called
+`posePaint()` DIRECTLY on every pointermove, and the layer-visibility `$effect` called it again — two
+paints per move, measured as 36,120 overlay `drawImage` for a 60-move drag (a paint is ~600
+`drawImage`, one per mesh triangle, plus the wireframe and a second pass over the triangles for the
+reach tint). An Apple Pencil delivers 120-240 moves/s, so the great majority of that work was never
+seen: the browser paints once per frame.
+- **Fix:** those four call sites now route through the existing `repaintPoseOverlay()`, which was
+  already rAF-coalesced and already served every viewport change. `posePaint()` stays direct only
+  where the mesh is GONE and the overlay must be cleared (cancel / apply — `repaintPoseOverlay`
+  early-returns on `!meshPose`) or for a one-off that must land in the same tick (enter, rebuild,
+  Reset handles).
+- **NOT the same bug as the selection-drag one:** pose never did the per-move `recomposite()`, which
+  is why onion skins and reference video did not make it worse, and why the user's report named the
+  deform tools only. This is unreported headroom, taken while the analysis was fresh.
+- **Verification is thin and deliberately labelled so:** build (0/0), `npm test` 1384, and code
+  review. The automation harness could not get a pose mesh to build (a hidden tab starves rAF, which
+  is exactly what this change now depends on), so there is NO browser measurement of the after-state
+  and no iPad pass. What to check when the Pose tool is next used: the mesh still follows the handle
+  during a drag with no visible lag, the reach dial still tracks, and cancel/apply still clear the
+  overlay.
