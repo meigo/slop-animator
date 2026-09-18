@@ -436,6 +436,24 @@
     }
   }
 
+  /** At most ONE display recomposite per animation frame.
+   *
+   *  `selection.onChange` used to call `recomposite()` synchronously, and `Selection.updateDrag`
+   *  fires it on every pointermove — 120-240/s from an Apple Pencil. Each call re-renders every
+   *  layer, every onion ghost and every reference video frame (a hardware decode + texture copy on
+   *  iOS), which is the 2026-09-18 report: "deform / distort / mesh warp are very slow with onion
+   *  skin or a reference video, fine without". Measured on the device: `recomposite` 230-240/s with
+   *  the rAF tick collapsing to ~1/s. The browser paints once per frame, so one recomposite per
+   *  frame is the most that could ever be SEEN — the rest was pure waste. Same treatment, and the
+   *  same reason, as `drawRaf` for stroke painting. */
+  let recompositeRaf = 0;
+  function scheduleRecomposite() {
+    if (recompositeRaf) return;
+    recompositeRaf = requestAnimationFrame(() => {
+      recompositeRaf = 0;
+      recomposite();
+    });
+  }
   function recomposite() {
     sizeDisplay();
     const ss = displayOutputScale();
@@ -1257,6 +1275,7 @@
       } else {
         if (selectionMode === "drag") selection.endDrag();
         selectionMode = null;
+        recomposite(); // settle, direct: one per gesture, and it must land even if rAF is starved
       }
       return;
     }
@@ -1293,6 +1312,7 @@
         if (selectionMode === "create") selection.endCreate();
         selection.endDrag();
         selectionMode = null;
+        recomposite(); // settle, direct: one per gesture, and it must land even if rAF is starved
       }
       return;
     }
@@ -1359,7 +1379,16 @@
       }
     };
 
-    selection.onChange = () => recomposite();
+    selection.onChange = () => {
+      // Nothing on the DISPLAY canvas changes while a selection drag is in flight: the dragged
+      // pixels were lifted onto the overlay, and the hole they left in the cell was composited when
+      // the lift happened. The drag's own painting is the overlay's (`drawOverlay`). One settle on
+      // release covers the case where a drag DID change something the display owns — see the
+      // `endDrag()` call sites. Every non-drag change (deform mode switch, reset pins) still lands,
+      // coalesced to a frame.
+      if (selectionMode === "drag") return;
+      scheduleRecomposite();
+    };
     selection.onStateChange = () => {
       recomposite();
       appState.selectionActive = !!selection && selection.active && !selection.hasFloating;
@@ -2104,6 +2133,7 @@
       cancelAnimationFrame(raf);
       if (drawRaf) cancelAnimationFrame(drawRaf);
       if (poseRaf) cancelAnimationFrame(poseRaf);
+      if (recompositeRaf) cancelAnimationFrame(recompositeRaf);
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
       selectionRef.current = null;
       liftGuard.discard = null;
