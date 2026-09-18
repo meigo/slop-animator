@@ -48,6 +48,15 @@ export async function exportGif(
   const format = transparent ? "rgba4444" : "rgb444";
 
   const draw = (frame: number) => {
+    // `Math.round(width * dpr * scale)` can make the canvas a fraction wider than the rect
+    // `renderFrame` fills, leaving a sub-pixel transparent sliver down the right/bottom edge —
+    // same reasoning as `renderFramePng` in png-sequence.ts. Under `rgb444` that sliver quantises
+    // as near-black instead of paper, so pre-fill first. Skipped for a transparent export.
+    if (!transparent) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = project.bgColor;
+      ctx.fillRect(0, 0, w, h);
+    }
     renderFrame(ctx, project, frame, dpr, {
       drawBg: !transparent,
       includeReference: false,
@@ -81,6 +90,24 @@ export async function exportGif(
   }
   const palette = quantize(merged, colors, { format });
 
+  // GIF transparency punches a hole through ONE palette index. Nothing in gifenc's quantizer
+  // guarantees a transparent colour lands at index 0 — it only usually does, because rgba4444
+  // packs alpha in the high bits. So find the index of an entry whose alpha is actually 0, rather
+  // than assuming; if the quantizer merged it away (a busy frame pushed distinct colours past
+  // `colors`, or none of the sampled frames had a transparent pixel), insert one deterministically,
+  // dropping the palette's last (least populous) entry to keep the table at `colors` or fewer.
+  let transparentIndex = 0;
+  if (transparent) {
+    const ti = palette.findIndex((c) => (c[3] ?? 255) === 0);
+    if (ti >= 0) {
+      transparentIndex = ti;
+    } else {
+      palette.unshift([0, 0, 0, 0]);
+      if (palette.length > colors) palette.pop();
+      transparentIndex = 0;
+    }
+  }
+
   // ── Encode ────────────────────────────────────────────────────────────────────────────────────
   const gif = GIFEncoder();
   const delays = gifFrameDelays(total, project.fps);
@@ -98,7 +125,7 @@ export async function exportGif(
         // gifenc takes MILLISECONDS and divides by 10 for the GIF's hundredths.
         delay: delays[i] * 10,
         transparent,
-        transparentIndex: 0,
+        transparentIndex,
       });
     } catch (e) {
       throw new Error(
