@@ -6705,3 +6705,35 @@ the keyboard.
   shorten-past-keyframes confirm (a native `confirm()` blocks browser automation), and pose gap /
   video speed / canvas W-H / track step were not individually driven (same component, reviewed
   statically). An iPad pass is still owed.
+
+**Selection drags stopped redrawing the whole document per pointer move (2026-09-18).** Reported as
+*"performance issue of mesh and distort tools when onion skin is enabled or reference video
+displayed. without these tools are very performant but with these getting really slow"* — iPad only,
+during the drag itself, and (after a round of measurement) the Deform tool plus the selection bar's
+Distort / Mesh warp, never the Pose tool.
+- **Root cause:** `Selection.updateDrag` fires `onChange` on every pointermove (`selection.ts:641`
+  for a warp, `:696` for a transform) and `Canvas.svelte` wired that straight to `recomposite()` —
+  wiring that dates to the original selection commit `2e29222`, never revisited. An Apple Pencil
+  reports 120–240 moves/s, so the whole document re-rendered that many times a second: every layer,
+  every onion ghost, and a freshly decoded frame from every reference video.
+- **Why it only showed with onion or video.** A bare recomposite is a couple of layer copies, cheap
+  enough at 200/s to go unnoticed — which is exactly why the tools felt fine otherwise. Onion
+  multiplies it by the ghost count (each one composited and tinted at full size); a reference video
+  adds a hardware decode plus a texture copy per redraw, which is why Distort survived onion but not
+  video, while Mesh warp — which also runs `rigidDeformGrid` per move — failed with either.
+- **Fix:** nothing on the display canvas changes during a selection drag (the dragged pixels are
+  lifted onto the overlay and the hole they left was composited at lift time), so `onChange` skips
+  the recomposite while `selectionMode === "drag"`, each release settles with ONE direct
+  `recomposite()` (direct, not scheduled: it must land even if rAF is starved), and every other
+  `onChange` (deform mode switch, reset pins) is coalesced through `scheduleRecomposite()` — one per
+  animation frame, the same treatment `drawRaf` gives stroke painting.
+- **Measured, same 60-move drag with onion on, in desktop Chrome:** `recomposite` 61/s before → 1/s
+  after, with `selectionOverlay` unchanged at 60/s and all 61 moves still delivered. **VERIFIED on
+  iPad 2026-09-18:** *"all the deform tools perform well now"*.
+- **Method note:** the diagnosis needed an on-device instrumented build (a `?perf=1` HUD counting
+  posePaint / selectionOverlay / recomposite rates and ms). It was deployed on a throwaway
+  `debug/pose-perf-hud` branch, read on the iPad, and left out of this change. Desktop measurement
+  alone would not have found it — the same drag costs 1.45ms/move there and the tools feel fine.
+- **Flagged, not touched** (out of the reported scope): the Pose tool repaints twice per pointermove
+  with no frame coalescing, ~600 `drawImage` (one per mesh triangle) each time — it does NOT do the
+  per-move recomposite, so it is not this bug, but it is the next candidate if pose ever feels heavy.

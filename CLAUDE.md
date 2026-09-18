@@ -194,6 +194,14 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     that would drive the drag. It still needs `touch-action: none` (gotcha #10) and stays an
     `<input>` so `App.svelte`'s INPUT/TEXTAREA guard keeps single-key tool shortcuts out while it's
     focused.
+17. **Never re-render the document from a pointermove handler.** `Selection.updateDrag` fires
+    `onChange` on every move; wiring that straight to `recomposite()` re-rendered every layer, every
+    onion ghost and every reference-video frame 120-240 times a second on iPad (Pencil event rate).
+    Invisible on desktop and with plain layers — crippling with onion skins or a reference video, and
+    it shipped that way from the first selection commit until 2026-09-18. Coalesce to one animation
+    frame (`scheduleRecomposite`, the treatment `drawRaf` gives stroke painting), or skip it entirely
+    where the display cannot have changed — during a selection drag the dragged pixels are on the
+    overlay and the cell's hole is already composited. See the 2026-09-18 changelog entry.
 
 ## Current state (all shipped & merged to `main`)
 
