@@ -117,6 +117,11 @@ spike's first attempt passed hundredths and produced a 100fps GIF — this is th
 
 ## 4. UI — `src/lib/ExportDialog.svelte`
 
+> **SUPERSEDED 2026-09-19 by `2026-09-19-export-dialog-options-design.md`:** the dialog became a
+> format list plus options, so GIF is ONE format and "half size" is the shared Size control, not a
+> second button. The transparency note below still stands. Everything in §1–§3 (the encoder, the
+> palette, the timing) is unaffected — only the two buttons are.
+
 Two buttons under the PNG sequence entry:
 
 ```

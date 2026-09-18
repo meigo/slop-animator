@@ -359,6 +359,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 3: The Export dialog
 
+> **SUPERSEDED 2026-09-19 by the export-options spec** (`2026-09-19-export-dialog-options-design.md`):
+> the dialog is being rebuilt as a format list plus options FIRST, so this task becomes "add GIF as
+> one format, wired to the shared Size and the new Colours control" — not two buttons. Tasks 1, 2 and
+> 4 stand as written; Task 2's `scale` option is exactly what the shared Size control feeds.
+
 **Files:**
 - Modify: `src/lib/ExportDialog.svelte`
 
