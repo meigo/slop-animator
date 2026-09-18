@@ -6759,3 +6759,21 @@ seen: the browser paints once per frame.
   and no iPad pass at the time of the commit. **VERIFIED on iPad 2026-09-18** ("works fine") from a
   branch deploy, before the merge: the mesh follows the handle during a drag with no lag, and
   cancel/apply clear the overlay.
+
+**The pose bar's "Fill outlines" checkbox can be unchecked again on iPad (2026-09-18).** Reported as
+*"only issue, i cant uncheck the fill outlines checkbox"* right after the pose-repaint change — and
+it is NOT a regression from it: the cause has been there since touch gestures were added.
+- **Root cause:** `touch-gestures.ts` registered `const preventTouch = (e) => e.preventDefault()` on
+  `touchstart`/`touchmove` for the whole workspace, so a finger pans the canvas instead of scrolling
+  the page. On iOS, `preventDefault()` on touchstart ALSO suppresses the click WebKit synthesises
+  afterwards — which is the only thing that toggles a checkbox or focuses a field. The pose bar lives
+  inside the stage, so its checkbox silently did nothing. Its neighbours (−, +, Reset, Apply, Cancel)
+  were immune because they act on `pointerdown` and never relied on that click. The sibling
+  `onPointerDown` in the same file already exempted `.selection-actions-panel`; this listener never
+  did.
+- **Fix:** `shouldPreventTouchDefault(target)` — exported and unit-tested (3 tests) — makes the same
+  exemption, so touches over the floating panels keep their default behaviour while the canvas keeps
+  losing it. This also restores tap-to-focus for the pose bar's Gap field on iPad.
+- **Desktop cannot reproduce it** (no touch events at all), which is why it survived every desktop
+  pass. Owed an iPad check: the checkbox toggles both ways, the Gap field focuses on a tap, and a
+  finger still pans/pinches the canvas without the page scrolling.

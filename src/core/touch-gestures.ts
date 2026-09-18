@@ -48,6 +48,21 @@ export function snappedRotation(rotation: number, snap = SNAP_ANGLE): number {
   return nearest === 0 ? 0 : nearest;
 }
 
+/**
+ * Should a touch on the workspace lose its default behaviour?
+ *
+ * YES over the canvas: the default is scroll/zoom, and the gesture code pans and pinches instead.
+ * NO over the floating panels (the selection action bar, the pose bar): `preventDefault()` on
+ * touchstart also suppresses the click WebKit synthesises afterwards, which kills the NATIVE
+ * activation of anything inside them — the pose bar's "Fill outlines" checkbox could not be
+ * unchecked on iPad, and a tap could not focus its Gap field, while every neighbouring button kept
+ * working because those act on `pointerdown` themselves and never needed the click (2026-09-18).
+ * The same exemption `onPointerDown` below already makes, for the same reason.
+ */
+export function shouldPreventTouchDefault(target: EventTarget | null): boolean {
+  return !isStageChromeTarget(target);
+}
+
 export function setupTouchGestures(
   /** The stable workspace container (not the transformed element) */
   workspace: HTMLElement,
@@ -319,8 +334,10 @@ export function setupTouchGestures(
   workspace.addEventListener("pointerup", onPointerUp, { capture: true });
   workspace.addEventListener("pointercancel", onPointerCancel, { capture: true });
 
-  // Prevent default touch behaviors on the workspace
-  const preventTouch = (e: Event) => e.preventDefault();
+  // Prevent default touch behaviours on the workspace — but NOT on the floating panels inside it.
+  const preventTouch = (e: Event) => {
+    if (shouldPreventTouchDefault(e.target)) e.preventDefault();
+  };
   workspace.addEventListener("touchstart", preventTouch, { passive: false });
   workspace.addEventListener("touchmove", preventTouch, { passive: false });
 
