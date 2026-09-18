@@ -1,15 +1,22 @@
 <script lang="ts">
-  import { state as appState, DPR, playbackController, liftGuard } from "../state/appState.svelte";
+  import {
+    state as appState,
+    DPR,
+    playbackController,
+    liftGuard,
+    type ExportFormat,
+  } from "../state/appState.svelte";
   import { exportCanvas, exportPngSequence, renderFramePng } from "../export/png-sequence";
-  import { exportVideo, isVideoExportSupported, type VideoFormat } from "../export/video";
+  import { exportVideo, isVideoExportSupported } from "../export/video";
   import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
   import { saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
   import { sanitizeFilename } from "../persist/project-file";
-  import { effectiveRange } from "../anim/playback";
+  import { resolveExportRange, exportPixelSize } from "../export/export-range";
   import { isAbort, yieldToEventLoop } from "../export/progress";
   import { currentFrameFileName } from "../export/frames";
+  import NumberField from "./NumberField.svelte";
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -27,11 +34,12 @@
   // synchronous encode with a single yield to let this paint, not a per-frame loop, so there is no
   // progress to report and nothing an abort could reach mid-encode. The single-frame PNG is the same:
   // one render and one encode, so it shares that panel.
-  type ExportKind = "png" | "png-frame" | "psd" | VideoFormat;
-  let activeKind: ExportKind | null = $state(null);
-  const singleFrame = (k: ExportKind | null) => k === "psd" || k === "png-frame";
+  let activeFormat: ExportFormat | null = $state(null);
+  const singleFrame = (f: ExportFormat | null) => f === "psd-frame" || f === "png-frame";
+  const formatLabel = (f: ExportFormat) =>
+    f === "png-sequence" || f === "png-frame" ? "PNG" : f === "psd-frame" ? "PSD" : f.toUpperCase();
   function cancel() {
-    if (!busy || finalising || singleFrame(activeKind)) return;
+    if (!busy || finalising || singleFrame(activeFormat)) return;
     controller?.abort();
     status = "Cancelling…"; // the loop stops at its next frame boundary
   }
@@ -54,11 +62,26 @@
   // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
   // point of the note is "these are guides", not "these would otherwise have shown".
   const refCount = $derived(appState.project.layers.filter((l) => l.kind === "ref").length);
-  // Export honours the play In/Out range — it always rendered the whole timeline, which reads as a
-  // bug the moment you have set a range. Stated in the dialog below whenever it is narrower than the
-  // project, because a range set an hour ago and forgotten would otherwise silently shorten the file.
-  const range = $derived(effectiveRange(appState.playback.range, appState.project.frameCount));
-  const partial = $derived(range.end - range.start + 1 < appState.project.frameCount);
+
+  const opts = $derived(appState.exportOptions);
+  // PSD always writes at 100%; every other format honours the size control.
+  const scaleFor = (f: ExportFormat) => (f === "psd-frame" ? 1 : opts.scale);
+  const pixels = $derived(
+    exportPixelSize(appState.project.width, appState.project.height, scaleFor(opts.format)),
+  );
+
+  // Export honours the play In/Out range by default (`inout` mode) — it always rendered the whole
+  // timeline, which reads as a bug the moment you have set a range. `resolveExportRange` also
+  // supports exporting the whole timeline or a typed-in custom span.
+  const range = $derived(
+    resolveExportRange(opts, appState.playback.range, appState.project.frameCount),
+  );
+  // Stated only in `inout` mode: the other two modes SAY what they export (All / the typed range),
+  // so the warning would be noise. Stated because a range set an hour ago and forgotten would
+  // otherwise silently shorten the file.
+  const partial = $derived(
+    opts.rangeMode === "inout" && range.end - range.start + 1 < appState.project.frameCount,
+  );
 
   // PSD and the single PNG are the CURRENT frame (playhead), not the range. 1-based, per the brief:
   // the same numbering the PNG sequence shows the artist elsewhere. Padded to the project's own
@@ -69,6 +92,20 @@
   );
   const pngFrameFilename = $derived(
     currentFrameFileName(stem, appState.playhead, appState.project.frameCount, "png"),
+  );
+  const outputName = $derived(
+    opts.format === "png-sequence"
+      ? `${stem}.zip`
+      : opts.format === "png-frame"
+        ? pngFrameFilename
+        : opts.format === "psd-frame"
+          ? psdFilename
+          : `${stem}.${opts.format}`,
+  );
+  // GIF has no exporter yet (a later plan adds it) — kept unselectable via `formatRow`'s `enabled`,
+  // and Export itself stays disabled so a leftover/default-adjacent selection can't be run.
+  const formatAvailable = $derived(
+    opts.format === "mp4" || opts.format === "webm" ? videoOk : opts.format !== "gif",
   );
 
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
@@ -83,10 +120,12 @@
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function run(kind: ExportKind) {
+  async function run() {
     if (busy) return;
+    const format = opts.format;
+    const scale = scaleFor(format);
     busy = true;
-    activeKind = kind;
+    activeFormat = format;
     playbackController.pause(); // boil GL is a process singleton — don't interleave with playback
     // A live lift (selection float / deform / pose) has CLEARED its region from the cell canvas —
     // the pixels exist only on the overlay, which renderFrame never composites. Exporting through
@@ -100,7 +139,7 @@
     done = 0;
     finalising = false;
     total = range.end - range.start + 1;
-    status = `Exporting ${kind === "png-frame" ? "PNG" : kind.toUpperCase()}…`;
+    status = `Exporting ${formatLabel(format)}…`;
     const onProgress = (d: number, t: number) => {
       done = d;
       total = t;
@@ -109,24 +148,29 @@
     };
     let closeAfter = false;
     try {
-      if (kind === "png") {
-        const blob = await exportPngSequence(appState.project, DPR, range, { signal, onProgress });
+      if (format === "png-sequence") {
+        const blob = await exportPngSequence(appState.project, DPR, range, {
+          signal,
+          onProgress,
+          scale,
+        });
         closeAfter = await deliver(blob, `${stem}.zip`);
         status = "Done.";
-      } else if (kind === "png-frame") {
+      } else if (format === "png-frame") {
         // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil
         // included). toBlob is async, but the render before it is not — yield once so "Writing
         // PNG…" paints first.
         await yieldToEventLoop();
         const blob = await renderFramePng(
-          exportCanvas(appState.project, DPR),
+          exportCanvas(appState.project, DPR, scale),
           appState.project,
           appState.playhead,
           DPR,
+          scale,
         );
         closeAfter = await deliver(blob, pngFrameFilename);
         status = "Done.";
-      } else if (kind === "psd") {
+      } else if (format === "psd-frame") {
         // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
         // its ink bounds, once to crop it) plus a full-frame read for the merged composite, all
         // before a single PackBits byte is written — on a busy document at 4K this is low seconds,
@@ -144,14 +188,20 @@
           psdFilename,
         );
         status = "Done.";
-      } else {
-        const { blob, warning } = await exportVideo(appState.project, DPR, kind, range, {
+      } else if (format === "mp4" || format === "webm") {
+        const { blob, warning } = await exportVideo(appState.project, DPR, format, range, {
           signal,
           onProgress,
+          scale,
+          quality: opts.videoQuality,
         });
         const note = warning ? `exported without audio: ${warning}` : "";
-        closeAfter = await deliver(blob, `${stem}.${kind}`, note);
+        closeAfter = await deliver(blob, `${stem}.${format}`, note);
         status = warning ? `Done — ${note}.` : "Done.";
+      } else {
+        // "gif" — in the format union for the later GIF plan, but no exporter exists yet.
+        // Unreachable through the UI: `formatRow`/`formatAvailable` never let it be selected.
+        throw new Error("GIF export is not implemented yet.");
       }
     } catch (e) {
       // A cancel is not a failure — reporting it as one would read as a bug in the export.
@@ -160,7 +210,7 @@
       busy = false;
       finalising = false;
       controller = null;
-      activeKind = null;
+      activeFormat = null;
       appState.exportBusy = false;
     }
     if (closeAfter) {
@@ -190,7 +240,7 @@
              this codebase avoids. Once finalising, `cancel()` no-ops and the title says why. -->
         <button
           title={busy
-            ? singleFrame(activeKind)
+            ? singleFrame(activeFormat)
               ? "Writing — finishes on its own in a moment, nothing to stop"
               : finalising
                 ? "Finalising — the file is being assembled and can no longer be stopped"
@@ -202,14 +252,14 @@
           }}>✕</button
         >
       </div>
-      {#if busy && singleFrame(activeKind)}
+      {#if busy && singleFrame(activeFormat)}
         <!-- No bar, no Cancel: there is exactly one yield (to paint this line) before the whole
              encode runs synchronously, so there is no per-frame count to show and nothing an abort
              could interrupt mid-encode — a Cancel button here would set "Cancelling…" only to be
              overwritten by "Done." the instant the encode finishes, which is the same misleading
              flash this line exists to avoid. -->
         <span class="text-xs text-text-secondary"
-          >Writing {activeKind === "psd" ? "PSD" : "PNG"}…</span
+          >Writing {activeFormat === "psd-frame" ? "PSD" : "PNG"}…</span
         >
       {:else if busy}
         <!-- The formats are replaced rather than disabled: while a render is running the only
@@ -234,34 +284,106 @@
           >
         </div>
       {:else}
+        {#snippet formatRow(f: ExportFormat, label: string, enabled = true)}
+          <button
+            class="border border-border rounded py-1 text-xs hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+            class:ui-on={opts.format === f}
+            aria-pressed={opts.format === f}
+            aria-disabled={!enabled}
+            onclick={() => enabled && (appState.exportOptions.format = f)}>{label}</button
+          >
+        {/snippet}
+
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Image</span>
+        <div class="grid grid-cols-2 gap-1">
+          {@render formatRow("png-sequence", "PNG sequence")}
+          {@render formatRow("png-frame", "PNG frame")}
+          {@render formatRow("psd-frame", "PSD frame")}
+        </div>
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Video</span>
+        <div class="grid grid-cols-2 gap-1">
+          {@render formatRow("mp4", "MP4", videoOk)}
+          {@render formatRow("webm", "WebM", videoOk)}
+        </div>
+
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Options</span>
+        {#if opts.format !== "psd-frame"}
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Size</span>
+            {#each [1, 0.5, 0.25] as s (s)}
+              <button
+                class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
+                class:ui-on={opts.scale === s}
+                aria-pressed={opts.scale === s}
+                onclick={() => (appState.exportOptions.scale = s)}>{s * 100}%</button
+              >
+            {/each}
+            <span class="text-text-muted tabular-nums">{pixels.w}×{pixels.h}</span>
+          </div>
+        {/if}
+        {#if !singleFrame(opts.format)}
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Range</span>
+            {#each [["all", "All"], ["inout", "In/Out"], ["custom", "Custom"]] as const as [m, label] (m)}
+              <button
+                class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
+                class:ui-on={opts.rangeMode === m}
+                aria-pressed={opts.rangeMode === m}
+                onclick={() => (appState.exportOptions.rangeMode = m)}>{label}</button
+              >
+            {/each}
+          </div>
+          {#if opts.rangeMode === "custom"}
+            <div class="flex items-center gap-2 text-xs">
+              <span class="w-10 text-text-secondary">Frames</span>
+              <NumberField
+                class="w-14 bg-surface border border-border rounded px-1 text-xs text-text"
+                value={opts.customStart + 1}
+                min={1}
+                max={appState.project.frameCount}
+                step={1}
+                title="First frame to export"
+                ariaLabel="First frame to export"
+                onInput={(v) => (appState.exportOptions.customStart = v - 1)}
+                onCommit={(v) => (appState.exportOptions.customStart = v - 1)}
+              />
+              <span class="text-text-muted">–</span>
+              <NumberField
+                class="w-14 bg-surface border border-border rounded px-1 text-xs text-text"
+                value={opts.customEnd + 1}
+                min={1}
+                max={appState.project.frameCount}
+                step={1}
+                title="Last frame to export"
+                ariaLabel="Last frame to export"
+                onInput={(v) => (appState.exportOptions.customEnd = v - 1)}
+                onCommit={(v) => (appState.exportOptions.customEnd = v - 1)}
+              />
+              <span class="text-text-muted tabular-nums">{range.end - range.start + 1} frames</span>
+            </div>
+          {/if}
+        {/if}
+        {#if opts.format === "mp4" || opts.format === "webm"}
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Quality</span>
+            {#each [["low", "Low"], ["medium", "Medium"], ["high", "High"]] as const as [q, label] (q)}
+              <button
+                class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
+                class:ui-on={opts.videoQuality === q}
+                aria-pressed={opts.videoQuality === q}
+                onclick={() => (appState.exportOptions.videoQuality = q)}>{label}</button
+              >
+            {/each}
+          </div>
+        {/if}
+
+        <span class="text-xs text-text-muted">{outputName}</span>
         <button
-          class="border border-border rounded py-1 hover:bg-surface-hover"
-          onclick={() => run("png")}
+          class="border border-border rounded py-1 hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+          class:ui-on={formatAvailable}
+          aria-disabled={!formatAvailable}
+          onclick={() => formatAvailable && run()}>Export</button
         >
-          PNG sequence — {stem}.zip
-        </button>
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover"
-          onclick={() => run("png-frame")}
-        >
-          PNG (current frame) — {pngFrameFilename}
-        </button>
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
-          disabled={!videoOk}
-          onclick={() => run("mp4")}>MP4 video — {stem}.mp4</button
-        >
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
-          disabled={!videoOk}
-          onclick={() => run("webm")}>WebM video — {stem}.webm</button
-        >
-        <button
-          class="border border-border rounded py-1 hover:bg-surface-hover"
-          onclick={() => run("psd")}
-        >
-          PSD (current frame) — {psdFilename}
-        </button>
       {/if}
       {#if partial}
         <span class="text-xs text-warn">
