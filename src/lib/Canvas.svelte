@@ -228,7 +228,16 @@
   /** The overlay is stage-sized and bakes the view transform in at paint time, so every pan / zoom /
    *  resize has to repaint it. The marquee self-heals from its own marching-ants rAF; the pose mesh
    *  has no such loop, so without this it sits still while the artwork slides out from under it.
-   *  Coalesced to one frame like `drawRaf`: a pinch fires the viewport hooks per raw pointermove. */
+   *  Coalesced to one frame like `drawRaf`: a pinch fires the viewport hooks per raw pointermove.
+   *
+   *  EVERY repaint of a live mesh goes through here, including the handle drag itself. A pose paint
+   *  is ~600 `drawImage` calls (one per mesh triangle) plus the wireframe and, with a reach dial up,
+   *  a second pass over the triangles for the tint — and the drag path used to call `posePaint()`
+   *  DIRECTLY, once per pointermove, which an Apple Pencil delivers 120-240 times a second (measured
+   *  2026-09-18: two paints per move, 36,120 overlay `drawImage` for a 60-move drag). The browser
+   *  paints once per frame, so everything above 60/s was invisible work. Call `posePaint()` directly
+   *  only where the mesh is GONE and the overlay must be cleared — this early-returns on `!meshPose`
+   *  — or for a one-off that must land in the same tick. */
   function repaintPoseOverlay() {
     if (!meshPose || poseRaf) return;
     poseRaf = requestAnimationFrame(() => {
@@ -1234,7 +1243,7 @@
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
           poseDrag = activeHandle;
         }
-        posePaint();
+        repaintPoseOverlay();
       } else if (!done) {
         if (poseAdjusting && activeHandle !== null) {
           // Coupled: direction sets rotation, distance sets reach (snap to unlimited past the extent).
@@ -1243,11 +1252,11 @@
           meshPose.rotateHandle(activeHandle, Math.atan2(p.y - c.y, p.x - c.x));
           meshPose.setReach(activeHandle, d >= poseReachMax() ? undefined : d);
           poseDirty = true;
-          posePaint();
+          repaintPoseOverlay();
         } else if (poseDrag !== null) {
           meshPose.dragHandle(poseDrag, p);
           poseDirty = true;
-          posePaint();
+          repaintPoseOverlay();
         }
       } else {
         poseDrag = null;
@@ -2293,7 +2302,7 @@
   $effect(() => {
     const al = activeLayer();
     if (selection) selection.hidden = !isLayerVisible(al, appState.project.groups);
-    if (meshPose) posePaint();
+    repaintPoseOverlay(); // was a direct posePaint(): the second of the two paints per pointermove
     // Can't keep editing a layer that just became read-only → discard the in-progress lift.
     // DERIVED (isLayerLocked), so locking the layer's GROUP discards too — reading it here also makes
     // the group's flag a tracked dependency, which a raw `al.locked` read never was.
