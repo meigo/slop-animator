@@ -8,6 +8,7 @@
   } from "../state/appState.svelte";
   import { exportCanvas, exportPngSequence, renderFramePng } from "../export/png-sequence";
   import { exportVideo, isVideoExportSupported } from "../export/video";
+  import { exportGif } from "../export/gif";
   import { exportPsdFrame } from "../export/psd-frame";
   import { downloadBlob } from "../export/download";
   import { saveToFilesAvailable } from "../export/share";
@@ -125,10 +126,8 @@
           ? psdFilename
           : `${stem}.${opts.format}`,
   );
-  // GIF has no exporter yet (a later plan adds it) — kept unselectable via `formatRow`'s `enabled`,
-  // and Export itself stays disabled so a leftover/default-adjacent selection can't be run.
   const formatAvailable = $derived(
-    opts.format === "mp4" || opts.format === "webm" ? videoOk : opts.format !== "gif",
+    opts.format === "mp4" || opts.format === "webm" ? videoOk : true,
   );
 
   // Escape cancels. It needs its own listener: `App.svelte`'s global handler returns immediately
@@ -221,10 +220,18 @@
         const note = warning ? `exported without audio: ${warning}` : "";
         closeAfter = await deliver(blob, `${stem}.${format}`, note);
         status = warning ? `Done — ${note}.` : "Done.";
+      } else if (format === "gif") {
+        const blob = await exportGif(appState.project, DPR, range, {
+          signal,
+          onProgress,
+          scale,
+          colors: opts.gifColors,
+        });
+        closeAfter = await deliver(blob, `${stem}.gif`);
+        status = "Done.";
       } else {
-        // "gif" — in the format union for the later GIF plan, but no exporter exists yet.
-        // Unreachable through the UI: `formatRow`/`formatAvailable` never let it be selected.
-        throw new Error("GIF export is not implemented yet.");
+        // Exhaustiveness guard: stops a future format from silently falling through to video/PNG.
+        throw new Error(`Unhandled export format: ${format satisfies never}`);
       }
     } catch (e) {
       // A cancel is not a failure — reporting it as one would read as a bug in the export.
@@ -323,6 +330,10 @@
           {@render formatRow("png-frame", "PNG frame")}
           {@render formatRow("psd-frame", "PSD frame")}
         </div>
+        <span class="text-text-secondary text-xs uppercase tracking-wide">Animation</span>
+        <div class="grid grid-cols-2 gap-1">
+          {@render formatRow("gif", "GIF")}
+        </div>
         <span class="text-text-secondary text-xs uppercase tracking-wide">Video</span>
         <div class="grid grid-cols-2 gap-1">
           {@render formatRow("mp4", "MP4", videoOk)}
@@ -399,6 +410,19 @@
             {/each}
           </div>
         {/if}
+        {#if opts.format === "gif"}
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Colours</span>
+            {#each [64, 128, 256] as c (c)}
+              <button
+                class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
+                class:ui-on={opts.gifColors === c}
+                aria-pressed={opts.gifColors === c}
+                onclick={() => (appState.exportOptions.gifColors = c)}>{c}</button
+              >
+            {/each}
+          </div>
+        {/if}
 
         <span class="text-xs text-text-muted">{outputName}</span>
         <button
@@ -434,6 +458,12 @@
              since with it off there is nothing for the two to disagree about. -->
         <span class="text-xs text-text-secondary">
           Line boil is not applied to the PSD — it will look cleaner than a PNG of the same frame.
+        </span>
+      {/if}
+      {#if appState.project.transparentBg && opts.format === "gif"}
+        <span class="text-xs text-text-secondary">
+          GIF transparency is per pixel, on or off — soft edges against the transparent background
+          will harden.
         </span>
       {/if}
       {#if !videoOk}

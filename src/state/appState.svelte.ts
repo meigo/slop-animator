@@ -188,6 +188,9 @@ export interface ExportOptions {
   customStart: number;
   customEnd: number;
   videoQuality: "low" | "medium" | "high";
+  /** GIF palette size. 64 is indistinguishable from 256 on ink over paper and makes a smaller file;
+   *  the choice exists for painted work. */
+  gifColors: number;
 }
 
 export function defaultExportOptions(): ExportOptions {
@@ -200,6 +203,7 @@ export function defaultExportOptions(): ExportOptions {
     customStart: 0,
     customEnd: 0,
     videoQuality: "high",
+    gifColors: 64,
   };
 }
 
