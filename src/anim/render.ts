@@ -16,6 +16,7 @@ import {
   type BoilConfig,
   type ReferenceLayer,
   type RefTransform,
+  boiledFrameOrdinal,
 } from "./document";
 import { boilBegin, boilLayer, boilBlit, boilStateIndex, boilWeightJitter } from "../core/boil-gl";
 import { contentBoxLogical, groupBoxLogical } from "../lib/cell-ink";
@@ -294,7 +295,11 @@ export function compositeFrameLayers(
         (boil.amount <= 0 && boil.weight <= 0);
       // ONE state index feeds both halves of the boil (displacement seed and weight breathing), so
       // a held state holds completely — see `boilStateIndex`.
-      const boilState = boilStateIndex(frame, boil.rate, boil.step);
+      const boilState = boilStateIndex(
+        boiledFrameOrdinal(layer.cells, frame, boil.holdsOnly, version),
+        boil.rate,
+        boil.step,
+      );
       const seed = boilState * 100003 + op.layerId * 9176;
       const cellT = cellTransform(cell);
       const layerT = transformAt(layer, frame);
