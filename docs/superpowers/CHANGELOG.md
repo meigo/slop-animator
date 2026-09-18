@@ -6820,3 +6820,51 @@ i'd like to add frame interval to it to update over n frames"*.
   identical on every frame (one key, then holds), by hashing the rendered pixels per frame:
   step 1 → `0,1,2,0,1,2,0,1,2`; step 2 → `0,0,2,2,4,4,0,0,2`; step 3 → `0,0,0,3,3,3,6,6,6`. Exports
   inherit it for free — same render path. **VERIFIED on iPad in playback 2026-09-18** ("both work").
+
+**Export dialog: pick a format, then set its options (2026-09-19).** Asked for as *"we probably
+should split exports of different types of exports - image, video, gif etc … and have export popup
+with configurable props"* — the dialog was a flat column of five buttons, each exporting immediately
+with no say in how, and adding GIF would have made seven. Worse, every export silently followed
+whatever play In/Out range happened to be set, so a range forgotten an hour earlier quietly shortened
+the file with no warning until after the fact.
+- **Format list**, grouped Image (PNG sequence / PNG frame / PSD frame) and Video (MP4 / WebM), a
+  two-column radio grid so six items fit a 320px panel with no scrolling. `"gif"` exists in the
+  `ExportFormat` union (`src/state/appState.svelte.ts`) for the GIF plan already on file, but has no
+  row and no branch yet — `formatAvailable`/`formatRow` keep it unselectable, and `run()` throws
+  loudly rather than silently falling through to video if it is ever reached.
+- **Options, shown only for the formats they apply to:** Size (100% / 50% / 25%, with the resulting
+  pixel dimensions printed beside it so the label can't drift from what's actually rendered — see
+  `exportPixelSize` in `src/export/export-range.ts`), Range (All / In-Out / Custom, with two
+  drag-to-change number fields for Custom), and video-only Quality (Low / Medium / High, mapped to
+  mediabunny's `QUALITY_LOW/MEDIUM/HIGH`).
+- **Defaults reproduce today's behaviour exactly**: scale 1 (100%), `rangeMode: "inout"`, quality
+  `"high"`. An artist who never opens the options sees no change at all — the dialog only removes a
+  silent behaviour, it doesn't introduce a new default one.
+- **Why `inout` stayed the default** rather than switching to `all`: exports have always followed the
+  play In/Out range, and changing the default alongside making it a visible choice would have been
+  two behaviour changes disguised as one feature. The dialog states the shortened frame count
+  whenever `inout` narrows the export (`partial` in `ExportDialog.svelte`) — the other two modes say
+  what they export (All / the typed span), so that note would be redundant there.
+- **PSD is exempt from Size**: it always exports at 100% and hides the Size row entirely rather than
+  showing a control that does nothing, because scaling would resample every layer and defeat the
+  point of exporting layers for paint-up in Photoshop.
+- **Deliberately left out** (per the spec's §Decisions and §7, not oversights): an estimated file
+  size (the only honest number comes from actually encoding the thing); persisting the options across
+  sessions (`exportOptions` lives on `appState`, session-only, never in `Project` or an undo
+  snapshot — adding it to `Preferences` is additive and can come later); and toggles for reference
+  layers or forcing line-boil on/off, which the user explicitly didn't want since both would change
+  what an export MEANS rather than how big or how long it is.
+- **Range resolution** (`resolveExportRange` in `src/export/export-range.ts`) is pure and unit-tested
+  (8 tests): all three modes, a null/inverted play range, a reversed custom pair (typing the end
+  before the start exports that span, not zero frames), clamping past the document end, and a
+  single-frame document.
+- **Verified in the browser (desktop Chrome):** every format's option rows render as designed and PSD
+  correctly shows none of them; a 50% single-frame PNG export was opened with `createImageBitmap` and
+  measured at 640×360 (not just label-checked); a custom range of 3–5 (1-based in the UI) produced a
+  zip with exactly `frame_0001.png`–`frame_0003.png`, renumbered from 1; video quality Low (16 kB) vs
+  High (17 kB) on a near-blank 10-frame clip shows the plumbing runs, though the clip was too simple
+  for the bitrate ceiling to show a real difference (25% scale on the same clip: 3 kB); with every
+  option row visible (MP4 + custom range + quality) the panel is 320×494px with no internal scroll.
+  **NOT verified:** actual MP4 track pixel dimensions at non-100% scale (the PNG scale test already
+  exercises the same `exportPixelSize`/render path), Cancel mid-export, and anything on iPad — an
+  iPad pass is still owed before this is trusted on the platform the app is built for.
