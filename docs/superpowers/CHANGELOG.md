@@ -6832,6 +6832,8 @@ the file with no warning until after the fact.
   `ExportFormat` union (`src/state/appState.svelte.ts`) for the GIF plan already on file, but has no
   row and no branch yet — `formatAvailable`/`formatRow` keep it unselectable, and `run()` throws
   loudly rather than silently falling through to video if it is ever reached.
+  > **SUPERSEDED** — the very next entry, **Animated GIF export (2026-09-19)**, shipped the GIF row
+  > and branch this line describes as missing.
 - **Options, shown only for the formats they apply to:** Size (100% / 50% / 25%, with the resulting
   pixel dimensions printed beside it so the label can't drift from what's actually rendered — see
   `exportPixelSize` in `src/export/export-range.ts`), Range (All / In-Out / Custom, with two

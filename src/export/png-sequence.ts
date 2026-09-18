@@ -17,11 +17,12 @@ export async function renderFramePng(
   scale = 1,
 ): Promise<Blob> {
   const ctx = canvas.getContext("2d")!;
-  // `exportCanvas` rounds width*dpr*scale UP, but `renderFrame` only paints the exact (unrounded)
-  // document rect under its own scale transform — an odd-sized project can leave up to a half-pixel
-  // transparent sliver down the right/bottom edge of an otherwise opaque PNG. Pre-fill the whole
-  // surface with the background first, exactly as `exportVideo` already does — but ONLY when the
-  // project isn't meant to be transparent, or a transparent export would gain an opaque edge.
+  // `exportCanvas` rounds width*dpr*scale with `Math.round` (down for e.g. 1281×0.25, not always
+  // up), but `renderFrame` only paints the exact (unrounded) document rect under its own scale
+  // transform — an odd-sized project can leave up to a half-pixel transparent sliver down the
+  // right/bottom edge of an otherwise opaque PNG. Pre-fill the whole surface with the background
+  // first, exactly as `exportVideo` already does — but ONLY when the project isn't meant to be
+  // transparent, or a transparent export would gain an opaque edge.
   if (!project.transparentBg) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = project.bgColor;

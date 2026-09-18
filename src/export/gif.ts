@@ -43,14 +43,20 @@ export async function exportGif(
 
   const total = range.end - range.start + 1;
   const transparent = !!project.transparentBg;
-  // GIF transparency is one bit per pixel, so RGBA4444 (the alpha channel quantised alongside the
-  // colour) is as close as the format goes; a soft edge lands either fully opaque or fully clear.
-  const format = transparent ? "rgba4444" : "rgb444";
+  // Transparent path: GIF transparency is one bit per pixel, so rgba4444 (the alpha channel
+  // quantised alongside the colour) is as close as the format goes — a soft edge lands either
+  // fully opaque or fully clear. There is no rgba565, so this path has no other option.
+  // Opaque path: rgb565 (gifenc's own default) gives 32/64/32 levels per channel; rgb444's
+  // 16/16/16 caches nearest-colour lookups by a 4-bit-per-channel bin, so every pixel landing in
+  // one bin gets the same palette index no matter how large `colors` is — that made Colours nearly
+  // meaningless above ~64 on a smooth gradient. `quantize` and `applyPalette` below are both passed
+  // this same string, since they must agree on how pixels are binned.
+  const format = transparent ? "rgba4444" : "rgb565";
 
   const draw = (frame: number) => {
     // `Math.round(width * dpr * scale)` can make the canvas a fraction wider than the rect
     // `renderFrame` fills, leaving a sub-pixel transparent sliver down the right/bottom edge —
-    // same reasoning as `renderFramePng` in png-sequence.ts. Under `rgb444` that sliver quantises
+    // same reasoning as `renderFramePng` in png-sequence.ts. Under `rgb565` that sliver quantises
     // as near-black instead of paper, so pre-fill first. Skipped for a transparent export.
     if (!transparent) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -76,17 +82,16 @@ export async function exportGif(
     if (sampleFrames[sampleFrames.length - 1] !== f) sampleFrames.push(f);
   }
 
-  const samples: Uint8ClampedArray[] = [];
-  for (const f of sampleFrames) {
+  // Write each sample straight into `merged` at its offset rather than collecting an array of
+  // frames and THEN allocating `merged` the same total size — that would double the peak (up to
+  // five full frames, the largest live allocation in this function) on top of `merged` itself,
+  // which matters on iPad, the platform this is unverified on and the most memory-constrained.
+  const frameBytes = w * h * 4;
+  const merged = new Uint8ClampedArray(sampleFrames.length * frameBytes);
+  for (let i = 0; i < sampleFrames.length; i++) {
     if (signal?.aborted) throw abortError();
-    samples.push(draw(f));
+    merged.set(draw(sampleFrames[i]), i * frameBytes);
     await yieldToEventLoop();
-  }
-  const merged = new Uint8ClampedArray(samples.reduce((n, a) => n + a.length, 0));
-  let at = 0;
-  for (const a of samples) {
-    merged.set(a, at);
-    at += a.length;
   }
   const palette = quantize(merged, colors, { format });
 
@@ -95,7 +100,9 @@ export async function exportGif(
   // packs alpha in the high bits. So find the index of an entry whose alpha is actually 0, rather
   // than assuming; if the quantizer merged it away (a busy frame pushed distinct colours past
   // `colors`, or none of the sampled frames had a transparent pixel), insert one deterministically,
-  // dropping the palette's last (least populous) entry to keep the table at `colors` or fewer.
+  // dropping the palette's LAST entry to stay within `colors` — not its "least populous" one; gifenc
+  // fills the palette by walking a PNN merge chain, which is not a popularity order. This branch
+  // only runs when the quantizer produced no zero-alpha entry at all.
   let transparentIndex = 0;
   if (transparent) {
     const ti = palette.findIndex((c) => (c[3] ?? 255) === 0);

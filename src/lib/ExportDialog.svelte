@@ -425,6 +425,10 @@
         {/if}
 
         <span class="text-xs text-text-muted">{outputName}</span>
+        <!-- `ui-on` is unconditional here, not `class:ui-on={formatAvailable}` — that was reviewed
+             and rejected: the conditional form made an unavailable Export read as OFF rather than
+             disabled. The accent fill at reduced opacity from `aria-disabled:opacity-40`, alongside
+             `aria-disabled`, is the ordinary disabled-primary look. Don't flip this back. -->
         <button
           class="border border-border rounded py-1 hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent ui-on"
           aria-disabled={!formatAvailable}
@@ -433,9 +437,9 @@
       {/if}
       {#if partial}
         <span class="text-xs text-warn">
-          In/Out range is set — the PNG sequence and videos export frames {range.start +
-            1}–{range.end + 1} of {appState.project.frameCount}. Clear it on the playbar to export
-          everything. The current-frame exports are not affected.
+          In/Out range is set — this export covers frames {range.start + 1}–{range.end + 1} of
+          {appState.project.frameCount}. Clear it on the playbar to export everything. The
+          current-frame exports are not affected.
         </span>
       {/if}
       {#if refCount > 0}

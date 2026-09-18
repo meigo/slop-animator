@@ -88,7 +88,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away)
 - **PNG frame export** — a single image, rendered exactly like that frame of the PNG sequence (line boil included, transparent when the background is)
 - **PSD frame export** for paint-up in Photoshop — visible layers keep their names and their opacity stays live, groups arrive as real folders, transforms are baked into the pixels, and a merged composite ships alongside. Reference layers and line boil are left out, so a PSD looks cleaner than a PNG of the same frame when boil is on
-- **Animated GIF export**, full or half size — one global palette and frame delays that keep the true duration (a 12fps GIF really does last five seconds)
+- **Animated GIF export**, at the export dialog's usual 100% / 50% / 25% size — one global palette and frame delays that keep the true duration (a 12fps GIF really does last five seconds)
 
 **Keyboard**
 
