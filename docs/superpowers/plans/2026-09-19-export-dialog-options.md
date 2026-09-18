@@ -19,7 +19,7 @@ are untouched — they already handle every format.
 
 - `npm run build` (svelte-check + tsc + vite build) must end with **0 errors, 0 warnings**; the
   pre-existing "chunks are larger than 500 kB" notice is not a warning this gate counts.
-- Test baseline before this work: **1399 passing**. Update the counts in `README.md` and `CLAUDE.md`
+- Test baseline before this work: **1394 passing** (this branch descends from `main`; the 1399 count belongs to the unmerged `fix/boil-step-across-keys` branch). Update the counts in `README.md` and `CLAUDE.md`
   in the final task, from a real `npm test` run.
 - `npm run lint` clean. A pre-commit hook reformats staged files; expect that.
 - Commit messages end with: `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
