@@ -110,12 +110,22 @@
         onkeydown={editorKey}
       />
       <!-- preventDefault on pointerdown keeps focus on the input through the press, so barFocusOut
-           does not fire (and unmount this button) before the click lands. -->
+           does not fire (and unmount this button) before the press is handled — but on TOUCH that
+           same preventDefault also cancels the click WebKit would synthesise, which left Delete dead
+           to a finger on iPad while pen and mouse worked. (Timeline's `nameDown` uses exactly that
+           trick on purpose: "block the click so a palm does not switch layers".) So the delete runs
+           from pointerdown, needing no click at all — the selection action bar's `tap()` pattern.
+           `onclick` stays for the KEYBOARD: Enter/Space on a focused button fires click and no
+           pointer event. Running twice is harmless — `deleteEdit` early-returns once `editing` is
+           null. -->
       <button
         type="button"
         class="shrink-0 rounded-sm p-1 text-text-secondary hover:text-text"
         title="Delete marker"
-        onpointerdown={(e) => e.preventDefault()}
+        onpointerdown={(e) => {
+          e.preventDefault();
+          deleteEdit();
+        }}
         onclick={deleteEdit}><Trash2 size={14} /></button
       >
     </div>

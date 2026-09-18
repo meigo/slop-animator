@@ -6776,3 +6776,26 @@ it is NOT a regression from it: the cause has been there since touch gestures we
   losing it. This also restores tap-to-focus for the pose bar's Gap field on iPad.
 - **Desktop cannot reproduce it** (no touch events at all), which is why it survived every desktop
   pass. **VERIFIED on iPad 2026-09-18** ("works now") from a branch deploy, before the merge.
+
+**The marker editor's Delete button works with a finger (2026-09-18).** Found by auditing every other
+panel for the touch bug above, at the user's request ("check other panels for the same touch issue").
+- **Root cause, the same family, a different mechanism:** the button cancelled its own `pointerdown`
+  to keep focus on the label input (otherwise `barFocusOut` unmounts the button mid-press), and on
+  touch that also cancels the click WebKit synthesises — so the delete never ran from a finger, while
+  pen and mouse were fine. `Timeline.svelte`'s `nameDown` uses that exact trick ON PURPOSE ("block
+  the click so a palm does not switch layers"), which is the in-repo evidence that it does suppress
+  the click.
+- **Fix:** the delete runs from `pointerdown` (the selection action bar's `tap()` pattern), so no
+  click is needed. `onclick` stays for the keyboard — Enter/Space on a focused button fires a click
+  and no pointer event — and a double run is harmless because `deleteEdit` early-returns once
+  `editing` is null.
+- **Audit result, for the record:** nothing else is exposed. Every other control inside the stage
+  (pose bar buttons, the whole selection action bar, the ref-transform handles) acts on `pointerdown`
+  already, and `BrushCursor`/`LayerBoundsHint` are `pointer-events-none`. Panels outside the stage
+  are unaffected — the `touchstart` preventDefault only ever applied to the stage, and there is
+  exactly one such listener in the codebase.
+- **Deliberately left alone:** the audio lane's mute and remove buttons cancel touch clicks through
+  `ignoreTouchClick`, from `2d176f3` — "the whole timeline grid now matches the canvas: touch pans
+  only, pen and mouse edit". Finger-tapping them does nothing, by that decision, not by accident.
+  Flagged to the user; they chose to keep it.
+- Owed an iPad check: tap Delete in the marker editor with a finger.
