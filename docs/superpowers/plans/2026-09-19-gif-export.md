@@ -1,5 +1,7 @@
 # Animated GIF export — implementation plan
 
+> **SUPERSEDED 2026-09-19 by the export-options spec** (`docs/superpowers/specs/2026-09-19-export-dialog-options-design.md`): the Export dialog described below (two buttons) was rebuilt as a format list plus options first — see the Task 3 note for what that means for this plan's remaining work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Export the animation as an animated GIF, at document size or half size, beside the existing
@@ -8,7 +10,9 @@ PNG sequence / PSD / MP4 / WebM exports.
 **Architecture:** One pure timing module (`src/export/gif-timing.ts`, unit-tested) plus one exporter
 (`src/export/gif.ts`) shaped exactly like `exportPngSequence` — same signature, same abort/progress
 contract, same per-frame yield. Encoding uses `gifenc`, a new 2 kB-gzipped runtime dependency. The
-Export dialog gains two buttons that reuse the existing per-frame progress bar, Cancel and delivery.
+Export dialog gains a GIF format wired to the shared Size and range controls, reusing the existing
+per-frame progress bar, Cancel and delivery (see the Task 3 note — this superseded the original
+two-button design).
 
 **Tech Stack:** TypeScript, Svelte 5 runes, Vitest (node env, no DOM), gifenc 1.0.3.
 
@@ -548,7 +552,7 @@ Files offers it, and that the file plays in Photos and pastes into a chat.
 ## Self-review
 
 **Spec coverage:** §1 exporter → Task 2. §2 palette (64 colours, 5 samples, rgba4444 when
-transparent) → Task 2. §3 timing → Task 1. §4 UI (two buttons, shared progress/Cancel, transparency
+transparent) → Task 2. §3 timing → Task 1. §4 UI (one format row, shared progress/Cancel, transparency
 note) → Task 3. §5 out of scope → no task adds dithering, per-frame palettes or differencing. §6
 testing → Task 1's units and Task 4's parse-the-bytes pass. §7 risks → the dependency lands in Task
 2; the `getImageData` cost is inherent and covered by the existing progress/Cancel.

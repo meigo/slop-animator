@@ -13,9 +13,13 @@
   import { saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
   import { sanitizeFilename } from "../persist/project-file";
-  import { resolveExportRange, exportPixelSize } from "../export/export-range";
+  import {
+    resolveExportRange,
+    exportPixelSize,
+    type ExportRangeMode,
+  } from "../export/export-range";
   import { isAbort, yieldToEventLoop } from "../export/progress";
-  import { currentFrameFileName } from "../export/frames";
+  import { currentFrameFileName, evenDimensions } from "../export/frames";
   import NumberField from "./NumberField.svelte";
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -66,9 +70,16 @@
   const opts = $derived(appState.exportOptions);
   // PSD always writes at 100%; every other format honours the size control.
   const scaleFor = (f: ExportFormat) => (f === "psd-frame" ? 1 : opts.scale);
-  const pixels = $derived(
-    exportPixelSize(appState.project.width, appState.project.height, scaleFor(opts.format)),
-  );
+  // `exportVideo` rounds the scaled size UP to even (H.264 needs even dimensions) — mirror that here
+  // so the label never claims an odd size the video exporters don't actually write.
+  const pixels = $derived.by(() => {
+    const size = exportPixelSize(
+      appState.project.width,
+      appState.project.height,
+      scaleFor(opts.format),
+    );
+    return opts.format === "mp4" || opts.format === "webm" ? evenDimensions(size.w, size.h) : size;
+  });
 
   // Export honours the play In/Out range by default (`inout` mode) — it always rendered the whole
   // timeline, which reads as a bug the moment you have set a range. `resolveExportRange` also
@@ -82,6 +93,18 @@
   const partial = $derived(
     opts.rangeMode === "inout" && range.end - range.start + 1 < appState.project.frameCount,
   );
+
+  /** Switch the range mode. Landing on Custom seeds its fields from the range that was in effect a
+   *  moment earlier (the resolved all/inout range) — read `range`/`opts.rangeMode` BEFORE the mode
+   *  itself is overwritten below — so Custom opens on what was already being exported, not 1–1. Done
+   *  here (not in an effect) so it fires once, on the switch, rather than fighting later edits. */
+  function setRangeMode(m: ExportRangeMode) {
+    if (m === "custom" && opts.rangeMode !== "custom") {
+      appState.exportOptions.customStart = range.start;
+      appState.exportOptions.customEnd = range.end;
+    }
+    appState.exportOptions.rangeMode = m;
+  }
 
   // PSD and the single PNG are the CURRENT frame (playhead), not the range. 1-based, per the brief:
   // the same numbering the PNG sequence shows the artist elsewhere. Padded to the project's own
@@ -329,7 +352,7 @@
                 class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
                 class:ui-on={opts.rangeMode === m}
                 aria-pressed={opts.rangeMode === m}
-                onclick={() => (appState.exportOptions.rangeMode = m)}>{label}</button
+                onclick={() => setRangeMode(m)}>{label}</button
               >
             {/each}
           </div>
@@ -379,8 +402,7 @@
 
         <span class="text-xs text-text-muted">{outputName}</span>
         <button
-          class="border border-border rounded py-1 hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
-          class:ui-on={formatAvailable}
+          class="border border-border rounded py-1 hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:hover:bg-transparent ui-on"
           aria-disabled={!formatAvailable}
           onclick={() => formatAvailable && run()}>Export</button
         >

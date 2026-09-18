@@ -263,6 +263,11 @@ press and drag sideways to scrub the value (Shift = finer steps), or tap to type
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
+- **GIF export** (planned, not implemented): `"gif"` already sits in the `ExportFormat` union
+  (`src/state/appState.svelte.ts`) with a guard chain in `ExportDialog.svelte` but no row and no
+  exporter. See `docs/superpowers/specs/2026-09-19-gif-export-design.md` and
+  `docs/superpowers/plans/2026-09-19-gif-export.md` (its Task 3 is superseded by the
+  since-shipped format-list Export dialog — see the plan's own superseded note).
 - **Layer to selection** (deferred 2026-09-11, "when we'll need it later"): select the current drawing's pixels as a selection. Selections here are rect/lasso Path2D clips, so it needs an outline TRACER (marching squares with holes → even-odd multi-subpath path; Pose's `boundaryPoints` only samples unordered edge pixels, not usable) and a lasso that can hold several subpaths — then clip/lift/transform/flip/copy all work unchanged. Differs from alpha lock (shipped the same day): hard-edged at a threshold, but movable and keepable across layers.
 - ~~**Flip in the Transform tool** (deferred 2026-09-11): Flip H / V for the Frame / Layer / Group scopes and reference layers — a whole layer or group across all frames. Selection flip shipped first (floating selection bar). This one needs a mirror in `RefTransform` (read by render, gizmo math, persistence and transform tracks, ~70 sites) and a decision on keyed vs static flip for animated transforms.~~ — **SHIPPED 2026-09-11** as per-axis scaleX/scaleY (negative = mirrored): Flip H/V in the Transform bar mirrors a layer, reference or group in place, every key of an animated one included. See the 2026-09-11 **Transform stretch & flip** changelog entry.
 - ~~**Transform later**: animated/keyframed transforms~~ — **SHIPPED 2026-08-18** and NOT via the

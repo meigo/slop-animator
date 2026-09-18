@@ -26,7 +26,9 @@ export function resolveExportRange(
 
 /** The pixel size an export writes at `scale` — what the dialog's size label must show, so the
  *  label cannot drift from what is actually rendered. Floored at 1: a 25% export of a tiny document
- *  still has to have pixels. */
+ *  still has to have pixels. Deliberately does NOT multiply by `dpr`, unlike every exporter this
+ *  feeds — correct only because `DPR` (`src/state/appState.svelte.ts`) is the fixed constant `1`;
+ *  if it ever tracked `devicePixelRatio` this label would silently show half the real output. */
 export function exportPixelSize(
   width: number,
   height: number,

@@ -133,36 +133,6 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
   brushType: BrushKind;
 };
 
-export type ExportFormat = "png-sequence" | "png-frame" | "psd-frame" | "gif" | "mp4" | "webm";
-
-/** Session-only export settings — deliberately NOT part of `Project` (they describe an output, not
- *  the artwork), NOT persisted (the same reasoning as `onion`), and never in an undo snapshot. */
-export interface ExportOptions {
-  format: ExportFormat;
-  /** 1 | 0.5 | 0.25. PSD ignores it and always writes at 100%. */
-  scale: number;
-  rangeMode: ExportRangeMode;
-  /** Read only when `rangeMode === "custom"`; 0-based, inclusive, clamped where it is used. */
-  customStart: number;
-  customEnd: number;
-  gifColors: number;
-  videoQuality: "low" | "medium" | "high";
-}
-
-export function defaultExportOptions(): ExportOptions {
-  // Every default reproduces the pre-2026-09-19 behaviour exactly: document size, the play In/Out
-  // range, and the quality `exportVideo` used to hardcode.
-  return {
-    format: "png-sequence",
-    scale: 1,
-    rangeMode: "inout",
-    customStart: 0,
-    customEnd: 0,
-    gifColors: 64,
-    videoQuality: "high",
-  };
-}
-
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
@@ -204,6 +174,34 @@ import {
   prevMarkerFrame,
 } from "../anim/markers";
 import type { ExportRangeMode } from "../export/export-range";
+
+export type ExportFormat = "png-sequence" | "png-frame" | "psd-frame" | "gif" | "mp4" | "webm";
+
+/** Session-only export settings — deliberately NOT part of `Project` (they describe an output, not
+ *  the artwork), NOT persisted (the same reasoning as `onion`), and never in an undo snapshot. */
+export interface ExportOptions {
+  format: ExportFormat;
+  /** 1 | 0.5 | 0.25. PSD ignores it and always writes at 100%. */
+  scale: number;
+  rangeMode: ExportRangeMode;
+  /** Read only when `rangeMode === "custom"`; 0-based, inclusive, clamped where it is used. */
+  customStart: number;
+  customEnd: number;
+  videoQuality: "low" | "medium" | "high";
+}
+
+export function defaultExportOptions(): ExportOptions {
+  // Every default reproduces the pre-2026-09-19 behaviour exactly: document size, the play In/Out
+  // range, and the quality `exportVideo` used to hardcode.
+  return {
+    format: "png-sequence",
+    scale: 1,
+    rangeMode: "inout",
+    customStart: 0,
+    customEnd: 0,
+    videoQuality: "high",
+  };
+}
 
 export type Tool =
   | "brush"
