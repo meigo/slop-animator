@@ -84,10 +84,11 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB, global preferences
 - A project name drives the save and export filenames
-- **Export dialog** — pick a format (PNG sequence, PNG frame, PSD frame, MP4, WebM via [mediabunny](https://github.com/Vanilagy/mediabunny)), then set what applies to it: size (100% / 50% / 25% — PSD always exports at full size), frame range (all frames, the play In-Out range, or a typed custom span), and video quality (MP4/WebM)
+- **Export dialog** — pick a format (PNG sequence, PNG frame, PSD frame, MP4, WebM via [mediabunny](https://github.com/Vanilagy/mediabunny), animated GIF via [gifenc](https://github.com/mattdesl/gifenc)), then set what applies to it: size (100% / 50% / 25% — PSD always exports at full size), frame range (all frames, the play In-Out range, or a typed custom span), video quality (MP4/WebM), and colour count (GIF: 64/128/256)
 - **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away)
 - **PNG frame export** — a single image, rendered exactly like that frame of the PNG sequence (line boil included, transparent when the background is)
 - **PSD frame export** for paint-up in Photoshop — visible layers keep their names and their opacity stays live, groups arrive as real folders, transforms are baked into the pixels, and a merged composite ships alongside. Reference layers and line boil are left out, so a PSD looks cleaner than a PNG of the same frame when boil is on
+- **Animated GIF export**, full or half size — one global palette and frame delays that keep the true duration (a 12fps GIF really does last five seconds)
 
 **Keyboard**
 
@@ -111,7 +112,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1402); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1408); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
