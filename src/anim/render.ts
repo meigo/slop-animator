@@ -17,7 +17,7 @@ import {
   type ReferenceLayer,
   type RefTransform,
 } from "./document";
-import { boilBegin, boilLayer, boilBlit, boilWeightJitter } from "../core/boil-gl";
+import { boilBegin, boilLayer, boilBlit, boilStateIndex, boilWeightJitter } from "../core/boil-gl";
 import { contentBoxLogical, groupBoxLogical } from "../lib/cell-ink";
 
 interface RenderOpts {
@@ -292,7 +292,10 @@ export function compositeFrameLayers(
         isCrispFrame(layer.cells, frame, boil.holdsOnly) ||
         strength <= 0 ||
         (boil.amount <= 0 && boil.weight <= 0);
-      const seed = (frame % Math.max(1, boil.rate)) * 100003 + op.layerId * 9176;
+      // ONE state index feeds both halves of the boil (displacement seed and weight breathing), so
+      // a held state holds completely — see `boilStateIndex`.
+      const boilState = boilStateIndex(frame, boil.rate, boil.step);
+      const seed = boilState * 100003 + op.layerId * 9176;
       const cellT = cellTransform(cell);
       const layerT = transformAt(layer, frame);
       const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
@@ -306,7 +309,7 @@ export function compositeFrameLayers(
         : transformedCell(cell.canvas, layerT, cellT, boxDev, w, h, dpr, groupT, groupBoxDev);
       // Weight is passed as a SIGNED bias: the per-frame breathing jitter comes from the rate cycle,
       // which only this caller knows (boilLayer sees just the seed).
-      const wjit = boilWeightJitter(frame, boil.rate, op.layerId);
+      const wjit = boilWeightJitter(boilState, boil.rate, op.layerId);
       boilLayer(
         src,
         op.opacity / 100,

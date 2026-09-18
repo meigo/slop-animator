@@ -150,6 +150,21 @@ export function boilSeedOffset(seed: number): [number, number] {
 const WEIGHT_MAX_PUSH = 0.25;
 
 /**
+ * Which of the `rate` boil states frame `frame` renders.
+ *
+ * `step` is how many frames one state is HELD for — boil on twos and threes, the way a hand-inked
+ * line only redraws every second or third exposure. `step === 1` changes it every frame, which is
+ * what this did before the setting existed, so an old project renders identically.
+ *
+ * `rate` stays the CYCLE LENGTH: how many distinct states exist before the sequence repeats. The two
+ * compose — rate 3 / step 2 gives A A B B C C A A — and the modulo keeps the seed set exactly `rate`
+ * wide, which is what `boilWeightJitter` and the GLSL noise offsets are sized for.
+ */
+export function boilStateIndex(frame: number, rate: number, step: number): number {
+  return Math.floor(frame / Math.max(1, step)) % Math.max(1, rate);
+}
+
+/**
  * Signed line-weight jitter in [-1,1] — the "breathing" half of the boil.
  *
  * Derived from the frame's PHASE within the rate cycle, deliberately NOT from a hash of the boil
@@ -161,10 +176,15 @@ const WEIGHT_MAX_PUSH = 0.25;
  * offset keeps stacked layers from breathing in lockstep.
  *
  * `rate === 1` means a single warp state, so the thickness is necessarily constant too.
+ *
+ * Takes the STATE INDEX (`boilStateIndex`), not the raw frame: with `step > 1` the warp is frozen
+ * for several frames, and a jitter keyed on the frame would keep breathing underneath it — the line
+ * thickness would shimmer while the displacement sat still. At `step === 1` the two are the same
+ * number, which is why this reads identically for an old project.
  */
-export function boilWeightJitter(frame: number, rate: number, layerId: number): number {
+export function boilWeightJitter(state: number, rate: number, layerId: number): number {
   const r = Math.max(1, rate);
-  const phase = (frame % r) / r + ((layerId * 0.6180339887498949) % 1);
+  const phase = (state % r) / r + ((layerId * 0.6180339887498949) % 1);
   return Math.cos(2 * Math.PI * phase);
 }
 
