@@ -132,6 +132,37 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
   streamline: number;
   brushType: BrushKind;
 };
+
+export type ExportFormat = "png-sequence" | "png-frame" | "psd-frame" | "gif" | "mp4" | "webm";
+
+/** Session-only export settings — deliberately NOT part of `Project` (they describe an output, not
+ *  the artwork), NOT persisted (the same reasoning as `onion`), and never in an undo snapshot. */
+export interface ExportOptions {
+  format: ExportFormat;
+  /** 1 | 0.5 | 0.25. PSD ignores it and always writes at 100%. */
+  scale: number;
+  rangeMode: ExportRangeMode;
+  /** Read only when `rangeMode === "custom"`; 0-based, inclusive, clamped where it is used. */
+  customStart: number;
+  customEnd: number;
+  gifColors: number;
+  videoQuality: "low" | "medium" | "high";
+}
+
+export function defaultExportOptions(): ExportOptions {
+  // Every default reproduces the pre-2026-09-19 behaviour exactly: document size, the play In/Out
+  // range, and the quality `exportVideo` used to hardcode.
+  return {
+    format: "png-sequence",
+    scale: 1,
+    rangeMode: "inout",
+    customStart: 0,
+    customEnd: 0,
+    gifColors: 64,
+    videoQuality: "high",
+  };
+}
+
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
 import type { Selection } from "../core/selection";
@@ -172,6 +203,7 @@ import {
   nextMarkerFrame,
   prevMarkerFrame,
 } from "../anim/markers";
+import type { ExportRangeMode } from "../export/export-range";
 
 export type Tool =
   | "brush"
@@ -219,6 +251,8 @@ interface AnimState {
    *  restarting playback onto the shared boil GL surface) splices two different documents into one
    *  file. The dialog's backdrop stops pointers only, so the global key handler reads this instead. */
   exportBusy: boolean;
+  /** Session-only export options, never persisted or part of undo. */
+  exportOptions: ExportOptions;
   settingsOpen: boolean;
   /** A finished file waiting for a tap on "Save to Files…" (iPad/iPhone; see `lib/deliver-file.ts`).
    *  `note` carries what the flow that built it would have said (e.g. "exported without audio"),
@@ -336,6 +370,7 @@ export const state: AnimState = $state({
   curveVersion: 0,
   exportOpen: false,
   exportBusy: false,
+  exportOptions: defaultExportOptions(),
   settingsOpen: false,
   shareReady: null,
   sizeDialog: { open: false, mode: "new" },
