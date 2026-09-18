@@ -6756,6 +6756,6 @@ seen: the browser paints once per frame.
 - **Verification is thin and deliberately labelled so:** build (0/0), `npm test` 1384, and code
   review. The automation harness could not get a pose mesh to build (a hidden tab starves rAF, which
   is exactly what this change now depends on), so there is NO browser measurement of the after-state
-  and no iPad pass. What to check when the Pose tool is next used: the mesh still follows the handle
-  during a drag with no visible lag, the reach dial still tracks, and cancel/apply still clear the
-  overlay.
+  and no iPad pass at the time of the commit. **VERIFIED on iPad 2026-09-18** ("works fine") from a
+  branch deploy, before the merge: the mesh follows the handle during a drag with no lag, and
+  cancel/apply clear the overlay.
