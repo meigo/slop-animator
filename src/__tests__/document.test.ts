@@ -444,6 +444,7 @@ describe("boil config defaults", () => {
       amount: 1,
       cols: 20,
       rate: 3,
+      step: 1, // one frame per state = the pre-2026-09-18 look
       weight: 0.4,
       holdsOnly: true,
     });

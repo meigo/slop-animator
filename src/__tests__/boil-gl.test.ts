@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boilSeedOffset, boilWeightJitter } from "../core/boil-gl";
+import { boilSeedOffset, boilStateIndex, boilWeightJitter } from "../core/boil-gl";
 
 describe("boilSeedOffset", () => {
   it("is bounded well below the magnitudes that collapse GLSL noise", () => {
@@ -62,5 +62,46 @@ describe("boilWeightJitter", () => {
   it("is constant at rate 1 — one distinct warp means one thickness (documented, not a bug)", () => {
     const v = boilWeightJitter(0, 1, 1);
     for (let f = 1; f < 10; f++) expect(boilWeightJitter(f, 1, 1)).toBeCloseTo(v, 12);
+  });
+});
+
+describe("boilStateIndex", () => {
+  it("changes every frame at step 1 — today's behaviour, unchanged", () => {
+    const seq = Array.from({ length: 7 }, (_, f) => boilStateIndex(f, 3, 1));
+    expect(seq).toEqual([0, 1, 2, 0, 1, 2, 0]);
+  });
+
+  it("HOLDS each state for `step` frames — boil on twos and threes", () => {
+    expect(Array.from({ length: 9 }, (_, f) => boilStateIndex(f, 3, 2))).toEqual([
+      0, 0, 1, 1, 2, 2, 0, 0, 1,
+    ]);
+    expect(Array.from({ length: 9 }, (_, f) => boilStateIndex(f, 4, 3))).toEqual([
+      0, 0, 0, 1, 1, 1, 2, 2, 2,
+    ]);
+  });
+
+  it("stays inside the cycle, so the seed set is still `rate` states wide", () => {
+    for (const rate of [1, 2, 3, 5, 8]) {
+      for (const step of [1, 2, 3, 7]) {
+        for (let f = 0; f < 60; f++) {
+          const i = boilStateIndex(f, rate, step);
+          expect(i).toBeGreaterThanOrEqual(0);
+          expect(i).toBeLessThan(rate);
+        }
+      }
+    }
+  });
+
+  it("treats a nonsense rate or step as 1 rather than dividing by zero", () => {
+    expect(boilStateIndex(5, 0, 0)).toBe(0);
+    expect(boilStateIndex(5, 1, -3)).toBe(0);
+  });
+
+  it("holds the WEIGHT in step with the displacement, not just the warp", () => {
+    // The whole point: with step 2 the line must not breathe on frames where the warp is frozen.
+    const a = boilStateIndex(4, 3, 2);
+    const b = boilStateIndex(5, 3, 2);
+    expect(a).toBe(b);
+    expect(boilWeightJitter(a, 3, 1)).toBeCloseTo(boilWeightJitter(b, 3, 1), 12);
   });
 });

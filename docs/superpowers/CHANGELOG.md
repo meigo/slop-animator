@@ -6799,3 +6799,24 @@ panel for the touch bug above, at the user's request ("check other panels for th
   only, pen and mouse edit". Finger-tapping them does nothing, by that decision, not by accident.
   Flagged to the user; they chose to keep it.
 - Owed an iPad check: tap Delete in the marker editor with a finger.
+**Line boil holds for N frames — boil on twos and threes (2026-09-18).** Asked for as *"line boil.
+i'd like to add frame interval to it to update over n frames"*.
+- **What was already there, and what it is not:** `BoilConfig.rate` is a CYCLE LENGTH — the seed was
+  `frame % rate`, so the warp changed on EVERY frame and merely repeated after `rate` of them. Its
+  slider tooltip said "on twos/threes", which is what a hand-inked line actually does, but that is a
+  HOLD, not a cycle. The two are independent, so `step` was added beside `rate` rather than replacing
+  it (user's choice from three options).
+- **Model:** `BoilConfig.step` (1–8, default 1) and one pure `boilStateIndex(frame, rate, step)` =
+  `floor(frame / step) % rate`, unit-tested. rate 3 / step 2 gives A A B B C C. `step: 1` reproduces
+  the old sequence exactly, so an existing project renders identically; `migrateBoil` fills 1 for
+  saves from before the field (tested both ways).
+- **`boilWeightJitter` now takes the STATE INDEX, not the frame.** Keyed on the frame, the
+  line-weight breathing would have kept shimmering underneath a warp that was deliberately frozen —
+  the displacement would hold while the thickness did not. Both halves now read the same index.
+- **UI:** a "step" slider under "rate" in the boil popover. `rate`'s tooltip lost its "on
+  twos/threes" phrasing, which now belongs to `step`. Named "step" to match the property track's
+  Step (sample every N frames) and to avoid colliding with the timeline's hold CELLS.
+- **Verified end-to-end through the real GL path**, on a synthetic project whose artwork is provably
+  identical on every frame (one key, then holds), by hashing the rendered pixels per frame:
+  step 1 → `0,1,2,0,1,2,0,1,2`; step 2 → `0,0,2,2,4,4,0,0,2`; step 3 → `0,0,0,3,3,3,6,6,6`. Exports
+  inherit it for free — same render path. Owed an eyeball in playback on a real drawing.

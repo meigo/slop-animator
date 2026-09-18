@@ -192,6 +192,8 @@ export function migrateBoil(raw: unknown): BoilConfig {
     amount: typeof b.amount === "number" ? b.amount : d.amount,
     cols: typeof b.cols === "number" ? b.cols : d.cols,
     rate: typeof b.rate === "number" ? b.rate : d.rate,
+    // Added 2026-09-18; a save from before it holds every state for one frame, as it always did.
+    step: typeof b.step === "number" ? b.step : d.step,
     weight: typeof b.weight === "number" ? b.weight : d.weight,
     holdsOnly: b.holdsOnly ?? d.holdsOnly,
   };

@@ -18,12 +18,13 @@ export interface BoilConfig {
   enabled: boolean;
   amount: number; // displacement px
   cols: number; // noise detail (frequency across the canvas)
-  rate: number; // cycle length (on twos/threes)
+  rate: number; // cycle length: how many distinct boil states before the sequence repeats
+  step: number; // frames each state is HELD for (1 = change every frame; 2/3 = boil on twos/threes)
   weight: number; // line-weight breathing (0..1, in-shader alpha dilate/erode)
   holdsOnly: boolean;
 }
 export function defaultBoilConfig(): BoilConfig {
-  return { enabled: false, amount: 1, cols: 20, rate: 3, weight: 0.4, holdsOnly: true };
+  return { enabled: false, amount: 1, cols: 20, rate: 3, step: 1, weight: 0.4, holdsOnly: true };
 }
 
 export interface LayerGroup {

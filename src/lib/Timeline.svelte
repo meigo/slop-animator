@@ -2410,7 +2410,9 @@
               >{appState.project.boil.cols}</span
             ></label
           >
-          <label class="flex items-center gap-2" title="Boil rate (cycle N warps — on twos/threes)"
+          <label
+            class="flex items-center gap-2"
+            title="Boil rate — how many warps cycle before repeating"
             ><span class="w-10 text-text-secondary">rate</span>
             <input
               type="range"
@@ -2423,6 +2425,23 @@
             />
             <span class="w-8 text-right text-text-muted tabular-nums"
               >{appState.project.boil.rate}</span
+            ></label
+          >
+          <label
+            class="flex items-center gap-2"
+            title="Boil step — hold each warp for N frames (on twos/threes; 1 = every frame)"
+            ><span class="w-10 text-text-secondary">step</span>
+            <input
+              type="range"
+              class="flex-1"
+              min="1"
+              max="8"
+              step="1"
+              bind:value={appState.project.boil.step}
+              style={sliderFill(appState.project.boil.step, 1, 8)}
+            />
+            <span class="w-8 text-right text-text-muted tabular-nums"
+              >{appState.project.boil.step}</span
             ></label
           >
           <label class="flex items-center gap-2" title="Boil line-weight breathing"

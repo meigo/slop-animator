@@ -68,7 +68,7 @@ describe("projectToJson", () => {
       fps: 8,
       bgColor: "#eee",
       frameCount: 2,
-      boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, step: 1, weight: 0.4, holdsOnly: true },
       groups: [],
       layers: [dlayer(1, [key(), hold()]), rlayer(2)],
       audio: null,
@@ -82,7 +82,7 @@ describe("projectToJson", () => {
       bgColor: "#eee",
       transparentBg: false,
       frameCount: 2,
-      boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+      boil: { enabled: true, amount: 2, cols: 16, rate: 2, step: 1, weight: 0.4, holdsOnly: true },
       groups: [],
       layers: [
         {
@@ -126,7 +126,7 @@ describe("projectToJson", () => {
       bgColor: "#eee",
       transparentBg: true,
       frameCount: 1,
-      boil: { enabled: false, amount: 0, cols: 12, rate: 1, weight: 0, holdsOnly: false },
+      boil: { enabled: false, amount: 0, cols: 12, rate: 1, step: 2, weight: 0, holdsOnly: false },
       groups: [],
       layers: [dlayer(1, [key()])],
       audio: null,
@@ -141,6 +141,7 @@ describe("projectToJson", () => {
       "enabled",
       "holdsOnly",
       "rate",
+      "step",
       "weight",
     ]);
   });
@@ -205,6 +206,30 @@ describe("migrateBoil", () => {
     expect(m.weight).toBe(0.4);
     expect("scale" in m).toBe(false);
     expect(m.amount).toBe(2);
+  });
+  it("a save from before `step` existed holds each state for one frame, as it always did", () => {
+    const m = migrateBoil({
+      enabled: true,
+      amount: 2,
+      cols: 16,
+      rate: 3,
+      weight: 0.4,
+      holdsOnly: true,
+    });
+    expect(m.step).toBe(1);
+  });
+  it("a save WITH step keeps it", () => {
+    expect(
+      migrateBoil({
+        enabled: true,
+        amount: 2,
+        cols: 16,
+        rate: 3,
+        step: 4,
+        weight: 0.4,
+        holdsOnly: true,
+      }).step,
+    ).toBe(4);
   });
   it("a save with weight keeps it; missing boil → full default", () => {
     expect(
@@ -497,7 +522,7 @@ describe("reference range persistence", () => {
     fps: 8,
     bgColor: "#eee",
     frameCount: 2,
-    boil: { enabled: true, amount: 2, cols: 16, rate: 2, weight: 0.4, holdsOnly: true },
+    boil: { enabled: true, amount: 2, cols: 16, rate: 2, step: 1, weight: 0.4, holdsOnly: true },
     groups: [],
     layers: [dlayer(1, [key(), hold()]), ref],
     audio: null,
