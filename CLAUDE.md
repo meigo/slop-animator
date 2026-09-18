@@ -203,6 +203,16 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
     where the display cannot have changed — during a selection drag the dragged pixels are on the
     overlay and the cell's hole is already composited. See the 2026-09-18 changelog entry.
 
+18. **`preventDefault()` on `touchstart` kills NATIVE activation inside the stage's floating
+    panels.** `touch-gestures.ts` blanket-prevented every touch on the workspace so a finger pans
+    instead of scrolling; on iOS that also suppresses the click WebKit synthesises, so the pose bar's
+    "Fill outlines" CHECKBOX could not be toggled and a tap could not focus its Gap field — while
+    every button beside them worked, because those act on `pointerdown` and never needed the click.
+    Exempt `.selection-actions-panel` (`shouldPreventTouchDefault`), exactly as the pointerdown
+    handler already did — gotcha #12 is the same class, for the same panels, one layer up. A control
+    inside the stage that relies on native activation needs this; one that handles `pointerdown`
+    itself does not. Desktop reproduces NEITHER (no touch events).
+
 ## Current state (all shipped & merged to `main`)
 
 Frame-by-frame drawing (smooth/ink/pencil/charcoal/airbrush brushes, separate brush vs eraser
