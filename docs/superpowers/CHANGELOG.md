@@ -6798,7 +6798,7 @@ panel for the touch bug above, at the user's request ("check other panels for th
   `ignoreTouchClick`, from `2d176f3` — "the whole timeline grid now matches the canvas: touch pans
   only, pen and mouse edit". Finger-tapping them does nothing, by that decision, not by accident.
   Flagged to the user; they chose to keep it.
-- Owed an iPad check: tap Delete in the marker editor with a finger.
+- **VERIFIED on iPad 2026-09-18** ("both work") from a branch deploy, before the merge.
 **Line boil holds for N frames — boil on twos and threes (2026-09-18).** Asked for as *"line boil.
 i'd like to add frame interval to it to update over n frames"*.
 - **What was already there, and what it is not:** `BoilConfig.rate` is a CYCLE LENGTH — the seed was
@@ -6819,4 +6819,4 @@ i'd like to add frame interval to it to update over n frames"*.
 - **Verified end-to-end through the real GL path**, on a synthetic project whose artwork is provably
   identical on every frame (one key, then holds), by hashing the rendered pixels per frame:
   step 1 → `0,1,2,0,1,2,0,1,2`; step 2 → `0,0,2,2,4,4,0,0,2`; step 3 → `0,0,0,3,3,3,6,6,6`. Exports
-  inherit it for free — same render path. Owed an eyeball in playback on a real drawing.
+  inherit it for free — same render path. **VERIFIED on iPad in playback 2026-09-18** ("both work").
