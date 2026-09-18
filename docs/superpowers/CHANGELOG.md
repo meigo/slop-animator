@@ -6775,5 +6775,4 @@ it is NOT a regression from it: the cause has been there since touch gestures we
   exemption, so touches over the floating panels keep their default behaviour while the canvas keeps
   losing it. This also restores tap-to-focus for the pose bar's Gap field on iPad.
 - **Desktop cannot reproduce it** (no touch events at all), which is why it survived every desktop
-  pass. Owed an iPad check: the checkbox toggles both ways, the Gap field focuses on a tap, and a
-  finger still pans/pinches the canvas without the page scrolling.
+  pass. **VERIFIED on iPad 2026-09-18** ("works now") from a branch deploy, before the merge.
