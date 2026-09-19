@@ -6942,3 +6942,31 @@ row with a Colours setting (64/128/256) plus the shared Size and Range controls.
   elsewhere in the export dialog's shared code path, but not for this format in this pass). An iPad
   pass — encode time, Save to Files, and that the result plays in Photos and pastes into a chat — is
   still owed before this is trusted on the platform the app is built for.
+
+**GIF palette: any colour count, and a grayscale mode (2026-09-19).** Asked for as *"i'd like to have
+more granular control over gif output colors. especially when exporting grayscale content, color
+palette could be smaller. is there other options, like dithering available?"*
+- **Colours is now a drag-to-change field, 2–256**, replacing the 64/128/256 buttons. The useful
+  values are nowhere near evenly spaced — grey line art is fine on 4, painted work wants 128+ — so a
+  free number beats a few fixed choices, and it is the same field the rest of the app drags.
+- **Palette: Colour | Grayscale.** Grayscale converts each frame to Rec. 601 luminance BEFORE
+  quantising (`grayscaleInPlace`, unit-tested), so the quantiser CHOOSES the greys the drawing
+  actually needs instead of mapping colours onto a fixed ramp. Mapping a colour frame onto a grey
+  palette inside `applyPalette` would have measured RGB distance, which sends a saturated colour to
+  whichever grey sits nearest in the cube rather than the one it looks like.
+- **Measured on this project's ink artwork** (10 frames, 1280×720, reference and gradient layers
+  hidden): 64 colours 74 kB · 16 greys 69 kB · **4 greys 51 kB**, whose palette came out
+  `[1, 38, 139, 238]` — ink, two anti-aliasing tones, paper. The win is in choosing FEW levels;
+  grayscale at 16 is no smaller than colour at 16, and on a colour-heavy frame it was slightly
+  bigger. It is a control, not a free lunch.
+- **Grayscale converts the paper too.** A cream background exports grey. That is the mode working as
+  intended, and the dialog's own label switches from "colours" to "greys" so the choice is visible.
+- **Dithering: NOT added, and gifenc has none** (its README lists it as a TODO and says the library
+  therefore suits flat vector art). A Floyd–Steinberg pass was spiked against `nearestColorIndex` on
+  10 frames at 1280×720 before deciding: on ink it cost ~5× the encode time for a byte-identical
+  file (80 kB either way — flat art has no gradient to dither); on a gradient it cost 5–12× the time
+  AND made the file 6–8× bigger (16 colours: 191 kB → 1622 kB; 64: 408 kB → 2474 kB). Scaled to 60
+  frames that is ~10s on desktop and plausibly 30–50s on iPad, to produce a much larger file. The
+  spike code was thrown away; these numbers are the reason not to revisit it without new evidence.
+- Verified by parsing the emitted palettes (entry counts, and that every entry is grey in Grayscale
+  mode). Owed an iPad pass, like the rest of the GIF work.

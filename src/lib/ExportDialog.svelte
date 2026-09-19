@@ -226,6 +226,7 @@
           onProgress,
           scale,
           colors: opts.gifColors,
+          grayscale: opts.gifGrayscale,
         });
         closeAfter = await deliver(blob, `${stem}.gif`);
         status = "Done.";
@@ -411,14 +412,33 @@
           </div>
         {/if}
         {#if opts.format === "gif"}
-          <div class="flex items-center gap-1 text-xs">
+          <!-- A free number, not a few fixed buttons: grey line art is often fine on 4-8 colours
+               while painted work wants 128+, and the useful values are nowhere near evenly spaced.
+               Drag it like every other numeric field in the app. -->
+          <div class="flex items-center gap-2 text-xs">
             <span class="w-10 text-text-secondary">Colours</span>
-            {#each [64, 128, 256] as c (c)}
+            <NumberField
+              class="w-14 bg-surface border border-border rounded px-1 text-xs text-text"
+              value={opts.gifColors}
+              min={2}
+              max={256}
+              step={1}
+              pxPerStep={3}
+              title="GIF palette size"
+              ariaLabel="GIF palette size"
+              onInput={(v) => (appState.exportOptions.gifColors = v)}
+              onCommit={(v) => (appState.exportOptions.gifColors = v)}
+            />
+            <span class="text-text-muted">{opts.gifGrayscale ? "greys" : "colours"}</span>
+          </div>
+          <div class="flex items-center gap-1 text-xs">
+            <span class="w-10 text-text-secondary">Palette</span>
+            {#each [[false, "Colour"], [true, "Grayscale"]] as const as [g, label] (label)}
               <button
                 class="flex-1 border border-border rounded py-1 hover:bg-surface-hover"
-                class:ui-on={opts.gifColors === c}
-                aria-pressed={opts.gifColors === c}
-                onclick={() => (appState.exportOptions.gifColors = c)}>{c}</button
+                class:ui-on={opts.gifGrayscale === g}
+                aria-pressed={opts.gifGrayscale === g}
+                onclick={() => (appState.exportOptions.gifGrayscale = g)}>{label}</button
               >
             {/each}
           </div>

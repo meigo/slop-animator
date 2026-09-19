@@ -188,9 +188,14 @@ export interface ExportOptions {
   customStart: number;
   customEnd: number;
   videoQuality: "low" | "medium" | "high";
-  /** GIF palette size. 64 is indistinguishable from 256 on ink over paper and makes a smaller file;
-   *  the choice exists for painted work. */
+  /** GIF palette size, 2–256. 64 is indistinguishable from 256 on ink over paper and makes a
+   *  smaller file; grey artwork often wants far fewer still, which is why this is a free number
+   *  rather than a few fixed choices. */
   gifColors: number;
+  /** Convert each GIF frame to luminance before quantising, so the palette is `gifColors` GREYS.
+   *  Measured on grey artwork it is a real size win; on colour artwork it is a deliberate
+   *  conversion that takes tinted paper with it. */
+  gifGrayscale: boolean;
 }
 
 export function defaultExportOptions(): ExportOptions {
@@ -204,6 +209,7 @@ export function defaultExportOptions(): ExportOptions {
     customEnd: 0,
     videoQuality: "high",
     gifColors: 64,
+    gifGrayscale: false,
   };
 }
 

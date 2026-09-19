@@ -13,11 +13,35 @@ const PALETTE_COLORS = 64;
  *  export. Five costs one extra render each and covers the shot. */
 const PALETTE_SAMPLES = 5;
 
+/**
+ * Replace every pixel with its luminance, in place. Alpha is untouched.
+ *
+ * Rec. 601 weights, the same ones a browser's `grayscale()` filter and every video codec use: the
+ * eye is far more sensitive to green than to blue, so a flat average turns a green into a much
+ * lighter grey than it looks and a blue into a much darker one.
+ *
+ * Done BEFORE quantising rather than by building a grey palette and letting `applyPalette` find the
+ * nearest entry: that mapping measures RGB distance, so a saturated colour would land on whichever
+ * grey happens to be closest in the cube rather than on the grey it actually looks like. Converting
+ * first also means the quantiser CHOOSES the greys — `colors: 4` on a drawing gives the four greys
+ * that drawing needs, not four evenly spaced ones.
+ */
+export function grayscaleInPlace(rgba: Uint8ClampedArray): void {
+  for (let i = 0; i < rgba.length; i += 4) {
+    const y = rgba[i] * 0.299 + rgba[i + 1] * 0.587 + rgba[i + 2] * 0.114;
+    rgba[i] = rgba[i + 1] = rgba[i + 2] = y;
+  }
+}
+
 export interface GifExportOptions extends ExportProgress {
   /** 1 = document size, 0.5 = half. Clamped into (0, 1]. */
   scale?: number;
-  /** Palette size; the dialog offers 64 / 128 / 256. Default 64. */
+  /** Palette size, 2–256. Default 64. */
   colors?: number;
+  /** Convert every frame to luminance before quantising, so the palette comes out as `colors`
+   *  GREYS. On grey artwork this costs nothing and shrinks the file; on colour artwork it is a
+   *  deliberate conversion, tinted paper included. */
+  grayscale?: boolean;
 }
 
 /**
@@ -31,7 +55,13 @@ export async function exportGif(
   project: Project,
   dpr: number,
   range: { start: number; end: number },
-  { signal, onProgress, scale = 1, colors = PALETTE_COLORS }: GifExportOptions = {},
+  {
+    signal,
+    onProgress,
+    scale = 1,
+    colors = PALETTE_COLORS,
+    grayscale = false,
+  }: GifExportOptions = {},
 ): Promise<Blob> {
   const s = Math.min(1, Math.max(0.01, scale));
   const w = Math.max(1, Math.round(project.width * dpr * s));
@@ -69,7 +99,9 @@ export async function exportGif(
       boil: project.boil.enabled ? project.boil : undefined,
       outputScale: s,
     });
-    return ctx.getImageData(0, 0, w, h).data;
+    const data = ctx.getImageData(0, 0, w, h).data;
+    if (grayscale) grayscaleInPlace(data);
+    return data;
   };
 
   // ── One global palette, sampled across the range ──────────────────────────────────────────────

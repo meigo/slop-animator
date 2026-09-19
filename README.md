@@ -88,7 +88,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away)
 - **PNG frame export** — a single image, rendered exactly like that frame of the PNG sequence (line boil included, transparent when the background is)
 - **PSD frame export** for paint-up in Photoshop — visible layers keep their names and their opacity stays live, groups arrive as real folders, transforms are baked into the pixels, and a merged composite ships alongside. Reference layers and line boil are left out, so a PSD looks cleaner than a PNG of the same frame when boil is on
-- **Animated GIF export**, at the export dialog's usual 100% / 50% / 25% size — one global palette and frame delays that keep the true duration (a 12fps GIF really does last five seconds)
+- **Animated GIF export** — one global palette, any colour count from 2 to 256, an optional grayscale palette for ink work, and frame delays that keep the true duration (a 12fps GIF really does last five seconds), at the export dialog's usual 100% / 50% / 25% size
 
 **Keyboard**
 
@@ -112,7 +112,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1408); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1412); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```
