@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { grayscaleInPlace } from "../export/gif";
+import { framesIdentical, grayscaleInPlace } from "../export/gif";
 
 const px = (...vals: number[]) => new Uint8ClampedArray(vals);
 
@@ -31,5 +31,33 @@ describe("grayscaleInPlace", () => {
     const once = [...d];
     grayscaleInPlace(d);
     expect([...d]).toEqual(once);
+  });
+});
+
+describe("framesIdentical", () => {
+  const frame = (...vals: number[]) => new Uint8ClampedArray(vals);
+
+  it("is true for the same bytes — what a HOLD renders twice", () => {
+    expect(
+      framesIdentical(frame(1, 2, 3, 255, 9, 9, 9, 255), frame(1, 2, 3, 255, 9, 9, 9, 255)),
+    ).toBe(true);
+  });
+
+  it("catches a difference in the first pixel", () => {
+    expect(framesIdentical(frame(1, 2, 3, 255), frame(2, 2, 3, 255))).toBe(false);
+  });
+
+  it("catches a difference in the LAST pixel — the one a word-at-a-time compare could miss", () => {
+    expect(
+      framesIdentical(frame(0, 0, 0, 255, 1, 2, 3, 255), frame(0, 0, 0, 255, 1, 2, 3, 254)),
+    ).toBe(false);
+  });
+
+  it("catches a difference in alpha alone", () => {
+    expect(framesIdentical(frame(1, 2, 3, 255), frame(1, 2, 3, 0))).toBe(false);
+  });
+
+  it("is false for different lengths rather than comparing a prefix", () => {
+    expect(framesIdentical(frame(1, 2, 3, 255), frame(1, 2, 3, 255, 1, 2, 3, 255))).toBe(false);
   });
 });

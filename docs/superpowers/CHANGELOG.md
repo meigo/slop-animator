@@ -6970,3 +6970,33 @@ palette could be smaller. is there other options, like dithering available?"*
   spike code was thrown away; these numbers are the reason not to revisit it without new evidence.
 - Verified by parsing the emitted palettes (entry counts, and that every entry is grey in Grayscale
   mode). Owed an iPad pass, like the rest of the GIF work.
+
+**A held drawing costs ONE GIF frame, not three (2026-09-19).** Asked as *"so all the ways to
+maximally compress the gif output is used currently?"* — the honest answer was no, and this was the
+biggest of the three gaps.
+- **What was wrong:** every source frame was quantised and LZW-encoded in full, including the ones a
+  hold repeats unchanged. This app is built on holds, so a shot on threes was paying three times for
+  each drawing.
+- **Fix:** a frame identical to the one before it is not encoded again — its delay is ADDED to the
+  frame already pending. That is exactly what GIF's per-frame delay is for. Because a frame's delay
+  is not final until the next frame has been compared to it, one frame is always held pending and
+  flushed when a different one arrives or after the loop.
+- **Measured in the app, same content, with and without the change** (24 frames, 8 drawings on
+  threes, 1280×720, 17fps): **143 kB / 24 written frames → 48 kB / 8 written frames, a 66% cut**, and
+  the delays still total 141 hundredths either way — the exact ideal for 24 frames at 17fps. A naive
+  version would have written eight short delays and played three times too fast, which is why the
+  total is what the test and the check both pin.
+- Spiked first on synthetic shots: on twos 121 → 61 kB (50%), on threes 116 → 39 kB (66%), on ones
+  no change. Collapsing is FASTER than not collapsing (skipping a quantise-and-encode beats the
+  comparison); where nothing collapses the overhead is ~2%.
+- **Line boil defeats it entirely**, by design: boil displaces every frame, so held frames are not
+  identical and nothing collapses. Worth knowing before wondering why a boiled export is bigger.
+- `framesIdentical` compares a word at a time through a `Uint32Array` view (a quarter of the
+  iterations; exact, since an RGBA frame is a whole number of 32-bit pixels) and is unit-tested,
+  including the last-pixel and alpha-only cases.
+- **Still NOT done, for the record:** inter-frame differencing (encode only the changed region,
+  transparent elsewhere, disposal "do not dispose") — gifenc hardcodes each frame's position to 0,0
+  (`index.js:230-231`), so the usual shrink-to-bounding-box form is unavailable without patching it;
+  full-size frames with unchanged pixels made transparent would still work and still shrink the
+  file, at the cost of a palette slot on opaque exports. And gifenc's `prequantize`, which rounds
+  colours before quantising for longer LZW runs. Both are measurable follow-ups, neither is free.

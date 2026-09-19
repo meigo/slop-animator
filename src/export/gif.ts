@@ -33,6 +33,24 @@ export function grayscaleInPlace(rgba: Uint8ClampedArray): void {
   }
 }
 
+/**
+ * Do two rendered frames contain exactly the same pixels?
+ *
+ * This is what lets a HOLD cost one GIF frame instead of three. Compared a word at a time through a
+ * Uint32Array view — a quarter of the iterations, and the tail is exact because an RGBA frame is
+ * always a whole number of 32-bit pixels. Measured (2026-09-19, 24 frames at 1280×720): collapsing a
+ * shot held on threes writes 8 frames instead of 24 and is FASTER than not collapsing, because
+ * skipping a quantise-and-encode costs far more than the comparison; where nothing collapses (a shot
+ * on ones, or boil on, which displaces every frame) the overhead is ~2%.
+ */
+export function framesIdentical(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return false;
+  const wa = new Uint32Array(a.buffer, a.byteOffset, a.length >> 2);
+  const wb = new Uint32Array(b.buffer, b.byteOffset, b.length >> 2);
+  for (let i = 0; i < wa.length; i++) if (wa[i] !== wb[i]) return false;
+  return true;
+}
+
 export interface GifExportOptions extends ExportProgress {
   /** 1 = document size, 0.5 = half. Clamped into (0, 1]. */
   scale?: number;
@@ -148,34 +166,63 @@ export async function exportGif(
   }
 
   // ── Encode ────────────────────────────────────────────────────────────────────────────────────
+  //
+  // A frame identical to the one before it is NOT encoded again: its delay is added to the frame
+  // already pending instead, which is exactly what a hold is — one drawing shown for three
+  // exposures becomes one GIF frame of triple the delay. Measured on 24 frames at 1280×720: on twos
+  // 121 kB → 61 kB, on threes 116 kB → 39 kB, with the total duration unchanged to the hundredth.
+  //
+  // A frame therefore cannot be written until the NEXT one has been compared to it — its delay is
+  // not final until then — so one frame is always held pending and flushed either when a different
+  // frame arrives or after the loop.
   const gif = GIFEncoder();
   const delays = gifFrameDelays(total, project.fps);
+  let pending: { index: Uint8Array; delay: number } | null = null;
+  let prevPixels: Uint8ClampedArray | null = null;
+  let written = 0;
+  const flush = () => {
+    if (!pending) return;
+    gif.writeFrame(pending.index, w, h, {
+      // The global palette goes with the first WRITTEN frame, not source frame 0 — which are the
+      // same frame today, but would silently diverge if the first frames were ever skipped.
+      palette: written === 0 ? palette : undefined,
+      // gifenc takes MILLISECONDS and divides by 10 for the GIF's hundredths.
+      delay: pending.delay * 10,
+      transparent,
+      transparentIndex,
+    });
+    written++;
+    pending = null;
+  };
+
   for (let f = range.start; f <= range.end; f++) {
     // OUTSIDE the try below, deliberately: an abort must not be re-thrown as "frame N could not be
     // encoded", which would report a deliberate cancel as a defect. Same rule as the PNG sequence.
     if (signal?.aborted) throw abortError();
     const i = f - range.start;
     try {
-      const index = applyPalette(draw(f), palette, format);
-      gif.writeFrame(index, w, h, {
-        // The global palette is written ONCE, with the first frame. Passing it again would write a
-        // local palette per frame: same bytes on this kind of art, 2.2× the time (measured).
-        palette: i === 0 ? palette : undefined,
-        // gifenc takes MILLISECONDS and divides by 10 for the GIF's hundredths.
-        delay: delays[i] * 10,
-        transparent,
-        transparentIndex,
-      });
+      const pixels = draw(f);
+      if (pending && prevPixels && framesIdentical(prevPixels, pixels)) {
+        // Held: lengthen the pending frame rather than encoding this one again.
+        pending.delay += delays[i];
+      } else {
+        flush();
+        pending = { index: applyPalette(pixels, palette, format), delay: delays[i] };
+        prevPixels = pixels; // `draw` returns a fresh array each call, so this cannot alias
+      }
     } catch (e) {
       throw new Error(
         `frame ${i + 1} of ${total} (timeline frame ${f + 1}) could not be encoded — ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
       );
     }
+    // Progress counts SOURCE frames, not written ones: the bar has to match the timeline the artist
+    // is looking at, and a held shot would otherwise appear to stall.
     onProgress?.(i + 1, total);
     await yieldToEventLoop(); // paint the bar, deliver a Cancel tap
   }
   if (signal?.aborted) throw abortError(); // the last frame's cancel, before the file is assembled
+  flush(); // the last run of held frames
   gif.finish();
   return new Blob([gif.bytes() as Uint8Array<ArrayBuffer>], { type: "image/gif" });
 }
