@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { boilStateIndex } from "../core/boil-gl";
 import {
   canRemoveGroup,
   groupHasLockedLayer,
@@ -21,6 +22,7 @@ import {
   nextLayerName,
   defaultBoilConfig,
   isCrispFrame,
+  boiledFrameOrdinal,
   resolveLayerName,
   resizeCells,
   countKeyframesPastLength,
@@ -420,6 +422,57 @@ describe("documentLength / refreshLength", () => {
     };
     refreshLength(p);
     expect(p.frameCount).toBe(4);
+  });
+});
+
+describe("boiledFrameOrdinal", () => {
+  // KEY hold hold hold KEY hold hold hold — the shape from the 2026-09-18 report.
+  const cells = [
+    makeKey(),
+    makeHold(),
+    makeHold(),
+    makeHold(),
+    makeKey(),
+    makeHold(),
+    makeHold(),
+    makeHold(),
+  ];
+
+  it("counts only the frames that actually boil, so a crisp key costs no slot", () => {
+    // frames:      0(K) 1 2 3  4(K) 5 6 7
+    // ordinal:      -   0 1 2   -   3 4 5
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((f) => boiledFrameOrdinal(cells, f, true))).toEqual([
+      0, 0, 1, 2, 3, 3, 4, 5,
+    ]);
+  });
+
+  it("is just the frame number when nothing is crisp, so holds-only OFF is unchanged", () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((f) => boiledFrameOrdinal(cells, f, false))).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it("caches per version, and a version bump picks up an edited track", () => {
+    const live = [makeKey(), makeHold(), makeHold(), makeHold()];
+    expect(boiledFrameOrdinal(live, 3, true, 1)).toBe(2); // frames 1,2 boiled; the key at 0 did not
+    live[1] = makeKey(); // in-place cell swap: same ARRAY, so the version is what invalidates
+    expect(boiledFrameOrdinal(live, 3, true, 1)).toBe(2); // same version → cached, deliberately stale
+    expect(boiledFrameOrdinal(live, 3, true, 2)).toBe(1); // bumped → only frame 2 boils now
+  });
+
+  it("keeps counting past the end of the track, where nothing can be crisp", () => {
+    const short = [makeKey(), makeHold()];
+    expect(boiledFrameOrdinal(short, 2, true, 1)).toBe(1);
+    expect(boiledFrameOrdinal(short, 5, true, 1)).toBe(4); // 1 boiled in-track + 3 past the end
+  });
+
+  it("gives every state its full run of boiled frames, across a key", () => {
+    // step 2, rate 3: the pairs must survive the key at frame 4 — the bug was A and C
+    // showing for a single frame because the crisp frames ate half their run.
+    const seen = [1, 2, 3, 5, 6, 7].map((f) =>
+      boilStateIndex(boiledFrameOrdinal(cells, f, true), 3, 2),
+    );
+    expect(seen).toEqual([0, 0, 1, 1, 2, 2]);
   });
 });
 

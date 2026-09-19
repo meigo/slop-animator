@@ -7000,3 +7000,25 @@ biggest of the three gaps.
   full-size frames with unchanged pixels made transparent would still work and still shrink the
   file, at the cost of a palette slot on opaque exports. And gifenc's `prequantize`, which rounds
   colours before quantising for longer LZW runs. Both are measurable follow-ups, neither is free.
+**A crisp keyframe no longer cuts a held boil state short (2026-09-19).** Follow-up to the boil
+`step` entry above, from the interaction flagged when it shipped: *"fix the crisp keyframe
+interrupting held boil states"*.
+- **The bug:** the state index counted RAW frames, but with holds-only on a keyframe renders crisp.
+  So on `KEY hold hold hold KEY hold hold hold` at step 2 the crisp frames ate half of a state's run
+  — state A showed for one frame, B for two, C for one. `step` promises N frames per warp; what you
+  saw was 1, 2, 1.
+- **Fix:** `boiledFrameOrdinal(cells, frame, holdsOnly, version)` counts only the frames that
+  actually boil, and the state index counts those. A crisp key now costs no slot, so every state
+  gets its full run and a held state spans the key instead of being interrupted: **A A · B B · C C**
+  with the crisp keys interleaved. The user chose this over restarting the cycle at every key, which
+  would have made every drawing open on the same warp.
+- **Cached, because this runs per frame per layer of every playback and every export.** Measured on a
+  2000-frame shot with 8 layers: the plain scan cost 207µs per layer per frame (2.85ms across the
+  layers, against 1.63ms for the whole boil render without it); the version-keyed prefix cache costs
+  **0.7µs** warm, rebuilding once per version bump (404µs). Keyed on the cells ARRAY plus the
+  version, because an in-place cell swap keeps the array identity (gotcha #8).
+- With holds-only OFF nothing is crisp, so the ordinal is just the frame and the sequence is
+  bit-identical to before.
+- **Verified end-to-end through the GL path**, hashing rendered pixels on a project where every
+  drawing is the same: frames 0–7 give `0,1,1,3,0,3,6,6` — the two keys render identically (crisp),
+  and state B spans the key at frame 4, which is the whole point. Owed an eyeball in playback.

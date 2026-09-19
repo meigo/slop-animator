@@ -1089,6 +1089,56 @@ export function isCrispFrame(cells: Cell[], frame: number, holdsOnly: boolean): 
   return holdsOnly && cells[displayFrame(cells, frame)]?.kind === "key";
 }
 
+/**
+ * How many frames BEFORE `frame` actually render boiled on this layer — crisp keyframes skipped.
+ *
+ * This is what the boil's state index counts, so that `step` (hold each warp for N frames) means N
+ * frames YOU SEE BOILED. Counting raw frames instead let a crisp key eat half of a state's run: with
+ * holds-only on and step 2, `KEY hold hold hold KEY hold hold hold` showed state A for one frame,
+ * B for two, C for one — the hold was "interrupted" by a frame that renders crisp anyway
+ * (2026-09-18 report).
+ *
+ * With holds-only OFF nothing is crisp, so this is just `frame` and the sequence is unchanged.
+ */
+export function boiledFrameOrdinal(
+  cells: Cell[],
+  frame: number,
+  holdsOnly: boolean,
+  /** Content version. Given one, the per-frame counts are cached until it changes — without it the
+   *  count is recomputed, which is what the tests want and what a one-off caller gets. */
+  version?: number,
+): number {
+  if (!holdsOnly) return frame; // nothing is crisp, so every frame counts: the ordinal IS the frame
+  if (version === undefined) return countBoiledBefore(cells, frame);
+  // MEASURED, on a 2000-frame shot with 8 layers and a key every fourth frame: the plain scan cost
+  // 2.85ms per rendered frame across those layers, against 1.63ms for the whole boil render without
+  // it. Boil renders every frame of playback and of an export, so that is exactly the per-frame
+  // waste the 2026-09-18 selection-drag fix was about. One O(frames) pass per version instead.
+  let hit = ordinalCache.get(cells);
+  if (!hit || hit.version !== version) {
+    const prefix = new Int32Array(cells.length + 1);
+    for (let f = 0; f < cells.length; f++) {
+      prefix[f + 1] = prefix[f] + (isCrispFrame(cells, f, true) ? 0 : 1);
+    }
+    hit = { version, prefix };
+    ordinalCache.set(cells, hit);
+  }
+  // Past the end of the track there are no more cells to be crisp, so every further frame boils.
+  return frame < hit.prefix.length
+    ? hit.prefix[frame]
+    : hit.prefix[hit.prefix.length - 1] + (frame - cells.length);
+}
+
+/** Keyed on the cells ARRAY, which a structural edit replaces — but an in-place cell swap keeps
+ *  (gotcha #8), so the version has to be part of the key too. */
+const ordinalCache = new WeakMap<Cell[], { version: number; prefix: Int32Array }>();
+
+function countBoiledBefore(cells: Cell[], frame: number): number {
+  let n = 0;
+  for (let f = 0; f < frame; f++) if (!isCrispFrame(cells, f, true)) n++;
+  return n;
+}
+
 export type FrameOp =
   | { kind: "draw"; layerId: number; keyframeIndex: number; opacity: number }
   | { kind: "ref"; layerId: number; opacity: number };
