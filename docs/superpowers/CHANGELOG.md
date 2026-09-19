@@ -6820,3 +6820,183 @@ i'd like to add frame interval to it to update over n frames"*.
   identical on every frame (one key, then holds), by hashing the rendered pixels per frame:
   step 1 → `0,1,2,0,1,2,0,1,2`; step 2 → `0,0,2,2,4,4,0,0,2`; step 3 → `0,0,0,3,3,3,6,6,6`. Exports
   inherit it for free — same render path. **VERIFIED on iPad in playback 2026-09-18** ("both work").
+
+**Export dialog: pick a format, then set its options (2026-09-19).** Asked for as *"we probably
+should split exports of different types of exports - image, video, gif etc … and have export popup
+with configurable props"* — the dialog was a flat column of five buttons, each exporting immediately
+with no say in how, and adding GIF would have made seven. Worse, every export silently followed
+whatever play In/Out range happened to be set, so a range forgotten an hour earlier quietly shortened
+the file with no warning until after the fact.
+- **Format list**, grouped Image (PNG sequence / PNG frame / PSD frame) and Video (MP4 / WebM), a
+  two-column radio grid so six items fit a 320px panel with no scrolling. `"gif"` exists in the
+  `ExportFormat` union (`src/state/appState.svelte.ts`) for the GIF plan already on file, but has no
+  row and no branch yet — `formatAvailable`/`formatRow` keep it unselectable, and `run()` throws
+  loudly rather than silently falling through to video if it is ever reached.
+  > **SUPERSEDED** — the very next entry, **Animated GIF export (2026-09-19)**, shipped the GIF row
+  > and branch this line describes as missing.
+- **Options, shown only for the formats they apply to:** Size (100% / 50% / 25%, with the resulting
+  pixel dimensions printed beside it so the label can't drift from what's actually rendered — see
+  `exportPixelSize` in `src/export/export-range.ts`), Range (All / In-Out / Custom, with two
+  drag-to-change number fields for Custom), and video-only Quality (Low / Medium / High, mapped to
+  mediabunny's `QUALITY_LOW/MEDIUM/HIGH`).
+- **Defaults reproduce today's behaviour exactly**: scale 1 (100%), `rangeMode: "inout"`, quality
+  `"high"`. An artist who never opens the options sees no change at all — the dialog only removes a
+  silent behaviour, it doesn't introduce a new default one.
+- **Why `inout` stayed the default** rather than switching to `all`: exports have always followed the
+  play In/Out range, and changing the default alongside making it a visible choice would have been
+  two behaviour changes disguised as one feature. The dialog states the shortened frame count
+  whenever `inout` narrows the export (`partial` in `ExportDialog.svelte`) — the other two modes say
+  what they export (All / the typed span), so that note would be redundant there.
+- **PSD is exempt from Size**: it always exports at 100% and hides the Size row entirely rather than
+  showing a control that does nothing, because scaling would resample every layer and defeat the
+  point of exporting layers for paint-up in Photoshop.
+- **Deliberately left out** (per the spec's §Decisions and §7, not oversights): an estimated file
+  size (the only honest number comes from actually encoding the thing); persisting the options across
+  sessions (`exportOptions` lives on `appState`, session-only, never in `Project` or an undo
+  snapshot — adding it to `Preferences` is additive and can come later); and toggles for reference
+  layers or forcing line-boil on/off, which the user explicitly didn't want since both would change
+  what an export MEANS rather than how big or how long it is.
+- **Range resolution** (`resolveExportRange` in `src/export/export-range.ts`) is pure and unit-tested
+  (8 tests): all three modes, a null/inverted play range, a reversed custom pair (typing the end
+  before the start exports that span, not zero frames), clamping past the document end, and a
+  single-frame document.
+- **Verified in the browser (desktop Chrome):** every format's option rows render as designed and PSD
+  correctly shows none of them; a 50% single-frame PNG export was opened with `createImageBitmap` and
+  measured at 640×360 (not just label-checked); a custom range of 3–5 (1-based in the UI) produced a
+  zip with exactly `frame_0001.png`–`frame_0003.png`, renumbered from 1; video quality Low (16 kB) vs
+  High (17 kB) on a near-blank 10-frame clip shows the plumbing runs, though the clip was too simple
+  for the bitrate ceiling to show a real difference (25% scale on the same clip: 3 kB); with every
+  option row visible (MP4 + custom range + quality) the panel is 320×494px with no internal scroll.
+  **NOT verified:** actual MP4 track pixel dimensions at non-100% scale (the PNG scale test already
+  exercises the same `exportPixelSize`/render path), Cancel mid-export, and anything on iPad — an
+  iPad pass is still owed before this is trusted on the platform the app is built for.
+
+**Animated GIF export (2026-09-19).** Asked for as *"have we talked about animated gif export?"* — a
+GIF is what gets pasted into a chat, a forum or a bug report without anyone needing a player, which
+is exactly this app's short, low-framerate, monochrome-ink output. Sits beside the PNG sequence / PSD
+/ MP4 / WebM exports in the format list the 2026-09-19 export-options dialog introduced, as a GIF
+row with a Colours setting (64/128/256) plus the shared Size and Range controls. Spec:
+`docs/superpowers/specs/2026-09-19-gif-export-design.md`, plan:
+`docs/superpowers/plans/2026-09-19-gif-export.md`.
+- **mediabunny cannot write GIF** — a throwaway spike found zero mentions of it in mediabunny's type
+  definitions; its output formats are ADTS/CMAF/FLAC/HLS/ISOBMFF/MKV/MP3/MPEG-TS/OGG/WAV/WebM, none
+  of them GIF. So GIF needed its own encoder: **gifenc** (1.0.3, MIT, mattdesl) — ~2 kB gzipped, zero
+  dependencies, no workers required. Rejected: gif.js (worker-bound, much slower), a wasm gifski
+  (~1 MB download for quality this line-art content doesn't need).
+- **What the spike measured**, on frames shaped like this app's actual output (cream paper,
+  anti-aliased black strokes, 1280×720), encode time excluding rendering: 12 frames (1s at 12fps) —
+  67 ms / 96 kB; 60 frames (5s) — 262 ms / 482 kB; the same 60 frames with a palette written per frame
+  instead of once — 591 ms / 483 kB, i.e. **2.2× the time for the same bytes**, which is why a global
+  palette is the only mode this ships with.
+- **The palette**: one global palette (`src/export/gif.ts`, `PALETTE_COLORS = 64` default, the dialog
+  offers 64/128/256), quantised via `gifenc`'s `quantize` from up to `PALETTE_SAMPLES = 5` frames
+  spaced evenly across the export range (always including the first and last, deduped so a range
+  shorter than 5 frames doesn't render the same frame twice). One frame isn't enough — a colour
+  introduced later in the range (a coloured layer switched on mid-shot) would otherwise be mapped to
+  its nearest neighbour for the whole export; five frames costs one extra render each and covers a
+  typical shot. Format is `rgba4444` when the project is transparent, `rgb444` otherwise — GIF
+  transparency is one bit per pixel, so quantising alpha alongside colour is as close as the format
+  goes (a soft edge lands either fully opaque or fully clear).
+- **The timing problem, and why a flat rounded delay was rejected**: GIF delays are whole hundredths
+  of a second, so 12fps (8.33) and 24fps (4.17) can't be expressed exactly. Rounding every frame
+  identically compounds the error — 60 frames at 12fps would total 4.80s of stated delay instead of
+  5.00s, 4% fast and visibly adrift from whatever reference the artist was matching. `gifFrameDelays`
+  (`src/export/gif-timing.ts`, 6 unit tests) instead derives each frame's delay from the RUNNING
+  TOTAL: frame `i` gets whatever hundredths remain between where the previous frame ended and where
+  frame `i` should end (`Math.round((i * 100) / fps)`), floored at 1 so a 0 delay — which browsers
+  read as "unspecified" and substitute 10 hundredths — never turns a fast GIF into a 10fps one. At
+  12fps this gives 8, 9, 8, 8, 9, … — never more than half a hundredth off the ideal, exact at the
+  end. Where fps divides 100 evenly (25, 20, 10) every delay comes out identical, because the
+  arithmetic says so, not because of a special case.
+- **Two gotchas the spike paid for, both now load-bearing comments in `gif.ts`**: gifenc's `delay` is
+  in MILLISECONDS, not hundredths — it divides by 10 internally, so passing hundredths directly
+  produces a 100fps GIF; and a global palette means passing `palette` only on the FIRST `writeFrame`
+  call and `undefined` on every later one — passing it every time silently writes a local palette per
+  frame instead (same bytes on this kind of art, 2.2× slower, per the spike numbers above).
+- **A review catch, fixed before merge (`4379857`)**: the first version passed `transparentIndex: 0`,
+  assuming the transparent colour sorts first in the quantised palette. Nothing in `gifenc` guarantees
+  that — it only usually happens because `rgba4444` packs alpha in the high bits. The code now FINDS
+  the palette entry whose alpha is actually 0, and if the quantizer merged it away entirely (a busy
+  frame pushed distinct colours past the colour budget, or none of the five sampled frames had a
+  transparent pixel), inserts one deterministically and drops the palette's least-populous entry to
+  stay within the chosen colour count. Same commit also pre-fills the canvas with the project's
+  background colour before rendering each frame (skipped when the export is transparent), mirroring
+  `renderFramePng`'s reasoning: a fractional-pixel sliver from `Math.round(width * dpr * scale)` would
+  otherwise quantise as near-black instead of paper under `rgb444`.
+- **Shape**: `exportGif(project, dpr, range, { signal, onProgress, scale, colors })` mirrors
+  `exportPngSequence` exactly — same abort/progress contract, a `yieldToEventLoop()` after every
+  frame so the bar paints and Cancel is deliverable, and the abort check sits OUTSIDE the per-frame
+  try/catch so a deliberate cancel is never reported as "frame N could not be encoded".
+- **Verified by PARSING the emitted bytes** (not just watching it play): `GIF89a` signature,
+  1280×720, 10 frames, exactly ONE global palette (no frame after the first carries its own colour
+  table), loop count 0 from the NETSCAPE2.0 extension. At the test project's 17fps the delay sequence
+  was `[6,6,6,6,5,6,6,6,6,6]` = 59 hundredths total against 10 frames at 17fps = 58.8 — the
+  running-total algorithm is doing its job (a flat round would have given 60 flat), and no delay was
+  1, so the milliseconds trap was absent. Half size produced 640×360 at 33 kB against 72 kB at full
+  size; raising Colours to 256 made no difference on this line-art test project (72 kB either way, as
+  expected — quantisation error, not the table size, is what's limiting fidelity here). A transparent
+  project set the graphic control extension's transparency flag where the opaque exports leave it
+  clear, and visually — over a checkerboard — showed solid ink on a genuinely transparent background
+  while animating, confirming the transparent-index fix holds in practice, not just in the code.
+- **NOT verified**: anything on iPad, and Cancel mid-GIF-export specifically (Cancel is exercised
+  elsewhere in the export dialog's shared code path, but not for this format in this pass). An iPad
+  pass — encode time, Save to Files, and that the result plays in Photos and pastes into a chat — is
+  still owed before this is trusted on the platform the app is built for.
+
+**GIF palette: any colour count, and a grayscale mode (2026-09-19).** Asked for as *"i'd like to have
+more granular control over gif output colors. especially when exporting grayscale content, color
+palette could be smaller. is there other options, like dithering available?"*
+- **Colours is now a drag-to-change field, 2–256**, replacing the 64/128/256 buttons. The useful
+  values are nowhere near evenly spaced — grey line art is fine on 4, painted work wants 128+ — so a
+  free number beats a few fixed choices, and it is the same field the rest of the app drags.
+- **Palette: Colour | Grayscale.** Grayscale converts each frame to Rec. 601 luminance BEFORE
+  quantising (`grayscaleInPlace`, unit-tested), so the quantiser CHOOSES the greys the drawing
+  actually needs instead of mapping colours onto a fixed ramp. Mapping a colour frame onto a grey
+  palette inside `applyPalette` would have measured RGB distance, which sends a saturated colour to
+  whichever grey sits nearest in the cube rather than the one it looks like.
+- **Measured on this project's ink artwork** (10 frames, 1280×720, reference and gradient layers
+  hidden): 64 colours 74 kB · 16 greys 69 kB · **4 greys 51 kB**, whose palette came out
+  `[1, 38, 139, 238]` — ink, two anti-aliasing tones, paper. The win is in choosing FEW levels;
+  grayscale at 16 is no smaller than colour at 16, and on a colour-heavy frame it was slightly
+  bigger. It is a control, not a free lunch.
+- **Grayscale converts the paper too.** A cream background exports grey. That is the mode working as
+  intended, and the dialog's own label switches from "colours" to "greys" so the choice is visible.
+- **Dithering: NOT added, and gifenc has none** (its README lists it as a TODO and says the library
+  therefore suits flat vector art). A Floyd–Steinberg pass was spiked against `nearestColorIndex` on
+  10 frames at 1280×720 before deciding: on ink it cost ~5× the encode time for a byte-identical
+  file (80 kB either way — flat art has no gradient to dither); on a gradient it cost 5–12× the time
+  AND made the file 6–8× bigger (16 colours: 191 kB → 1622 kB; 64: 408 kB → 2474 kB). Scaled to 60
+  frames that is ~10s on desktop and plausibly 30–50s on iPad, to produce a much larger file. The
+  spike code was thrown away; these numbers are the reason not to revisit it without new evidence.
+- Verified by parsing the emitted palettes (entry counts, and that every entry is grey in Grayscale
+  mode). Owed an iPad pass, like the rest of the GIF work.
+
+**A held drawing costs ONE GIF frame, not three (2026-09-19).** Asked as *"so all the ways to
+maximally compress the gif output is used currently?"* — the honest answer was no, and this was the
+biggest of the three gaps.
+- **What was wrong:** every source frame was quantised and LZW-encoded in full, including the ones a
+  hold repeats unchanged. This app is built on holds, so a shot on threes was paying three times for
+  each drawing.
+- **Fix:** a frame identical to the one before it is not encoded again — its delay is ADDED to the
+  frame already pending. That is exactly what GIF's per-frame delay is for. Because a frame's delay
+  is not final until the next frame has been compared to it, one frame is always held pending and
+  flushed when a different one arrives or after the loop.
+- **Measured in the app, same content, with and without the change** (24 frames, 8 drawings on
+  threes, 1280×720, 17fps): **143 kB / 24 written frames → 48 kB / 8 written frames, a 66% cut**, and
+  the delays still total 141 hundredths either way — the exact ideal for 24 frames at 17fps. A naive
+  version would have written eight short delays and played three times too fast, which is why the
+  total is what the test and the check both pin.
+- Spiked first on synthetic shots: on twos 121 → 61 kB (50%), on threes 116 → 39 kB (66%), on ones
+  no change. Collapsing is FASTER than not collapsing (skipping a quantise-and-encode beats the
+  comparison); where nothing collapses the overhead is ~2%.
+- **Line boil defeats it entirely**, by design: boil displaces every frame, so held frames are not
+  identical and nothing collapses. Worth knowing before wondering why a boiled export is bigger.
+- `framesIdentical` compares a word at a time through a `Uint32Array` view (a quarter of the
+  iterations; exact, since an RGBA frame is a whole number of 32-bit pixels) and is unit-tested,
+  including the last-pixel and alpha-only cases.
+- **Still NOT done, for the record:** inter-frame differencing (encode only the changed region,
+  transparent elsewhere, disposal "do not dispose") — gifenc hardcodes each frame's position to 0,0
+  (`index.js:230-231`), so the usual shrink-to-bounding-box form is unavailable without patching it;
+  full-size frames with unchanged pixels made transparent would still work and still shrink the
+  file, at the cost of a palette slot on opaque exports. And gifenc's `prequantize`, which rounds
+  colours before quantising for longer LZW runs. Both are measurable follow-ups, neither is free.

@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1394 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1417 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -218,8 +218,8 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 Frame-by-frame drawing (smooth/ink/pencil/charcoal/airbrush brushes, separate brush vs eraser
 settings, pressure curve, eyedropper, brush/eraser size cursor), fill, selection/lasso transform,
 layers + visual groups (collapse/visibility/drag-reorder), onion skins, WebGL line-boil, timeline
-(keyframe/hold, scrub — perf-tuned), playback, audio Phase 1, MP4/WebM export (mediabunny),
-reference layers (image/video, transform gizmo, metadata-only persistence + re-link), clipboard
+(keyframe/hold, scrub — perf-tuned), playback, audio Phase 1, MP4/WebM export (mediabunny), animated
+GIF export (gifenc), reference layers (image/video, transform gizmo, metadata-only persistence + re-link), clipboard
 image paste + rasterize-to-drawing-layer, **per-layer free transform**, **per-cell (current-frame)
 transform**, and **per-group transform** (group transform composes above the layer for
 character-rig moves; Reset-only this phase, no Apply). **As of 2026-09-11 the Transform tool has no

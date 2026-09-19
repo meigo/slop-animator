@@ -6,6 +6,8 @@ import {
   CanvasSource,
   AudioBufferSource,
   QUALITY_HIGH,
+  QUALITY_MEDIUM,
+  QUALITY_LOW,
   getFirstEncodableAudioCodec,
 } from "mediabunny";
 import { renderFrame } from "../anim/render";
@@ -37,13 +39,23 @@ export async function exportVideo(
   dpr: number,
   format: VideoFormat,
   range: { start: number; end: number },
-  { signal, onProgress }: ExportProgress = {},
+  {
+    signal,
+    onProgress,
+    scale = 1,
+    quality = "high",
+  }: ExportProgress & { scale?: number; quality?: "low" | "medium" | "high" } = {},
 ): Promise<VideoExportResult> {
   if (!isVideoExportSupported())
     throw new Error("Video export requires WebCodecs (try Chrome/Edge).");
 
   const frameTotal = range.end - range.start + 1;
-  const { w, h } = evenDimensions(project.width * dpr, project.height * dpr);
+  // Rounded UP to even AFTER scaling: H.264 needs even dimensions, and rounding down would crop the
+  // last row/column — the rule `evenDimensions` already records.
+  const { w, h } = evenDimensions(
+    Math.max(1, Math.round(project.width * dpr * scale)),
+    Math.max(1, Math.round(project.height * dpr * scale)),
+  );
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
@@ -51,9 +63,11 @@ export async function exportVideo(
 
   const outputFormat = format === "mp4" ? new Mp4OutputFormat() : new WebMOutputFormat();
   const output = new Output({ format: outputFormat, target: new BufferTarget() });
+  const bitrate =
+    quality === "low" ? QUALITY_LOW : quality === "medium" ? QUALITY_MEDIUM : QUALITY_HIGH;
   const source = new CanvasSource(canvas, {
     codec: format === "mp4" ? "avc" : "vp9",
-    bitrate: QUALITY_HIGH,
+    bitrate,
   });
   output.addVideoTrack(source);
 
@@ -136,6 +150,7 @@ export async function exportVideo(
         drawBg: true,
         includeReference: false,
         boil: project.boil.enabled ? project.boil : undefined,
+        outputScale: scale,
       });
       await source.add((f - range.start) * dt, dt);
     } catch (e) {

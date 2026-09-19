@@ -14,23 +14,36 @@ export async function renderFramePng(
   project: Project,
   frame: number,
   dpr: number,
+  scale = 1,
 ): Promise<Blob> {
   const ctx = canvas.getContext("2d")!;
+  // `exportCanvas` rounds width*dpr*scale with `Math.round` (down for e.g. 1281×0.25, not always
+  // up), but `renderFrame` only paints the exact (unrounded) document rect under its own scale
+  // transform — an odd-sized project can leave up to a half-pixel transparent sliver down the
+  // right/bottom edge of an otherwise opaque PNG. Pre-fill the whole surface with the background
+  // first, exactly as `exportVideo` already does — but ONLY when the project isn't meant to be
+  // transparent, or a transparent export would gain an opaque edge.
+  if (!project.transparentBg) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = project.bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   renderFrame(ctx, project, frame, dpr, {
     drawBg: !project.transparentBg,
     includeReference: false,
     boil: project.boil.enabled ? project.boil : undefined,
+    outputScale: scale,
   });
   return new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
   );
 }
 
-/** A fresh canvas at the project's export size. */
-export function exportCanvas(project: Project, dpr: number): HTMLCanvasElement {
+/** A fresh canvas at the project's export size, scaled by `scale` (1 = document size). */
+export function exportCanvas(project: Project, dpr: number, scale = 1): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.width = project.width * dpr;
-  canvas.height = project.height * dpr;
+  canvas.width = Math.max(1, Math.round(project.width * dpr * scale));
+  canvas.height = Math.max(1, Math.round(project.height * dpr * scale));
   return canvas;
 }
 
@@ -42,9 +55,9 @@ export async function exportPngSequence(
   project: Project,
   dpr: number,
   range: { start: number; end: number },
-  { signal, onProgress }: ExportProgress = {},
+  { signal, onProgress, scale = 1 }: ExportProgress & { scale?: number } = {},
 ): Promise<Blob> {
-  const canvas = exportCanvas(project, dpr);
+  const canvas = exportCanvas(project, dpr, scale);
 
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
   // The play In/Out range, inclusive. Filenames number the OUTPUT sequence from 1, not the source
@@ -59,7 +72,7 @@ export async function exportPngSequence(
     // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
     // frame: a zip silently missing frame 240 reads as a complete export.
     try {
-      const blob = await renderFramePng(canvas, project, f, dpr);
+      const blob = await renderFramePng(canvas, project, f, dpr, scale);
       // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
       // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
       files[frameFileName(f - range.start, total)] = [
