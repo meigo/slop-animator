@@ -19,7 +19,7 @@ import {
   boiledFrameOrdinal,
 } from "./document";
 import { boilBegin, boilLayer, boilBlit, boilStateIndex, boilWeightJitter } from "../core/boil-gl";
-import { contentBoxLogical, groupBoxLogical } from "../lib/cell-ink";
+import { cellPivotBoxDev, groupBoxLogical } from "../lib/cell-ink";
 
 interface RenderOpts {
   /** Paint the project background color first. Default true. */
@@ -221,23 +221,19 @@ export function drawLayerCell(
     return;
   }
   // The pivot box only matters when there is a rotation/scale to pivot ABOUT, so the identity
-  // branch keeps the full doc. Otherwise `contentBoxLogical` answers it — the app's own ladder
+  // branch keeps the full doc. Otherwise `cellPivotBoxDev` answers it — the app's own ladder
   // (frozen box, else live content bounds, else full doc), and the box the gizmo pivots about, so
   // a cell carrying a `transform` with no `transformBox` (which the save format permits) composes
   // where the gizmo would put it instead of throwing part way through a render or an export.
-  const cellBoxDev = isIdentityTransform(cellT)
-    ? { x: 0, y: 0, w: wDev, h: hDev }
-    : scaleRect(
-        contentBoxLogical(
-          cell.canvas,
-          cell.transformBox,
-          project.width,
-          project.height,
-          dpr,
-          version,
-        ),
-        dpr,
-      );
+  const cellBoxDev = cellPivotBoxDev(
+    cell.canvas,
+    cell.transformBox,
+    isIdentityTransform(cellT),
+    project.width,
+    project.height,
+    dpr,
+    version,
+  );
   drawCellComposed(
     ctx,
     cell.canvas,
@@ -306,9 +302,15 @@ export function compositeFrameLayers(
       const { groupT, groupBoxDev } = groupComposeArgs(layer, project, frame, dpr, version);
       const bothId =
         isIdentityTransform(layerT) && isIdentityTransform(cellT) && isIdentityTransform(groupT);
-      const boxDev = isIdentityTransform(cellT)
-        ? { x: 0, y: 0, w, h }
-        : scaleRect(cell.transformBox!, dpr);
+      const boxDev = cellPivotBoxDev(
+        cell.canvas,
+        cell.transformBox,
+        isIdentityTransform(cellT),
+        project.width,
+        project.height,
+        dpr,
+        version,
+      );
       const src = bothId
         ? cell.canvas
         : transformedCell(cell.canvas, layerT, cellT, boxDev, w, h, dpr, groupT, groupBoxDev);

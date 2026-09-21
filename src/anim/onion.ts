@@ -114,10 +114,12 @@ import {
   groupOf,
   groupTransformAt,
   transformAt,
+  opacityAt,
+  groupOpacityAt,
   type Project,
 } from "./document";
 import { compositeFrameLayers, drawCellComposed } from "./render";
-import { groupBoxLogical } from "../lib/cell-ink";
+import { cellPivotBoxDev, groupBoxLogical } from "../lib/cell-ink";
 
 export interface OnionConfig {
   enabled: boolean;
@@ -169,19 +171,24 @@ function drawGhost(
         // its layer transform must resolve at ITS frame or every ghost would collapse onto the
         // playhead's position.
         const layerT = transformAt(layer, ghostFrame);
+        // Same product the all-layers ghost gets from the compositor. Left at 1, a faded layer
+        // or group shows a full-strength ghost in the default single-layer mode.
+        scratch.globalAlpha =
+          (opacityAt(layer, ghostFrame) * groupOpacityAt(g, ghostFrame)) / 10000;
         const layerId = isIdentityTransform(layerT),
           cellId = isIdentityTransform(cellT),
           groupId = isIdentityTransform(groupT);
         if (layerId && cellId && groupId) scratch.drawImage(cell.canvas, 0, 0);
         else {
-          const boxDev = cellId
-            ? { x: 0, y: 0, w, h }
-            : {
-                x: cell.transformBox!.x * dpr,
-                y: cell.transformBox!.y * dpr,
-                w: cell.transformBox!.w * dpr,
-                h: cell.transformBox!.h * dpr,
-              };
+          const boxDev = cellPivotBoxDev(
+            cell.canvas,
+            cell.transformBox,
+            cellId,
+            project.width,
+            project.height,
+            dpr,
+            version,
+          );
           const groupBoxDev = groupId
             ? { x: 0, y: 0, w, h }
             : (() => {
@@ -205,6 +212,9 @@ function drawGhost(
     }
   }
 
+  // The cell draw above may have left a layer-opacity alpha. The tint is a mask, so it has to
+  // be full strength or the ghost is faded twice.
+  scratch.globalAlpha = 1;
   scratch.globalCompositeOperation = "source-in";
   scratch.fillStyle = tint;
   scratch.fillRect(0, 0, w, h);

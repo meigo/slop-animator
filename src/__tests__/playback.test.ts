@@ -22,6 +22,10 @@ describe("advancePlayhead", () => {
   it("respects a non-zero start when wrapping", () => {
     expect(advancePlayhead(7, 2, 7, true)).toEqual({ frame: 2, stop: false });
   });
+  it("jumps to the in-point when the playhead sits before the range", () => {
+    expect(advancePlayhead(0, 3, 7, true)).toEqual({ frame: 3, stop: false });
+    expect(advancePlayhead(0, 3, 7, false)).toEqual({ frame: 3, stop: false });
+  });
 });
 
 function harness(opts: {

@@ -107,7 +107,13 @@ import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 // A state→lib import, which nothing else here does — but the group's base rect lives with the
 // content-bounds caches it is built from, and appState is browser-only by construction anyway
 // (it touches window/audio at module load, so it is not node-importable either way).
-import { groupBoxLogical, invalidateInk, contentBounds, contentBoxLogical } from "../lib/cell-ink";
+import {
+  groupBoxLogical,
+  invalidateInk,
+  contentBounds,
+  contentBoxLogical,
+  cellPivotBoxDev,
+} from "../lib/cell-ink";
 import {
   mirrorTransform,
   mirrorTransformTrack,
@@ -654,8 +660,7 @@ function restoreStructure(s: StructSnapshot) {
   // reading offsetFrames 0 forever (gotcha #11).
   if (audioChanged) audioEngine.setTrack(state.project.audio);
   // Mute is not just a flag, it gates the OUTPUT — mirror toggleAudioMute here or an undo restores
-  // the icon while the sound carries on. `syncTo` cannot help: it only acts when a source already
-  // exists, so an un-mute has to explicitly restart playback.
+  // the icon while the sound carries on. Unmute restarts the buffer explicitly; stop() dropped it.
   const nowMuted = state.project.audio?.muted ?? null;
   if (nowMuted !== wasMuted) {
     if (nowMuted) audioEngine.stop();
@@ -904,14 +909,15 @@ function bakeCell(
   const canvas = createCellCanvas(W, H, DPR);
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const boxDev = isIdentityTransform(cellT)
-    ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
-    : {
-        x: cell.transformBox!.x * DPR,
-        y: cell.transformBox!.y * DPR,
-        w: cell.transformBox!.w * DPR,
-        h: cell.transformBox!.h * DPR,
-      };
+  const boxDev = cellPivotBoxDev(
+    cell.canvas,
+    cell.transformBox,
+    isIdentityTransform(cellT),
+    W,
+    H,
+    DPR,
+    state.version,
+  );
   drawCellComposed(ctx, cell.canvas, W * DPR, H * DPR, layerT, cellT, boxDev, DPR);
   return { kind: "key", canvas };
 }

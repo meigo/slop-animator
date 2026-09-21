@@ -1,7 +1,25 @@
 import { describe, it, expect } from "vitest";
-import { gifFrameDelays } from "../export/gif-timing";
+import { appendGifDelay, gifFrameDelays, GIF_MAX_DELAY_CS } from "../export/gif-timing";
 
 const total = (d: number[]) => d.reduce((a, b) => a + b, 0);
+
+describe("appendGifDelay", () => {
+  it("keeps a short run as one pending delay", () => {
+    expect(appendGifDelay(8, 9)).toEqual({ write: [], pending: 17 });
+  });
+  it("splits a run that would overflow the 16-bit centisecond field", () => {
+    expect(appendGifDelay(GIF_MAX_DELAY_CS - 5, 10)).toEqual({
+      write: [GIF_MAX_DELAY_CS],
+      pending: 5,
+    });
+  });
+  it("emits several max-length frames for a very long hold", () => {
+    expect(appendGifDelay(0, GIF_MAX_DELAY_CS * 2 + 3)).toEqual({
+      write: [GIF_MAX_DELAY_CS, GIF_MAX_DELAY_CS],
+      pending: 3,
+    });
+  });
+});
 
 describe("gifFrameDelays", () => {
   it("is exact when the fps divides 100 evenly", () => {

@@ -211,6 +211,23 @@ export function contentBoxLogical(
   return { x: b.x / dpr, y: b.y / dpr, w: b.w / dpr, h: b.h / dpr };
 }
 
+/** Device-pixel pivot for a cell transform. Identity keeps the full document. Otherwise the same
+ *  ladder as `contentBoxLogical`: a saved cell may carry a transform and no `transformBox`, and
+ *  every compose site (2D, boil, onion, bake, selection crop) has to agree on that fallback. */
+export function cellPivotBoxDev(
+  canvas: HTMLCanvasElement,
+  frozen: { x: number; y: number; w: number; h: number } | null | undefined,
+  cellIsIdentity: boolean,
+  docW: number,
+  docH: number,
+  dpr: number,
+  version: number,
+): { x: number; y: number; w: number; h: number } {
+  if (cellIsIdentity) return { x: 0, y: 0, w: docW * dpr, h: docH * dpr };
+  const b = contentBoxLogical(canvas, frozen, docW, docH, dpr, version);
+  return { x: b.x * dpr, y: b.y * dpr, w: b.w * dpr, h: b.h * dpr };
+}
+
 /** Logical bbox of a group's drawable content at `frame`: union of resolved key cells'
  *  contentBounds (device px → logical). Refs excluded. Empty → full-doc rect. */
 export function groupContentBoxLogical(

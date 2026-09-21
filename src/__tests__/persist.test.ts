@@ -334,6 +334,41 @@ describe("group transform persistence", () => {
     const json = JSON.parse(strFromU8(zip["project.json"]));
     expect(json.groups[0].transform).toBeUndefined();
   });
+
+  it("keeps a frozen pivot when the group transform is identity", async () => {
+    const project = createProject();
+    const box = { x: 5, y: 6, w: 30, h: 20 };
+    project.groups = [
+      {
+        id: 1,
+        name: "I",
+        collapsed: false,
+        visible: true,
+        transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+        transformBox: box,
+      },
+    ];
+    project.layers[0].groupId = 1;
+    const blob = await saveProjectBlob(project);
+    const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const json = JSON.parse(strFromU8(zip["project.json"]));
+    expect(json.groups[0].transform).toBeUndefined();
+    expect(json.groups[0].transformBox).toEqual(box);
+    const loaded = await loadProjectBlob(blob, 1);
+    expect(loaded.groups[0].transformBox).toEqual(box);
+  });
+
+  it("writes a key cell's frozen pivot when its transform is identity", () => {
+    const project = createProject();
+    const box = { x: 1, y: 2, w: 3, h: 4 };
+    (project.layers[0] as DrawingLayer).cells[0] = {
+      kind: "key",
+      canvas: {} as HTMLCanvasElement,
+      transformBox: box,
+    };
+    const json = projectToJson(project);
+    expect(json.layers[0].cellTransforms?.[0]).toEqual({ transformBox: box });
+  });
 });
 
 describe("saveProjectBlob compression", () => {

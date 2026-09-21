@@ -101,6 +101,8 @@
   } from "../anim/timeline-layout";
   import { clampGutterLabelWidth } from "../anim/panel-layout";
   import { audioFrameSpan } from "../audio/peaks";
+  import { audioEngine } from "../audio/engine";
+  import { leadingHoldPreviewGlyph } from "../anim/timeline-block";
   import { edgeScrollDelta } from "../anim/edge-scroll";
   import { pixelCommand } from "../anim/history";
   import {
@@ -988,18 +990,34 @@
     appState.statusHint = "";
     const end = appState.project.frameCount;
     if (!dirty) return; // grab-and-release: nothing was written, so nothing to revert or commit
+    const livePlayhead = appState.playhead;
+    const playing = appState.playback.isPlaying;
     revertStructural(undo); // the document is now exactly as it was at grab
-    if (end === startLen) return; // out-and-back: a true no-op, cells intact, no undo entry
+    const restorePlayhead = () => {
+      const last = Math.max(0, appState.project.frameCount - 1);
+      const clamped = Math.max(0, Math.min(livePlayhead, last));
+      if (clamped !== appState.playhead) {
+        appState.playhead = clamped;
+        if (playing) audioEngine.syncTo(clamped, appState.project.fps);
+      }
+    };
+    if (end === startLen) {
+      restorePlayhead();
+      return; // out-and-back: a true no-op, cells intact, no undo entry
+    }
     // Counted against the restored (== grab-time) document, so it is the real cost of `end`.
     const dropped = countKeyframesPastLengthIn(appState.project.layers, end);
     if (
       end < startLen &&
       dropped > 0 &&
       !confirm(`Shorten to ${end} frames? This removes ${dropped} keyframe(s).`)
-    )
+    ) {
+      restorePlayhead();
       return; // declined — already reverted, nothing to undo
+    }
     applyAnimationLength(end);
     commitStructuralEdit(undo); // `undo` is still the correct before-state: we restored it
+    restorePlayhead();
   }
 
   function lenGripUp(e: PointerEvent) {
@@ -1274,10 +1292,41 @@
   // clears. Locked/hidden rows do not write, so they keep their real glyphs.
   function displayGlyph(layerId: number, glyphs: string[], f: number): string {
     if (!rowMovesWithBlock(layerId) || !selRect) return glyphs[f];
-    if (f >= selRect.startFrame + moveDelta && f <= selRect.endFrame + moveDelta)
-      return glyphs[f - moveDelta] ?? ""; // key sliding into the target
+    if (f >= selRect.startFrame + moveDelta && f <= selRect.endFrame + moveDelta) {
+      const slid = glyphs[f - moveDelta] ?? "";
+      // A leading hold that lands on a different key becomes a key on drop. The slid "—" would
+      // keep showing the destination's old drawing until pointerup.
+      if (f === selRect.startFrame + moveDelta) {
+        const layer = appState.project.layers.find((l) => l.id === layerId);
+        if (layer && layer.kind === "draw") {
+          const glyph = leadingHoldPreviewGlyph(
+            layer,
+            selRect.startFrame,
+            selRect.endFrame,
+            moveDelta,
+            glyphs[selRect.startFrame] === "—",
+          );
+          if (glyph) return glyph;
+        }
+      }
+      return slid;
+    }
     if (f >= selRect.startFrame && f <= selRect.endFrame) return ""; // vacated source
     return glyphs[f];
+  }
+
+  /** `revertStructural` puts the playhead back to the grab. Playback keeps moving it while the
+   *  handle is down, so an abandon-preview has to put that live frame back (and resync audio). */
+  function revertKeepingPlayhead(undo: StructSnapshot) {
+    const frame = appState.playhead;
+    const playing = appState.playback.isPlaying;
+    revertStructural(undo);
+    const last = Math.max(0, appState.project.frameCount - 1);
+    const clamped = Math.max(0, Math.min(frame, last));
+    if (clamped !== appState.playhead) {
+      appState.playhead = clamped;
+      if (playing) audioEngine.syncTo(clamped, appState.project.fps);
+    }
   }
 
   /** Which drawing-layer row the pointer is physically over (pointer capture routes all moves to the
@@ -1701,7 +1750,7 @@
   function settleLoopDrag() {
     if (!loopDrag) return;
     if (loopDrag.back !== loopDrag.startBack) commitStructuralEdit(loopDrag.undo);
-    else revertStructural(loopDrag.undo);
+    else revertKeepingPlayhead(loopDrag.undo);
     loopDrag = null;
     if (transformDragGuard.settle === settleLoopDrag) transformDragGuard.settle = null;
   }
@@ -1734,6 +1783,9 @@
     cancelLongPress();
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
+      // A resize or move grabbed since the press owns the gesture. Firing anyway turned a resting
+      // Pencil on a span edge into a marquee and dropped the resize undo.
+      if (dragMode !== "none") return;
       dragMode = "marquee";
       setTimelineSelection({ layerId: layer.id, frame }, { layerId: layer.id, frame });
       armRowEdgeScroll(layer);
@@ -1757,6 +1809,7 @@
       dragUndo = beginStructuralEdit();
       transformDragGuard.settle = settleRowDrag;
       armRowEdgeScroll(layer);
+      cancelLongPress();
       return;
     }
 
@@ -1877,7 +1930,7 @@
       // Same reasoning as rowUp's resize branch: a net-zero resize can still have destroyed a
       // transform key by collision, so restore rather than drop.
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
-      else revertStructural(dragUndo);
+      else revertKeepingPlayhead(dragUndo);
     }
     resetRowDrag();
   }
@@ -1905,6 +1958,18 @@
     armedOnKey = false;
     pressFrame = -1;
     touchPanUp();
+  }
+
+  /** Palm rejection and other OS cancels. A move-block is only a preview, so cancel drops it.
+   *  A resize has already written, so it settles the same way a pointerup does. */
+  function rowCancel(e: PointerEvent) {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    touchPanUp();
+    settleRowDrag();
   }
 
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
@@ -1936,7 +2001,7 @@
       // pushed for ⌘Z to pop. So abandon by RESTORING the grab-time snapshot, never by re-applying
       // or by walking away — the same rule the ruler's length drag had to learn.
       if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
-      else revertStructural(dragUndo);
+      else revertKeepingPlayhead(dragUndo);
     } else if (dragMode === "none" && armedOutside) {
       if (armedOnKey) {
         // tap on a key outside the selection → select it (1×1) + seek to its frame
@@ -3340,7 +3405,7 @@
                 onpointerdown={(e) => rowDown(e, layer)}
                 onpointermove={(e) => rowMove(e, layer)}
                 onpointerup={(e) => rowUp(e, layer)}
-                onpointercancel={(e) => rowUp(e, layer)}
+                onpointercancel={(e) => rowCancel(e)}
                 onpointerleave={rowLeave}
               >
                 <!-- Spans first, then the selection wash OVER them. Selection used to be a solid

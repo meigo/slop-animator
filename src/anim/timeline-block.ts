@@ -158,6 +158,33 @@ export function pasteBlockInsert(
   }
 }
 
+/** Glyph a block-move preview should show for the destination's leading frame when that cell is a
+ *  hold `moveBlockFrames` will turn into a key on drop. Null means the slid glyph is already right.
+ *  Simulates the vacate-then-write on a copied track so the preview matches the drop. */
+export function leadingHoldPreviewGlyph(
+  layer: DrawingLayer,
+  startFrame: number,
+  endFrame: number,
+  delta: number,
+  inked: boolean,
+): "◆" | "◇" | null {
+  const applied = Math.max(delta, -startFrame);
+  if (applied === 0) return null;
+  const lead = layer.cells[startFrame];
+  if (lead?.kind === "key" || lead?.kind === "loop") return null;
+  const shown = resolvedDisplayKeyCell(layer, startFrame)?.cell ?? null;
+  const sim: DrawingLayer = { ...layer, cells: layer.cells.slice() };
+  for (let f = startFrame; f <= endFrame && f < sim.cells.length; f++)
+    sim.cells[f] = { kind: "hold" };
+  const dest = startFrame + applied;
+  while (sim.cells.length < dest) sim.cells.push({ kind: "hold" });
+  if (dest >= sim.cells.length) sim.cells.push({ kind: "hold" });
+  else sim.cells[dest] = { kind: "hold" };
+  const after = resolvedDisplayKeyCell(sim, dest)?.cell ?? null;
+  if (after === shown) return null;
+  return inked ? "◆" : "◇";
+}
+
 /** Replace every cell in the block region with a hold (Delete). Track length is unchanged
  *  (so ≥1 cell per layer is preserved). Skips missing/reference layers. */
 export function deleteBlock(

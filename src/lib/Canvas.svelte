@@ -26,7 +26,7 @@
     activeStroke,
     bump,
     repaint,
-    activePressureCurve,
+    pressureCurves,
     toggleEraser,
     applyEyedropper,
     beginStructuralEdit,
@@ -85,7 +85,13 @@
     type DrawingLayer,
     type TransformTrack,
   } from "../anim/document";
-  import { contentBoxLogical, groupBoxLogical, contentBounds, markInkChanged } from "./cell-ink";
+  import {
+    contentBoxLogical,
+    groupBoxLogical,
+    contentBounds,
+    markInkChanged,
+    cellPivotBoxDev,
+  } from "./cell-ink";
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
@@ -733,7 +739,7 @@
 
   // Render the current stroke onto the cell ctx then recomposite. Smooth/calligraphy/ink =
   // full redraw from the pre-stroke snapshot; stamp = incremental. All clip to the selection.
-  function paintStroke(pts: InputPoint[], done: boolean) {
+  function paintStroke(pts: InputPoint[], done: boolean, asEraser = appState.tool === "eraser") {
     if (!strokeCtx) return;
     let inPts = pts;
     const steps = strokeSteps;
@@ -743,10 +749,12 @@
         return { ...p, x: q.x, y: q.y };
       });
     }
-    const curve = activePressureCurve();
+    // The tool can change under an open Pencil stroke (a finger on the toolbar, a double-tap).
+    // Commit must redraw with the tool that STARTED the stroke, or the ink is erased or dropped.
+    const curve = asEraser ? pressureCurves.eraser : pressureCurves.brush;
     const curved = inPts.map((p) => ({ ...p, pressure: curve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
-    const stroke = activeStroke();
+    const stroke = asEraser ? appState.eraser : appState.brush;
     const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
     // SPREAD, never field by field. This was a hand-written list of every BrushSettings key, and
     // when `dwellPool` was added it was not added here — so the ink pooling feature shipped, was
@@ -758,7 +766,7 @@
     // engines' ladder is eraser > alphaLock > drawBehind, so the eraser is untouched by it.
     const settings = {
       ...stroke,
-      isEraser: appState.tool === "eraser",
+      isEraser: asEraser,
       alphaLock: strokeLayer?.alphaLock === true,
     };
     const kind = stroke.brushType; // local so TS narrows it across the branches
@@ -1106,7 +1114,7 @@
     }
   }
 
-  function commitOpenStroke(pts: InputPoint[]) {
+  function commitOpenStroke(pts: InputPoint[], asEraser = appState.tool === "eraser") {
     if (!strokeCanvas || !strokeCtx || !beforeSnapshot) {
       strokeCanvas = null;
       strokeCtx = null;
@@ -1120,7 +1128,7 @@
       cancelAnimationFrame(drawRaf);
       drawRaf = 0;
     }
-    paintStroke(pts, true);
+    paintStroke(pts, true, asEraser);
     const after = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
     const target = strokeCtx;
     const before = beforeSnapshot;
@@ -1244,7 +1252,9 @@
           poseDrag = activeHandle;
         }
         repaintPoseOverlay();
-      } else if (!done) {
+      } else {
+        // Move and release share this. The pointerup sample is not a move event; skipping it left
+        // the handle where the last move landed, short of the Pencil.
         if (poseAdjusting && activeHandle !== null) {
           // Coupled: direction sets rotation, distance sets reach (snap to unlimited past the extent).
           const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
@@ -1258,9 +1268,10 @@
           poseDirty = true;
           repaintPoseOverlay();
         }
-      } else {
-        poseDrag = null;
-        poseAdjusting = false;
+        if (done) {
+          poseDrag = null;
+          poseAdjusting = false;
+        }
       }
       return;
     }
@@ -1282,7 +1293,11 @@
           deformDirty = true;
         }
       } else {
-        if (selectionMode === "drag") selection.endDrag();
+        if (selectionMode === "drag") {
+          selection.updateDrag(p.x, p.y);
+          deformDirty = true;
+          selection.endDrag();
+        }
         selectionMode = null;
         recomposite(); // settle, direct: one per gesture, and it must land even if rAF is starved
       }
@@ -1318,6 +1333,8 @@
         if (selectionMode === "create") selection.updateCreate(p.x, p.y);
         else if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
       } else {
+        if (selectionMode === "create") selection.updateCreate(p.x, p.y);
+        else if (selectionMode === "drag") selection.updateDrag(p.x, p.y);
         if (selectionMode === "create") selection.endCreate();
         selection.endDrag();
         selectionMode = null;
@@ -1501,14 +1518,15 @@
     tmp.width = W * DPR;
     tmp.height = H * DPR;
     const tctx = tmp.getContext("2d")!;
-    const boxDev = isIdentityTransform(cellT)
-      ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
-      : {
-          x: rk.cell.transformBox!.x * DPR,
-          y: rk.cell.transformBox!.y * DPR,
-          w: rk.cell.transformBox!.w * DPR,
-          h: rk.cell.transformBox!.h * DPR,
-        };
+    const boxDev = cellPivotBoxDev(
+      rk.cell.canvas,
+      rk.cell.transformBox,
+      isIdentityTransform(cellT),
+      W,
+      H,
+      DPR,
+      appState.version,
+    );
     const groupBoxDev = isIdentityTransform(groupT)
       ? { x: 0, y: 0, w: W * DPR, h: H * DPR }
       : (() => {
@@ -2040,7 +2058,12 @@
     });
 
     const cleanup = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
-      streamline: () => activeStroke().streamline / 100,
+      // Streamline is a brush preference. On select, pose, deform, and transform it made handles
+      // trail the Pencil and stop short of the lift.
+      streamline: () =>
+        appState.tool === "brush" || appState.tool === "eraser"
+          ? activeStroke().streamline / 100
+          : 0,
     });
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
@@ -2192,6 +2215,10 @@
     // flips (the reads below), and committing then would bake+clear a lift the user just started
     // from the on-canvas bar (Select → Free transform).
     const toolChanged = t !== prevTool;
+    if (toolChanged && strokeCanvas) {
+      commitOpenStroke(lastPoints, prevTool === "eraser");
+      dropStrokeUntilUp = true;
+    }
     if (toolChanged) {
       // An untouched lift cancels rather than bakes — see `deformDirty`/`poseDirty`.
       if (prevTool === "pose" && t !== "pose" && meshPose) {

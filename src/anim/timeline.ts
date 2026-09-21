@@ -17,7 +17,7 @@ import {
   type TransformKey,
   type TransformTrack,
 } from "./document";
-import { videoClipLayout, offsetAfterClipDrag } from "./clip-layout";
+
 import { shiftMarkers } from "./markers";
 
 /** The per-property value copiers the shifter needs. `document.ts` keeps its own copies private, and
@@ -359,12 +359,14 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
     if (layer.kind !== "ref") continue;
     if (layer.range) layer.range = shiftSpan(layer.range, at, delta); // replace, never mutate in place
     if (layer.media.type === "video") {
-      const dur = layer.media.el.duration;
-      if (!Number.isFinite(dur) || dur <= 0) continue;
-      const { startFrame } = videoClipLayout(layer.offsetFrames, layer.speed, dur, project.fps);
+      // Start frame is `-offset / speed`, rounded. Duration is only the span, which this shift
+      // does not use — waiting on `loadedmetadata` left the clip behind every other ripple.
+      // Add the delta to the stored offset. Rebuilding from the rounded start snaps a speed that
+      // does not divide the offset (placed at 1×, then set to 1.5×) and the slip sticks.
+      const speed = layer.speed > 0 ? layer.speed : 1;
+      const startFrame = Math.round(-layer.offsetFrames / speed);
       const next = shiftStartFrame(startFrame, at, delta);
-      if (next !== startFrame)
-        layer.offsetFrames = offsetAfterClipDrag(startFrame, next - startFrame, layer.speed);
+      if (next !== startFrame) layer.offsetFrames -= (next - startFrame) * speed;
     }
   }
   // GROUP tracks shift HERE and nowhere else, and that asymmetry with `shiftLayerTrackKeys` is
@@ -402,6 +404,13 @@ function rippleDocumentFrames(project: Project, at: number, delta: 1 | -1): void
     const next = shiftStartFrame(project.audio.offsetFrames, at, delta);
     if (next !== project.audio.offsetFrames) project.audio.offsetFrames = next;
   }
+  // The undecoded copy is the same clock when this device could not decode the bytes. Replace the
+  // object: the undo snapshot holds it by reference and has no separate offset scalar.
+  if (project.audioUndecoded) {
+    const next = shiftStartFrame(project.audioUndecoded.offsetFrames, at, delta);
+    if (next !== project.audioUndecoded.offsetFrames)
+      project.audioUndecoded = { ...project.audioUndecoded, offsetFrames: next };
+  }
   // Markers are document-frame space like the audio clip: they point at a moment, so they move
   // with the frames around them. `shiftMarkers` returns a NEW array (undo holds the old one by
   // reference) and joins the two labels a delete lands on one frame.
@@ -427,12 +436,25 @@ export function insertFrameAllLayers(project: Project, at: number): void {
 /** Remove index `at` from every drawing layer that has it, ripple document-space clips, keeping ≥1
  *  cell each. */
 export function deleteFrameAllLayers(project: Project, at: number): void {
+  const previousCount = project.frameCount;
+  let removed = false;
   for (const layer of project.layers) {
     if (layer.kind !== "draw") continue;
     if (layer.cells.length <= 1) continue;
     if (at < 0 || at >= layer.cells.length) continue;
     layer.cells.splice(at, 1);
     rippleLoopBacks(layer.cells, at, -1);
+    removed = true;
+  }
+  // `shiftMarkers` leaves a marker ON the deleted index. On the last frame that index becomes
+  // the new length, the strip hides it, and lengthening later shows the label on a hold that
+  // was never marked. Drop it before the ripple. Markers already past the end are left for
+  // `shiftMarkers` — a load keeps those on purpose, and only the Length control truncates them.
+  // A delete that removes no cell (the only frame) must not take the marker with it.
+  if (removed && project.markers && at === previousCount - 1) {
+    const kept = project.markers.filter((m) => m.frame !== at);
+    if (kept.length !== project.markers.length)
+      project.markers = kept.length > 0 ? kept : undefined;
   }
   rippleDocumentFrames(project, at, -1);
   refreshLength(project);

@@ -34,7 +34,10 @@ const INTERPOLATION_THRESHOLD = 4;
  * Same selector `touch-gestures.ts` already uses for finger pans.
  */
 export function isStageChromeTarget(target: EventTarget | null): boolean {
-  return !!(target as Element | null)?.closest?.(".selection-actions-panel");
+  const el = target as Element | null;
+  // Handles too: their Svelte `onpointerdown` runs at the document, after this bubble listener,
+  // so a pen press on a gizmo handle otherwise also starts an on-canvas transform drag.
+  return !!el?.closest?.(".selection-actions-panel") || !!el?.closest?.("[data-ref-handle]");
 }
 
 export function setupInput(
@@ -44,6 +47,7 @@ export function setupInput(
   options?: Omit<InputOptions, "onStroke" | "transformCoords">,
 ) {
   let isDrawing = false;
+  let drawPointer = -1;
   let currentPoints: InputPoint[] = [];
 
   // Streamline: interpolate toward raw input with factor t.
@@ -94,9 +98,12 @@ export function setupInput(
   function onPointerDown(e: PointerEvent) {
     if (e.button !== 0 || !shouldDraw(e)) return;
     if (isStageChromeTarget(e.target)) return;
+    // A second pen or mouse contact must not restart the stroke the first one owns.
+    if (isDrawing) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     isDrawing = true;
+    drawPointer = e.pointerId;
     const first = getPoint(e);
     lastStreamlined = first;
     currentPoints = [first];
@@ -112,7 +119,9 @@ export function setupInput(
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (!isDrawing) return;
+    // Finger contacts share this element with the Pencil. Only the pointer that started the
+    // stroke may extend it — a resting finger otherwise spikes the stroke and ends it.
+    if (!isDrawing || e.pointerId !== drawPointer) return;
     e.preventDefault();
 
     // Track pen movement for tap detection
@@ -172,9 +181,10 @@ export function setupInput(
   }
 
   function onPointerUp(e: PointerEvent) {
-    if (!isDrawing) return;
+    if (!isDrawing || e.pointerId !== drawPointer) return;
     e.preventDefault();
     isDrawing = false;
+    drawPointer = -1;
     lastStreamlined = null;
     currentPoints.push(getPoint(e));
     onStroke(currentPoints, true);

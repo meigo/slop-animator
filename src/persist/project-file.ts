@@ -226,7 +226,11 @@ export function projectToJson(project: Project): ProjectJson {
           : {}),
         tracks: g.tracks,
         tracksCollapsed: g.tracksCollapsed,
-        ...(isId ? {} : { transform: t, transformBox: g.transformBox ?? null }),
+        // The pivot is independent of the transform. Stop-animating an identity pose copies the
+        // track's frozen box here; omitting it on the next save makes the next drag pivot on the
+        // live content union instead.
+        ...(isId ? {} : { transform: t }),
+        ...(g.transformBox ? { transformBox: g.transformBox } : {}),
       };
     }),
     layers: project.layers.filter(isDrawingLayer).map((l) => ({
@@ -243,11 +247,21 @@ export function projectToJson(project: Project): ProjectJson {
       tracks: l.tracks,
       tracksCollapsed: l.tracksCollapsed,
       cellTransforms: Object.fromEntries(
-        l.cells.flatMap((c, i) =>
-          c.kind === "key" && c.transform && !isIdentityTransform(c.transform)
-            ? [[i, { transform: c.transform, transformBox: c.transformBox ?? null }]]
-            : [],
-        ),
+        l.cells.flatMap((c, i) => {
+          if (c.kind !== "key") return [];
+          const hasT = !!c.transform && !isIdentityTransform(c.transform);
+          const hasBox = c.transformBox != null;
+          if (!hasT && !hasBox) return [];
+          return [
+            [
+              i,
+              {
+                ...(hasT ? { transform: c.transform } : {}),
+                transformBox: c.transformBox ?? null,
+              },
+            ],
+          ];
+        }),
       ),
       ...(l.cells.some((c) => c.kind === "loop")
         ? {

@@ -126,6 +126,47 @@ describe("renderFrameWithOnion", () => {
     expect(draws.length).toBe(3);
     expect(draws[2]).toBe(`draw:${(curC as unknown as { __id: number }).__id}@1`);
   });
+
+  it("fades a single-layer ghost by the layer and group opacity at the ghost frame", () => {
+    const prevC = kc();
+    const curC = kc();
+    const nextC = kc();
+    const layer = dlayer(1, [
+      { kind: "key", canvas: prevC },
+      { kind: "key", canvas: curC },
+      { kind: "key", canvas: nextC },
+    ]);
+    layer.opacity = 40;
+    layer.groupId = 7;
+    const p: Project = {
+      name: "t",
+      width: 100,
+      height: 100,
+      fps: 12,
+      bgColor: "#eee",
+      frameCount: 3,
+      boil: defaultBoilConfig(),
+      groups: [{ id: 7, name: "G", collapsed: false, visible: true, opacity: 50 }],
+      layers: [layer],
+      audio: null,
+    };
+    const scratch = recCtx();
+    renderFrameWithOnion(
+      recCtx() as unknown as CanvasRenderingContext2D,
+      scratch as unknown as CanvasRenderingContext2D,
+      p,
+      1,
+      1,
+      onion,
+      1,
+    );
+    // 40 × 50 / 10000 = 0.2, on both ghosts. The current frame is drawn on the display, not scratch.
+    const id = (c: HTMLCanvasElement) => (c as unknown as { __id: number }).__id;
+    expect(scratch.calls.filter((c) => c.startsWith("draw:"))).toEqual([
+      `draw:${id(prevC)}@0.2`,
+      `draw:${id(nextC)}@0.2`,
+    ]);
+  });
 });
 
 describe("computeOnionFrames — keyframe mode", () => {

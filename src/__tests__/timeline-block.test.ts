@@ -10,6 +10,7 @@ import {
   pasteBlockInsert,
   deleteBlock,
   moveBlockFrames,
+  leadingHoldPreviewGlyph,
   anyEditableLayer,
   anyEditablePasteTarget,
 } from "../anim/timeline-block";
@@ -359,6 +360,14 @@ describe("moveBlockFrames", () => {
     expect(l.cells[1]).toEqual({ kind: "hold" });
     expect(l.cells[2]).toEqual({ kind: "hold" });
     expect(l.cells[3]).toEqual({ kind: "hold" });
+  });
+
+  it("previews a crossing leading hold as a key and a same-span hold as a hold", () => {
+    const l = drawLayer(1, [key(), hold(), hold(), key(), hold(), hold()]);
+    expect(leadingHoldPreviewGlyph(l, 1, 1, 3, true)).toBe("◆");
+    expect(leadingHoldPreviewGlyph(l, 1, 1, 1, true)).toBeNull();
+    expect(leadingHoldPreviewGlyph(l, 0, 0, 2, true)).toBeNull();
+    expect(l.cells[4].kind).toBe("hold"); // preview does not write
   });
 
   it("materializes a leading hold that crosses a key — the dragged content follows", () => {

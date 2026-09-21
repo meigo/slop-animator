@@ -11,15 +11,23 @@ class AudioEngine {
   private track: AudioTrack | null = null;
   private source: AudioBufferSourceNode | null = null; // playback (frames-master)
   private scrubSource: AudioBufferSourceNode | null = null; // short scrub window (paused only)
+  /** True from play() until pause() or setTrack(). Distinct from `source`: seeking past the clip
+   *  stops the buffer, and syncTo still has to be able to start it again. */
+  private running = false;
 
   setTrack(track: AudioTrack | null): void {
     this.track = track;
+    this.running = false;
     this.stop();
   }
 
   /** Start audio aligned to animation `frame`. */
   play(frame: number, fps: number): void {
-    if (!this.track || this.track.muted) return;
+    this.running = true;
+    if (!this.track || this.track.muted) {
+      this.stop();
+      return;
+    }
     const { inS, lenS } = audioTrimSpan(
       this.track.trimInFrames,
       this.track.trimLenFrames,
@@ -44,9 +52,10 @@ class AudioEngine {
     this.source = src;
   }
 
-  /** Re-align to `frame` only if currently playing (used on loop wrap / range snap). */
+  /** Re-align to `frame` only if playback is running (used on loop wrap / range snap / seek).
+   *  A silence plan clears `source` without leaving playback, so the flag — not the node — decides. */
   syncTo(frame: number, fps: number): void {
-    if (this.source) this.play(frame, fps);
+    if (this.running) this.play(frame, fps);
   }
 
   /** ~100 ms audible window at `frame` while paused. Each call replaces the previous window, so
@@ -95,6 +104,7 @@ class AudioEngine {
   }
 
   pause(): void {
+    this.running = false;
     this.stop();
   }
 

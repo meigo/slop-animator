@@ -6,6 +6,9 @@ export function advancePlayhead(
   end: number,
   loop: boolean,
 ): { frame: number; stop: boolean } {
+  // A seek or an in-handle dragged past the playhead can leave `current` before the range.
+  // Play snaps once at start; later ticks have to do it again or the excluded frames play.
+  if (current < start) return { frame: start, stop: false };
   if (current < end) return { frame: current + 1, stop: false };
   if (loop) return { frame: start, stop: false };
   return { frame: current, stop: true };

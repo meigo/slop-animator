@@ -565,7 +565,9 @@ export class Selection {
     const sides = this.transformedSides(corners);
     const rotateHandle = this.rotateHandlePos(corners);
 
-    const rotR = tol + 2;
+    // `+ 2` is screen px, same as the handle offset below. A document-px pad swallowed the side
+    // handle once the view was zoomed out far enough to fit an HD canvas.
+    const rotR = tol + 2 * this.px;
     if ((x - rotateHandle.x) ** 2 + (y - rotateHandle.y) ** 2 < rotR * rotR) return "rotate";
 
     const cornerHandles: { handle: Handle; p: { x: number; y: number } }[] = [
@@ -847,7 +849,9 @@ export class Selection {
       edge === "top"
         ? { x: (c.tl.x + c.tr.x) / 2, y: (c.tl.y + c.tr.y) / 2 }
         : { x: (c.bl.x + c.br.x) / 2, y: (c.bl.y + c.br.y) / 2 };
-    return { x: mid.x + (n.x / len) * ROTATE_OFFSET, y: mid.y + (n.y / len) * ROTATE_OFFSET, mid };
+    // Screen-constant gap. A fixed document-px offset collapses onto the side handle below ~67% zoom.
+    const gap = ROTATE_OFFSET * this.px;
+    return { x: mid.x + (n.x / len) * gap, y: mid.y + (n.y / len) * gap, mid };
   }
 
   /** Both candidate rotate-handle positions (document space) for the floating bar to choose between

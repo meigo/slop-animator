@@ -11,6 +11,25 @@
  * exactly right at the end. Where the fps divides 100 evenly (25, 20, 10) every delay is identical,
  * because the arithmetic says so and not because of a special case.
  */
+/** GIF delay is a uint16 of centiseconds. A collapsed hold longer than this wraps and plays short. */
+export const GIF_MAX_DELAY_CS = 65535;
+
+/** Add `addCs` onto a pending identical-frame delay. `write` are full frames to flush now (each at
+ *  the field max); `pending` is what stays open. The remainder is never 0. */
+export function appendGifDelay(
+  pendingCs: number,
+  addCs: number,
+  max = GIF_MAX_DELAY_CS,
+): { write: number[]; pending: number } {
+  let total = pendingCs + addCs;
+  const write: number[] = [];
+  while (total > max) {
+    write.push(max);
+    total -= max;
+  }
+  return { write, pending: total };
+}
+
 export function gifFrameDelays(frameCount: number, fps: number): number[] {
   const rate = fps > 0 ? fps : 1;
   const out: number[] = [];

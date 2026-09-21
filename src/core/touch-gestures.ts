@@ -110,6 +110,7 @@ export function setupTouchGestures(
 
     workspace.setPointerCapture(e.pointerId);
 
+    const starting = touches.size === 0;
     touches.set(e.pointerId, {
       id: e.pointerId,
       x: e.clientX,
@@ -119,8 +120,15 @@ export function setupTouchGestures(
       startTime: e.timeStamp,
     });
 
-    gestureDidMove = false;
-    maxSimultaneousTouches = Math.max(maxSimultaneousTouches, touches.size);
+    // A finger joining a gesture that already moved must not reclassify it as a tap, and a
+    // finished pan or pinch must not leave its touch count for the next stationary tap to inherit
+    // (that tap would undo or redo).
+    if (starting) {
+      gestureDidMove = false;
+      maxSimultaneousTouches = 1;
+    } else {
+      maxSimultaneousTouches = Math.max(maxSimultaneousTouches, touches.size);
+    }
 
     if (touches.size === 1) {
       // Start single-finger pan
@@ -183,6 +191,10 @@ export function setupTouchGestures(
     if (touches.size === 0) {
       if (pinchActive) snapRotation();
       pinchActive = false;
+      if (gestureDidMove) {
+        maxSimultaneousTouches = 0;
+        gestureDidMove = false;
+      }
     }
 
     singlePanActive = false;
@@ -197,6 +209,10 @@ export function setupTouchGestures(
     // when the OS took the pointer away, so snapping it would twist the canvas unasked. Leaving
     // pinchActive set also meant the next lift snapped on those stale numbers.
     pinchActive = false;
+    if (touches.size === 0) {
+      maxSimultaneousTouches = 0;
+      gestureDidMove = false;
+    }
     restartSinglePan();
   }
 

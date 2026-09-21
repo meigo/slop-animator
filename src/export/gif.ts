@@ -1,6 +1,6 @@
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { renderFrame } from "../anim/render";
-import { gifFrameDelays } from "./gif-timing";
+import { appendGifDelay, gifFrameDelays } from "./gif-timing";
 import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
 
@@ -203,8 +203,15 @@ export async function exportGif(
     try {
       const pixels = draw(f);
       if (pending && prevPixels && framesIdentical(prevPixels, pixels)) {
-        // Held: lengthen the pending frame rather than encoding this one again.
-        pending.delay += delays[i];
+        // Held: lengthen the pending frame rather than encoding this one again. A run past the
+        // uint16 centisecond field is several frames of the same picture, or the delay wraps.
+        const heldIndex: Uint8Array = pending.index;
+        const split = appendGifDelay(pending.delay, delays[i]);
+        for (const delay of split.write) {
+          pending = { index: heldIndex, delay };
+          flush();
+        }
+        pending = { index: heldIndex, delay: split.pending };
       } else {
         flush();
         pending = { index: applyPalette(pixels, palette, format), delay: delays[i] };

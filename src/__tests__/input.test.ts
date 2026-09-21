@@ -20,4 +20,10 @@ describe("isStageChromeTarget", () => {
   it("is false for a click on the drawing surface", () => {
     expect(isStageChromeTarget(node(() => null))).toBe(false);
   });
+
+  it("is true for a transform-gizmo handle", () => {
+    expect(isStageChromeTarget(node((sel) => (sel === "[data-ref-handle]" ? {} : null)))).toBe(
+      true,
+    );
+  });
 });

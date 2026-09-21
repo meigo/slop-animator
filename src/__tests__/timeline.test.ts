@@ -712,6 +712,37 @@ describe("ripple insert/delete shift document-space clips", () => {
     expect(audio.offsetFrames).toBe(6);
   });
 
+  it("shifts undecoded audio by replacing the object, not mutating the snapshot", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const undecoded = { name: "a.m4a", bytes, offsetFrames: 6, muted: false };
+    const p = proj([]);
+    p.audioUndecoded = undecoded;
+    insertFrameAllLayers(p, 2);
+    expect(undecoded.offsetFrames).toBe(6);
+    expect(p.audioUndecoded).not.toBe(undecoded);
+    expect(p.audioUndecoded?.offsetFrames).toBe(7);
+    expect(p.audioUndecoded?.bytes).toBe(bytes);
+  });
+
+  it("shifts a video offset before duration is known, without snapping the speed grid", () => {
+    const ref = {
+      kind: "ref",
+      id: 4,
+      name: "V",
+      visible: true,
+      opacity: 100,
+      offsetFrames: -1,
+      speed: 1.5,
+      audioEnabled: false,
+      groupId: null,
+      media: { type: "video", el: { duration: Number.NaN } },
+      transform: { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    };
+    insertFrameAllLayers(proj([ref]), 0);
+    // start rounds to frame 1; a one-frame insert subtracts speed, it does not rebuild -3.
+    expect(ref.offsetFrames).toBe(-2.5);
+  });
+
   it("shrinks a straddling range on delete", () => {
     const ref = imageRef({ start: 2, end: 8 }) as unknown as {
       range: { start: number; end: number };
@@ -1034,6 +1065,32 @@ describe("document ripple carries markers", () => {
     insertFrameAllLayers(p, 0);
     expect(before).toEqual([{ frame: 4, label: "x" }]);
     expect(p.markers).not.toBe(before);
+  });
+
+  it("drops a marker that sat on the deleted last frame and keeps one already past the end", () => {
+    const before: Marker[] = [
+      { frame: 1, label: "a" },
+      { frame: 3, label: "end" },
+      { frame: 8, label: "later" },
+    ];
+    const p = proj(4, before);
+    deleteFrameAllLayers(p, 3);
+    expect(p.frameCount).toBe(3);
+    expect(before).toEqual([
+      { frame: 1, label: "a" },
+      { frame: 3, label: "end" },
+      { frame: 8, label: "later" },
+    ]);
+    expect(p.markers).toEqual([
+      { frame: 1, label: "a" },
+      { frame: 7, label: "later" },
+    ]);
+  });
+
+  it("clears markers entirely when the deleted last frame held the only one", () => {
+    const p = proj(4, [{ frame: 3, label: "end" }]);
+    deleteFrameAllLayers(p, 3);
+    expect(p.markers).toBeUndefined();
   });
 
   it("a project without markers stays without them", () => {
