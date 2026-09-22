@@ -209,6 +209,9 @@ export function setupInput(
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
+  // Capture lost without an up (the element or capture went away) must still end the stroke, or
+  // the `isDrawing` guard in onPointerDown refuses every later press. After a normal up it no-ops.
+  canvas.addEventListener("lostpointercapture", onPointerUp);
   const onContextMenu = (e: Event) => e.preventDefault();
   canvas.addEventListener("contextmenu", onContextMenu);
 
@@ -217,6 +220,7 @@ export function setupInput(
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("pointercancel", onPointerUp);
+    canvas.removeEventListener("lostpointercapture", onPointerUp);
     canvas.removeEventListener("contextmenu", onContextMenu);
   };
 }
