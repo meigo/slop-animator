@@ -391,6 +391,8 @@
   // pixel-identical). Untouched lifts cancel instead. Adding a pose handle doesn't count: it changes
   // the mesh, not the picture.
   let deformDirty = false;
+  // Where the current Deform handle drag was grabbed. A release on the same spot is a tap, not an edit.
+  let deformGrab: { x: number; y: number } | null = null;
   let poseDirty = false;
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
@@ -1285,6 +1287,7 @@
         const handle = selection.hitTest(p.x, p.y);
         if (handle === "grid") {
           selectionMode = "drag";
+          deformGrab = { x: p.x, y: p.y };
           selection.startDrag(handle, p.x, p.y);
         }
       } else if (!done) {
@@ -1295,9 +1298,10 @@
       } else {
         if (selectionMode === "drag") {
           selection.updateDrag(p.x, p.y);
-          deformDirty = true;
+          if (!deformGrab || p.x !== deformGrab.x || p.y !== deformGrab.y) deformDirty = true;
           selection.endDrag();
         }
+        deformGrab = null;
         selectionMode = null;
         recomposite(); // settle, direct: one per gesture, and it must land even if rAF is starved
       }

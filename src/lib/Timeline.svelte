@@ -993,12 +993,15 @@
     const livePlayhead = appState.playhead;
     const playing = appState.playback.isPlaying;
     revertStructural(undo); // the document is now exactly as it was at grab
+    // Only playback moves the playhead during the drag. Paused, the live value is just what the
+    // drag's shortest length clamped it to, and the grab-time frame the revert restored is right.
     const restorePlayhead = () => {
+      if (!playing) return;
       const last = Math.max(0, appState.project.frameCount - 1);
       const clamped = Math.max(0, Math.min(livePlayhead, last));
       if (clamped !== appState.playhead) {
         appState.playhead = clamped;
-        if (playing) audioEngine.syncTo(clamped, appState.project.fps);
+        audioEngine.syncTo(clamped, appState.project.fps);
       }
     };
     if (end === startLen) {
@@ -1316,16 +1319,18 @@
   }
 
   /** `revertStructural` puts the playhead back to the grab. Playback keeps moving it while the
-   *  handle is down, so an abandon-preview has to put that live frame back (and resync audio). */
+   *  handle is down, so an abandon-preview has to put that live frame back (and resync audio).
+   *  Paused, the grab-time frame is right: the live one may only be a clamp from a shrink. */
   function revertKeepingPlayhead(undo: StructSnapshot) {
     const frame = appState.playhead;
     const playing = appState.playback.isPlaying;
     revertStructural(undo);
+    if (!playing) return;
     const last = Math.max(0, appState.project.frameCount - 1);
     const clamped = Math.max(0, Math.min(frame, last));
     if (clamped !== appState.playhead) {
       appState.playhead = clamped;
-      if (playing) audioEngine.syncTo(clamped, appState.project.fps);
+      audioEngine.syncTo(clamped, appState.project.fps);
     }
   }
 

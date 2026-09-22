@@ -7022,3 +7022,38 @@ interrupting held boil states"*.
 - **Verified end-to-end through the GL path**, hashing rendered pixels on a project where every
   drawing is the same: frames 0–7 give `0,1,1,3,0,3,6,6` — the two keys render identically (crisp),
   and state B spans the key at frame 4, which is the whole point. Owed an eyeball in playback.
+
+**Review-fix batch, and follow-ups to it (2026-09-21 / 2026-09-22).** `5041fef` (Grok) fixed about
+17 review-found bugs in one commit on `main`; the commit message lists them. The ones that change a
+rule someone could relearn the hard way:
+- **One pivot-box fallback for cell transforms:** `cellPivotBoxDev` (`cell-ink.ts`). Identity means
+  the full doc, otherwise the `contentBoxLogical` ladder (frozen box, then content bounds, then
+  full doc). Render, boil, onion, bake and selection crop all use it. Before, several sites did
+  `cell.transformBox!` and threw on a saved cell with a transform but no box. Identity pivot boxes
+  (cells and groups) now save too, as an additive field.
+- **`input.ts` follows ONE pointer per stroke** (`drawPointer`). A finger's move, up or cancel
+  no longer extends or ends a Pencil stroke, and a second pen/mouse press is ignored while one is
+  drawing.
+- **`audioEngine` has a `running` flag**, separate from `source`. A silence plan (clip already over)
+  clears `source` without leaving playback, so `syncTo` keyed on `source` never restarted audio after
+  a loop wrap. `play()` sets the flag and `pause()`/`setTrack()` clear it.
+- **Mid-stroke tool change** commits the open stroke with the tool that STARTED it
+  (`paintStroke(…, asEraser)`) and drops the rest of the pointer stream.
+
+Follow-ups from reviewing that commit (branch `fix/review-followups`):
+- **Regression fixed: the length handle moved the playhead back when paused.** The batch kept the
+  LIVE playhead after the revert so playback would not rewind. But `applyAnimationLength` → `bump()`
+  clamps the playhead on every move of the drag, so paused, the live value is the clamp from the
+  drag's shortest point. Playhead 50, drag 60 → 20 → 60: it ended at 19 (was 50). Now only a
+  PLAYING playhead is kept; paused, the grab-time frame that `revertStructural` restored stands. The
+  same applies to `revertKeepingPlayhead` (row resize / loop drag). **Verified in the browser** with
+  synthetic pointer events on the length grip: old code 60→19 and 40→19, fixed 60→50 and 40→39.
+- **A tap on a Deform handle no longer counts as an edit.** The batch set `deformDirty` on every
+  release, so leaving the tool after a mere tap committed the warp (an undo entry, maybe a new key)
+  instead of cancelling it. The release now counts as an edit only if it is away from the grab
+  point (`deformGrab`). The move branch still sets it on any move event, as it did before.
+- **`lostpointercapture` ends a stroke** (routed to `onPointerUp`). Without it, a capture lost with
+  no up would leave `isDrawing` set, and the new second-press guard would refuse every later stroke.
+  After a normal up it does nothing (`isDrawing` is already false).
+- **Owed an iPad pass** for the whole batch: Pencil vs. finger, pinch-then-tap, timeline
+  pointercancel, tool switch mid-stroke. None of it is unit-testable.

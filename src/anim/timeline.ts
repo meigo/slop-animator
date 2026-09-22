@@ -17,7 +17,6 @@ import {
   type TransformKey,
   type TransformTrack,
 } from "./document";
-
 import { shiftMarkers } from "./markers";
 
 /** The per-property value copiers the shifter needs. `document.ts` keeps its own copies private, and
