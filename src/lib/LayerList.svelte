@@ -27,6 +27,7 @@
     removeLayer,
     removeGroup,
     duplicateLayer,
+    duplicateGroup,
     mergeDown,
     renameLayer,
     groupActiveLayer,
@@ -467,7 +468,10 @@
       title={panel.duplicate.title}
       aria-disabled={!panel.duplicate.enabled}
       onclick={() => {
-        if (panel.duplicate.enabled && panel.layerId != null) duplicateLayer(panel.layerId);
+        if (!panel.duplicate.enabled) return;
+        // Same shape as Delete below: the group row answers with its own action.
+        if (panel.groupId != null) duplicateGroup(panel.groupId);
+        else if (panel.layerId != null) duplicateLayer(panel.layerId);
       }}><Copy size={16} /></button
     >
     <button

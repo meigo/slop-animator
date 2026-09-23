@@ -1,5 +1,6 @@
 import { targetLayerId, workingTarget, type ActiveRow } from "./active-row";
 import {
+  canDuplicateGroup,
   canDuplicateLayer,
   canRemoveGroup,
   canRemoveLayer,
@@ -14,8 +15,8 @@ export type PanelButton = { enabled: boolean; title: string };
 export interface LayerPanelActions {
   /** Layer the header would act on, or null when the working row is not a layer. */
   layerId: number | null;
-  /** Group the header's Delete would act on, or null when the working row is not a group. Delete is
-   *  the ONLY header action a group answers: Duplicate/Merge/New group are layer-scoped. */
+  /** Group the header's Delete and Duplicate would act on, or null when the working row is not a
+   *  group. Those two are the header actions a group answers: Merge/New group are layer-scoped. */
   groupId: number | null;
   duplicate: PanelButton;
   merge: PanelButton;
@@ -43,16 +44,35 @@ export function layerPanelActions(args: {
   const layerId = targetLayerId(args.activeRow);
 
   if (layerId == null) {
-    // A GROUP row (or a group-owned track) answers Delete — the group and every layer in it — while
-    // the layer-scoped actions still ask for a layer. Audio answers nothing.
+    // A GROUP row (or a group-owned track) answers Delete and Duplicate — the group and every
+    // drawing layer in it — while the layer-scoped actions still ask for a layer. Audio answers
+    // nothing.
     const wt = workingTarget(args.activeRow);
     const groupId = wt.kind === "group" && args.groups.some((g) => g.id === wt.id) ? wt.id : null;
     const members = groupId == null ? 0 : args.layers.filter((l) => l.groupId === groupId).length;
     const canDelGroup = groupId != null && canRemoveGroup(args.layers, args.groups, groupId);
+    const canDupGroup = groupId != null && canDuplicateGroup(args.layers, args.groups, groupId);
+    // Counts the DRAWING members the copy would carry, which is what `duplicateGroup` clones —
+    // `members` counts references too, so Delete's number and this one can legitimately differ.
+    const dupMembers =
+      groupId == null
+        ? 0
+        : args.layers.filter((l) => l.groupId === groupId && l.kind === "draw").length;
     return {
       layerId: null,
       groupId,
-      duplicate: { enabled: false, title: `Duplicate layer — ${SELECT_LAYER}` },
+      duplicate:
+        groupId == null
+          ? { enabled: false, title: `Duplicate layer — ${SELECT_LAYER}` }
+          : canDupGroup
+            ? {
+                enabled: true,
+                title: `Duplicate group and its ${dupMembers} layer${dupMembers === 1 ? "" : "s"}`,
+              }
+            : {
+                enabled: false,
+                title: "Duplicate group — only drawing layers duplicate",
+              },
       merge: { enabled: false, title: `Merge down — ${SELECT_LAYER}` },
       group: { enabled: false, title: `New group — ${SELECT_LAYER}` },
       remove:

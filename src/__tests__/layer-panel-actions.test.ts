@@ -114,10 +114,10 @@ describe("layerPanelActions — non-layer working row", () => {
       groups: [group(10)],
     });
     expect(r.layerId).toBeNull();
-    expect(r.duplicate.enabled).toBe(false);
     expect(r.merge.enabled).toBe(false);
     expect(r.group.enabled).toBe(false);
-    expect(r.remove.enabled).toBe(false);
+    expect(r.duplicate.enabled).toBe(true); // Duplicate is the group's own action
+    expect(r.remove.enabled).toBe(false); // …Delete would take the last drawing layers
   });
 
   it("a group-owned track is the group, not its draw-target member", () => {
@@ -127,8 +127,8 @@ describe("layerPanelActions — non-layer working row", () => {
       groups: [group(10)],
     });
     expect(r.layerId).toBeNull();
-    expect(r.duplicate.enabled).toBe(false);
     expect(r.group.enabled).toBe(false);
+    expect(r.duplicate.enabled).toBe(true);
     expect(r.remove.enabled).toBe(false);
   });
 });
@@ -161,6 +161,46 @@ describe("layerPanelActions — selected group", () => {
     expect(empty.remove).toEqual({ enabled: true, title: "Delete group" });
   });
 
+  it("Duplicate acts on the group and names how many layers come with it", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1), draw(2, { groupId: 7 }), draw(3, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.groupId).toBe(7);
+    expect(a.duplicate).toEqual({ enabled: true, title: "Duplicate group and its 2 layers" });
+  });
+
+  it("says 1 layer in the singular for Duplicate too", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1), draw(2, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.duplicate.title).toBe("Duplicate group and its 1 layer");
+  });
+
+  it("refuses to duplicate a group with no drawing layer to clone", () => {
+    const refsOnly = layerPanelActions({
+      activeRow: { kind: "group", id: 7 },
+      layers: [draw(1), ref(2)],
+      groups: [g(7)],
+    });
+    expect(refsOnly.duplicate).toEqual({
+      enabled: false,
+      title: "Duplicate group — only drawing layers duplicate",
+    });
+  });
+
+  it("a group-owned track duplicates the group too", () => {
+    const a = layerPanelActions({
+      activeRow: { kind: "track", owner: "group", id: 7, prop: "transform" },
+      layers: [draw(1), draw(2, { groupId: 7 })],
+      groups: [g(7)],
+    });
+    expect(a.duplicate.enabled).toBe(true);
+  });
+
   it("refuses when it would take the project's last drawing layer", () => {
     const a = layerPanelActions({
       activeRow: { kind: "group", id: 7 },
@@ -182,10 +222,10 @@ describe("layerPanelActions — selected group", () => {
     expect(a.groupId).toBe(7);
     expect(a.remove.enabled).toBe(true);
     expect(a.layerId).toBeNull();
-    expect(a.duplicate.enabled).toBe(false);
+    expect(a.duplicate.enabled).toBe(true); // the group's own Duplicate, like its Delete
     expect(a.merge.enabled).toBe(false);
     expect(a.group.enabled).toBe(false);
-    expect(a.duplicate.title).toMatch(/select a layer first/);
+    expect(a.merge.title).toMatch(/select a layer first/);
   });
 
   it("audio still has no target at all", () => {

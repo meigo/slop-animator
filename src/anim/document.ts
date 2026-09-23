@@ -382,6 +382,15 @@ export function canDuplicateLayer(layers: Layer[], id: number): boolean {
   return !!layer && isDrawingLayer(layer);
 }
 
+/** Whether `duplicateGroup` will act. Takes the groups for the same reason `canRemoveGroup` does —
+ *  an id nothing names must not read as a group with no members. References are left behind (they
+ *  would share one media element, and two ref layers cannot seek one video apart), so a group
+ *  holding nothing else has nothing to clone. */
+export function canDuplicateGroup(layers: Layer[], groups: LayerGroup[], groupId: number): boolean {
+  if (!groups.some((g) => g.id === groupId)) return false;
+  return layers.some((l) => l.groupId === groupId && isDrawingLayer(l));
+}
+
 /** Why `mergeDown` would refuse, in the order it checks. */
 export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only" | "animated" | "loop";
 

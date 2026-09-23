@@ -3,6 +3,7 @@ import {
   createCellCanvas,
   cloneCanvas,
   isDrawingLayer,
+  canDuplicateGroup,
   canRemoveGroup,
   canRemoveLayer,
   rasterizeKeyframePlan,
@@ -856,6 +857,38 @@ export function reorderLayers(ordered: Layer[]) {
   });
 }
 
+/** A full copy of a drawing layer: every key cell's canvas, its per-cell transforms, its loops and
+ *  its animation. ONE place, because both Duplicate layer and Duplicate group clone a layer and a
+ *  hand-maintained field list here has already gone stale once (an animated layer's copy came back
+ *  static, parked at the ignored static transform — a position it may never have rendered at).
+ *  The caller owns placement: `groupId`, where it lands in the stack, and what becomes active. */
+function cloneDrawingLayer(src: DrawingLayer, name: string): DrawingLayer {
+  const dup = createDrawingLayer(state.project.frameCount, name);
+  dup.visible = src.visible;
+  dup.locked = src.locked;
+  dup.alphaLock = src.alphaLock;
+  dup.opacity = src.opacity;
+  dup.boilStrength = src.boilStrength; // match the source's line-boil strength
+  dup.groupId = src.groupId;
+  dup.transform = { ...src.transform }; // copy renders at the same placement as the source
+  // Same deep copy the undo snapshot uses — one helper, so the two cannot drift.
+  dup.tracks = src.tracks ? copyTracks(src.tracks) : undefined;
+  dup.cells = src.cells.map(
+    (c): Cell =>
+      c.kind === "key"
+        ? {
+            kind: "key",
+            canvas: cloneCanvas(c.canvas),
+            transform: c.transform ? { ...c.transform } : undefined, // keep per-cell transforms
+            transformBox: c.transformBox ? { ...c.transformBox } : c.transformBox,
+          }
+        : c.kind === "loop"
+          ? { kind: "loop", back: c.back }
+          : { kind: "hold" },
+  );
+  return dup;
+}
+
 /** Duplicate a drawing layer (cloning every key cell's canvas) above it, and make it active. */
 export function duplicateLayer(id: number) {
   const layers = state.project.layers;
@@ -867,33 +900,55 @@ export function duplicateLayer(id: number) {
   // into the SOURCE — so the copy would be missing exactly the pixels that were floating.
   liftGuard.discard?.();
   commitStructural(() => {
-    const dup = createDrawingLayer(state.project.frameCount, `${src.name} copy`);
-    dup.visible = src.visible;
-    dup.locked = src.locked;
-    dup.alphaLock = src.alphaLock;
-    dup.opacity = src.opacity;
-    dup.boilStrength = src.boilStrength; // match the source's line-boil strength
-    dup.groupId = src.groupId; // keep the copy in the source's group (inserted adjacent → run stays contiguous)
-    dup.transform = { ...src.transform }; // copy renders at the same placement as the source
-    // …and the same MOTION: without this the copy of an animated layer came back static, parked at
-    // the ignored static transform (a position it may never have rendered at). Same deep copy the
-    // undo snapshot uses — one helper, so the two cannot drift.
-    dup.tracks = src.tracks ? copyTracks(src.tracks) : undefined;
-    dup.cells = src.cells.map(
-      (c): Cell =>
-        c.kind === "key"
-          ? {
-              kind: "key",
-              canvas: cloneCanvas(c.canvas),
-              transform: c.transform ? { ...c.transform } : undefined, // keep per-cell transforms
-              transformBox: c.transformBox ? { ...c.transformBox } : c.transformBox,
-            }
-          : c.kind === "loop"
-            ? { kind: "loop", back: c.back }
-            : { kind: "hold" },
-    );
+    const dup = cloneDrawingLayer(src, `${src.name} copy`);
+    // The copy stays in the source's group — inserted adjacent, so the run stays contiguous.
     layers.splice(idx + 1, 0, dup);
     setActiveLayer(dup.id);
+  });
+}
+
+/** Duplicate a group: the group's own settings and animation, plus a clone of every DRAWING layer
+ *  in it, as one undo entry. The copy lands directly above the source's topmost member (so both
+ *  runs stay contiguous, which the group model requires) and becomes the selected row.
+ *
+ *  References are left behind. A clone would have to share the source's media element, and two ref
+ *  layers cannot seek one video apart — each has its own speed and offset. `canDuplicateGroup`
+ *  refuses a group with nothing else in it, so the panel disables the button rather than quietly
+ *  producing an empty group. */
+export function duplicateGroup(groupId: number) {
+  const src = state.project.groups.find((g) => g.id === groupId);
+  if (!src) return;
+  if (!canDuplicateGroup(state.project.layers, state.project.groups, groupId)) return;
+  // Same reason as `duplicateLayer`: selecting the copy banks any live lift back into the SOURCE,
+  // so the clone would be missing exactly the pixels that were floating.
+  liftGuard.discard?.();
+  commitStructural(() => {
+    const layers = state.project.layers;
+    const dupGroup: LayerGroup = {
+      ...src,
+      id: nextId(),
+      name: `${src.name} copy`,
+      // The group's own placement and motion, deep-copied for the same reason the layer's are:
+      // sharing them would let a drag on either group rewrite the other's keys.
+      transform: src.transform ? { ...src.transform } : undefined,
+      transformBox: src.transformBox ? { ...src.transformBox } : src.transformBox,
+      tracks: src.tracks ? copyTracks(src.tracks) : undefined,
+    };
+    state.project.groups.push(dupGroup);
+    // Bottom→top, so the copies keep the members' stacking order.
+    const members = layers.filter(
+      (l): l is DrawingLayer => l.groupId === groupId && isDrawingLayer(l),
+    );
+    const clones = members.map((m) => {
+      const c = cloneDrawingLayer(m, m.name); // the GROUP name carries the "copy", not each member's
+      c.groupId = dupGroup.id;
+      return c;
+    });
+    // Above the topmost member of the source run — never interleaved with it.
+    let top = -1;
+    for (let i = 0; i < layers.length; i++) if (layers[i].groupId === groupId) top = i;
+    layers.splice(top + 1, 0, ...clones);
+    selectGroup(dupGroup.id);
   });
 }
 
