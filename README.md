@@ -56,6 +56,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Onion skins — step by frames or by **keyframes** (holds don't use up a ghost). With a play range set they stay inside it, and when looping they wrap across the seam — so a cycle's last drawing shows while you draw its first
 - WebGL **line boil** (that hand-drawn wobble on held frames), with a **step** setting so the wobble holds for N frames — boil on twos or threes
 - Layers with visual groups (collapse, visibility, lock, drag-reorder, double-tap a name to rename) — lock or hide a group and every member follows, without disturbing their own settings; locked and hidden layers are read-only everywhere
+- **Duplicate** a layer, or a whole group — the copy of a group brings its drawing layers, the group's own transform and animation, and lands right above the original (reference layers stay in the original, since a copy would have to share the same video)
 
 **Transform & deform**
 
@@ -112,7 +113,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1435); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1442); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

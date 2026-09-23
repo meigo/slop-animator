@@ -7057,3 +7057,26 @@ Follow-ups from reviewing that commit (branch `fix/review-followups`):
   After a normal up it does nothing (`isDrawing` is already false).
 - **Owed an iPad pass** for the whole batch: Pencil vs. finger, pinch-then-tap, timeline
   pointercancel, tool switch mid-stroke. None of it is unit-testable.
+
+**Duplicate group (2026-09-23).** The layer panel's Duplicate button now answers a GROUP row, the
+way Delete already did: it copies the group and its drawing layers as one undo entry, names the copy
+`<group> copy`, lands it directly above the source group's topmost member, and selects it.
+- **References are left behind, by choice.** A cloned ref layer would have to share the source's
+  media element, and two ref layers cannot seek one video apart — each carries its own `speed` and
+  `offsetFrames`. `canDuplicateGroup` (in `document.ts`, beside `canDuplicateLayer`) therefore
+  refuses a group with no drawing layer in it, so the button disables with a reason rather than
+  quietly producing an empty group.
+- **The clone lives in ONE helper now.** `cloneDrawingLayer(src, name)` holds what `duplicateLayer`
+  used to do inline (key canvases, per-cell transforms, loop cells, `tracks` via `copyTracks`), and
+  both actions call it. A second hand-maintained copy of that field list would drift, which this
+  file has logged three times already (`dwellPool`, the frame shifter, merge-down).
+- The group's own `transform`, `transformBox` and `tracks` are deep-copied for the same reason the
+  layer's are: sharing them would let a gizmo drag on either group rewrite the other's keys.
+- **Placement matters:** the clones are spliced in ABOVE the topmost member of the source run, never
+  interleaved, because a group's layers must stay contiguous in the stack.
+- **Verified in the browser** (the canvas cloning is not node-testable) on a group holding two
+  drawing layers, a reference, an animated group transform and a loop cell: copy above the source,
+  both runs contiguous, fresh ids, pixels equal with distinct canvas objects, loop kept, reference
+  left in the original, the new group selected, group/layer tracks independent of the source's, and
+  ONE undo removing the whole thing. The real toolbar button was clicked, not just the action.
+  `canDuplicateGroup` and the panel's enablement/titles are unit-tested (1442 passing).

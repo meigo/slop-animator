@@ -6,6 +6,7 @@ import {
   canRemoveLayer,
   rasterizeKeyframePlan,
   canDuplicateLayer,
+  canDuplicateGroup,
   whyNotMergeDown,
   isLayerEditable,
   isLayerLocked,
@@ -856,6 +857,26 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
     it("does not care about lock or visibility (management, not content)", () => {
       const l = layer(1, [makeKey()], { locked: true, visible: false });
       expect(canDuplicateLayer([l], 1)).toBe(true);
+    });
+  });
+
+  describe("canDuplicateGroup", () => {
+    const g = (id = 7) => ({ id, name: "G", collapsed: false, visible: true });
+
+    it("true when the group holds at least one drawing layer", () => {
+      const layers = [layer(1, [makeKey()]), layer(2, [makeKey()], { groupId: 7 })];
+      expect(canDuplicateGroup(layers, [g()], 7)).toBe(true);
+    });
+
+    it("false for a group of references only — duplication clones pixels", () => {
+      expect(canDuplicateGroup([layer(1, [makeKey()]), ref(2, { groupId: 7 })], [g()], 7)).toBe(
+        false,
+      );
+    });
+
+    it("false for an empty group and for an id nothing names", () => {
+      expect(canDuplicateGroup([layer(1, [makeKey()])], [g()], 7)).toBe(false);
+      expect(canDuplicateGroup([layer(1, [makeKey()], { groupId: 7 })], [g()], 99)).toBe(false);
     });
   });
 
