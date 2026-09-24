@@ -44,6 +44,7 @@
     viewActions,
     fillActions,
     poseActions,
+    outlineActions,
     liftGuard,
     transformDragGuard,
     playbackController,
@@ -98,6 +99,7 @@
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
+  import { outlineMask, signedDistanceField } from "../core/outline";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -1504,6 +1506,9 @@
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
+    outlineActions.active = outlineActive;
+    outlineActions.apply = applyOutline;
+    outlineActions.cancel = cancelOutline;
   }
 
   /**
@@ -2070,6 +2075,146 @@
     repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
   }
 
+  // Outline tool. Unlike Pose, the preview writes into the CELL and is re-derived from the snapshot
+  // on every change — so what you see is the real compositor's output (layer opacity, the layer and
+  // group transform, boil, onion), and an app killed mid-tune leaves an outline rather than the
+  // empty cell an overlay lift would.
+  let outlineCtx: CanvasRenderingContext2D | null = null;
+  let outlineBefore: ImageData | null = null;
+  let outlineField: Float32Array | null = null; // depends on the ART only — computed once per entry
+  let outlineLayer: DrawingLayer | null = null;
+  let outlineMaterialized: CellTrackChange | null = null;
+  let outlineRaf = 0;
+
+  function outlineActive(): boolean {
+    return outlineBefore !== null;
+  }
+
+  function enterOutline() {
+    const al = activeLayer();
+    if (
+      workingTarget(appState.activeRow).kind !== "layer" ||
+      al.kind !== "draw" ||
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
+    )
+      return;
+    const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const ctx = mk.canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, mk.canvas.width, mk.canvas.height);
+    // Nothing drawn → nothing to outline. Leave the hold a hold.
+    if (!before.data.some((v, i) => i % 4 === 3 && v > 0)) {
+      if (mk.materialized) restoreCellTrack(al, mk.materialized.before);
+      return;
+    }
+    outlineLayer = al;
+    outlineMaterialized = mk.materialized;
+    outlineCtx = ctx;
+    outlineBefore = before;
+    outlineField = null;
+    refreshOutlinePreview();
+  }
+
+  /** Re-derive the preview from the snapshot. Coalesced to one animation frame (gotcha #17): a
+   *  thickness scrub fires a pointermove per pen event and each preview is a full-canvas pass. */
+  function scheduleOutlinePreview() {
+    if (outlineRaf) return;
+    outlineRaf = requestAnimationFrame(() => {
+      outlineRaf = 0;
+      refreshOutlinePreview();
+    });
+  }
+
+  function refreshOutlinePreview() {
+    const ctx = outlineCtx,
+      before = outlineBefore;
+    if (!ctx || !before) return;
+    const w = ctx.canvas.width,
+      h = ctx.canvas.height;
+    const src = before.data;
+    const alpha = new Uint8Array(w * h);
+    for (let i = 0, p = 3; i < alpha.length; i++, p += 4) alpha[i] = src[p];
+    // The field is a function of the ART, which the preview never changes — so it survives every
+    // knob change and only a fresh entry rebuilds it.
+    outlineField ??= signedDistanceField(alpha, w, h);
+    const cov = outlineMask(alpha, w, h, { ...appState.outline }, outlineField);
+    // RGB is carried over from the source: only alpha changes, so coloured art keeps its colour.
+    const next = new ImageData(new Uint8ClampedArray(src), w, h);
+    for (let i = 0, p = 3; i < cov.length; i++, p += 4) next.data[p] = cov[i];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(next, 0, 0);
+    markInkChanged(ctx.canvas);
+    recomposite();
+  }
+
+  function applyOutline() {
+    const ctx = outlineCtx,
+      before = outlineBefore;
+    if (!ctx || !before) return;
+    if (outlineRaf) {
+      cancelAnimationFrame(outlineRaf);
+      outlineRaf = 0;
+      refreshOutlinePreview(); // the pending frame's settings are the ones being applied
+    }
+    const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const layerId = outlineLayer?.id ?? null;
+    const mat = outlineMaterialized;
+    history.push(
+      pixelCommand(
+        ctx.canvas,
+        () => {
+          ctx.putImageData(before, 0, 0);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // outlining a hold made this ◆
+          recomposite();
+        },
+        () => {
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
+    clearOutline();
+    bump();
+  }
+
+  function cancelOutline() {
+    if (outlineCtx && outlineBefore) {
+      outlineCtx.putImageData(outlineBefore, 0, 0);
+      markInkChanged(outlineCtx.canvas);
+      // …and the keyframe entry materialised, so a cancelled outline leaves a hold a hold.
+      if (outlineLayer && outlineMaterialized)
+        restoreCellTrack(outlineLayer, outlineMaterialized.before);
+    }
+    clearOutline();
+    recomposite();
+    repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
+  }
+
+  function clearOutline() {
+    if (outlineRaf) {
+      cancelAnimationFrame(outlineRaf);
+      outlineRaf = 0;
+    }
+    outlineCtx = null;
+    outlineBefore = null;
+    outlineField = null;
+    outlineLayer = null;
+    outlineMaterialized = null;
+  }
+
+  // A knob change (from a future ToolOptions control) re-derives the preview from the untouched
+  // snapshot — coalesced via scheduleOutlinePreview (gotcha #17), not applied straight from here.
+  $effect(() => {
+    void appState.outline.thickness;
+    void appState.outline.wobble;
+    void appState.outline.variation;
+    void appState.outline.seed;
+    if (outlineActive()) scheduleOutlinePreview();
+  });
+
   // Shared by the density buttons and the fill-outlines controls: any setting that changes the
   // mesh has to rebuild from the SAME lifted bitmap and reset handles — vertex indices change.
   function rebuildPoseMesh() {
@@ -2307,6 +2452,7 @@
         if (deformDirty) selection.commit();
         else selection.cancel();
       } else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
+      if (prevTool === "outline" && t !== "outline") cancelOutline();
     }
     prevTool = t;
     if (t === "select") selection.mode = "rect";
@@ -2331,6 +2477,7 @@
     if (toolChanged && toolEntryPrimed && !strokeCanvas) {
       if (t === "deform" && selection.state !== "warping") enterDeform();
       else if (t === "pose" && !meshPose) enterPose();
+      else if (t === "outline" && !outlineActive()) enterOutline();
     }
     toolEntryPrimed = true;
   });

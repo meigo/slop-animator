@@ -42,6 +42,7 @@
     Workflow,
     PersonStanding,
     Pipette,
+    Spline,
   } from "@lucide/svelte";
 
   const menuItem =
@@ -251,6 +252,13 @@
     class:ui-on={appState.tool === "pose"}
     title={pixelTitle("Pose (mesh deform)")}
     onclick={() => (appState.tool = "pose")}><PersonStanding size={18} /></button
+  >
+  <button
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
+    class:ui-on={appState.tool === "outline"}
+    title={pixelTitle("Outline (hollow the drawing to a line)")}
+    onclick={() => (appState.tool = "outline")}><Spline size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
        no pointer events, so the status bar's delegated hint could never read it (CLAUDE.md,
