@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { signedDistanceField, valueNoise } from "../core/outline";
+import {
+  signedDistanceField,
+  valueNoise,
+  clampThickness,
+  outlineMask,
+  MAX_THICKNESS,
+} from "../core/outline";
+import { erodeMask } from "../core/mask-ops";
 
 /** w×h alpha plane with a filled rectangle (x0..x1, y0..y1 inclusive) at alpha 255. */
 function rectAlpha(
@@ -78,5 +85,111 @@ describe("valueNoise", () => {
       maxJump = Math.max(maxJump, Math.abs(a - b));
     }
     expect(maxJump).toBeLessThan(0.1); // a hash-per-pixel field would jump ~2
+  });
+});
+
+const plain = { wobble: 0, variation: 0, seed: 1 };
+
+describe("outlineMask", () => {
+  it("hollows a solid rectangle to a ring of exactly the requested thickness", () => {
+    const w = 20,
+      h = 20;
+    const out = outlineMask(rectAlpha(w, h, 4, 4, 15, 15), w, h, { ...plain, thickness: 2 });
+    expect(out[4 * w + 4]).toBe(255); // outer ring
+    expect(out[5 * w + 5]).toBe(255); // second ring — thickness 2
+    expect(out[6 * w + 6]).toBe(0); // third ring is hollowed
+    expect(out[10 * w + 10]).toBe(0); // middle is empty
+    expect(out[3 * w + 4]).toBe(0); // nothing outside the silhouette
+  });
+
+  it("matches `mask minus erodeMask` when both knobs are zero", () => {
+    const w = 24,
+      h = 24;
+    const alpha = rectAlpha(w, h, 5, 6, 18, 17);
+    const mask = new Uint8Array(w * h);
+    for (let i = 0; i < mask.length; i++) mask[i] = alpha[i] >= 128 ? 1 : 0;
+    const eroded = erodeMask(mask, w, h, 3);
+    const out = outlineMask(alpha, w, h, { ...plain, thickness: 3 });
+    for (let i = 0; i < mask.length; i++) {
+      const expected = mask[i] && !eroded[i] ? 255 : 0;
+      expect(out[i]).toBe(expected);
+    }
+  });
+
+  it("leaves a shape thinner than the thickness solid", () => {
+    const w = 12,
+      h = 12;
+    const alpha = rectAlpha(w, h, 2, 5, 9, 6); // a 2px-tall bar
+    const out = outlineMask(alpha, w, h, { ...plain, thickness: 6 });
+    for (let x = 2; x <= 9; x++) {
+      expect(out[5 * w + x]).toBe(255);
+      expect(out[6 * w + x]).toBe(255);
+    }
+  });
+
+  it("outlines a hole's edge too", () => {
+    const w = 24,
+      h = 24;
+    const alpha = rectAlpha(w, h, 4, 4, 19, 19);
+    for (let y = 9; y <= 14; y++) for (let x = 9; x <= 14; x++) alpha[y * w + x] = 0; // punch a hole
+    const out = outlineMask(alpha, w, h, { ...plain, thickness: 1 });
+    expect(out[8 * w + 11]).toBe(255); // ring around the hole
+    expect(out[11 * w + 11]).toBe(0); // the hole itself stays empty
+  });
+
+  it("is byte-identical for one seed and different for another", () => {
+    const w = 30,
+      h = 30;
+    const alpha = rectAlpha(w, h, 5, 5, 24, 24);
+    const opts = { thickness: 3, wobble: 0.8, variation: 0.8 };
+    const a = outlineMask(alpha, w, h, { ...opts, seed: 1 });
+    const b = outlineMask(alpha, w, h, { ...opts, seed: 1 });
+    const c = outlineMask(alpha, w, h, { ...opts, seed: 2 });
+    expect([...a]).toEqual([...b]);
+    expect([...a]).not.toEqual([...c]);
+  });
+
+  it("keeps a wobbled line within WOBBLE_MAX of the plain band", () => {
+    const w = 40,
+      h = 40;
+    const alpha = rectAlpha(w, h, 8, 8, 31, 31);
+    const wobbled = outlineMask(alpha, w, h, { thickness: 2, wobble: 1, variation: 0, seed: 5 });
+    const field = signedDistanceField(alpha, w, h);
+    for (let i = 0; i < wobbled.length; i++) {
+      if (wobbled[i] > 0) expect(field[i]).toBeGreaterThan(-3.5); // never further out than WOBBLE_MAX (+ the AA ramp)
+    }
+  });
+
+  it("anti-aliases: a soft source edge gives a soft outer edge", () => {
+    const w = 10,
+      h = 1;
+    const alpha = new Uint8Array(w * h);
+    alpha[3] = 160; // partial coverage on the boundary pixel
+    for (let x = 4; x <= 8; x++) alpha[x] = 255;
+    const out = outlineMask(alpha, w, h, { ...plain, thickness: 2 });
+    expect(out[3]).toBeGreaterThan(0);
+    expect(out[3]).toBeLessThan(255);
+  });
+
+  it("returns empty for empty input, and for thickness 0", () => {
+    const w = 8,
+      h = 8;
+    expect(
+      [...outlineMask(new Uint8Array(w * h), w, h, { ...plain, thickness: 3 })].every(
+        (v) => v === 0,
+      ),
+    ).toBe(true);
+    expect(
+      [...outlineMask(rectAlpha(w, h, 1, 1, 6, 6), w, h, { ...plain, thickness: 0 })].every(
+        (v) => v === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("clamps a thickness a NumberField could produce", () => {
+    expect(clampThickness(null)).toBe(0);
+    expect(clampThickness(-4)).toBe(0);
+    expect(clampThickness(1000)).toBe(MAX_THICKNESS);
+    expect(clampThickness(3.7)).toBe(3.7);
   });
 });
