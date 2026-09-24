@@ -88,6 +88,33 @@ function smoothPositions(points: InputPoint[]): InputPoint[] {
 }
 
 /**
+ * How straight the baseline walk must stay: chord length as a fraction of path length.
+ *
+ * Without this the walk spans a HAIRPIN: at the apex it lands on one leg going back and on the
+ * other going forward, so the chord points across the turn and the normal comes out near-parallel
+ * to the travel. The ribbon twists there and leaves the apex uncovered — the corner holes reported
+ * on 2026-09-24. Measured on that shape, the apex normal sat 6° off the travel direction where it
+ * needs 90°. Stopping at the corner keeps the baseline (and so the damping) on one leg, which is
+ * the only place its jitter argument holds anyway: a real corner dwarfs the noise the baseline
+ * exists to suppress.
+ */
+const MIN_STRAIGHTNESS = 0.7;
+
+/**
+ * Turn angle (degrees) above which a vertex counts as a CORNER — a place where the path doubles
+ * back inside one sample, so no single normal is perpendicular to "the" travel direction, because
+ * there are two of them. Exported for the tests: the perpendicularity guarantee below holds at
+ * every vertex EXCEPT these, and that exception has to be stated in one place rather than
+ * re-guessed by whoever reads the test.
+ */
+export const CORNER_TURN_DEG = 60;
+
+/** How much travel the straightness test waits for before it trusts the ratio. Over one or two
+ *  samples the ratio is mostly jitter, and testing it there would stop the walk on noise — which
+ *  hands back exactly the per-segment normal this baseline exists to avoid. */
+const CHORD_SETTLE_PX = 2;
+
+/**
  * The unit normal at each sample, taken over a baseline long enough that jitter cannot rotate
  * it. Baseline length is measured in DISTANCE, not samples: sample density swings with drawing
  * speed, so a fixed sample count would smooth a fast stroke and barely touch a slow one. It
@@ -106,7 +133,16 @@ export function normals(
     while (d < target) {
       const k = j + dir;
       if (k < 0 || k >= points.length) break;
-      d += Math.hypot(points[k].x - points[j].x, points[k].y - points[j].y);
+      const stepLen = Math.hypot(points[k].x - points[j].x, points[k].y - points[j].y);
+      const chord = Math.hypot(points[k].x - points[i].x, points[k].y - points[i].y);
+      const travelled = d + stepLen;
+      // STRAIGHTNESS, not direction: on a hairpin the chord from the start points much the same way
+      // before and after the apex (the legs are nearly antiparallel), so a direction test cannot see
+      // the corner at all — measured 0.93 alignment with one. What does change is that the path
+      // keeps growing while the chord stops. Jitter costs a few percent of this ratio; rounding a
+      // corner collapses it.
+      if (travelled >= CHORD_SETTLE_PX && chord < MIN_STRAIGHTNESS * travelled) break;
+      d = travelled;
       j = k;
     }
     return points[j];
@@ -205,6 +241,24 @@ function nibRing(cx: number, cy: number, a: number, b: number, angleRad: number)
     ring.push([cx + px * ca - py * sa, cy + px * sa + py * ca]);
   }
   return ring;
+}
+
+/** Does the path turn by more than `CORNER_TURN_DEG` at `b`? Coincident neighbours count as no turn:
+ *  a held pen delivers them in bursts and they carry no direction to compare. */
+export function isCorner(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+): boolean {
+  const ix = b.x - a.x;
+  const iy = b.y - a.y;
+  const ox = c.x - b.x;
+  const oy = c.y - b.y;
+  const il = Math.hypot(ix, iy);
+  const ol = Math.hypot(ox, oy);
+  if (il === 0 || ol === 0) return false;
+  const cos = (ix / il) * (ox / ol) + (iy / il) * (oy / ol);
+  return cos < Math.cos((CORNER_TURN_DEG * Math.PI) / 180);
 }
 
 /**

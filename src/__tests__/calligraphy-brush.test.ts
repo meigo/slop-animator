@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  isCorner,
   nibSemiAxes,
   clampNibFlatness,
   nibSupport,
@@ -138,6 +139,44 @@ describe("normals (jitter damping)", () => {
     for (const n of normals(straight, 17)) {
       expect(Math.abs(n.nx)).toBeCloseTo(0, 6);
       expect(Math.abs(n.ny)).toBeCloseTo(1, 6);
+    }
+  });
+
+  /**
+   * The corner case the damper got wrong (reported 2026-09-24: "when drawing sharp angles without
+   * lifting pen/mouse holes in corners appear"). The baseline walk spans a hairpin — back lands on
+   * one leg, forward on the other — so the chord points ACROSS the turn and the normal comes out
+   * near-PARALLEL to the travel. The ribbon then twists and leaves the apex uncovered. Measured on
+   * the reported shape before the fix: the apex normal was 6° off the travel direction, where it
+   * must be 90°.
+   */
+  it("stays perpendicular to the local travel through a hairpin", () => {
+    const step = 3;
+    const turnRad = (165 * Math.PI) / 180;
+    const pts: { x: number; y: number }[] = [];
+    let x = 0,
+      y = 0;
+    for (let i = 0; i < 25; i++) {
+      pts.push({ x, y });
+      y += step;
+    }
+    for (let i = 0; i < 25; i++) {
+      x += step * Math.cos(Math.PI / 2 + turnRad);
+      y += step * Math.sin(Math.PI / 2 + turnRad);
+      pts.push({ x, y });
+    }
+    const ns = normals(pts, 13); // reach 13px, far longer than the 3px steps — spans the corner
+    for (let i = 1; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i - 1].x;
+      const dy = pts[i + 1].y - pts[i - 1].y;
+      const len = Math.hypot(dx, dy);
+      // CORNER vertices are skipped on purpose: no single normal describes one, which is why they
+      // get the nib's footprint as a join instead. Using the engine's own predicate, so the set of
+      // vertices this test excuses is exactly the set the renderer covers another way.
+      if (isCorner(pts[i - 1], pts[i], pts[i + 1])) continue;
+      // |cos| between the normal and the local travel: 0 is perpendicular, 1 is parallel.
+      const alignment = Math.abs((dx / len) * ns[i].nx + (dy / len) * ns[i].ny);
+      expect(alignment).toBeLessThan(0.35); // within ~20° of perpendicular
     }
   });
 
