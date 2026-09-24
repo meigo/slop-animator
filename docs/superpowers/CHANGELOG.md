@@ -7275,3 +7275,36 @@ all be a state where no tool is selected?"*
 - Verified in the browser: entering lights the button and hollows the drawing; Apply leaves the
   outline baked with the tool back on Brush and the button unlit; Cancel the same; a frame step
   mid-preview also hands back; and entering from the Eraser returns to the Eraser, not to Brush.
+
+**Calligraphy: no more holes at sharp corners (2026-09-24).** Reported with a screenshot: *"calligraphic
+brush. when drawing sharp angles without lifting pen/mouse holes in corners appear"* — a white pinhole
+at the apex of each reversal.
+- **Root cause: the normal baseline spanned the hairpin.** `normals()` deliberately takes each
+  sample's normal over a DISTANCE baseline (≈ the nib's long semi-axis) rather than from the adjacent
+  segment — that is the damper that stops a flat nib turning sub-pixel jitter into spikes, and it is
+  load-bearing. At a hairpin it backfires: walking back lands on one leg and forward on the other, so
+  the chord points ACROSS the turn. Measured on a 165° reversal at size 26, the normal at the apex
+  came out 6° off the travel direction where it needs 90° — the offset direction rotates through the
+  travel direction, the ribbon twists, and the wedge at the apex is left uncovered.
+- **Fix: the walk stops when it stops going straight.** Not a direction test — on a hairpin the chord
+  from the start points much the same way before and after the apex (the legs are nearly
+  antiparallel), and a direction test measured 0.93 alignment, i.e. blind to the corner. What changes
+  is that the path keeps growing while the chord does not, so the walk breaks when
+  `chord < 0.7 × travelled`. Jitter costs a few percent of that ratio; rounding a corner collapses it.
+  The damping is therefore unchanged along a leg, which is the only place its jitter argument applies.
+- **A join at the corner was built, measured, and REMOVED.** Adding the nib's own footprint at sharp
+  vertices is the textbook join, and it was in the branch for a while. With the normals corrected it
+  buys nothing — the reported hairpin renders with zero holes without it — and it costs: triggered on
+  turn angle it fires 276 times on a jittery 2000-point smooth stroke and 239 times on a 6000-point
+  zigzag that has no holes at all; triggered on the ribbon actually folding it still doubled a dense
+  scribble from ~250ms to ~440ms, which is the same "one footprint per sample" blow-up that the
+  header records as the ORIGINAL performance bug. Measured after removal: smooth 6000-point redraw
+  16-23ms, pathological scribble 216-242ms against 207-278ms before the fix. `isCorner` /
+  `CORNER_TURN_DEG` survive as the definition of "where a normal cannot be perpendicular", which is
+  what the new test's exception clause needs.
+- **Reproduction cost the most.** 126 hand-picked synthetic combinations produced zero holes; it takes
+  varying pressure plus a hairpin sharper than the baseline, after which 219 of 400 random hairpins
+  hole. Two metrics were built and thrown away along the way: enclosed-empty-region counting cannot
+  tell a defect from background legitimately trapped by a self-crossing stroke, and comparing against
+  a dense-footprint reference flags the engine's deliberate omission of interior footprints. The
+  verdict came from an A/B render of the reported shape, plus a unit test on the geometry.
