@@ -99,7 +99,13 @@
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
-  import { outlineMask, signedDistanceField, MAX_THICKNESS } from "../core/outline";
+  import {
+    outlineMask,
+    signedDistanceField,
+    buildNoisePlanes,
+    MAX_THICKNESS,
+  } from "../core/outline";
+  import type { OutlineNoisePlanes } from "../core/outline";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -1369,8 +1375,8 @@
       if (done) fillUsed = false;
       return;
     }
-    // The tool is driven entirely by the on-canvas bar and ToolOptions knobs — a canvas gesture
-    // must not fall through to the default paint path below.
+    // The tool is driven entirely by the on-canvas bar (ToolOptions carries only a hint string,
+    // no knobs) — a canvas gesture must not fall through to the default paint path below.
     if (appState.tool === "outline") return;
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
@@ -1420,6 +1426,7 @@
       sizeOverlay();
       syncOverlayScale();
       repaintPoseOverlay();
+      if (outlineBarEl && outlineActive()) positionOutlineBar();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
         lastOutputScale = ss;
@@ -1512,6 +1519,7 @@
     outlineActions.active = outlineActive;
     outlineActions.apply = applyOutline;
     outlineActions.cancel = cancelOutline;
+    outlineActions.reenter = enterOutline;
   }
 
   /**
@@ -1877,9 +1885,11 @@
 
   function positionOutlineBar() {
     if (!outlineCtx) return;
-    // The ink the tool is working on. `contentBounds` is device px and cached by canvas+version,
-    // and the preview bumps that version, so the bar tracks a thinning outline rather than the
-    // solid it started from.
+    // The ink the tool is working on. `contentBounds` is device px, memoized per canvas ink
+    // revision (`cell-ink.ts`); `refreshOutlinePreview`'s `putImageData` runs through
+    // `markInkChanged`, which bumps that revision, so this re-measures on every preview and the bar
+    // tracks a thinning outline rather than the solid it started from. `appState.version` is read
+    // only so this call's caller (the effect below) re-runs — it is not the cache key.
     const b = contentBounds(outlineCtx.canvas, appState.version);
     const box = b
       ? { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR }
@@ -2118,6 +2128,11 @@
   let outlineCtx: CanvasRenderingContext2D | null = null;
   let outlineBefore: ImageData | null = null;
   let outlineField: Float32Array | null = null; // depends on the ART only — computed once per entry
+  let outlineAlpha: Uint8Array | null = null; // alpha plane extracted from outlineBefore — once per entry
+  // RGBA copy of outlineBefore, mutated in place each preview (only the alpha channel changes).
+  let outlinePreviewImg: ImageData | null = null;
+  let outlineNoise: OutlineNoisePlanes | null = null; // depends on the seed only
+  let outlineNoiseSeed: number | null = null; // seed outlineNoise was built for — rebuilt on mismatch
   let outlineLayer: DrawingLayer | null = null;
   let outlineMaterialized: CellTrackChange | null = null;
   let outlineRaf = 0;
@@ -2127,6 +2142,10 @@
   }
 
   function enterOutline() {
+    // Re-arming the already-lit toolbar button (or any other re-entry while a preview is live)
+    // must no-op: snapshotting now would capture the PREVIEW as `outlineBefore`, and Cancel would
+    // then restore an outline instead of the original art.
+    if (outlineActive()) return;
     const al = activeLayer();
     if (
       workingTarget(appState.activeRow).kind !== "layer" ||
@@ -2139,8 +2158,16 @@
     const ctx = mk.canvas.getContext("2d", { willReadFrequently: true })!;
     const before = ctx.getImageData(0, 0, mk.canvas.width, mk.canvas.height);
     // Nothing drawn → nothing to outline. Leave the hold a hold.
-    if (!before.data.some((v, i) => i % 4 === 3 && v > 0)) {
+    let hasInk = false;
+    for (let p = 3; p < before.data.length; p += 4) {
+      if (before.data[p] > 0) {
+        hasInk = true;
+        break;
+      }
+    }
+    if (!hasInk) {
       if (mk.materialized) restoreCellTrack(al, mk.materialized.before);
+      appState.statusHint = "Nothing to outline — this frame is empty";
       return;
     }
     outlineLayer = al;
@@ -2148,6 +2175,10 @@
     outlineCtx = ctx;
     outlineBefore = before;
     outlineField = null;
+    outlineAlpha = null;
+    outlinePreviewImg = null;
+    outlineNoise = null;
+    outlineNoiseSeed = null;
     refreshOutlinePreview();
     // `repaint`, NOT `bump`: entering the tool isn't a document edit, but `outlineActive()` is a
     // plain local — the on-canvas bar's `{#if}` gate reads `appState.version` only so it re-evaluates
@@ -2172,20 +2203,44 @@
     const w = ctx.canvas.width,
       h = ctx.canvas.height;
     const src = before.data;
-    const alpha = new Uint8Array(w * h);
-    for (let i = 0, p = 3; i < alpha.length; i++, p += 4) alpha[i] = src[p];
+    // Both extracted from the immutable snapshot, so both are built once per entry and reused across
+    // every knob change — a preview used to redo this full-canvas work on every scrub tick.
+    if (!outlineAlpha) {
+      outlineAlpha = new Uint8Array(w * h);
+      for (let i = 0, p = 3; i < outlineAlpha.length; i++, p += 4) outlineAlpha[i] = src[p];
+    }
+    const alpha = outlineAlpha;
     // The field is a function of the ART, which the preview never changes — so it survives every
     // knob change and only a fresh entry rebuilds it.
     outlineField ??= signedDistanceField(alpha, w, h);
-    const cov = outlineMask(alpha, w, h, { ...appState.outline }, outlineField);
+    // The noise planes are a function of the seed only — rebuilt on a fresh entry (both nulled by
+    // enterOutline) and on a re-roll (the seed no longer matches what was cached).
+    if (outlineNoise === null || outlineNoiseSeed !== appState.outline.seed) {
+      outlineNoise = buildNoisePlanes(w, h, appState.outline.seed);
+      outlineNoiseSeed = appState.outline.seed;
+    }
+    const cov = outlineMask(alpha, w, h, { ...appState.outline }, outlineField, outlineNoise);
     // RGB is carried over from the source: only alpha changes, so coloured art keeps its colour.
-    const next = new ImageData(new Uint8ClampedArray(src), w, h);
+    // Built once per entry and mutated in place after that — every preview overwrites every alpha
+    // byte below, so there is nothing left to re-copy from `src` on later calls.
+    outlinePreviewImg ??= new ImageData(new Uint8ClampedArray(src), w, h);
+    const next = outlinePreviewImg;
     for (let i = 0, p = 3; i < cov.length; i++, p += 4) next.data[p] = cov[i];
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.putImageData(next, 0, 0);
     markInkChanged(ctx.canvas);
     recomposite();
     positionOutlineBar();
+  }
+
+  /** Byte-for-byte comparison of two same-size `ImageData`s — used by `applyOutline` to detect the
+   *  "shape thinner than the thickness stays solid" case (spec decision 3), where the band ends up
+   *  identical to the source and there is nothing to record. */
+  function imageDataUnchanged(a: ImageData, b: ImageData): boolean {
+    const da = a.data,
+      db = b.data;
+    if (da.length !== db.length) return false;
+    for (let i = 0; i < da.length; i++) if (da[i] !== db[i]) return false;
+    return true;
   }
 
   function applyOutline() {
@@ -2200,6 +2255,15 @@
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     const layerId = outlineLayer?.id ?? null;
     const mat = outlineMaterialized;
+    // Nothing changed → nothing to record. Pushing a no-op undo entry (and keeping a hold
+    // materialised into a key for it) would be pure noise in the undo stack.
+    if (imageDataUnchanged(before, after)) {
+      if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
+      clearOutline();
+      recomposite();
+      repaint(); // version only — nothing new to persist
+      return;
+    }
     history.push(
       pixelCommand(
         ctx.canvas,
@@ -2242,12 +2306,16 @@
     outlineCtx = null;
     outlineBefore = null;
     outlineField = null;
+    outlineAlpha = null;
+    outlinePreviewImg = null;
+    outlineNoise = null;
+    outlineNoiseSeed = null;
     outlineLayer = null;
     outlineMaterialized = null;
   }
 
-  // A knob change (from a future ToolOptions control) re-derives the preview from the untouched
-  // snapshot — coalesced via scheduleOutlinePreview (gotcha #17), not applied straight from here.
+  // A knob change (from the on-canvas bar) re-derives the preview from the untouched snapshot —
+  // coalesced via scheduleOutlinePreview (gotcha #17), not applied straight from here.
   $effect(() => {
     void appState.outline.thickness;
     void appState.outline.wobble;

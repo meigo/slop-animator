@@ -15,6 +15,7 @@
     selectEyedropper,
     pixelToolsBlock,
     selectToolsBlock,
+    outlineActions,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -258,7 +259,12 @@
     class:opacity-40={toolsDimmed}
     class:ui-on={appState.tool === "outline"}
     title={pixelTitle("Outline (hollow the drawing to a line)")}
-    onclick={() => (appState.tool = "outline")}><Spline size={18} /></button
+    onclick={() => {
+      // Re-tapping the already-lit button re-arms the tool: assigning the same string to
+      // appState.tool notifies nothing, so Canvas's tool-change effect never re-fires enterOutline.
+      if (appState.tool === "outline") outlineActions.reenter();
+      else appState.tool = "outline";
+    }}><Spline size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
        no pointer events, so the status bar's delegated hint could never read it (CLAUDE.md,

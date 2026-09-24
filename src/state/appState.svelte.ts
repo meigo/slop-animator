@@ -2511,11 +2511,18 @@ export const poseActions: { active: () => boolean; apply: () => void; cancel: ()
   cancel: () => {},
 };
 
-/** Canvas-owned Outline-tool actions for App's Enter (apply) / Escape (cancel) keys. */
-export const outlineActions: { active: () => boolean; apply: () => void; cancel: () => void } = {
+/** Canvas-owned Outline-tool actions for App's Enter (apply) / Escape (cancel) keys, plus
+ *  `reenter` for Toolbar's already-lit-button tap (see the 2026-09-24 re-arm fix). */
+export const outlineActions: {
+  active: () => boolean;
+  apply: () => void;
+  cancel: () => void;
+  reenter: () => void;
+} = {
   active: () => false,
   apply: () => {},
   cancel: () => {},
+  reenter: () => {},
 };
 
 /** Canvas registers a discard-the-active-lift callback here. Call it BEFORE any operation that

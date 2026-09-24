@@ -28,7 +28,9 @@ each is a reasonable thing to want later.
    but tuning two noise knobs blind is guesswork).
 2. **Hollow it, line inside the edge** — the silhouette keeps the size you drew. Rejected: centred
    on the edge (grows the shape by half the thickness) and keyline (keeps the fill, adds a contour
-   outside) — a different effect, not what was asked for.
+   outside) — a different effect, not what was asked for. True only at Wobble 0: the signed field
+   (decision 4) deliberately lets the band sit up to `WOBBLE_MAX` outside the original edge, since
+   that outward reach is the whole point of Wobble.
 3. **Wobble + Variation**, no gaps, no grain.
 4. **Distance field + noise-modulated band**, over two alternatives:
    - *Morphology reusing `mask-ops`* (`mask minus erodeMask`): smallest possible version, built from

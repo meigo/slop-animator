@@ -4,6 +4,7 @@ import {
   valueNoise,
   clampThickness,
   outlineMask,
+  buildNoisePlanes,
   MAX_THICKNESS,
 } from "../core/outline";
 import { erodeMask } from "../core/mask-ops";
@@ -23,9 +24,12 @@ function rectAlpha(
 }
 
 describe("signedDistanceField", () => {
-  it("is negative everywhere when nothing is drawn", () => {
+  it("is negative everywhere when nothing is drawn, and positive inside a drawn shape", () => {
     const d = signedDistanceField(new Uint8Array(4 * 4), 4, 4);
     expect([...d].every((v) => v < 0)).toBe(true);
+    // Guards against a stub that always returns negative: a real shape must flip the sign inside it.
+    const filled = signedDistanceField(rectAlpha(8, 8, 2, 2, 5, 5), 8, 8);
+    expect(filled[3 * 8 + 3]).toBeGreaterThan(0);
   });
 
   it("puts a hard edge half a pixel outside the last opaque pixel", () => {
@@ -191,5 +195,17 @@ describe("outlineMask", () => {
     expect(clampThickness(-4)).toBe(0);
     expect(clampThickness(1000)).toBe(MAX_THICKNESS);
     expect(clampThickness(3.7)).toBe(3.7);
+  });
+
+  it("gives byte-identical output whether the noise planes are precomputed or computed internally", () => {
+    const w = 30,
+      h = 30;
+    const alpha = rectAlpha(w, h, 5, 5, 24, 24);
+    const opts = { thickness: 3, wobble: 0.8, variation: 0.8, seed: 7 };
+    const field = signedDistanceField(alpha, w, h);
+    const noise = buildNoisePlanes(w, h, opts.seed);
+    const internal = outlineMask(alpha, w, h, opts, field);
+    const precomputed = outlineMask(alpha, w, h, opts, field, noise);
+    expect([...precomputed]).toEqual([...internal]);
   });
 });

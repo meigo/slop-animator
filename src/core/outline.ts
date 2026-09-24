@@ -137,12 +137,41 @@ export function clampThickness(value: unknown): number {
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
+/** The two noise planes `outlineMask` reads per pixel, at a given seed and canvas size. Depend only
+ *  on (seed, w, h) — not on thickness/wobble/variation — so the tool builds these once per entry and
+ *  once per re-roll (dice), reusing them across every knob change in between. */
+export interface OutlineNoisePlanes {
+  /** `valueNoise(x/FEATURE_PX, y/FEATURE_PX, seed)`, one value per pixel — the Wobble offset field. */
+  offset: Float32Array;
+  /** `valueNoise(x/FEATURE_PX+11.5, y/FEATURE_PX+7.25, seed ^ 0x9e3779b9)` — the Variation width field.
+   *  Offsetting the lattice as well as the seed keeps the two from sharing their zero crossings,
+   *  which would tie a thin spot to an inward wobble. */
+  width: Float32Array;
+}
+
+/** Precompute the two noise planes `outlineMask` needs for `seed`. Pure function of (seed, w, h). */
+export function buildNoisePlanes(w: number, h: number, seed: number): OutlineNoisePlanes {
+  const s = Number.isFinite(seed) ? Math.trunc(seed) : 0;
+  const widthSeed = s ^ 0x9e3779b9;
+  const offset = new Float32Array(w * h);
+  const width = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      offset[i] = valueNoise(x / FEATURE_PX, y / FEATURE_PX, s);
+      width[i] = valueNoise(x / FEATURE_PX + 11.5, y / FEATURE_PX + 7.25, widthSeed);
+    }
+  }
+  return { offset, width };
+}
+
 /**
  * Alpha coverage (0..255) of the outline for `alpha`.
  *
  * `field` lets the caller reuse a `signedDistanceField` across knob changes: the field depends on
  * the ART only, so the tool computes it once per entry and every thickness/wobble/variation change
- * then costs one pass. Pass nothing and it is computed here.
+ * then costs one pass. `noise` likewise lets the caller reuse `buildNoisePlanes` across knob changes
+ * — it depends on the seed and canvas size only. Pass neither and both are computed here.
  */
 export function outlineMask(
   alpha: Uint8Array | Uint8ClampedArray,
@@ -150,6 +179,7 @@ export function outlineMask(
   h: number,
   opts: OutlineOptions,
   field?: Float32Array,
+  noise?: OutlineNoisePlanes,
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(w * h);
   const thickness = clampThickness(opts.thickness);
@@ -158,25 +188,15 @@ export function outlineMask(
   const variation = clamp01(opts.variation);
   const seed = Number.isFinite(opts.seed) ? Math.trunc(opts.seed) : 0;
   const d = field ?? signedDistanceField(alpha, w, h);
-  // A second, independent field for the width. Offsetting the lattice as well as the seed keeps the
-  // two from sharing their zero crossings, which would tie a thin spot to an inward wobble.
-  const widthSeed = seed ^ 0x9e3779b9;
+  const planes = noise ?? buildNoisePlanes(w, h, seed);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
-      const offset =
-        wobble === 0 ? 0 : WOBBLE_MAX * wobble * valueNoise(x / FEATURE_PX, y / FEATURE_PX, seed);
+      const offset = wobble === 0 ? 0 : WOBBLE_MAX * wobble * planes.offset[i];
       const width =
         variation === 0
           ? thickness
-          : Math.max(
-              MIN_WIDTH,
-              thickness *
-                (1 +
-                  VARIATION_MAX *
-                    variation *
-                    valueNoise(x / FEATURE_PX + 11.5, y / FEATURE_PX + 7.25, widthSeed)),
-            );
+          : Math.max(MIN_WIDTH, thickness * (1 + VARIATION_MAX * variation * planes.width[i]));
       // One-pixel ramp centred on each edge of the band: +0.5 puts the 50% point ON the boundary.
       const coverage = Math.min(d[i] - offset, offset + width - d[i]) + 0.5;
       out[i] = coverage <= 0 ? 0 : coverage >= 1 ? 255 : Math.round(coverage * 255);
