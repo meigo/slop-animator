@@ -16,6 +16,7 @@
     pixelToolsBlock,
     selectToolsBlock,
     outlineActions,
+    selectOutline,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -263,7 +264,7 @@
       // Re-tapping the already-lit button re-arms the tool: assigning the same string to
       // appState.tool notifies nothing, so Canvas's tool-change effect never re-fires enterOutline.
       if (appState.tool === "outline") outlineActions.reenter();
-      else appState.tool = "outline";
+      else selectOutline(); // remembers the tool to hand back to when Outline is done
     }}><Spline size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
