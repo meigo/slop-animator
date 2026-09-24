@@ -466,7 +466,7 @@
       >{#if appState.keepProportions}<Link2 size={14} />{:else}<Link2Off size={14} />{/if}
       Keep proportions</button
     >
-  {:else if appState.tool === "deform" || appState.tool === "pose"}
+  {:else if appState.tool === "deform" || appState.tool === "pose" || appState.tool === "outline"}
     <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
          and the status bar says it a third time — this branch was the only place that repeated it,
          written as "swap the instructions for the reason" without noticing the overlay. The
@@ -475,6 +475,11 @@
     {#if !paintBlock && appState.tool === "deform"}
       <span class="text-xs text-text-muted"
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
+      >
+    {/if}
+    {#if !paintBlock && appState.tool === "outline"}
+      <span class="text-xs text-text-muted"
+        >Hollows the drawing to a line · thickness and randomness in the canvas bar</span
       >
     {/if}
   {:else}

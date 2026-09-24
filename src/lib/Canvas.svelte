@@ -1369,6 +1369,9 @@
       if (done) fillUsed = false;
       return;
     }
+    // The tool is driven entirely by the on-canvas bar and ToolOptions knobs — a canvas gesture
+    // must not fall through to the default paint path below.
+    if (appState.tool === "outline") return;
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
@@ -2534,6 +2537,10 @@
       if (appState.tool === "deform" && !deformDirty) selection.cancel();
       else selection.commit();
     }
+    // Outline CANCELS where pose and deform bank. Entering the tool already rewrites every pixel,
+    // so banking would mean a stray tap on the tool button plus a frame step silently outlines a
+    // drawing. Re-entering costs nothing — the knob values persist.
+    if (outlineActive()) cancelOutline();
     // Mid-stroke ↑/↓ or ←/→ would keep writing the old cell while inverse-mapping the new
     // compose. Commit what we have and drop the rest of this pointer stream.
     if (strokeCanvas) {
@@ -2547,6 +2554,7 @@
   function discardActiveEdits() {
     if (meshPose) cancelPose();
     if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
+    if (outlineActive()) cancelOutline();
     // An open stroke holds the key cell's canvas + ctx, which the caller is about to replace or
     // replay history over — the Pencil can be mid-stroke while fingers undo (touch-gestures.ts lets
     // pen and touch run independently). Roll back to the pre-stroke snapshot instead of committing:
@@ -2604,7 +2612,10 @@
     // Can't keep editing a layer that just became read-only → discard the in-progress lift.
     // DERIVED (isLayerLocked), so locking the layer's GROUP discards too — reading it here also makes
     // the group's flag a tracked dependency, which a raw `al.locked` read never was.
-    if (isLayerLocked(al, appState.project.groups) && (meshPose || selection?.hasFloating))
+    if (
+      isLayerLocked(al, appState.project.groups) &&
+      (meshPose || selection?.hasFloating || outlineActive())
+    )
       discardActiveEdits();
   });
 
