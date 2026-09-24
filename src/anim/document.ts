@@ -741,6 +741,18 @@ export function opacityAt(layer: Layer, frame: number): number {
   return resolveTrack(track, frame, (a, b, u) => a + (b - a) * u);
 }
 
+/** How strongly a layer's own CONTENT shows at `frame`, 0..1: its opacity times its group's, the
+ *  product the compositor applies to the cell. The overlays (a floating selection, a deform warp, a
+ *  pose mesh) paint that same content, so they have to fade with it — they mirror the layer's
+ *  visibility for the same reason. */
+export function layerContentAlpha(
+  layer: Layer,
+  group: LayerGroup | null | undefined,
+  frame: number,
+): number {
+  return (opacityAt(layer, frame) * groupOpacityAt(group, frame)) / 10000;
+}
+
 /** The layer's transform at `frame`: its static value when there is no track, otherwise the track
  *  resolved (and held outside its key range — a track never extrapolates). */
 export function transformAt(layer: Layer, frame: number): RefTransform {

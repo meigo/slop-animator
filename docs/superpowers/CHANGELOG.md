@@ -7080,3 +7080,26 @@ way Delete already did: it copies the group and its drawing layers as one undo e
   left in the original, the new group selected, group/layer tracks independent of the source's, and
   ONE undo removing the whole thing. The real toolbar button was clicked, not just the action.
   `canDuplicateGroup` and the panel's enablement/titles are unit-tested (1442 passing).
+
+**An overlay lift keeps the layer's opacity (2026-09-24).** Reported: *"selection transform/deform
+layer with opacity turned down — during operation opacity is set to 100%"*.
+- **Root cause, measured rather than guessed.** The overlay paints the edited layer's own content
+  (floating selection, deform warp, pose mesh), but the `$effect` in `Canvas.svelte` that mirrors the
+  active layer onto it only ever mirrored `visible` — never `opacity`. Instrumenting the two contexts
+  during a lift on a 40% layer: the compositor's cell `drawImage` ran at `globalAlpha` **0.4**, the
+  overlay's at **1**. The float therefore jumped to full strength for the length of the gesture and
+  settled back to 40% on commit, which is what made it look like the tool was changing the opacity.
+- **Fix:** `layerContentAlpha(layer, group, frame)` in `document.ts` — `opacityAt × groupOpacityAt /
+  10000`, the same product the compositor applies (and the one `onion.ts:177` already computes inline
+  for ghosts). `Selection.contentAlpha` carries it, set beside `hidden` in that same effect, and
+  `drawOverlay` applies it around the two CONTENT draws only. `posePaint` does the same around
+  `meshPose.render`. Marching ants, handles, the warp grid and the reach tint are UI, not content,
+  and stay at full strength — verified separately (chrome 1 while content is 0.4).
+- Verified in the browser on a real Pencil-gesture lift, reading the alpha each context draws with:
+  40% layer → 0.4 both sides; 50% layer inside a 50% group → 0.25 both sides; fully opaque → 1.
+  Selection transform, Deform and Pose all three. `layerContentAlpha` is unit-tested (static,
+  animated on either layer or group, and the 0 cases), 1447 passing.
+- **Not covered:** the alpha is read at the playhead when the effect runs, which is right for a lift
+  (a gesture is one frame). A layer whose opacity is ANIMATED does not re-fade mid-gesture if the
+  playhead moves under it, since the effect's dependencies are the layer and the playhead, not the
+  track's resolved value.

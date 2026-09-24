@@ -178,6 +178,11 @@ export class Selection {
   /** When true the overlay is cleared and nothing is drawn (e.g. the edited layer is hidden). The
    *  marching-ants loop keeps running so it redraws the moment this clears. */
   hidden = false;
+  /** 0..1, the edited layer's opacity times its group's — what the compositor applies to the cell.
+   *  The lifted pixels ARE that layer's content, so they fade with it; without this a lift on a
+   *  faded layer jumped to full strength for the length of the gesture and settled back on commit.
+   *  Chrome (ants, handles, grid) is UI, not content, and stays at full strength. */
+  contentAlpha = 1;
   floatingPixels: HTMLCanvasElement | null = null;
   /** Active-layer compose (`group ∘ layer ∘ cell`). Empty = identity. */
   composeSteps: ComposeStep[] = [];
@@ -945,7 +950,10 @@ export class Selection {
       if (this.state === "warping" && this.warpGrid.length === this.warpRows) {
         const grid = this.warpGrid;
         if (this.floatingPixels) {
+          ctx.save();
+          ctx.globalAlpha = this.contentAlpha; // content, unlike the grid and ants below
           drawWarpedMesh(ctx, this.floatingPixels, this.rect, grid, this.warpRows, this.warpCols);
+          ctx.restore();
         }
         // Internal grid lines (between adjacent control points).
         ctx.save();
@@ -992,6 +1000,7 @@ export class Selection {
       if (this.floatingPixels) {
         const m = this.matrix;
         ctx.save();
+        ctx.globalAlpha = this.contentAlpha; // content, unlike the box and handles below
         // Multiply — do not replace. applyCompose may already have the layer/cell/group matrix.
         ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
         ctx.drawImage(this.floatingPixels, this.rect.x, this.rect.y, this.rect.w, this.rect.h);
