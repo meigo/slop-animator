@@ -7166,7 +7166,8 @@ in a hidden automation tab. Still owed an iPad pass: the 2026-09-21 review batch
 Duplicate group.
 
 **Outline tool — signed distance field from alpha (2026-09-24).** Turn a solid drawing into an
-outline by its silhouette's edge. Live preview with tunable **Thickness** (1-24px), **Wobble**
+outline by its silhouette's edge. Live preview with tunable **Thickness** (0.5-24px, half-steps),
+**Wobble**
 (noise-modulated inward/outward offset), **Variation** (width swell/thin), and a re-roll button
 for the randomness seed; Apply as one undo step, Cancel restores. Spec and plan:
 `docs/superpowers/{specs,plans}/2026-09-24-outline-from-alpha*`.
@@ -7218,3 +7219,17 @@ for the randomness seed; Apply as one undo step, Cancel restores. Spec and plan:
   undo entry to recover from. A live Pose lift has the same class of exposure and is worse — it can
   persist an EMPTY cell mid-lift. The spec already knowingly accepts the "killed mid-tune" case; this is
   the same acceptance, stated for the autosave-race variant specifically.
+
+**Outline thickness takes half-steps (2026-09-24, same day).** Asked for straight after the tool
+shipped: *"could thickness have decimal places?"* — and the core already allowed it (`clampThickness`
+passes a fraction through, and there is a test asserting 3.7 survives), so only the field was rounding.
+`step={0.5}` and `min={0.5}` on the Thickness `NumberField`; `NumberField` derives its displayed
+decimals from `step` (`stepDecimals` in `core/scrub.ts`) and the drag-scrub rounds to the same
+precision, so nothing else had to change.
+- **Sub-1px is a real setting, not a degenerate one:** the band's coverage is anti-aliased, so 0.5
+  renders a fine grey hairline. Measured on a rectangle, total coverage runs 239 / 476 / 711 / 944 /
+  1175 / 1404 units for 0.5 / 1 / 1.5 / 2 / 2.5 / 3 — each half-step adds exactly half a step's ink.
+- With Variation turned up, `MIN_WIDTH` (0.75px) still floors the varied width, so a sub-1px line stops
+  thinning rather than breaking. That floor is why gaps are not a side effect of a thin setting.
+- 0.5 over 0.25 because the scrub moves 8px of drag per step: a full 1-24 sweep is already ~370px of
+  travel at 0.5, and 0.25 would double it. Finer control wants a bigger `pxPerStep`, not a smaller step.

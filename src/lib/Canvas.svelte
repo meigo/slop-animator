@@ -2938,9 +2938,9 @@
           <NumberField
             class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
             value={appState.outline.thickness}
-            min={1}
+            min={0.5}
             max={MAX_THICKNESS}
-            step={1}
+            step={0.5}
             title="Line thickness in pixels"
             ariaLabel="Outline thickness"
             onInput={(v) => {
