@@ -92,7 +92,7 @@ off the edge of the canvas is outlined along that edge.
 ### 2. Noise fields
 
 One seeded 2D value-noise function with smoothstep interpolation, sampled at two lattice offsets
-(`seed` and `seed + 0x9E3779B9`) to give two independent fields in [-1, 1]:
+(`seed` and `seed ^ 0x9E3779B9`) to give two independent fields in [-1, 1]:
 
 - `nWobble(x, y)` — where the band sits.
 - `nWidth(x, y)` — how wide it is.

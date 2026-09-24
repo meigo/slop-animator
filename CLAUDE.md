@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1447 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1464 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
@@ -260,6 +260,12 @@ Shipped 2026-09-18: **Drag-to-change number fields** — all nine numeric inputs
 Length, canvas W/H, pose gap, video speed, track step) are `NumberField.svelte` + `core/scrub.ts`:
 press and drag sideways to scrub the value (Shift = finer steps), or tap to type as before. See the
 2026-09-18 changelog entry for the per-field step table and the two undo-commit shapes.
+
+Shipped 2026-09-24: **Outline tool** — turn a solid drawing into an outline by a signed distance field
+built from alpha, seeded sub-pixel to carry anti-aliasing, with a noise-modulated band: **Thickness**
+(1-24px), **Wobble** (the line wanders inward/outward), **Variation** (it swells and thins), re-roll button,
+preview live then Apply or Cancel. Distinct from Pose/Deform: cancels on tool/layer/frame switch, lock,
+undo, resize. See the spec and plan in `docs/superpowers/`.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
