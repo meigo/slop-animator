@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Check, X } from "@lucide/svelte";
+  import { Check, X, Dices } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
@@ -44,6 +44,7 @@
     viewActions,
     fillActions,
     poseActions,
+    outlineActions,
     liftGuard,
     transformDragGuard,
     playbackController,
@@ -98,6 +99,13 @@
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
+  import {
+    outlineMask,
+    signedDistanceField,
+    buildNoisePlanes,
+    MAX_THICKNESS,
+  } from "../core/outline";
+  import type { OutlineNoisePlanes } from "../core/outline";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -1367,6 +1375,9 @@
       if (done) fillUsed = false;
       return;
     }
+    // The tool is driven entirely by the on-canvas bar (ToolOptions carries only a hint string,
+    // no knobs) — a canvas gesture must not fall through to the default paint path below.
+    if (appState.tool === "outline") return;
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
@@ -1415,6 +1426,7 @@
       sizeOverlay();
       syncOverlayScale();
       repaintPoseOverlay();
+      if (outlineBarEl && outlineActive()) positionOutlineBar();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
         lastOutputScale = ss;
@@ -1504,6 +1516,10 @@
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
+    outlineActions.active = outlineActive;
+    outlineActions.apply = applyOutline;
+    outlineActions.cancel = cancelOutline;
+    outlineActions.reenter = enterOutline;
   }
 
   /**
@@ -1816,12 +1832,39 @@
     if (poseBarEl && meshPose) positionPoseBar();
   });
 
+  /** Anchor a bar over (or under) a CELL-space bbox, the way the selection bar anchors to a
+   *  selection. Returns the workspace-relative position, or null when it cannot measure yet. */
+  function anchorBarToBox(
+    box: { x: number; y: number; w: number; h: number },
+    el: HTMLElement | undefined,
+  ): { x: number; y: number } | null {
+    if (!el || !stage || !viewport) return null;
+    const wsRect = stage.getBoundingClientRect();
+    const panelRect = el.getBoundingClientRect();
+    const a = computeAnchor({
+      bboxDoc: [
+        { x: box.x, y: box.y },
+        { x: box.x + box.w, y: box.y },
+        { x: box.x + box.w, y: box.y + box.h },
+        { x: box.x, y: box.y + box.h },
+      ].map(composeToDoc),
+      docToScreen: (p) => {
+        const sp = viewport.canvasToScreen(p.x, p.y);
+        return { x: sp.x - wsRect.left, y: sp.y - wsRect.top };
+      },
+      panelSize: { w: panelRect.width || 320, h: panelRect.height || 50 },
+      viewport: { w: stage.clientWidth, h: stage.clientHeight },
+      margin: POSE_BAR_MARGIN,
+    });
+    return { x: a.x, y: a.y };
+  }
+
   /** Anchor the pose bar over (or under) the mesh, the way the selection bar anchors to a selection:
    *  same `computeAnchor`, so the above/below flip, the margin and the viewport clamp are one
    *  implementation. The mesh lives in CELL space, so its bbox goes out through `composeToDoc`
    *  first — the same mapping the selection bar's cell-space lift uses. */
   function positionPoseBar() {
-    if (!meshPose || !poseBarEl || !stage || !viewport) return;
+    if (!meshPose || !poseBarEl) return;
     let minX = Infinity,
       minY = Infinity,
       maxX = -Infinity,
@@ -1833,25 +1876,33 @@
       if (v.y > maxY) maxY = v.y;
     }
     if (!Number.isFinite(minX)) return;
-    const wsRect = stage.getBoundingClientRect();
-    const panelRect = poseBarEl.getBoundingClientRect();
-    const a = computeAnchor({
-      bboxDoc: [
-        { x: minX, y: minY },
-        { x: maxX, y: minY },
-        { x: maxX, y: maxY },
-        { x: minX, y: maxY },
-      ].map(composeToDoc),
-      docToScreen: (p) => {
-        const sp = viewport.canvasToScreen(p.x, p.y);
-        return { x: sp.x - wsRect.left, y: sp.y - wsRect.top };
-      },
-      panelSize: { w: panelRect.width || 320, h: panelRect.height || 50 },
-      viewport: { w: stage.clientWidth, h: stage.clientHeight },
-      margin: POSE_BAR_MARGIN,
-    });
-    poseBarPos = { x: a.x, y: a.y };
+    const p = anchorBarToBox({ x: minX, y: minY, w: maxX - minX, h: maxY - minY }, poseBarEl);
+    if (p) poseBarPos = p;
   }
+
+  let outlineBarEl: HTMLDivElement | undefined = $state();
+  let outlineBarPos = $state({ x: 0, y: 0 });
+
+  function positionOutlineBar() {
+    if (!outlineCtx) return;
+    // The ink the tool is working on. `contentBounds` is device px, memoized per canvas ink
+    // revision (`cell-ink.ts`); `refreshOutlinePreview`'s `putImageData` runs through
+    // `markInkChanged`, which bumps that revision, so this re-measures on every preview and the bar
+    // tracks a thinning outline rather than the solid it started from. `appState.version` is read
+    // only so this call's caller (the effect below) re-runs — it is not the cache key.
+    const b = contentBounds(outlineCtx.canvas, appState.version);
+    const box = b
+      ? { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR }
+      : { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
+    const p = anchorBarToBox(box, outlineBarEl);
+    if (p) outlineBarPos = p;
+  }
+
+  // Same reason as the pose bar's effect: the element is created by the block this positions, so
+  // the first pass has nothing to measure and would flash at 0,0.
+  $effect(() => {
+    if (outlineBarEl && outlineActive()) positionOutlineBar();
+  });
 
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
   function poseReachMax(): number {
@@ -2069,6 +2120,209 @@
     recomposite();
     repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
   }
+
+  // Outline tool. Unlike Pose, the preview writes into the CELL and is re-derived from the snapshot
+  // on every change — so what you see is the real compositor's output (layer opacity, the layer and
+  // group transform, boil, onion), and an app killed mid-tune leaves an outline rather than the
+  // empty cell an overlay lift would.
+  let outlineCtx: CanvasRenderingContext2D | null = null;
+  let outlineBefore: ImageData | null = null;
+  let outlineField: Float32Array | null = null; // depends on the ART only — computed once per entry
+  let outlineAlpha: Uint8Array | null = null; // alpha plane extracted from outlineBefore — once per entry
+  // RGBA copy of outlineBefore, mutated in place each preview (only the alpha channel changes).
+  let outlinePreviewImg: ImageData | null = null;
+  let outlineNoise: OutlineNoisePlanes | null = null; // depends on the seed only
+  let outlineNoiseSeed: number | null = null; // seed outlineNoise was built for — rebuilt on mismatch
+  let outlineLayer: DrawingLayer | null = null;
+  let outlineMaterialized: CellTrackChange | null = null;
+  let outlineRaf = 0;
+
+  function outlineActive(): boolean {
+    return outlineBefore !== null;
+  }
+
+  function enterOutline() {
+    // Re-arming the already-lit toolbar button (or any other re-entry while a preview is live)
+    // must no-op: snapshotting now would capture the PREVIEW as `outlineBefore`, and Cancel would
+    // then restore an outline instead of the original art.
+    if (outlineActive()) return;
+    const al = activeLayer();
+    if (
+      workingTarget(appState.activeRow).kind !== "layer" ||
+      al.kind !== "draw" ||
+      !isLayerEditable(al, appState.project.groups) ||
+      onLoopFrame(al)
+    )
+      return;
+    const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
+    const ctx = mk.canvas.getContext("2d", { willReadFrequently: true })!;
+    const before = ctx.getImageData(0, 0, mk.canvas.width, mk.canvas.height);
+    // Nothing drawn → nothing to outline. Leave the hold a hold.
+    let hasInk = false;
+    for (let p = 3; p < before.data.length; p += 4) {
+      if (before.data[p] > 0) {
+        hasInk = true;
+        break;
+      }
+    }
+    if (!hasInk) {
+      if (mk.materialized) restoreCellTrack(al, mk.materialized.before);
+      appState.statusHint = "Nothing to outline — this frame is empty";
+      return;
+    }
+    outlineLayer = al;
+    outlineMaterialized = mk.materialized;
+    outlineCtx = ctx;
+    outlineBefore = before;
+    outlineField = null;
+    outlineAlpha = null;
+    outlinePreviewImg = null;
+    outlineNoise = null;
+    outlineNoiseSeed = null;
+    refreshOutlinePreview();
+    // `repaint`, NOT `bump`: entering the tool isn't a document edit, but `outlineActive()` is a
+    // plain local — the on-canvas bar's `{#if}` gate reads `appState.version` only so it re-evaluates
+    // on entry (same reasoning as `enterPose`'s `repaint()`, gotcha class documented on the pose bar).
+    repaint();
+  }
+
+  /** Re-derive the preview from the snapshot. Coalesced to one animation frame (gotcha #17): a
+   *  thickness scrub fires a pointermove per pen event and each preview is a full-canvas pass. */
+  function scheduleOutlinePreview() {
+    if (outlineRaf) return;
+    outlineRaf = requestAnimationFrame(() => {
+      outlineRaf = 0;
+      refreshOutlinePreview();
+    });
+  }
+
+  function refreshOutlinePreview() {
+    const ctx = outlineCtx,
+      before = outlineBefore;
+    if (!ctx || !before) return;
+    const w = ctx.canvas.width,
+      h = ctx.canvas.height;
+    const src = before.data;
+    // Both extracted from the immutable snapshot, so both are built once per entry and reused across
+    // every knob change — a preview used to redo this full-canvas work on every scrub tick.
+    if (!outlineAlpha) {
+      outlineAlpha = new Uint8Array(w * h);
+      for (let i = 0, p = 3; i < outlineAlpha.length; i++, p += 4) outlineAlpha[i] = src[p];
+    }
+    const alpha = outlineAlpha;
+    // The field is a function of the ART, which the preview never changes — so it survives every
+    // knob change and only a fresh entry rebuilds it.
+    outlineField ??= signedDistanceField(alpha, w, h);
+    // The noise planes are a function of the seed only — rebuilt on a fresh entry (both nulled by
+    // enterOutline) and on a re-roll (the seed no longer matches what was cached).
+    if (outlineNoise === null || outlineNoiseSeed !== appState.outline.seed) {
+      outlineNoise = buildNoisePlanes(w, h, appState.outline.seed);
+      outlineNoiseSeed = appState.outline.seed;
+    }
+    const cov = outlineMask(alpha, w, h, { ...appState.outline }, outlineField, outlineNoise);
+    // RGB is carried over from the source: only alpha changes, so coloured art keeps its colour.
+    // Built once per entry and mutated in place after that — every preview overwrites every alpha
+    // byte below, so there is nothing left to re-copy from `src` on later calls.
+    outlinePreviewImg ??= new ImageData(new Uint8ClampedArray(src), w, h);
+    const next = outlinePreviewImg;
+    for (let i = 0, p = 3; i < cov.length; i++, p += 4) next.data[p] = cov[i];
+    ctx.putImageData(next, 0, 0);
+    markInkChanged(ctx.canvas);
+    recomposite();
+    positionOutlineBar();
+  }
+
+  /** Byte-for-byte comparison of two same-size `ImageData`s — used by `applyOutline` to detect the
+   *  "shape thinner than the thickness stays solid" case (spec decision 3), where the band ends up
+   *  identical to the source and there is nothing to record. */
+  function imageDataUnchanged(a: ImageData, b: ImageData): boolean {
+    const da = a.data,
+      db = b.data;
+    if (da.length !== db.length) return false;
+    for (let i = 0; i < da.length; i++) if (da[i] !== db[i]) return false;
+    return true;
+  }
+
+  function applyOutline() {
+    const ctx = outlineCtx,
+      before = outlineBefore;
+    if (!ctx || !before) return;
+    if (outlineRaf) {
+      cancelAnimationFrame(outlineRaf);
+      outlineRaf = 0;
+      refreshOutlinePreview(); // the pending frame's settings are the ones being applied
+    }
+    const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const layerId = outlineLayer?.id ?? null;
+    const mat = outlineMaterialized;
+    // Nothing changed → nothing to record. Pushing a no-op undo entry (and keeping a hold
+    // materialised into a key for it) would be pure noise in the undo stack.
+    if (imageDataUnchanged(before, after)) {
+      if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
+      clearOutline();
+      recomposite();
+      repaint(); // version only — nothing new to persist
+      return;
+    }
+    history.push(
+      pixelCommand(
+        ctx.canvas,
+        () => {
+          ctx.putImageData(before, 0, 0);
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // outlining a hold made this ◆
+          recomposite();
+        },
+        () => {
+          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
+          ctx.putImageData(after, 0, 0);
+          recomposite();
+        },
+        before,
+        after,
+      ),
+    );
+    clearOutline();
+    bump();
+  }
+
+  function cancelOutline() {
+    if (outlineCtx && outlineBefore) {
+      outlineCtx.putImageData(outlineBefore, 0, 0);
+      markInkChanged(outlineCtx.canvas);
+      // …and the keyframe entry materialised, so a cancelled outline leaves a hold a hold.
+      if (outlineLayer && outlineMaterialized)
+        restoreCellTrack(outlineLayer, outlineMaterialized.before);
+    }
+    clearOutline();
+    recomposite();
+    repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
+  }
+
+  function clearOutline() {
+    if (outlineRaf) {
+      cancelAnimationFrame(outlineRaf);
+      outlineRaf = 0;
+    }
+    outlineCtx = null;
+    outlineBefore = null;
+    outlineField = null;
+    outlineAlpha = null;
+    outlinePreviewImg = null;
+    outlineNoise = null;
+    outlineNoiseSeed = null;
+    outlineLayer = null;
+    outlineMaterialized = null;
+  }
+
+  // A knob change (from the on-canvas bar) re-derives the preview from the untouched snapshot —
+  // coalesced via scheduleOutlinePreview (gotcha #17), not applied straight from here.
+  $effect(() => {
+    void appState.outline.thickness;
+    void appState.outline.wobble;
+    void appState.outline.variation;
+    void appState.outline.seed;
+    if (outlineActive()) scheduleOutlinePreview();
+  });
 
   // Shared by the density buttons and the fill-outlines controls: any setting that changes the
   // mesh has to rebuild from the SAME lifted bitmap and reset handles — vertex indices change.
@@ -2307,6 +2561,7 @@
         if (deformDirty) selection.commit();
         else selection.cancel();
       } else if (t !== "select" && t !== "lasso" && selection.hasFloating) selection.commit();
+      if (prevTool === "outline" && t !== "outline") cancelOutline();
     }
     prevTool = t;
     if (t === "select") selection.mode = "rect";
@@ -2331,6 +2586,7 @@
     if (toolChanged && toolEntryPrimed && !strokeCanvas) {
       if (t === "deform" && selection.state !== "warping") enterDeform();
       else if (t === "pose" && !meshPose) enterPose();
+      else if (t === "outline" && !outlineActive()) enterOutline();
     }
     toolEntryPrimed = true;
   });
@@ -2349,6 +2605,10 @@
       if (appState.tool === "deform" && !deformDirty) selection.cancel();
       else selection.commit();
     }
+    // Outline CANCELS where pose and deform bank. Entering the tool already rewrites every pixel,
+    // so banking would mean a stray tap on the tool button plus a frame step silently outlines a
+    // drawing. Re-entering costs nothing — the knob values persist.
+    if (outlineActive()) cancelOutline();
     // Mid-stroke ↑/↓ or ←/→ would keep writing the old cell while inverse-mapping the new
     // compose. Commit what we have and drop the rest of this pointer stream.
     if (strokeCanvas) {
@@ -2362,6 +2622,7 @@
   function discardActiveEdits() {
     if (meshPose) cancelPose();
     if (selection?.hasFloating) selection.cancel(); // only an actual lift (not a plain marquee)
+    if (outlineActive()) cancelOutline();
     // An open stroke holds the key cell's canvas + ctx, which the caller is about to replace or
     // replay history over — the Pencil can be mid-stroke while fingers undo (touch-gestures.ts lets
     // pen and touch run independently). Roll back to the pre-stroke snapshot instead of committing:
@@ -2419,7 +2680,10 @@
     // Can't keep editing a layer that just became read-only → discard the in-progress lift.
     // DERIVED (isLayerLocked), so locking the layer's GROUP discards too — reading it here also makes
     // the group's flag a tracked dependency, which a raw `al.locked` read never was.
-    if (isLayerLocked(al, appState.project.groups) && (meshPose || selection?.hasFloating))
+    if (
+      isLayerLocked(al, appState.project.groups) &&
+      (meshPose || selection?.hasFloating || outlineActive())
+    )
       discardActiveEdits();
   });
 
@@ -2436,7 +2700,7 @@
   // gesture that does work would be a worse lie than showing nothing.
   // Eyedropper samples the composite, so it is never blocked. Select/lasso are gated separately
   // (`selectToolsBlock`): a locked drawing layer can still be copied from, a reference cannot.
-  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose"];
+  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "outline"];
   // Pixel tools need a drawable layer. Transform on a DRAWING layer does too; on a REF the gizmo
   // is live (lock/span gate it separately) — treating that as blocked showed a not-allowed cursor
   // and a "switch to a drawing layer" caption over something you can actually move.
@@ -2657,6 +2921,108 @@
              the remedy (Gap) is one row above. -->
         <span class="text-xs/snug text-warn">{appState.poseFillWarning}</span>
       {/if}
+    </div>
+  {/if}
+  {#if appState.version >= 0 && outlineActive()}
+    <div
+      bind:this={outlineBarEl}
+      class="selection-actions-panel ui-bar absolute max-w-[min(92vw,34rem)] flex-col z-30"
+      style="left: {outlineBarPos.x}px; top: {outlineBarPos.y}px"
+    >
+      <div class="flex flex-wrap items-center gap-1">
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="Line thickness in pixels"
+        >
+          Thickness
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={appState.outline.thickness}
+            min={1}
+            max={MAX_THICKNESS}
+            step={1}
+            title="Line thickness in pixels"
+            ariaLabel="Outline thickness"
+            onInput={(v) => {
+              appState.outline.thickness = v;
+            }}
+            onCommit={(v) => {
+              appState.outline.thickness = v;
+            }}
+          />
+        </label>
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="How far the line wanders across the edge"
+        >
+          Wobble
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={Math.round(appState.outline.wobble * 100)}
+            min={0}
+            max={100}
+            step={5}
+            title="How far the line wanders across the edge"
+            ariaLabel="Outline wobble"
+            onInput={(v) => {
+              appState.outline.wobble = v / 100;
+            }}
+            onCommit={(v) => {
+              appState.outline.wobble = v / 100;
+            }}
+          />
+        </label>
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="How much the line swells and thins"
+        >
+          Variation
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={Math.round(appState.outline.variation * 100)}
+            min={0}
+            max={100}
+            step={5}
+            title="How much the line swells and thins"
+            ariaLabel="Outline variation"
+            onInput={(v) => {
+              appState.outline.variation = v / 100;
+            }}
+            onCommit={(v) => {
+              appState.outline.variation = v / 100;
+            }}
+          />
+        </label>
+        <span class="w-px h-6 bg-border mx-0.5"></span>
+        <button
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
+          title="Shuffle the randomness"
+          aria-label="Shuffle the randomness"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            appState.outline.seed = (appState.outline.seed + 1) | 0;
+          }}><Dices size={18} /></button
+        >
+        <span class="w-px h-6 bg-border mx-0.5"></span>
+        <button
+          class="ui-bar-btn ui-on border-accent"
+          title="Apply outline"
+          aria-label="Apply outline"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            applyOutline();
+          }}><Check size={18} /></button
+        >
+        <button
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
+          title="Cancel outline"
+          aria-label="Cancel outline"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            cancelOutline();
+          }}><X size={18} /></button
+        >
+      </div>
     </div>
   {/if}
 </div>

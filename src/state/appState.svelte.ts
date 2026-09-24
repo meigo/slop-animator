@@ -229,7 +229,8 @@ export type Tool =
   | "transform"
   | "eyedropper"
   | "deform"
-  | "pose";
+  | "pose"
+  | "outline";
 
 /** A copied animation key, tagged with BOTH halves of its source's identity so it can only be
  *  pasted where it means the same thing. `prop` stops a transform landing in an opacity track.
@@ -277,6 +278,8 @@ interface AnimState {
   onion: OnionConfig;
   /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
   pose: { fillHoles: boolean; gap: number };
+  /** Outline tool settings. Session-only, like `pose` — not in `Preferences`. */
+  outline: { thickness: number; wobble: number; variation: number; seed: number };
   playback: { isPlaying: boolean; loop: boolean; range: { in: number; out: number } | null };
   statusHint: string; // description of the hovered/pressed control (from its title=); "" when idle
   /** STICKY data-safety warning: the startup restore failed (so autosave is disarmed), an autosave
@@ -398,6 +401,7 @@ export const state: AnimState = $state({
     tintNext: "#3f7fd0", // cool blue
   },
   pose: { fillHoles: true, gap: 0 },
+  outline: { thickness: 3, wobble: 0.35, variation: 0.35, seed: 1 },
   playback: { isPlaying: false, loop: true, range: null },
   statusHint: "",
   transformDragFrame: null,
@@ -2505,6 +2509,20 @@ export const poseActions: { active: () => boolean; apply: () => void; cancel: ()
   active: () => false,
   apply: () => {},
   cancel: () => {},
+};
+
+/** Canvas-owned Outline-tool actions for App's Enter (apply) / Escape (cancel) keys, plus
+ *  `reenter` for Toolbar's already-lit-button tap (see the 2026-09-24 re-arm fix). */
+export const outlineActions: {
+  active: () => boolean;
+  apply: () => void;
+  cancel: () => void;
+  reenter: () => void;
+} = {
+  active: () => false,
+  apply: () => {},
+  cancel: () => {},
+  reenter: () => {},
 };
 
 /** Canvas registers a discard-the-active-lift callback here. Call it BEFORE any operation that

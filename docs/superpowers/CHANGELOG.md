@@ -7164,3 +7164,57 @@ follow-on-pan cadence this session could not exercise, since `repaintPoseOverlay
 in a hidden automation tab. Still owed an iPad pass: the 2026-09-21 review batch's touch fixes
 (Pencil vs. finger, tap-after-pinch, timeline pointercancel, tool switch mid-stroke) and
 Duplicate group.
+
+**Outline tool — signed distance field from alpha (2026-09-24).** Turn a solid drawing into an
+outline by its silhouette's edge. Live preview with tunable **Thickness** (1-24px), **Wobble**
+(noise-modulated inward/outward offset), **Variation** (width swell/thin), and a re-roll button
+for the randomness seed; Apply as one undo step, Cancel restores. Spec and plan:
+`docs/superpowers/{specs,plans}/2026-09-24-outline-from-alpha*`.
+- **Signed distance field, not inside-only.** The field is computed once per entry (two-pass
+  chamfer, orthogonal 1 + diagonal √2, ~4% error <1px at max thickness). A signed field is the only
+  way Wobble can move the line both inward and outward across the true edge — an inside-only field
+  cannot cross outside the silhouette, so an outward wobble would be clipped, and what remains is
+  one-sided, indistinguishable from Variation. The user asked for both; they have to be two different
+  things.
+- **Sub-pixel seeding carries anti-aliasing.** A boundary pixel starts at `alpha/255 - 0.5` rather
+  than 0, so the field carries the brush's sub-pixel anti-aliasing. Every output edge is reconstructed
+  from distance alone with no "inherit the source alpha" special case, so outlined text stays as crisp
+  as it was drawn.
+- **Distance field and noise cached, band computed per preview.** The distance field depends only on
+  the art — built once per entry (`src/lib/Canvas.svelte`'s `outlineField`) and survives every knob
+  change, INCLUDING a re-roll, since the seed never touches it. The two noise fields (Wobble and
+  Variation modulation) depend only on the seed — built once per entry and rebuilt whenever the seed no
+  longer matches what was cached, i.e. on a re-roll (`buildNoisePlanes`, `src/core/outline.ts`;
+  `outlineMask` takes both the field and the noise planes as optional precomputed inputs, and still
+  computes either itself when omitted, so the pure-function tests are unaffected). `Canvas.svelte` also
+  hoists the extracted alpha plane and the RGBA preview buffer out of `refreshOutlinePreview` — both
+  are read-only copies of the entry snapshot, so they too are built once per entry and reused (the RGBA
+  buffer is mutated in place; only its alpha channel changes per preview). A knob change now costs one
+  compare-and-ramp pass over cached arrays, not two `valueNoise` evaluations per pixel. Measured at
+  1280×720: field + noise ~22.5ms + 20.8ms combined, paid once at entry/re-roll rather than on every
+  preview; ~920k pixels/preview on the band after that. The fallback if too slow on iPad is
+  half-resolution field + bilinear sampling (quarter the work, blurs detail below 2px).
+- **Cancels on switch, unlike Pose and Deform.** Leaving the tool, switching layer/frame, locking
+  the layer, undo and resize all cancel a live preview — it does not bank (Pose and Deform do).
+  Entering Outline already rewrites every pixel; banking would silently hollow on a stray tap+frame
+  step. Re-entering is free (knobs persist), so cancelling is the cheap direction. Deliberate divergence;
+  revisit if it annoys in use.
+- **Implementation detail: `enterOutline` needed an explicit `repaint()`.** The bar is gated on
+  `appState.version` (`{#if appState.version >= 0 && outlineActive()}`); without the tick the gate never
+  re-evaluated and the bar never appeared. `enterPose` had the identical fix for the same reason
+  (Svelte 5 runes pattern).
+- **Two paths blocked canvas strokes.** With Outline selected, a canvas drag initially fell through to
+  brush painting: fix is an early `return` in `onStroke`, AND `"outline"` in `PIXEL_TOOLS` (which
+  gates the blocked cursor and caption, not `onStroke` itself). Both were needed, different reasons —
+  first-pass catches the stroke, second gates the UI signal.
+- **Owed an iPad pass:** three `NumberField`s (gotcha #16) in a bar inside the stage (gotchas #12 and
+  #18), and the preview's per-frame cost is what is most likely to feel different on the device.
+- **Known gap, deliberately deferred (final-review pass, 2026-09-24): a cancel does not re-arm
+  autosave.** `cancelOutline` calls `repaint()`, not `bump()` — right for undo/version purposes, since
+  the cancel restores the cell to exactly what was last persisted. But if an EARLIER edit already queued
+  an autosave (the ~3s debounce, `src/persist/autosave.ts`) and the live preview is what is on the
+  canvas when that timer fires, the write captures the un-applied outline; `repaint()` does not requeue
+  a write to overwrite it with the restored art. A reload can then show the hollowed drawing with no
+  undo entry to recover from. A live Pose lift has the same class of exposure and is worse — it can
+  persist an EMPTY cell mid-lift. The spec already knowingly accepts the "killed mid-tune" case; this is
+  the same acceptance, stated for the autosave-race variant specifically.
