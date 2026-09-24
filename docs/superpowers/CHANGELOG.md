@@ -7332,7 +7332,7 @@ with a screenshot of a pen zigzag: *"calligraphy brush still has holes in corner
   the entry above chose against for performance. Measured 0-4px per stroke against a shrunk
   reference nib; the reported holes were the cancellation, not this.
 - Regression test: `never emits a self-crossing piece on a sharp zigzag` (fails with 12 bowties on
-  the old code). Owed an iPad/Pencil eyeball.
+  the old code). Confirmed on iPad with the entry below.
 
 **Calligraphy: edges at the nib's support point; ends cut along the nib (2026-09-24).** Reported with a
 screenshot of a vertical stroke under a 45° nib: *"brush edge is always perpendicular to movement
@@ -7358,4 +7358,5 @@ direction, and not aligned with brush nib as it in real life would be"*.
   unchanged. Pathological 6000-point hatch with 534 reversals: ~200ms → ~250ms, all of it in the
   joins (support points alone: 189ms). A 20-point join outline cost ~320ms; `JOIN_SEGMENTS` = 8.
 - Verified in Chrome by an A/B render (main vs branch) of a vertical stroke and a 155° zigzag: ends
-  cut along the 45° nib, corners solid chisel turns. Not yet seen with a real Pencil on iPad.
+  cut along the 45° nib, corners solid chisel turns. Confirmed on iPad with Pencil on the deployed
+  branch build (2026-09-24): "yes, fixed now" — covers this entry and the bowtie one above.
