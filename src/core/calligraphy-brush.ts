@@ -11,8 +11,8 @@
  * like calligraphy are exactly the ones that broke.
  *
  * So the nib is swept instead: for each segment, fill the convex hull of the nib ellipse at
- * both endpoints (a quad along the perpendicular offset, plus the ellipse itself at each
- * vertex, which is precisely the correct round join for a Minkowski sweep). Continuous by
+ * both endpoints (a quad between the nib's support points, plus the ellipse itself at a
+ * corner, which is precisely the correct join for a Minkowski sweep). Continuous by
  * construction at every flatness, exactly like `ink-brush.ts`'s stroked curve and `brush.ts`'s
  * filled outline are continuous by construction.
  */
@@ -51,6 +51,35 @@ export function nibSupport(a: number, b: number, angleRad: number, ux: number, u
   const alongMajor = ux * c + uy * s;
   const alongMinor = -ux * s + uy * c;
   return Math.hypot(a * alongMajor, b * alongMinor);
+}
+
+/**
+ * WHERE the nib reaches farthest along (ux, uy): the support POINT, as an offset from the nib's
+ * centre. `nibSupport` is its projection on (ux, uy), so the ribbon keeps exactly the same width;
+ * what changes is that the edge sits at the point of the nib that actually touches it. For a flat
+ * nib that point lies out near its TIPS, not straight out to the side. The ribbon used to be
+ * offset along the normal (`p ± n·nibSupport`), which gave the right width but cut both ends
+ * square to the travel instead of along the nib (reported 2026-09-24 with a screenshot: a vertical
+ * stroke ending flat under a 45° nib), painted the square corners a real nib never reaches, and
+ * left the outside of every sharp corner short, because the tips that carry the edge round a turn
+ * were never on it.
+ */
+export function nibSupportPoint(
+  a: number,
+  b: number,
+  angleRad: number,
+  ux: number,
+  uy: number,
+): { x: number; y: number } {
+  const c = Math.cos(angleRad);
+  const s = Math.sin(angleRad);
+  const alongMajor = ux * c + uy * s;
+  const alongMinor = -ux * s + uy * c;
+  const h = Math.hypot(a * alongMajor, b * alongMinor);
+  // Local support point (a²·α, b²·β) / h, rotated back into the page.
+  const lx = (a * a * alongMajor) / h;
+  const ly = (b * b * alongMinor) / h;
+  return { x: lx * c - ly * s, y: lx * s + ly * c };
 }
 
 /**
@@ -108,6 +137,17 @@ const MIN_STRAIGHTNESS = 0.7;
  * re-guessed by whoever reads the test.
  */
 export const CORNER_TURN_DEG = 60;
+
+/**
+ * |cos| between a segment's direction and a damped normal above which the segment counts as a
+ * CORNER and its piece becomes the hull of the nib at both ends — the exact sweep of that segment,
+ * which carries the join that fills the outside of the turn. The quads alone leave it short
+ * wherever the damped normal no longer describes the segment, which is only at real turns: along
+ * a leg the damped normal stays within a few degrees of perpendicular (see the `normals` tests),
+ * and measured on 2000-point jittery strokes this fires zero times. Still ONE subpath per segment,
+ * unlike the per-vertex footprint join rejected earlier (see the corner-holes CHANGELOG entries).
+ */
+const CORNER_SKEW = 0.5;
 
 /** How much travel the straightness test waits for before it trusts the ratio. Over one or two
  *  samples the ratio is mostly jitter, and testing it there would stop the walk on noise — which
@@ -230,12 +270,24 @@ function strokeExtent(points: { x: number; y: number }[]): number {
 }
 
 const NIB_SEGMENTS = 20;
-function nibRing(cx: number, cy: number, a: number, b: number, angleRad: number): number[][] {
+/** A corner join's nib outline is coarser than a dab's: it only fills the outside of a turn, and
+ *  its vertices are what a dense scribble pays for. Measured on a 6000-point hatch (534 joins):
+ *  20 points took a redraw from ~200ms to ~320ms, 8 to ~250ms, while leaving 7-20px² of a sharp
+ *  corner short against 4-9px² for 20 — facets on the outer edge, not holes. */
+const JOIN_SEGMENTS = 8;
+function nibRing(
+  cx: number,
+  cy: number,
+  a: number,
+  b: number,
+  angleRad: number,
+  segments = NIB_SEGMENTS,
+): number[][] {
   const ca = Math.cos(angleRad);
   const sa = Math.sin(angleRad);
   const ring: number[][] = [];
-  for (let k = 0; k < NIB_SEGMENTS; k++) {
-    const t = (k / NIB_SEGMENTS) * Math.PI * 2;
+  for (let k = 0; k < segments; k++) {
+    const t = (k / segments) * Math.PI * 2;
     const px = a * Math.cos(t);
     const py = b * Math.sin(t);
     ring.push([cx + px * ca - py * sa, cy + px * sa + py * ca]);
@@ -300,7 +352,8 @@ export function isCorner(
  *
  * The ribbon is a chain of quads, one per segment, and they TILE rather than overlap: quad i ends
  * on exactly the edge quad i+1 starts from (same point, same normal, same offset). That is why
- * only the two ends carry a nib footprint. Emitting one per sample — which the first version did —
+ * no interior sample carries a nib footprint, except inside a corner segment's own hull (see
+ * `CORNER_SKEW`). Emitting one per sample — which the first version did —
  * put N big overlapping ellipses into a single fill and made a long stroke quadratic: 1663ms for a
  * 6000-point redraw, against 13ms for this.
  */
@@ -322,7 +375,7 @@ export function drawCalligraphyStroke(
   // Reach scales with the widest nib the stroke reaches, so the damping matches the worst case
   // rather than whatever width happens to be under the pointer at one sample.
   const nrm = normals(pts, maxW / 2);
-  const offset = (i: number) => nibSupport(nib[i].a, nib[i].b, angle, nrm[i].nx, nrm[i].ny);
+  const offset = (i: number) => nibSupportPoint(nib[i].a, nib[i].b, angle, nrm[i].nx, nrm[i].ny);
 
   ctx.save();
   if (settings.isEraser) {
@@ -350,25 +403,40 @@ export function drawCalligraphyStroke(
   // flatness that shape is a long thin sliver lying at the nib angle, and where it protrudes past
   // the ribbon's end it reads as a stray whisker rather than as the stroke ending (reported from a
   // Pencil stroke as "misrotated brush tip stamp"). Ending flush is the deliberate choice: the end
-  // cut still lands at the nib's own angle wherever the geometry calls for it, which is the chisel
+  // cut is the chord between the nib's two support points, which lies along the nib — the chisel
   // entry/exit that actually reads as calligraphy. Compared side by side before choosing.
   for (let i = 1; i < pts.length; i++) {
     const p1 = pts[i - 1];
     const p2 = pts[i];
-    const n1 = nrm[i - 1];
-    const n2 = nrm[i];
     const o1 = offset(i - 1);
     const o2 = offset(i);
+    const piece = [
+      [p1.x + o1.x, p1.y + o1.y],
+      [p1.x - o1.x, p1.y - o1.y],
+      [p2.x - o2.x, p2.y - o2.y],
+      [p2.x + o2.x, p2.y + o2.y],
+    ];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0) {
+      const ux = dx / len;
+      const uy = dy / len;
+      const skew = Math.max(
+        Math.abs(ux * nrm[i - 1].nx + uy * nrm[i - 1].ny),
+        Math.abs(ux * nrm[i].nx + uy * nrm[i].ny),
+      );
+      if (skew > CORNER_SKEW) {
+        const n1 = nib[i - 1];
+        const n2 = nib[i];
+        piece.push(
+          ...nibRing(p1.x, p1.y, n1.a, n1.b, angle, JOIN_SEGMENTS),
+          ...nibRing(p2.x, p2.y, n2.a, n2.b, angle, JOIN_SEGMENTS),
+        );
+      }
+    }
     // Hulled, not emitted raw: at a sharp turn the raw quad is a bowtie (see `convexHull`).
-    addRing(
-      ctx,
-      convexHull([
-        [p1.x + n1.nx * o1, p1.y + n1.ny * o1],
-        [p1.x - n1.nx * o1, p1.y - n1.ny * o1],
-        [p2.x - n2.nx * o2, p2.y - n2.ny * o2],
-        [p2.x + n2.nx * o2, p2.y + n2.ny * o2],
-      ]),
-    );
+    addRing(ctx, convexHull(piece));
   }
 
   ctx.fill();

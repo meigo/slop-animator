@@ -7330,3 +7330,29 @@ with a screenshot of a pen zigzag: *"calligraphy brush still has holes in corner
   reference nib; the reported holes were the cancellation, not this.
 - Regression test: `never emits a self-crossing piece on a sharp zigzag` (fails with 12 bowties on
   the old code). Owed an iPad/Pencil eyeball.
+
+**Calligraphy: edges at the nib's support point; ends cut along the nib (2026-09-24).** Reported with a
+screenshot of a vertical stroke under a 45° nib: *"brush edge is always perpendicular to movement
+direction, and not aligned with brush nib as it in real life would be"*.
+- **Root cause: the ribbon edges were offset along the NORMAL** (`p ± n·nibSupport`). That gives the
+  right width but the wrong edge point: a real nib touches the edge at its support POINT, which for a
+  flat nib lies out near a tip. So every end was cut square to the travel, contradicting the
+  2026-09-04 "ends flush" entry's claim that the cut lands at the nib angle. The square cut also
+  painted corners a real nib never reaches, and left the outside of sharp turns short.
+- **Fix: `nibSupportPoint`**, the ellipse's support point (`(a²α, b²β)/h` in nib space). Its
+  projection on the normal is exactly `nibSupport`, so thick/thin is unchanged; the edges just slide
+  along the travel. Ends are still flush, with no footprint, so the "stray whisker" choice stands: the
+  end cut is now the nib's own diameter.
+- **Corner joins, the cheap way.** With the edges on the tips, the outside of a sharp turn was
+  shorter than before (measured against a dense true sweep of the same smoothed path: 159px² missing
+  at a 150° zigzag vs 106px² on main), because nothing there held the nib AT the apex. A segment whose
+  damped normal is >60° off its own direction (`CORNER_SKEW` 0.5) is now filled as the hull of the
+  nib at both ends: the exact sweep of that segment, folded into its ONE existing subpath rather than
+  added as a separate footprint (the rejected join). Fires 0 times on 2000-point jittery strokes.
+  After: 7-20px² missing at 90-170° turns; "extra" ink (outside the true sweep) dropped from
+  45-325px² to 2-18px².
+- **Cost, measured in Chrome** (OffscreenCanvas, median of 12): smooth 6000-point curve ~10-12ms,
+  unchanged. Pathological 6000-point hatch with 534 reversals: ~200ms → ~250ms, all of it in the
+  joins (support points alone: 189ms). A 20-point join outline cost ~320ms; `JOIN_SEGMENTS` = 8.
+- Verified in Chrome by an A/B render (main vs branch) of a vertical stroke and a 155° zigzag: ends
+  cut along the 45° nib, corners solid chisel turns. Not yet seen with a real Pencil on iPad.

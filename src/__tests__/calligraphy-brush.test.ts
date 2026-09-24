@@ -6,6 +6,7 @@ import {
   nibSemiAxes,
   clampNibFlatness,
   nibSupport,
+  nibSupportPoint,
   normals,
   MAX_NIB_FLATNESS,
 } from "../core/calligraphy-brush";
@@ -261,5 +262,40 @@ describe("drawCalligraphyStroke (corner holes)", () => {
       const bad = recordRings(pts, angle).filter(crossesItself);
       expect(bad.length, `nib angle ${angle}`).toBe(0);
     }
+  });
+});
+
+describe("nibSupportPoint", () => {
+  it("projects onto the direction by exactly nibSupport, so the ribbon's width is unchanged", () => {
+    for (const deg of [0, 20, 45, 90, 133, 200, 300]) {
+      const t = (deg * Math.PI) / 180;
+      const ux = Math.cos(t);
+      const uy = Math.sin(t);
+      const s = nibSupportPoint(10, 1.5, Math.PI / 4, ux, uy);
+      expect(s.x * ux + s.y * uy).toBeCloseTo(nibSupport(10, 1.5, Math.PI / 4, ux, uy), 9);
+    }
+  });
+
+  it("lies on the nib's outline", () => {
+    const angle = 0.7;
+    const s = nibSupportPoint(10, 1.5, angle, 0.3, Math.sqrt(1 - 0.09));
+    const u = s.x * Math.cos(angle) + s.y * Math.sin(angle);
+    const v = -s.x * Math.sin(angle) + s.y * Math.cos(angle);
+    expect((u / 10) ** 2 + (v / 1.5) ** 2).toBeCloseTo(1, 9);
+  });
+
+  /**
+   * Reported 2026-09-24 with a screenshot: a vertical stroke under a 45° nib ended square across
+   * instead of along the nib. The ribbon's edge used to sit at `n · nibSupport` — straight out
+   * along the normal — which puts the end cut perpendicular to the travel whatever the nib angle.
+   * A real nib touches the edge at its support point, out near the TIP of a flat nib, so the cut
+   * between the two edges runs along the nib.
+   */
+  it("puts a flat nib's end cut along the nib, not square to the travel", () => {
+    const angle = Math.PI / 4; // nib at 45°
+    const s = nibSupportPoint(15, 1, angle, 1, 0); // travelling vertically: normal is (1, 0)
+    // The cut runs from -s to +s; its direction should be the nib's, within a few degrees.
+    const cut = Math.atan2(s.y, s.x);
+    expect(Math.abs(cut - angle)).toBeLessThan((5 * Math.PI) / 180);
   });
 });
