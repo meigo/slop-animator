@@ -3670,6 +3670,9 @@ cost is dominated by fill AREA (22ms at size 60 vs 13ms at size 20 on a 6000-poi
 large brush on iPad is the case to watch. Going further means incremental rendering, which would
 trade away the single-fill uniform alpha wherever a translucent stroke crosses itself.
 
+> **SUPERSEDED in part** by *Calligraphy: edges at the nib's support point* (2026-09-24): ends are still
+> flush, but the cut was square to the travel, not at the nib angle as claimed here. It is now.
+
 **Calligraphy strokes end flush, not with the nib's footprint (2026-09-04).** Reported as "stroke
 starts and ends with misrotated brush tip stamp": a thin whisker protruding from both ends of every
 stroke, lying at the nib angle regardless of which way the stroke ran. It was not misrotated and it
