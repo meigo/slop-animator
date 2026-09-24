@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import type { BrushSettings } from "../core/brush";
 import {
+  drawCalligraphyStroke,
   isCorner,
   nibSemiAxes,
   clampNibFlatness,
@@ -191,5 +193,73 @@ describe("normals (jitter damping)", () => {
   it("survives a path of one single point", () => {
     expect(normals([{ x: 5, y: 5 }], 17)).toHaveLength(1);
     expect(Math.hypot(...Object.values(normals([{ x: 5, y: 5 }], 17)[0]))).toBeCloseTo(1, 6);
+  });
+});
+
+describe("drawCalligraphyStroke (corner holes)", () => {
+  /** Records every subpath the engine emits, instead of rasterising it. */
+  function recordRings(points: { x: number; y: number; pressure: number }[], nibAngle: number) {
+    const rings: number[][][] = [];
+    let cur: number[][] = [];
+    const ctx = {
+      save() {},
+      restore() {},
+      beginPath() {},
+      fill() {},
+      moveTo: (x: number, y: number) => (cur = [[x, y]]),
+      lineTo: (x: number, y: number) => cur.push([x, y]),
+      closePath: () => rings.push(cur),
+    } as unknown as CanvasRenderingContext2D;
+    const settings = {
+      size: 26,
+      nibAngle,
+      nibFlatness: 0.8,
+      opacity: 100,
+      color: "#000",
+      isEraser: false,
+    } as BrushSettings;
+    drawCalligraphyStroke(ctx, points as never, settings, 1);
+    return rings;
+  }
+
+  /** A ring whose turns go both ways crosses itself (a quad drawn as a bowtie). */
+  function crossesItself(ring: number[][]): boolean {
+    let left = false;
+    let right = false;
+    for (let i = 0; i < ring.length; i++) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % ring.length];
+      const [cx, cy] = ring[(i + 2) % ring.length];
+      const turn = (bx - ax) * (cy - by) - (by - ay) * (cx - bx);
+      if (turn > 1e-9) left = true;
+      else if (turn < -1e-9) right = true;
+    }
+    return left && right;
+  }
+
+  /**
+   * Reported 2026-09-24, after the normals fix, with a screenshot of a zigzag: holes still punched
+   * through the ink at the corners. At a sharp turn the normal flips between two samples, so the
+   * segment quad twists into a bowtie. Its two lobes wind in opposite directions — `addRing` can
+   * make only one of them positive — and under nonzero fill the negative lobe CANCELS the ink of
+   * the pieces it overlaps. Measured on a 120° zigzag: 12-18 bowties and up to ~84px² of holes.
+   */
+  it("never emits a self-crossing piece on a sharp zigzag", () => {
+    const pts: { x: number; y: number; pressure: number }[] = [];
+    let x = 0;
+    let y = 0;
+    let dir = -Math.PI / 2 + 0.3;
+    for (let leg = 0; leg < 5; leg++) {
+      for (let d = 0; d < 120; d += 2) {
+        pts.push({ x, y, pressure: 0.3 + (0.6 * d) / 120 });
+        x += 2 * Math.cos(dir);
+        y += 2 * Math.sin(dir);
+      }
+      dir += ((leg % 2 ? -1 : 1) * 2 * Math.PI) / 3; // 120° turn, alternating
+    }
+    for (const angle of [0, 45, 90, 135]) {
+      const bad = recordRings(pts, angle).filter(crossesItself);
+      expect(bad.length, `nib angle ${angle}`).toBe(0);
+    }
   });
 });

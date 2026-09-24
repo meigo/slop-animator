@@ -7276,6 +7276,9 @@ all be a state where no tool is selected?"*
   outline baked with the tool back on Brush and the button unlit; Cancel the same; a frame step
   mid-preview also hands back; and entering from the Eraser returns to the Eraser, not to Brush.
 
+> **SUPERSEDED in part** by *Calligraphy corner holes, round two* below: the normals fix was real but
+> not the whole cause — holes still appeared on a real zigzag.
+
 **Calligraphy: no more holes at sharp corners (2026-09-24).** Reported with a screenshot: *"calligraphic
 brush. when drawing sharp angles without lifting pen/mouse holes in corners appear"* — a white pinhole
 at the apex of each reversal.
@@ -7308,3 +7311,22 @@ at the apex of each reversal.
   tell a defect from background legitimately trapped by a self-crossing stroke, and comparing against
   a dense-footprint reference flags the engine's deliberate omission of interior footprints. The
   verdict came from an A/B render of the reported shape, plus a unit test on the geometry.
+
+**Calligraphy corner holes, round two: bowtie quads (2026-09-24).** Reported again the same evening,
+with a screenshot of a pen zigzag: *"calligraphy brush still has holes in corners"*.
+- **Root cause: a twisted segment quad cancels ink.** Each segment is a quad from the two samples'
+  normals. Where the normal swings past 90° between two samples — which every sharp turn does, the
+  normals fix above notwithstanding — the quad crosses itself into a BOWTIE. Its lobes wind in
+  opposite directions; `addRing`'s area-sign normalisation can make only one positive, and under
+  nonzero fill the negative lobe cancels the ink of the pieces it overlaps. Measured with a
+  recording ctx + a winding-number rasteriser on a 5-leg 120° zigzag at size 26, flatness 0.8:
+  8-18 bowties per stroke and up to ~84px² of cancelled ink, depending on nib angle.
+- **Fix: each segment piece is filled as the convex hull of its four corners** (`convexHull`). A
+  hull cannot cross itself, so every piece winds positive and no overlap can cancel — by
+  construction, not by tuning. An untwisted quad is its own hull; a bowtie's hull is the untwisted
+  quad. After: 0 bowties and 0 cancelled pixels across 120°-175° turns x nib angles 0/45/90/135.
+- Not addressed, deliberately: a few pixels on the OUTSIDE of a sharp corner (no round join), which
+  the entry above chose against for performance. Measured 0-4px per stroke against a shrunk
+  reference nib; the reported holes were the cancellation, not this.
+- Regression test: `never emits a self-crossing piece on a sharp zigzag` (fails with 12 bowties on
+  the old code). Owed an iPad/Pencil eyeball.

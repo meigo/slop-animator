@@ -243,6 +243,36 @@ function nibRing(cx: number, cy: number, a: number, b: number, angleRad: number)
   return ring;
 }
 
+/**
+ * Convex hull of a few points (monotone chain), counter-clockwise. Each segment piece goes through
+ * this because a quad built from two per-sample normals is NOT always a simple polygon: where the
+ * normal swings past 90° between two samples — every sharp turn — the quad twists into a BOWTIE.
+ * Its two lobes wind in opposite directions, `addRing` can only make one of them positive, and
+ * under nonzero fill the other CANCELS the ink of whatever piece it overlaps: the holes at corners
+ * reported (twice) on 2026-09-24. A hull cannot cross itself, so every piece winds positive and no
+ * overlap can ever cancel. On an untwisted quad it is the same quad (or a hair larger where the
+ * width changes fast); on a bowtie it is the untwisted quad, which is what the segment sweeps.
+ */
+function convexHull(pts: number[][]): number[][] {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: number[], a: number[], b: number[]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: number[][] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0)
+      lower.pop();
+    lower.push(q);
+  }
+  const upper: number[][] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0)
+      upper.pop();
+    upper.push(q);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
 /** Does the path turn by more than `CORNER_TURN_DEG` at `b`? Coincident neighbours count as no turn:
  *  a held pen delivers them in bursts and they carry no direction to compare. */
 export function isCorner(
@@ -329,12 +359,16 @@ export function drawCalligraphyStroke(
     const n2 = nrm[i];
     const o1 = offset(i - 1);
     const o2 = offset(i);
-    addRing(ctx, [
-      [p1.x + n1.nx * o1, p1.y + n1.ny * o1],
-      [p1.x - n1.nx * o1, p1.y - n1.ny * o1],
-      [p2.x - n2.nx * o2, p2.y - n2.ny * o2],
-      [p2.x + n2.nx * o2, p2.y + n2.ny * o2],
-    ]);
+    // Hulled, not emitted raw: at a sharp turn the raw quad is a bowtie (see `convexHull`).
+    addRing(
+      ctx,
+      convexHull([
+        [p1.x + n1.nx * o1, p1.y + n1.ny * o1],
+        [p1.x - n1.nx * o1, p1.y - n1.ny * o1],
+        [p2.x - n2.nx * o2, p2.y - n2.ny * o2],
+        [p2.x + n2.nx * o2, p2.y + n2.ny * o2],
+      ]),
+    );
   }
 
   ctx.fill();
