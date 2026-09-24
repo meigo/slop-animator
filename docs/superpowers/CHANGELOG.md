@@ -7109,3 +7109,23 @@ user ("tested on ipad, works") against the live workers.dev build (`index-Dipf-R
 `0e46ffbb`), so a lift on a faded layer holds its opacity on the hardware that matters. Still owed an
 iPad pass, and NOT covered by this one: the 2026-09-21 review batch's touch fixes (Pencil vs. finger,
 tap-after-pinch, timeline pointercancel, tool switch mid-stroke) and Duplicate group.
+
+**The pose bar joins the on-canvas bar idiom (2026-09-24).** Reported: *"pose tool has differently
+styled on-canvas popup menu than selection and deform tools have"*. True, and measurably so — the two
+bars were written months apart from two copies of the same Tailwind string and drifted: `rounded` vs
+`rounded-lg`, `shadow-lg` vs `shadow-md`, `z-10` vs `z-30`, a `h-5 mx-1` separator vs `h-6 mx-0.5`,
+and — the part that matters on a Pencil — `px-2 py-1 text-xs` buttons measuring about **24px** against
+the selection bar's **40px**.
+- **Fixed by naming, not by copying:** `.ui-bar` (the floating chrome) and `.ui-bar-btn` (a 40px bar
+  control) now sit in `app.css` beside `.ui-on`, the §6 "one idiom per app" idiom this file already
+  uses, and BOTH bars reference them. Copying the classes into the pose bar would have left the same
+  two copies free to drift again.
+- Apply/Cancel became the ✓/✗ pair the selection bar already teaches (titles and `aria-label` keep the
+  words for tooltips and screen readers).
+- **Deliberately unchanged:** the pose bar stays pinned top-centre with its two-row layout and
+  `max-w` — its own comment records why (an inline warning row stretched the panel and shifted every
+  button under the pen). And it keeps `.selection-actions-panel` plus `onpointerdown`, which gotchas
+  #12 and #18 both hang off: `setupInput` and `touch-gestures` filter on that class, and the
+  Fill-outlines checkbox needs the native activation `preventDefault` would kill.
+- Verified in the browser: both bars measure 50px tall with 40px buttons (the Reset label is 50 wide),
+  same radius and shadow, and the checkbox still toggles. Screenshot-checked side by side.

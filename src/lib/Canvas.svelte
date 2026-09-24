@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { Check, X } from "@lucide/svelte";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
@@ -2495,11 +2496,11 @@
          every button whenever it appeared. `max-w` + `flex-wrap` mean it wraps instead of pushing
          the panel past the canvas edge on a narrow (iPad portrait) viewport. -->
     <div
-      class="selection-actions-panel absolute top-2 left-1/2 -translate-x-1/2 flex max-w-[min(92vw,34rem)] flex-col gap-1 rounded border border-border bg-surface px-2 py-1 shadow-lg z-10"
+      class="selection-actions-panel ui-bar absolute top-2 left-1/2 -translate-x-1/2 max-w-[min(92vw,34rem)] flex-col z-30"
     >
       <div class="flex flex-wrap items-center gap-1">
         <button
-          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
           title="Coarser mesh"
           onpointerdown={(e) => {
             e.preventDefault();
@@ -2507,7 +2508,7 @@
           }}>−</button
         >
         <button
-          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
           title="Denser mesh"
           onpointerdown={(e) => {
             e.preventDefault();
@@ -2515,7 +2516,7 @@
           }}>+</button
         >
         <button
-          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          class="ui-bar-btn text-xs bg-surface text-text-secondary hover:bg-surface-hover"
           title="Reset handles"
           onpointerdown={(e) => {
             e.preventDefault();
@@ -2526,10 +2527,10 @@
             posePaint();
           }}>Reset</button
         >
-        <!-- Group separator — the bar language the playbar and timeline tool bar already use. -->
-        <span class="w-px h-5 bg-border mx-1"></span>
+        <!-- Group separator — the same one the selection/deform bar draws (`.ui-bar` siblings). -->
+        <span class="w-px h-6 bg-border mx-0.5"></span>
         <label
-          class="flex items-center gap-1 text-xs"
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
           title="Treat space enclosed by the outline as part of the shape"
         >
           <input
@@ -2540,7 +2541,7 @@
         </label>
         {#if appState.pose.fillHoles}
           <label
-            class="flex items-center gap-1 text-xs"
+            class="flex min-h-10 items-center gap-1 px-1 text-xs"
             title="Bridge breaks in the outline, up to about twice this many pixels"
           >
             Gap
@@ -2563,22 +2564,26 @@
             />
           </label>
         {/if}
-        <span class="w-px h-5 bg-border mx-1"></span>
+        <span class="w-px h-6 bg-border mx-0.5"></span>
+        <!-- ✓ / ✗, the commit-and-cancel pair the selection bar already teaches, rather than the
+             words this bar used to carry on its own. -->
         <button
-          class="px-2 py-1 text-xs border border-border rounded bg-accent text-accent-text"
+          class="ui-bar-btn ui-on border-accent"
           title="Apply pose"
+          aria-label="Apply pose"
           onpointerdown={(e) => {
             e.preventDefault();
             applyPose();
-          }}>Apply</button
+          }}><Check size={18} /></button
         >
         <button
-          class="px-2 py-1 text-xs border border-border rounded bg-surface hover:bg-surface-hover"
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
           title="Cancel pose"
+          aria-label="Cancel pose"
           onpointerdown={(e) => {
             e.preventDefault();
             cancelPose();
-          }}>Cancel</button
+          }}><X size={18} /></button
         >
       </div>
       {#if appState.pose.fillHoles && appState.poseFillWarning}
