@@ -7156,3 +7156,11 @@ remaining difference more obvious, not less.
   the follow-on-pan, because the automation tab is hidden and `repaintPoseOverlay`'s rAF never fires
   there — forcing a paint after a pan put the bar in the right place (101 → 298), so the wiring is
   right, but the cadence needs an eyeball on the device.
+
+**iPad verification — 2026-09-24 (second pass).** Confirmed on the device by the user ("tested on
+ipad, works"): the pose bar's Fill-outlines checkbox and Gap field still take a tap after the
+`.ui-bar-btn` restyle (the gotcha #18 risk), and the bar anchors to the mesh — including the
+follow-on-pan cadence this session could not exercise, since `repaintPoseOverlay`'s rAF never fires
+in a hidden automation tab. Still owed an iPad pass: the 2026-09-21 review batch's touch fixes
+(Pencil vs. finger, tap-after-pinch, timeline pointercancel, tool switch mid-stroke) and
+Duplicate group.
