@@ -46,6 +46,7 @@
     poseActions,
     outlineActions,
     liftGuard,
+    leaveOutline,
     transformDragGuard,
     playbackController,
   } from "../state/appState.svelte";
@@ -2314,6 +2315,7 @@
     );
     clearOutline();
     bump();
+    leaveOutline(); // one-shot: the job is done, so the lit button goes back to the real tool
   }
 
   function cancelOutline() {
@@ -2327,6 +2329,7 @@
     clearOutline();
     recomposite();
     repaint(); // version only — the cancel restored the cell, so there is nothing new to persist
+    leaveOutline(); // same rule as Apply, including the implicit cancels (frame/layer switch, lock)
   }
 
   function clearOutline() {

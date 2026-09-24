@@ -2288,6 +2288,23 @@ export function applyEyedropper(hex: string) {
   state.tool = back;
 }
 
+/** The tool to hand back to when Outline finishes. Outline is a one-shot COMMAND wearing a mode's
+ *  clothes: once Apply has baked (or Cancel has restored) there is nothing left for it to do, and a
+ *  still-lit button claims otherwise. Same shape as the eyedropper above, and the same reason. */
+let toolBeforeOutline: Tool = "brush";
+export function selectOutline() {
+  if (state.tool === "outline") return; // already active → the toolbar re-arms instead
+  toolBeforeOutline = state.tool;
+  state.tool = "outline";
+}
+/** Hand the tool back. Reentrant by design: setting `state.tool` fires Canvas's tool-change effect,
+ *  which cancels any live outline, which calls this again — the `!== "outline"` guard makes that
+ *  second call a no-op instead of a loop. */
+export function leaveOutline() {
+  if (state.tool !== "outline") return;
+  state.tool = toolBeforeOutline === "outline" ? "brush" : toolBeforeOutline;
+}
+
 /** Signal that the (imperative) pressure curve changed, so the preferences save effect re-runs. */
 export function bumpCurve() {
   state.curveVersion++;

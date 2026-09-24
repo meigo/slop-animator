@@ -7254,3 +7254,24 @@ note that nothing foreclosed it, and nothing did.
   reads two 5px runs (the line) while a column outside reads one solid run, and a scan across the cut
   shows the solid ending at x=599 against a marquee starting at 600 — no line on the cut. Repeated
   with a lasso. Apply keeps the clip and one undo restores the whole drawing.
+
+**Outline hands the tool back when it is done (2026-09-24, same day).** Reported: *"when outline is
+applied, floating menu closes but tool button still is hilighted"*, with the question *"can there at
+all be a state where no tool is selected?"*
+- **The question was answered no, and the wart fixed a different way.** `state.tool` is a required
+  union read by the stroke router, the cursor, `toolBlocked`, ToolOptions, the persisted preferences
+  and the single-key shortcuts; making it nullable means a "no tool" branch in every one of those,
+  plus new questions with no good answers (what does a drag do, what is the cursor, what restores on
+  launch). The real fault was narrower: Outline is a one-shot COMMAND wearing a mode's clothes, so a
+  lit button after Apply claims something untrue.
+- **`selectOutline` / `leaveOutline` in `appState`, mirroring `selectEyedropper` / `applyEyedropper`**
+  — the app's other one-shot, which has always remembered the previous tool and returned to it.
+  Apply, Cancel and every implicit cancel (frame or layer switch, lock) now hand the tool back.
+- `leaveOutline` is REENTRANT by design: setting `state.tool` fires the tool-change effect, which
+  cancels any live outline, which calls `leaveOutline` again. The `!== "outline"` guard makes the
+  second call a no-op rather than a loop.
+- The toolbar's re-arm (a tap on the lit button) stays, because one path still reaches an inert lit
+  button: quitting while a preview is live restores Outline on the next launch with nothing entered.
+- Verified in the browser: entering lights the button and hollows the drawing; Apply leaves the
+  outline baked with the tool back on Brush and the button unlit; Cancel the same; a frame step
+  mid-preview also hands back; and entering from the Eraser returns to the Eraser, not to Brush.
