@@ -1817,7 +1817,17 @@
     const px =
       1 / (viewport.zoom * (al.kind === "draw" ? composeScaleOf(cellComposeSteps(al)) : 1));
     if (meshPose && isLayerVisible(al, appState.project.groups)) {
+      // The deformed raster is the LAYER'S content, so it fades with the layer exactly as the
+      // compositor fades the cell — same rule as the floating selection's `contentAlpha`. The
+      // wireframe, handles and reach tint below are UI, and stay at full strength.
+      octx.save();
+      octx.globalAlpha = layerContentAlpha(
+        al,
+        groupOf(al, appState.project.groups),
+        appState.playhead,
+      );
       meshPose.render(octx);
+      octx.restore();
       meshPose.drawWireframe(octx);
       if (activeHandle !== null) {
         const h = meshPose.handles[activeHandle];
