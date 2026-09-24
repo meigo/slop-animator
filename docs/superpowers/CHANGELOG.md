@@ -7103,3 +7103,9 @@ layer with opacity turned down — during operation opacity is set to 100%"*.
   (a gesture is one frame). A layer whose opacity is ANIMATED does not re-fade mid-gesture if the
   playhead moves under it, since the effect's dependencies are the layer and the playhead, not the
   track's resolved value.
+
+**iPad verification — 2026-09-24.** The overlay-opacity fix above was confirmed on the device by the
+user ("tested on ipad, works") against the live workers.dev build (`index-Dipf-Rj4.js`, version
+`0e46ffbb`), so a lift on a faded layer holds its opacity on the hardware that matters. Still owed an
+iPad pass, and NOT covered by this one: the 2026-09-21 review batch's touch fixes (Pencil vs. finger,
+tap-after-pinch, timeline pointercancel, tool switch mid-stroke) and Duplicate group.
