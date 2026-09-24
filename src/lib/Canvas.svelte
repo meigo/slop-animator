@@ -2632,7 +2632,7 @@
   // gesture that does work would be a worse lie than showing nothing.
   // Eyedropper samples the composite, so it is never blocked. Select/lasso are gated separately
   // (`selectToolsBlock`): a locked drawing layer can still be copied from, a reference cannot.
-  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose"];
+  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "outline"];
   // Pixel tools need a drawable layer. Transform on a DRAWING layer does too; on a REF the gizmo
   // is live (lock/span gate it separately) — treating that as blocked showed a not-allowed cursor
   // and a "switch to a drawing layer" caption over something you can actually move.
