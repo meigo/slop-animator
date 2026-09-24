@@ -126,7 +126,7 @@
 
 <div
   bind:this={panelEl}
-  class="selection-actions-panel absolute z-30 flex flex-col items-stretch gap-1 p-1 rounded-lg bg-surface border border-border shadow-md"
+  class="selection-actions-panel ui-bar absolute z-30 flex-col items-stretch"
   style="left: {pos.x}px; top: {pos.y}px; opacity: {visible ? 1 : 0}; pointer-events: {visible
     ? 'auto'
     : 'none'}; touch-action: none;"
@@ -136,7 +136,7 @@
          disappearing: every button after it used to slide one slot left on the lift, so a second tap on
          Flip horizontal (which lifts) landed on Flip vertical. Positions must not shift under the pen. -->
     <button
-      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class="ui-bar-btn aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
       class:bg-accent={transformActive}
       class:text-accent-text={transformActive}
       class:border-accent={transformActive}
@@ -153,7 +153,7 @@
       <Move size={18} />
     </button>
     <button
-      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class="ui-bar-btn aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
       class:bg-accent={distortActive}
       class:text-accent-text={distortActive}
       class:border-accent={distortActive}
@@ -169,7 +169,7 @@
       <SquareDashed size={18} />
     </button>
     <button
-      class="size-10 rounded-md border flex items-center justify-center aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+      class="ui-bar-btn aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
       class:bg-accent={meshActive}
       class:text-accent-text={meshActive}
       class:border-accent={meshActive}
@@ -191,7 +191,7 @@
       <div class="w-px h-6 bg-border mx-0.5"></div>
       {#each [{ axis: "h", title: "Flip horizontal" }, { axis: "v", title: "Flip vertical" }] as const as f (f.axis)}
         <button
-          class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
+          class="ui-bar-btn border-border bg-surface text-text-secondary hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"
           aria-disabled={liftBlocked}
           onpointerdown={tap(() => {
             if (!liftBlocked) onFlip(f.axis);
@@ -206,7 +206,7 @@
            every other button under the pen (the reason the dimmed ✓ exists). It is a setting, so it
            is harmless before the lift. Same value as the Transform bar's toggle. -->
       <button
-        class="size-10 rounded-md border flex items-center justify-center"
+        class="ui-bar-btn"
         class:bg-accent={appState.keepProportions}
         class:text-accent-text={appState.keepProportions}
         class:border-accent={appState.keepProportions}
@@ -262,7 +262,7 @@
            keeps positions still under the pen. -->
       <div class="w-px h-6 bg-border mx-0.5"></div>
       <button
-        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center opacity-40 cursor-default"
+        class="ui-bar-btn border-border bg-surface text-text-secondary opacity-40 cursor-default"
         aria-disabled="true"
         tabindex="-1"
         title="Commit — nothing lifted yet"
@@ -273,7 +273,7 @@
          ToolOptions Deselect shows for select/lasso, tap-outside draws instead, Esc needs a
          keyboard) — and a selection clips brush/eraser/fill, so a forgotten one is confusing. -->
       <button
-        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        class="ui-bar-btn border-border bg-surface text-text-secondary hover:bg-surface-hover"
         onpointerdown={tap(onCancel)}
         title="Deselect (Esc)"
       >
@@ -283,14 +283,14 @@
     {#if mode !== "selected"}
       <div class="w-px h-6 bg-border mx-0.5"></div>
       <button
-        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        class="ui-bar-btn border-border bg-surface text-text-secondary hover:bg-surface-hover"
         onpointerdown={tap(onCommit)}
         title="Commit"
       >
         <Check size={18} />
       </button>
       <button
-        class="size-10 rounded-md border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover"
+        class="ui-bar-btn border-border bg-surface text-text-secondary hover:bg-surface-hover"
         onpointerdown={tap(onCancel)}
         title="Cancel"
       >

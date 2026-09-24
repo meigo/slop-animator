@@ -202,6 +202,39 @@ textarea,
 .ui-on:hover {
   background-color: var(--color-accent-hover);
 }
+
+/* The ON-CANVAS BAR, defined ONCE for the same reason as `.ui-on` above (§6, "one idiom per app").
+   Two bars float over the stage — the selection/deform bar (`SelectionActions.svelte`) and the pose
+   bar (inline in `Canvas.svelte`) — and they were built months apart from two copies of the same
+   Tailwind string, so they drifted: different radius, shadow, z-index, separator and touch-target
+   size, which is what the artist reported ("pose tool has differently styled on-canvas popup menu").
+   Naming one class is how they stay matched.
+
+   `.ui-bar-btn` is 2.5rem because these are the app's PENCIL targets: the pose bar's old
+   `px-2 py-1 text-xs` buttons measured about 24px, under Apple's 44pt guidance and well under the
+   selection bar's 40px siblings. It sets no colour, so `.ui-on` still decides the on-state (and
+   wins the cascade, being unlayered too). */
+.ui-bar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem; /* rounded-lg */
+  background-color: var(--color-surface);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1); /* shadow-md */
+}
+.ui-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding-inline: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem; /* rounded-md */
+}
 /* Tint plus a left edge. `box-shadow: inset` rather than a border so the row's geometry does not
    change when it becomes selected (§5: state must not move the layout).
    The edge marks where the ROW STARTS, so exactly one element per row may carry it — the leftmost,
