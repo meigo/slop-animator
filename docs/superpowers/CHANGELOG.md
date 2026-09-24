@@ -7233,3 +7233,24 @@ precision, so nothing else had to change.
   thinning rather than breaking. That floor is why gaps are not a side effect of a thin setting.
 - 0.5 over 0.25 because the scrub moves 8px of drag per step: a full 1-24 sweep is already ~370px of
   travel at 0.5, and 0.25 would double it. Finer control wants a bigger `pxPerStep`, not a smaller step.
+
+**Outline respects a selection (2026-09-24, same day).** Asked right after the half-step change:
+*"could this respect selection too?"* — the spec had listed it as deliberately out of scope with a
+note that nothing foreclosed it, and nothing did.
+- **The marquee clips the WRITE, not the maths.** The distance field is still built from the whole
+  drawing, so where the line meets the cut it is the drawing's real outline, simply truncated. The
+  alternative — treating the marquee as an edge, so the cut gets its own line — was offered and
+  declined: it draws a line where the art has no edge, and moving the marquee would change the
+  drawing's apparent shape. Same rule the brush, eraser and fill already follow.
+- **`putImageData` ignores clip paths**, which is the whole reason this needed more than a one-liner:
+  the clipped path restores the snapshot in full, then `clearRect` + `drawImage` the outline from a
+  scratch canvas through `selection.applyClip`. The region is CLEARED before the draw — drawing over
+  it would leave the solid fill showing through the hollowed middle. With no selection the old single
+  `putImageData` still runs, so the common case costs nothing.
+- Entry now calls `syncComposeSteps()`: selection geometry is DOCUMENT space (gotcha #13) and
+  `applyClip` maps it through `composeSteps`, so a marquee on a transformed layer clips where the ink
+  actually looks like it is.
+- Verified in the browser on a solid bar: with a rect marquee over its right half, a column inside
+  reads two 5px runs (the line) while a column outside reads one solid run, and a scan across the cut
+  shows the solid ending at x=599 against a marquee starting at 600 — no line on the cut. Repeated
+  with a lasso. Apply keeps the clip and one undo restores the whole drawing.

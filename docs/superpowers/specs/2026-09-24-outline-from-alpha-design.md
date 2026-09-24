@@ -194,8 +194,10 @@ bar inside the stage (gotchas #12 and #18).
 
 ## Out of scope, recorded so it is a decision rather than an omission
 
-- **Clipping to a selection.** The tool acts on the whole drawing. The selection machinery could
-  clip it later; nothing here forecloses that.
+- ~~**Clipping to a selection.** The tool acts on the whole drawing. The selection machinery could
+  clip it later; nothing here forecloses that.~~ — **SHIPPED 2026-09-24**, the same day, via
+  `selection.applyClip`. The field is still built from the WHOLE drawing, so the line where it meets
+  the cut is the drawing's real outline, truncated; no line is drawn along the marquee.
 - **Apply to all frames.** One drawing at a time, like Pose. An "apply to every key cell in this
   layer" button is additive later.
 - **Gaps and grain**, the two randomness kinds not chosen.
