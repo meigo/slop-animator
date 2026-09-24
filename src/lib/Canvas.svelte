@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Check, X } from "@lucide/svelte";
+  import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
@@ -398,6 +399,14 @@
   let poseDirty = false;
   // Pose tool: lifted mesh + the handle index currently being dragged.
   let meshPose: MeshPose | null = null;
+  // Same gap the selection bar keeps from its selection and from the screen edge.
+  const POSE_BAR_MARGIN = 12;
+  let poseBarEl: HTMLDivElement | undefined = $state();
+  let poseBarPos = $state({ x: 0, y: 0 });
+  /** `poseDrag` is a plain local (the comment on `poseBarVisible` says why), so the template never
+   *  re-evaluates when it changes — the bar has to be gated on a rune instead. Assigned ONCE per
+   *  gesture at grab and release, never per pointermove, so this costs no per-move reactivity. */
+  let poseBarDragging = $state(false);
   let poseDrag: number | null = null;
   let activeHandle: number | null = null;
   let poseAdjusting = false;
@@ -1254,6 +1263,7 @@
           const hit = meshPose.handleAt(p, 10 * hitPx);
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
           poseDrag = activeHandle;
+          poseBarDragging = true;
         }
         repaintPoseOverlay();
       } else {
@@ -1274,6 +1284,7 @@
         }
         if (done) {
           poseDrag = null;
+          poseBarDragging = false;
           poseAdjusting = false;
         }
       }
@@ -1792,7 +1803,54 @@
   // `appState` — see CLAUDE.md gotcha #1 — so a rune would no longer conflict, but that's out
   // of scope for this change).
   function poseBarVisible(): boolean {
-    return appState.version >= 0 && meshPose !== null;
+    // Hidden while a handle is under the pen: the bar is anchored to the mesh bbox, which the drag
+    // is reshaping, so it would slide around mid-gesture. The selection bar hides for the same
+    // reason (`selection.isDragging`).
+    return appState.version >= 0 && meshPose !== null && !poseBarDragging;
+  }
+
+  // The bar is rendered by the block below, so on the first paint after entering Pose (and after a
+  // drag that hid it) the element does not exist yet and `positionPoseBar` has nothing to measure —
+  // it would flash at 0,0 for a frame. Re-anchor as soon as the element does exist.
+  $effect(() => {
+    if (poseBarEl && meshPose) positionPoseBar();
+  });
+
+  /** Anchor the pose bar over (or under) the mesh, the way the selection bar anchors to a selection:
+   *  same `computeAnchor`, so the above/below flip, the margin and the viewport clamp are one
+   *  implementation. The mesh lives in CELL space, so its bbox goes out through `composeToDoc`
+   *  first — the same mapping the selection bar's cell-space lift uses. */
+  function positionPoseBar() {
+    if (!meshPose || !poseBarEl || !stage || !viewport) return;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (const v of meshPose.deformed) {
+      if (v.x < minX) minX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y > maxY) maxY = v.y;
+    }
+    if (!Number.isFinite(minX)) return;
+    const wsRect = stage.getBoundingClientRect();
+    const panelRect = poseBarEl.getBoundingClientRect();
+    const a = computeAnchor({
+      bboxDoc: [
+        { x: minX, y: minY },
+        { x: maxX, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ].map(composeToDoc),
+      docToScreen: (p) => {
+        const sp = viewport.canvasToScreen(p.x, p.y);
+        return { x: sp.x - wsRect.left, y: sp.y - wsRect.top };
+      },
+      panelSize: { w: panelRect.width || 320, h: panelRect.height || 50 },
+      viewport: { w: stage.clientWidth, h: stage.clientHeight },
+      margin: POSE_BAR_MARGIN,
+    });
+    poseBarPos = { x: a.x, y: a.y };
   }
 
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
@@ -1809,6 +1867,7 @@
   }
 
   function posePaint() {
+    positionPoseBar(); // the paint cadence is also the right cadence for the bar's anchor
     const octx = overlay.getContext("2d")!;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlay.width, overlay.height);
@@ -1982,6 +2041,7 @@
     appState.poseActive = false;
     appState.poseFillWarning = "";
     poseDrag = null;
+    poseBarDragging = false;
     activeHandle = null;
     poseAdjusting = false;
     clearLiftTarget();
@@ -2001,6 +2061,7 @@
     appState.poseActive = false;
     appState.poseFillWarning = "";
     poseDrag = null;
+    poseBarDragging = false;
     activeHandle = null;
     poseAdjusting = false;
     clearLiftTarget();
@@ -2020,6 +2081,7 @@
       }) ?? meshPose;
     appState.poseActive = meshPose !== null;
     poseDrag = null;
+    poseBarDragging = false;
     activeHandle = null;
     poseAdjusting = false;
     poseDirty = false; // a rebuild drops every handle: the picture is back at rest, nothing to bake
@@ -2496,7 +2558,9 @@
          every button whenever it appeared. `max-w` + `flex-wrap` mean it wraps instead of pushing
          the panel past the canvas edge on a narrow (iPad portrait) viewport. -->
     <div
-      class="selection-actions-panel ui-bar absolute top-2 left-1/2 -translate-x-1/2 max-w-[min(92vw,34rem)] flex-col z-30"
+      bind:this={poseBarEl}
+      class="selection-actions-panel ui-bar absolute max-w-[min(92vw,34rem)] flex-col z-30"
+      style="left: {poseBarPos.x}px; top: {poseBarPos.y}px"
     >
       <div class="flex flex-wrap items-center gap-1">
         <button
@@ -2522,6 +2586,7 @@
             e.preventDefault();
             meshPose?.resetHandles();
             poseDrag = null;
+            poseBarDragging = false;
             activeHandle = null;
             poseAdjusting = false;
             posePaint();
