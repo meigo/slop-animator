@@ -71,7 +71,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - **Deform tool** — FFD grid warp plus a rigid (MLS) mode
 - **Pose tool** — silhouette triangulation + geodesic-weighted MLS with per-handle rotation/reach gizmos, for posing a character drawing without redrawing it
 - Outline-only drawings pose as a body, not a thin web — space enclosed by the outline counts as part of the shape, with no change to the artwork
-- **Outline** — turn a solid drawing into an outline of adjustable thickness, with Wobble (the line wanders across the edge) and Variation (it swells and thins); preview live, then Apply as one undo step
+- **Outline** — turn a solid drawing into an outline of adjustable thickness (half-steps from 0.5px), with Wobble (the line wanders across the edge) and Variation (it swells and thins); preview live, then Apply as one undo step. With a selection active it outlines only inside it, leaving the rest of the drawing alone
 
 **Reference & audio**
 

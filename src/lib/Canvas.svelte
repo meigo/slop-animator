@@ -2133,6 +2133,10 @@
   let outlinePreviewImg: ImageData | null = null;
   let outlineNoise: OutlineNoisePlanes | null = null; // depends on the seed only
   let outlineNoiseSeed: number | null = null; // seed outlineNoise was built for — rebuilt on mismatch
+  /** Scratch canvas holding the FULL outline, used only when a marquee clips the write: the clipped
+   *  path cannot use `putImageData` (it ignores clip paths), so the outline has to arrive by
+   *  `drawImage`. Built on first clipped preview and reused, like the other per-entry buffers. */
+  let outlineScratch: HTMLCanvasElement | null = null;
   let outlineLayer: DrawingLayer | null = null;
   let outlineMaterialized: CellTrackChange | null = null;
   let outlineRaf = 0;
@@ -2179,6 +2183,11 @@
     outlinePreviewImg = null;
     outlineNoise = null;
     outlineNoiseSeed = null;
+    outlineScratch = null;
+    // Selection geometry is DOCUMENT space (gotcha #13) — `applyClip` maps it through
+    // `composeSteps` for a transformed layer, so they must describe the layer we are about to
+    // clip on, exactly as a select/lasso gesture syncs them at its start.
+    syncComposeSteps();
     refreshOutlinePreview();
     // `repaint`, NOT `bump`: entering the tool isn't a document edit, but `outlineActive()` is a
     // plain local — the on-canvas bar's `{#if}` gate reads `appState.version` only so it re-evaluates
@@ -2226,7 +2235,29 @@
     outlinePreviewImg ??= new ImageData(new Uint8ClampedArray(src), w, h);
     const next = outlinePreviewImg;
     for (let i = 0, p = 3; i < cov.length; i++, p += 4) next.data[p] = cov[i];
-    ctx.putImageData(next, 0, 0);
+    // A marquee clips the WRITE, not the maths: the field above is built from the whole drawing, so
+    // the line's geometry where it meets the cut is the drawing's real outline, simply truncated —
+    // no line is drawn along the marquee itself. Same rule the brush, eraser and fill follow.
+    if (selection?.state === "selected") {
+      ctx.putImageData(before, 0, 0); // full original first — outside the marquee nothing changes
+      if (!outlineScratch) {
+        outlineScratch = document.createElement("canvas");
+        outlineScratch.width = w;
+        outlineScratch.height = h;
+      }
+      outlineScratch.getContext("2d")!.putImageData(next, 0, 0);
+      ctx.save();
+      // `applyClip` takes CSS px, so the ctx must carry the dpr transform it expects.
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection.applyClip(ctx);
+      // Inside the marquee the outline REPLACES the art, so the region is cleared before the draw —
+      // drawing over it would leave the solid fill showing through the hollowed middle.
+      ctx.clearRect(0, 0, w / DPR, h / DPR);
+      ctx.drawImage(outlineScratch, 0, 0, w / DPR, h / DPR);
+      ctx.restore();
+    } else {
+      ctx.putImageData(next, 0, 0);
+    }
     markInkChanged(ctx.canvas);
     recomposite();
     positionOutlineBar();
@@ -2310,6 +2341,7 @@
     outlinePreviewImg = null;
     outlineNoise = null;
     outlineNoiseSeed = null;
+    outlineScratch = null;
     outlineLayer = null;
     outlineMaterialized = null;
   }
