@@ -69,6 +69,7 @@
     displayFrame,
     cloneCanvas,
     groupOf,
+    layerContentAlpha,
     groupHasLockedLayer,
     isLayerEditable,
     isLayerLocked,
@@ -2328,11 +2329,19 @@
   });
 
   // The edited layer's content is lifted into the overlay (pose mesh / floating / warp), which would
-  // otherwise ignore `visible`. Mirror the active layer's visibility onto the overlays so hiding it
-  // hides the in-progress edit too (non-destructively — the lift stays alive).
+  // otherwise ignore `visible` and `opacity`. Mirror both onto the overlays: hiding the layer hides
+  // the in-progress edit too (non-destructively — the lift stays alive), and a faded layer's lift
+  // stays faded instead of jumping to full strength for the length of the gesture.
   $effect(() => {
     const al = activeLayer();
-    if (selection) selection.hidden = !isLayerVisible(al, appState.project.groups);
+    if (selection) {
+      selection.hidden = !isLayerVisible(al, appState.project.groups);
+      selection.contentAlpha = layerContentAlpha(
+        al,
+        groupOf(al, appState.project.groups),
+        appState.playhead,
+      );
+    }
     repaintPoseOverlay(); // was a direct posePaint(): the second of the two paints per pointermove
     // Can't keep editing a layer that just became read-only → discard the in-progress lift.
     // DERIVED (isLayerLocked), so locking the layer's GROUP discards too — reading it here also makes

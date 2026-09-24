@@ -14,6 +14,7 @@ import {
   withKey,
   groupTransformAt,
   groupOpacityAt,
+  layerContentAlpha,
   copyTracks,
   hasKeyAt,
   createProject,
@@ -24,6 +25,7 @@ import {
   copyTrack,
   type Layer,
   type LayerGroup,
+  type DrawingLayer,
   type TransformTrack,
   type Track,
 } from "../anim/document";
@@ -986,6 +988,43 @@ describe("groupOpacityAt", () => {
     expect(groupOpacityAt(grp, -1)).toBe(100);
     expect(groupOpacityAt(grp, 5)).toBeCloseTo(50, 10);
     expect(groupOpacityAt(grp, 99)).toBe(0);
+  });
+});
+
+// The overlays (floating selection, deform warp, pose mesh) paint the layer's own content, so they
+// have to fade exactly as the compositor fades it — layer opacity TIMES the group's, animated or not.
+describe("layerContentAlpha", () => {
+  const l = (over: Partial<DrawingLayer> = {}): DrawingLayer =>
+    ({ ...createDrawingLayer(1, "L"), ...over }) as DrawingLayer;
+  const g = (over: Partial<LayerGroup> = {}): LayerGroup =>
+    ({ id: 1, name: "G", collapsed: false, visible: true, ...over }) as LayerGroup;
+
+  it("is 1 for a fully opaque layer with no group", () => {
+    expect(layerContentAlpha(l(), null, 0)).toBe(1);
+  });
+
+  it("is the layer's own opacity when there is no group", () => {
+    expect(layerContentAlpha(l({ opacity: 40 }), null, 0)).toBeCloseTo(0.4, 10);
+  });
+
+  it("multiplies the layer's opacity by its group's", () => {
+    expect(layerContentAlpha(l({ opacity: 50 }), g({ opacity: 50 }), 0)).toBeCloseTo(0.25, 10);
+  });
+
+  it("follows an ANIMATED opacity, on the layer or on the group", () => {
+    const track = {
+      keys: [
+        { frame: 0, v: 100 },
+        { frame: 10, v: 0 },
+      ],
+    };
+    expect(layerContentAlpha(l({ tracks: { opacity: track } }), null, 5)).toBeCloseTo(0.5, 10);
+    expect(layerContentAlpha(l(), g({ tracks: { opacity: track } }), 5)).toBeCloseTo(0.5, 10);
+  });
+
+  it("is 0 when either side is fully transparent", () => {
+    expect(layerContentAlpha(l({ opacity: 0 }), g({ opacity: 100 }), 0)).toBe(0);
+    expect(layerContentAlpha(l({ opacity: 100 }), g({ opacity: 0 }), 0)).toBe(0);
   });
 });
 
