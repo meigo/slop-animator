@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { signedDistanceField } from "../core/outline";
+import { signedDistanceField, valueNoise } from "../core/outline";
 
 /** w×h alpha plane with a filled rectangle (x0..x1, y0..y1 inclusive) at alpha 255. */
 function rectAlpha(
@@ -48,5 +48,35 @@ describe("signedDistanceField", () => {
     a[2] = 128; // 128/255 ≈ 0.502
     const d = signedDistanceField(a, w, h);
     expect(Math.abs(d[2])).toBeLessThan(0.05);
+  });
+});
+
+describe("valueNoise", () => {
+  it("is deterministic for the same (x, y, seed)", () => {
+    expect(valueNoise(1.25, 3.5, 7)).toBe(valueNoise(1.25, 3.5, 7));
+  });
+
+  it("gives a different field for a different seed", () => {
+    const a = valueNoise(1.25, 3.5, 7);
+    const b = valueNoise(1.25, 3.5, 8);
+    expect(a).not.toBe(b);
+  });
+
+  it("stays within [-1, 1]", () => {
+    for (let i = 0; i < 500; i++) {
+      const v = valueNoise(i * 0.37, i * 0.11, 3);
+      expect(v).toBeGreaterThanOrEqual(-1);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("is smooth: neighbouring samples within a lattice cell stay close", () => {
+    let maxJump = 0;
+    for (let i = 0; i < 200; i++) {
+      const a = valueNoise(5 + i * 0.01, 2.5, 4);
+      const b = valueNoise(5 + (i + 1) * 0.01, 2.5, 4);
+      maxJump = Math.max(maxJump, Math.abs(a - b));
+    }
+    expect(maxJump).toBeLessThan(0.1); // a hash-per-pixel field would jump ~2
   });
 });

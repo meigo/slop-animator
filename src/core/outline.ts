@@ -77,3 +77,28 @@ export function signedDistanceField(
   for (let i = 0; i < n; i++) if (!inside[i]) d[i] = -d[i];
   return d;
 }
+
+/** Integer hash → [0, 1). `Math.imul` keeps the multiplies in 32-bit, which is both faster and
+ *  reproducible across engines (a plain `*` would go through doubles and lose the low bits). */
+function hash2(xi: number, yi: number, seed: number): number {
+  let n = Math.imul(xi, 374761393) ^ Math.imul(yi, 668265263) ^ Math.imul(seed, 1274126177);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+
+/** Smooth 2D value noise in [-1, 1]. `x`/`y` are lattice units: divide px by the feature size. */
+export function valueNoise(x: number, y: number, seed: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const tx = smoothstep(x - xi);
+  const ty = smoothstep(y - yi);
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const e = hash2(xi + 1, yi + 1, seed);
+  const top = a + (b - a) * tx;
+  const bottom = c + (e - c) * tx;
+  return (top + (bottom - top) * ty) * 2 - 1;
+}
