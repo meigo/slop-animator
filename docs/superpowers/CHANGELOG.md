@@ -7129,3 +7129,30 @@ the selection bar's **40px**.
   Fill-outlines checkbox needs the native activation `preventDefault` would kill.
 - Verified in the browser: both bars measure 50px tall with 40px buttons (the Reset label is 50 wide),
   same radius and shadow, and the checkbox still toggles. Screenshot-checked side by side.
+
+**The pose bar follows the mesh (2026-09-24).** Reported from the iPad, after the styling pass above:
+*"the floating bar is fixed to the top of canvas. Other tools have it positioned over/under
+selection/envelopes depending on how it's better visible"*. Right — matching the chrome made the
+remaining difference more obvious, not less.
+- **Same anchor, not a second one.** `positionPoseBar()` takes the mesh bbox from
+  `meshPose.deformed`, maps its corners through the existing `composeToDoc` (cell → document, the
+  mapping the selection bar's cell-space lift already uses) and hands them to `computeAnchor` — so
+  the above/below flip, the 12px margin and the viewport clamp have ONE implementation, already
+  unit-tested.
+- **Cadence:** called from `posePaint()`, which already runs on gesture frames, on viewport change
+  (via `repaintPoseOverlay`) and on entry. No second always-on rAF loop, so gotcha #17 holds. A
+  `$effect` re-anchors when `poseBarEl` first exists, or the bar would flash at 0,0 for one frame
+  after entering Pose (the element is created by the block it positions).
+- **Hidden while a handle is dragged**, as the selection bar hides on `selection.isDragging` — the
+  anchor is the mesh bbox, which the drag is reshaping, so the bar would slide under the pen.
+- **A rune was needed for that.** `poseDrag` is a plain local, so gating the `{#if}` on it changed
+  nothing — the template never re-evaluated and the bar stayed put through a whole drag (caught in
+  the browser, not in review). `poseBarDragging` is `$state`, assigned once at grab and once at
+  release — never per pointermove — and cleared everywhere `poseDrag` is, so an apply/cancel mid-drag
+  cannot strand the bar hidden.
+- Verified in the browser: above the mesh with an 11px gap and centred on it (mesh centre 485 vs bar
+  centre 485.9); below and clamped to the left margin for a mesh in the top-left corner; re-anchored
+  after a drag that moved the bbox top (158 → 101); hidden on grab, back on release. **Not exercised:**
+  the follow-on-pan, because the automation tab is hidden and `repaintPoseOverlay`'s rAF never fires
+  there — forcing a paint after a pan put the bar in the right place (101 → 298), so the wiring is
+  right, but the cadence needs an eyeball on the device.
