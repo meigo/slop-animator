@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Check, X } from "@lucide/svelte";
+  import { Check, X, Dices } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
@@ -99,7 +99,7 @@
   import { contentRectLogical, clampDensity } from "../core/deform";
   import { MeshPose } from "../core/mesh-pose";
   import { outlineFillFailed, MAX_GAP } from "../core/fill-holes";
-  import { outlineMask, signedDistanceField } from "../core/outline";
+  import { outlineMask, signedDistanceField, MAX_THICKNESS } from "../core/outline";
   import type { Tool } from "../state/appState.svelte";
   import {
     hitTestHandle,
@@ -1821,12 +1821,39 @@
     if (poseBarEl && meshPose) positionPoseBar();
   });
 
+  /** Anchor a bar over (or under) a CELL-space bbox, the way the selection bar anchors to a
+   *  selection. Returns the workspace-relative position, or null when it cannot measure yet. */
+  function anchorBarToBox(
+    box: { x: number; y: number; w: number; h: number },
+    el: HTMLElement | undefined,
+  ): { x: number; y: number } | null {
+    if (!el || !stage || !viewport) return null;
+    const wsRect = stage.getBoundingClientRect();
+    const panelRect = el.getBoundingClientRect();
+    const a = computeAnchor({
+      bboxDoc: [
+        { x: box.x, y: box.y },
+        { x: box.x + box.w, y: box.y },
+        { x: box.x + box.w, y: box.y + box.h },
+        { x: box.x, y: box.y + box.h },
+      ].map(composeToDoc),
+      docToScreen: (p) => {
+        const sp = viewport.canvasToScreen(p.x, p.y);
+        return { x: sp.x - wsRect.left, y: sp.y - wsRect.top };
+      },
+      panelSize: { w: panelRect.width || 320, h: panelRect.height || 50 },
+      viewport: { w: stage.clientWidth, h: stage.clientHeight },
+      margin: POSE_BAR_MARGIN,
+    });
+    return { x: a.x, y: a.y };
+  }
+
   /** Anchor the pose bar over (or under) the mesh, the way the selection bar anchors to a selection:
    *  same `computeAnchor`, so the above/below flip, the margin and the viewport clamp are one
    *  implementation. The mesh lives in CELL space, so its bbox goes out through `composeToDoc`
    *  first — the same mapping the selection bar's cell-space lift uses. */
   function positionPoseBar() {
-    if (!meshPose || !poseBarEl || !stage || !viewport) return;
+    if (!meshPose || !poseBarEl) return;
     let minX = Infinity,
       minY = Infinity,
       maxX = -Infinity,
@@ -1838,25 +1865,31 @@
       if (v.y > maxY) maxY = v.y;
     }
     if (!Number.isFinite(minX)) return;
-    const wsRect = stage.getBoundingClientRect();
-    const panelRect = poseBarEl.getBoundingClientRect();
-    const a = computeAnchor({
-      bboxDoc: [
-        { x: minX, y: minY },
-        { x: maxX, y: minY },
-        { x: maxX, y: maxY },
-        { x: minX, y: maxY },
-      ].map(composeToDoc),
-      docToScreen: (p) => {
-        const sp = viewport.canvasToScreen(p.x, p.y);
-        return { x: sp.x - wsRect.left, y: sp.y - wsRect.top };
-      },
-      panelSize: { w: panelRect.width || 320, h: panelRect.height || 50 },
-      viewport: { w: stage.clientWidth, h: stage.clientHeight },
-      margin: POSE_BAR_MARGIN,
-    });
-    poseBarPos = { x: a.x, y: a.y };
+    const p = anchorBarToBox({ x: minX, y: minY, w: maxX - minX, h: maxY - minY }, poseBarEl);
+    if (p) poseBarPos = p;
   }
+
+  let outlineBarEl: HTMLDivElement | undefined = $state();
+  let outlineBarPos = $state({ x: 0, y: 0 });
+
+  function positionOutlineBar() {
+    if (!outlineCtx) return;
+    // The ink the tool is working on. `contentBounds` is device px and cached by canvas+version,
+    // and the preview bumps that version, so the bar tracks a thinning outline rather than the
+    // solid it started from.
+    const b = contentBounds(outlineCtx.canvas, appState.version);
+    const box = b
+      ? { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR }
+      : { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
+    const p = anchorBarToBox(box, outlineBarEl);
+    if (p) outlineBarPos = p;
+  }
+
+  // Same reason as the pose bar's effect: the element is created by the block this positions, so
+  // the first pass has nothing to measure and would flash at 0,0.
+  $effect(() => {
+    if (outlineBarEl && outlineActive()) positionOutlineBar();
+  });
 
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
   function poseReachMax(): number {
@@ -2113,6 +2146,10 @@
     outlineBefore = before;
     outlineField = null;
     refreshOutlinePreview();
+    // `repaint`, NOT `bump`: entering the tool isn't a document edit, but `outlineActive()` is a
+    // plain local — the on-canvas bar's `{#if}` gate reads `appState.version` only so it re-evaluates
+    // on entry (same reasoning as `enterPose`'s `repaint()`, gotcha class documented on the pose bar).
+    repaint();
   }
 
   /** Re-derive the preview from the snapshot. Coalesced to one animation frame (gotcha #17): a
@@ -2145,6 +2182,7 @@
     ctx.putImageData(next, 0, 0);
     markInkChanged(ctx.canvas);
     recomposite();
+    positionOutlineBar();
   }
 
   function applyOutline() {
@@ -2804,6 +2842,108 @@
              the remedy (Gap) is one row above. -->
         <span class="text-xs/snug text-warn">{appState.poseFillWarning}</span>
       {/if}
+    </div>
+  {/if}
+  {#if appState.version >= 0 && outlineActive()}
+    <div
+      bind:this={outlineBarEl}
+      class="selection-actions-panel ui-bar absolute max-w-[min(92vw,34rem)] flex-col z-30"
+      style="left: {outlineBarPos.x}px; top: {outlineBarPos.y}px"
+    >
+      <div class="flex flex-wrap items-center gap-1">
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="Line thickness in pixels"
+        >
+          Thickness
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={appState.outline.thickness}
+            min={1}
+            max={MAX_THICKNESS}
+            step={1}
+            title="Line thickness in pixels"
+            ariaLabel="Outline thickness"
+            onInput={(v) => {
+              appState.outline.thickness = v;
+            }}
+            onCommit={(v) => {
+              appState.outline.thickness = v;
+            }}
+          />
+        </label>
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="How far the line wanders across the edge"
+        >
+          Wobble
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={Math.round(appState.outline.wobble * 100)}
+            min={0}
+            max={100}
+            step={5}
+            title="How far the line wanders across the edge"
+            ariaLabel="Outline wobble"
+            onInput={(v) => {
+              appState.outline.wobble = v / 100;
+            }}
+            onCommit={(v) => {
+              appState.outline.wobble = v / 100;
+            }}
+          />
+        </label>
+        <label
+          class="flex min-h-10 items-center gap-1 px-1 text-xs"
+          title="How much the line swells and thins"
+        >
+          Variation
+          <NumberField
+            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+            value={Math.round(appState.outline.variation * 100)}
+            min={0}
+            max={100}
+            step={5}
+            title="How much the line swells and thins"
+            ariaLabel="Outline variation"
+            onInput={(v) => {
+              appState.outline.variation = v / 100;
+            }}
+            onCommit={(v) => {
+              appState.outline.variation = v / 100;
+            }}
+          />
+        </label>
+        <span class="w-px h-6 bg-border mx-0.5"></span>
+        <button
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
+          title="Shuffle the randomness"
+          aria-label="Shuffle the randomness"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            appState.outline.seed = (appState.outline.seed + 1) | 0;
+          }}><Dices size={18} /></button
+        >
+        <span class="w-px h-6 bg-border mx-0.5"></span>
+        <button
+          class="ui-bar-btn ui-on border-accent"
+          title="Apply outline"
+          aria-label="Apply outline"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            applyOutline();
+          }}><Check size={18} /></button
+        >
+        <button
+          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
+          title="Cancel outline"
+          aria-label="Cancel outline"
+          onpointerdown={(e) => {
+            e.preventDefault();
+            cancelOutline();
+          }}><X size={18} /></button
+        >
+      </div>
     </div>
   {/if}
 </div>
