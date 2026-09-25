@@ -7437,3 +7437,16 @@ slop-vector-editor repo"*.
   icons are not content-hashed and `_headers` leaves them at `max-age=0, must-revalidate`, but
   browsers cache favicons on their own, so an open tab or an existing Home Screen icon may keep the
   old mark until it is reloaded or re-added.
+
+**Outline settings moved to the sub-toolbar (2026-09-25).** Reported as *"outline floating bar
+overlaps selection floating bar"*. With a marquee clipping the outline, both bars anchor to boxes
+around the same ink and land on top of each other.
+- The floating bar is gone. Thickness, Wobble, Variation, the re-roll button and ✓ Apply / ✕ Cancel
+  now sit in `ToolOptions.svelte`'s Outline branch, which used to hold only a hint string. The user
+  picked "everything in the sub-toolbar" over keeping a small ✓/✕ bar on the canvas.
+- The settings stay editable with no preview up, like the brush's. Apply/Cancel are `aria-disabled`
+  then. They gate on `appState.version >= 0 && outlineActions.active()`: `active()` reads a Canvas
+  local, so the `version` read (bumped by `repaint()` on entry and exit) is what makes it reactive.
+- Canvas lost `outlineBarEl`/`positionOutlineBar` and the `outlineInk` box that only fed it.
+  Enter/Escape are unchanged.
+- Not yet seen in a browser or on iPad.

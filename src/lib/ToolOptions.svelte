@@ -10,6 +10,7 @@
     selectionActions,
     transformActions,
     fillActions,
+    outlineActions,
   } from "../state/appState.svelte";
   import { workingTarget } from "../anim/active-row";
 
@@ -26,8 +27,12 @@
     Link2Off,
     FlipHorizontal2,
     FlipVertical2,
+    Dices,
+    Check,
+    X,
   } from "@lucide/svelte";
   import { MAX_GAP } from "../core/fill-holes";
+  import { MAX_THICKNESS } from "../core/outline";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
@@ -466,7 +471,7 @@
       >{#if appState.keepProportions}<Link2 size={14} />{:else}<Link2Off size={14} />{/if}
       Keep proportions</button
     >
-  {:else if appState.tool === "deform" || appState.tool === "pose" || appState.tool === "outline"}
+  {:else if appState.tool === "deform" || appState.tool === "pose"}
     <!-- No blocked-edit reason here. Canvas.svelte's stage overlay already says it for EVERY tool,
          and the status bar says it a third time — this branch was the only place that repeated it,
          written as "swap the instructions for the reason" without noticing the overlay. The
@@ -477,11 +482,90 @@
         >Drag the grid handles on the canvas · FFD/Rigid in the selection bar</span
       >
     {/if}
-    {#if !paintBlock && appState.tool === "outline"}
-      <span class="text-xs text-text-muted"
-        >Hollows the drawing to a line · thickness and randomness in the canvas bar</span
-      >
-    {/if}
+  {:else if appState.tool === "outline"}
+    <!-- Lived in a floating bar on the canvas until 2026-09-25; it anchored to the ink's box and sat
+         on top of the selection bar whenever a marquee clipped the outline. The settings stay live
+         while nothing is being outlined (like the brush's); Apply/Cancel only mean something while
+         a preview is up. `outlineActions.active()` reads a Canvas local, so the `version` read is
+         what makes this re-evaluate on entry and exit. -->
+    {@const live = appState.version >= 0 && outlineActions.active()}
+    {@const btn =
+      "w-9 h-9 rounded border border-border bg-surface text-text-secondary flex items-center justify-center hover:bg-surface-hover aria-disabled:opacity-40 aria-disabled:cursor-default aria-disabled:hover:bg-surface"}
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="Line thickness in pixels"
+      >Thickness
+      <NumberField
+        class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+        value={appState.outline.thickness}
+        min={0.5}
+        max={MAX_THICKNESS}
+        step={0.5}
+        title="Line thickness in pixels"
+        ariaLabel="Outline thickness"
+        onInput={(v) => (appState.outline.thickness = v)}
+        onCommit={(v) => (appState.outline.thickness = v)}
+      />
+    </label>
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="How far the line wanders across the edge"
+      >Wobble
+      <NumberField
+        class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+        value={Math.round(appState.outline.wobble * 100)}
+        min={0}
+        max={100}
+        step={5}
+        title="How far the line wanders across the edge"
+        ariaLabel="Outline wobble"
+        onInput={(v) => (appState.outline.wobble = v / 100)}
+        onCommit={(v) => (appState.outline.wobble = v / 100)}
+      />
+    </label>
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="How much the line swells and thins"
+      >Variation
+      <NumberField
+        class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
+        value={Math.round(appState.outline.variation * 100)}
+        min={0}
+        max={100}
+        step={5}
+        title="How much the line swells and thins"
+        ariaLabel="Outline variation"
+        onInput={(v) => (appState.outline.variation = v / 100)}
+        onCommit={(v) => (appState.outline.variation = v / 100)}
+      />
+    </label>
+    <button
+      class={btn}
+      title="Shuffle the randomness"
+      aria-label="Shuffle the randomness"
+      onclick={() => (appState.outline.seed = (appState.outline.seed + 1) | 0)}
+      ><Dices size={16} /></button
+    >
+    <span class="mx-1 h-5 w-px bg-border"></span>
+    <!-- aria-disabled, NOT disabled — see the select/lasso branch above for why. -->
+    <button
+      class="{btn} {live ? 'ui-on border-accent' : ''}"
+      title={live ? "Apply outline (Enter)" : "Apply outline — nothing to apply"}
+      aria-label="Apply outline"
+      aria-disabled={!live}
+      onclick={() => {
+        if (live) outlineActions.apply();
+      }}><Check size={16} /></button
+    >
+    <button
+      class={btn}
+      title={live ? "Cancel outline (Esc)" : "Cancel outline — nothing to cancel"}
+      aria-label="Cancel outline"
+      aria-disabled={!live}
+      onclick={() => {
+        if (live) outlineActions.cancel();
+      }}><X size={16} /></button
+    >
   {:else}
     <span class="text-xs text-text-muted"></span>
   {/if}

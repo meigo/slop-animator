@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Check, X, Dices } from "@lucide/svelte";
+  import { Check, X } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, type InputPoint } from "../core/input";
   import { Viewport } from "../core/viewport";
@@ -107,7 +107,6 @@
     localDepth,
     bleedColor,
     OUTLINE_MARGIN,
-    MAX_THICKNESS,
   } from "../core/outline";
   import type { OutlineNoisePlanes } from "../core/outline";
   import type { Tool } from "../state/appState.svelte";
@@ -1382,11 +1381,11 @@
       if (done) fillUsed = false;
       return;
     }
-    // The tool is driven entirely by the on-canvas bar (ToolOptions carries only a hint string,
-    // no knobs) — a canvas gesture must not fall through to the default paint path below. A press
+    // The tool is driven entirely by its ToolOptions controls, never by a canvas gesture — which
+    // must not fall through to the default paint path below. A press
     // with no live session enters it, the same fallback Pose and Deform have: otherwise any way of
     // being on Outline without a session (a restored preference, "Nothing to outline" and then a
-    // frame step) left a lit button, no bar and a canvas that ignored every tap.
+    // frame step) left a lit button, no preview and a canvas that ignored every tap.
     if (appState.tool === "outline") {
       if (!outlineActive() && points.length === 1 && !done) enterOutline();
       return;
@@ -1439,7 +1438,6 @@
       sizeOverlay();
       syncOverlayScale();
       repaintPoseOverlay();
-      if (outlineBarEl && outlineActive()) positionOutlineBar();
       const ss = displayOutputScale();
       if (ss !== lastOutputScale) {
         lastOutputScale = ss;
@@ -1897,28 +1895,6 @@
     if (p) poseBarPos = p;
   }
 
-  let outlineBarEl: HTMLDivElement | undefined = $state();
-  let outlineBarPos = $state({ x: 0, y: 0 });
-
-  function positionOutlineBar() {
-    const b = outlineInk;
-    if (!b) return;
-    // The ink as it was on ENTRY, in device px. Re-measuring the preview each tick cost a
-    // full-canvas `getImageData` + scan per scrub frame (the preview voids the bounds cache), and
-    // bought nothing: the band never strays more than `WOBBLE_MAX` from the original edge.
-    const p = anchorBarToBox(
-      { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR },
-      outlineBarEl,
-    );
-    if (p) outlineBarPos = p;
-  }
-
-  // Same reason as the pose bar's effect: the element is created by the block this positions, so
-  // the first pass has nothing to measure and would flash at 0,0.
-  $effect(() => {
-    if (outlineBarEl && outlineActive()) positionOutlineBar();
-  });
-
   // Rotate-nub: a dot at a fixed screen radius around the active handle; dragging it sets the angle.
   function poseReachMax(): number {
     return meshPose ? Math.hypot(meshPose.rect.w, meshPose.rect.h) : 0; // beyond full extent = unlimited
@@ -2145,7 +2121,6 @@
   // Everything below works on `outlineRect` only: the ink's bounds grown by `OUTLINE_MARGIN`, the
   // furthest the band can reach. Nothing outside it can change, so a small drawing on a big cell
   // no longer pays for the cell's full size on every scrub tick.
-  let outlineInk: { x: number; y: number; w: number; h: number } | null = null; // device px, at entry
   let outlineRect: { x: number; y: number; w: number; h: number } | null = null;
   let outlineSrc: ImageData | null = null; // outlineBefore cut to outlineRect
   let outlineField: Float32Array | null = null; // depends on the ART only — computed once per entry
@@ -2202,7 +2177,6 @@
     outlineMaterialized = mk.materialized;
     outlineCtx = ctx;
     outlineBefore = ctx.getImageData(0, 0, cw, ch);
-    outlineInk = ink;
     outlineRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     outlineSrc = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
     outlineField = null;
@@ -2219,7 +2193,7 @@
     syncComposeSteps();
     refreshOutlinePreview();
     // `repaint`, NOT `bump`: entering the tool isn't a document edit, but `outlineActive()` is a
-    // plain local — the on-canvas bar's `{#if}` gate reads `appState.version` only so it re-evaluates
+    // plain local — ToolOptions' Apply/Cancel gate reads `appState.version` only so it re-evaluates
     // on entry (same reasoning as `enterPose`'s `repaint()`, gotcha class documented on the pose bar).
     repaint();
   }
@@ -2302,7 +2276,6 @@
     }
     markInkChanged(ctx.canvas);
     recomposite();
-    positionOutlineBar();
   }
 
   function applyOutline() {
@@ -2371,7 +2344,6 @@
     }
     outlineCtx = null;
     outlineBefore = null;
-    outlineInk = null;
     outlineRect = null;
     outlineSrc = null;
     outlineField = null;
@@ -2386,7 +2358,7 @@
     outlineMaterialized = null;
   }
 
-  // A knob change (from the on-canvas bar) re-derives the preview from the untouched snapshot —
+  // A knob change (from ToolOptions) re-derives the preview from the untouched snapshot —
   // coalesced via scheduleOutlinePreview (gotcha #17), not applied straight from here.
   $effect(() => {
     void appState.outline.thickness;
@@ -2993,108 +2965,6 @@
              the remedy (Gap) is one row above. -->
         <span class="text-xs/snug text-warn">{appState.poseFillWarning}</span>
       {/if}
-    </div>
-  {/if}
-  {#if appState.version >= 0 && outlineActive()}
-    <div
-      bind:this={outlineBarEl}
-      class="selection-actions-panel ui-bar absolute max-w-[min(92vw,34rem)] flex-col z-30"
-      style="left: {outlineBarPos.x}px; top: {outlineBarPos.y}px"
-    >
-      <div class="flex flex-wrap items-center gap-1">
-        <label
-          class="flex min-h-10 items-center gap-1 px-1 text-xs"
-          title="Line thickness in pixels"
-        >
-          Thickness
-          <NumberField
-            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-            value={appState.outline.thickness}
-            min={0.5}
-            max={MAX_THICKNESS}
-            step={0.5}
-            title="Line thickness in pixels"
-            ariaLabel="Outline thickness"
-            onInput={(v) => {
-              appState.outline.thickness = v;
-            }}
-            onCommit={(v) => {
-              appState.outline.thickness = v;
-            }}
-          />
-        </label>
-        <label
-          class="flex min-h-10 items-center gap-1 px-1 text-xs"
-          title="How far the line wanders across the edge"
-        >
-          Wobble
-          <NumberField
-            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-            value={Math.round(appState.outline.wobble * 100)}
-            min={0}
-            max={100}
-            step={5}
-            title="How far the line wanders across the edge"
-            ariaLabel="Outline wobble"
-            onInput={(v) => {
-              appState.outline.wobble = v / 100;
-            }}
-            onCommit={(v) => {
-              appState.outline.wobble = v / 100;
-            }}
-          />
-        </label>
-        <label
-          class="flex min-h-10 items-center gap-1 px-1 text-xs"
-          title="How much the line swells and thins"
-        >
-          Variation
-          <NumberField
-            class="w-12 text-xs bg-surface border border-border rounded px-1 text-text"
-            value={Math.round(appState.outline.variation * 100)}
-            min={0}
-            max={100}
-            step={5}
-            title="How much the line swells and thins"
-            ariaLabel="Outline variation"
-            onInput={(v) => {
-              appState.outline.variation = v / 100;
-            }}
-            onCommit={(v) => {
-              appState.outline.variation = v / 100;
-            }}
-          />
-        </label>
-        <span class="w-px h-6 bg-border mx-0.5"></span>
-        <button
-          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
-          title="Shuffle the randomness"
-          aria-label="Shuffle the randomness"
-          onpointerdown={(e) => {
-            e.preventDefault();
-            appState.outline.seed = (appState.outline.seed + 1) | 0;
-          }}><Dices size={18} /></button
-        >
-        <span class="w-px h-6 bg-border mx-0.5"></span>
-        <button
-          class="ui-bar-btn ui-on border-accent"
-          title="Apply outline"
-          aria-label="Apply outline"
-          onpointerdown={(e) => {
-            e.preventDefault();
-            applyOutline();
-          }}><Check size={18} /></button
-        >
-        <button
-          class="ui-bar-btn bg-surface text-text-secondary hover:bg-surface-hover"
-          title="Cancel outline"
-          aria-label="Cancel outline"
-          onpointerdown={(e) => {
-            e.preventDefault();
-            cancelOutline();
-          }}><X size={18} /></button
-        >
-      </div>
     </div>
   {/if}
 </div>
