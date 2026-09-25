@@ -46,11 +46,8 @@ export function nibSemiAxes(radius: number, flatness: number): { a: number; b: n
  * and every direction between interpolates.
  */
 export function nibSupport(a: number, b: number, angleRad: number, ux: number, uy: number): number {
-  const c = Math.cos(angleRad);
-  const s = Math.sin(angleRad);
-  const alongMajor = ux * c + uy * s;
-  const alongMinor = -ux * s + uy * c;
-  return Math.hypot(a * alongMajor, b * alongMinor);
+  const p = nibSupportPoint(a, b, angleRad, ux, uy);
+  return p.x * ux + p.y * uy;
 }
 
 /**
@@ -71,8 +68,19 @@ export function nibSupportPoint(
   ux: number,
   uy: number,
 ): { x: number; y: number } {
-  const c = Math.cos(angleRad);
-  const s = Math.sin(angleRad);
+  return supportPoint(a, b, Math.cos(angleRad), Math.sin(angleRad), ux, uy);
+}
+
+/** `nibSupportPoint` with the nib angle's cos/sin precomputed — the stroke loop calls it once per
+ *  sample and the angle is constant for the whole stroke. */
+function supportPoint(
+  a: number,
+  b: number,
+  c: number,
+  s: number,
+  ux: number,
+  uy: number,
+): { x: number; y: number } {
   const alongMajor = ux * c + uy * s;
   const alongMinor = -ux * s + uy * c;
   const h = Math.hypot(a * alongMajor, b * alongMinor);
@@ -130,11 +138,11 @@ function smoothPositions(points: InputPoint[]): InputPoint[] {
 const MIN_STRAIGHTNESS = 0.7;
 
 /**
- * Turn angle (degrees) above which a vertex counts as a CORNER — a place where the path doubles
+ * Turn angle (degrees) above which a VERTEX counts as a corner — a place where the path doubles
  * back inside one sample, so no single normal is perpendicular to "the" travel direction, because
- * there are two of them. Exported for the tests: the perpendicularity guarantee below holds at
- * every vertex EXCEPT these, and that exception has to be stated in one place rather than
- * re-guessed by whoever reads the test.
+ * there are two of them. TEST-ONLY: it names the vertices the `normals` perpendicularity test
+ * excuses. The renderer does not read it — what decides where a corner join is drawn is
+ * `CORNER_SKEW`, per segment. Changing this changes nothing on screen.
  */
 export const CORNER_TURN_DEG = 60;
 
@@ -167,12 +175,18 @@ export function normals(
   reach: number,
 ): { nx: number; ny: number }[] {
   const target = Math.max(2, reach);
-  const walk = (i: number, dir: -1 | 1) => {
+  // Returns where the walk stopped, how far it got, and whether it stopped because the STROKE ran
+  // out (as opposed to reaching `want` or a corner).
+  const walk = (i: number, dir: -1 | 1, want: number) => {
     let j = i;
     let d = 0;
-    while (d < target) {
+    let ranOut = false;
+    while (d < want) {
       const k = j + dir;
-      if (k < 0 || k >= points.length) break;
+      if (k < 0 || k >= points.length) {
+        ranOut = true;
+        break;
+      }
       const stepLen = Math.hypot(points[k].x - points[j].x, points[k].y - points[j].y);
       const chord = Math.hypot(points[k].x - points[i].x, points[k].y - points[i].y);
       const travelled = d + stepLen;
@@ -185,11 +199,20 @@ export function normals(
       d = travelled;
       j = k;
     }
-    return points[j];
+    return { p: points[j], d, ranOut };
   };
   return points.map((p, i) => {
-    const a = walk(i, -1);
-    const b = walk(i, 1);
+    // Near an END of the stroke one side runs out of samples, which halves the baseline exactly
+    // where it matters most: with edges at the nib's support points, a normal error there moves
+    // the END CUT along the nib by about a²/b per radian (a flat nib turns 1° into ~5px), and the
+    // live end is redrawn on every Pencil move — measured at 1px jitter it jumped ~7px between
+    // frames. So the other side walks the shortfall instead, keeping the baseline its full length.
+    // Only running out of STROKE triggers this; a walk stopped by a corner stays stopped.
+    let back = walk(i, -1, target);
+    const fwd = walk(i, 1, target + (back.ranOut ? target - back.d : 0));
+    if (fwd.ranOut) back = walk(i, -1, target + (target - fwd.d));
+    const a = back.p;
+    const b = fwd.p;
     let dx = b.x - a.x;
     let dy = b.y - a.y;
     let len = Math.hypot(dx, dy);
@@ -295,6 +318,21 @@ function nibRing(
   return ring;
 }
 
+/** Do all of a polygon's turns go the same way (it is convex, so it cannot cross itself)? */
+function isConvex(ring: number[][]): boolean {
+  let left = false;
+  let right = false;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[(i + 1) % ring.length];
+    const [cx, cy] = ring[(i + 2) % ring.length];
+    const turn = (bx - ax) * (cy - by) - (by - ay) * (cx - bx);
+    if (turn > 0) left = true;
+    else if (turn < 0) right = true;
+  }
+  return !(left && right);
+}
+
 /**
  * Convex hull of a few points (monotone chain), counter-clockwise. Each segment piece goes through
  * this because a quad built from two per-sample normals is NOT always a simple polygon: where the
@@ -375,7 +413,10 @@ export function drawCalligraphyStroke(
   // Reach scales with the widest nib the stroke reaches, so the damping matches the worst case
   // rather than whatever width happens to be under the pointer at one sample.
   const nrm = normals(pts, maxW / 2);
-  const offset = (i: number) => nibSupportPoint(nib[i].a, nib[i].b, angle, nrm[i].nx, nrm[i].ny);
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  // Once per sample: each one is the end of one segment and the start of the next.
+  const off = pts.map((_, i) => supportPoint(nib[i].a, nib[i].b, cosA, sinA, nrm[i].nx, nrm[i].ny));
 
   ctx.save();
   if (settings.isEraser) {
@@ -408,14 +449,15 @@ export function drawCalligraphyStroke(
   for (let i = 1; i < pts.length; i++) {
     const p1 = pts[i - 1];
     const p2 = pts[i];
-    const o1 = offset(i - 1);
-    const o2 = offset(i);
+    const o1 = off[i - 1];
+    const o2 = off[i];
     const piece = [
       [p1.x + o1.x, p1.y + o1.y],
       [p1.x - o1.x, p1.y - o1.y],
       [p2.x - o2.x, p2.y - o2.y],
       [p2.x + o2.x, p2.y + o2.y],
     ];
+    let join = false;
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const len = Math.hypot(dx, dy);
@@ -427,6 +469,7 @@ export function drawCalligraphyStroke(
         Math.abs(ux * nrm[i].nx + uy * nrm[i].ny),
       );
       if (skew > CORNER_SKEW) {
+        join = true;
         const n1 = nib[i - 1];
         const n2 = nib[i];
         piece.push(
@@ -435,8 +478,10 @@ export function drawCalligraphyStroke(
         );
       }
     }
-    // Hulled, not emitted raw: at a sharp turn the raw quad is a bowtie (see `convexHull`).
-    addRing(ctx, convexHull(piece));
+    // Hulled, not emitted raw, wherever it could cross itself: at a sharp turn the raw quad is a
+    // bowtie (see `convexHull`). An already-convex quad — nearly every segment — is its own hull
+    // and goes straight in, sparing the sort and arrays on every live redraw.
+    addRing(ctx, join || !isConvex(piece) ? convexHull(piece) : piece);
   }
 
   ctx.fill();
