@@ -44,7 +44,7 @@
     Workflow,
     PersonStanding,
     Pipette,
-    Spline,
+    SquareMinus,
   } from "@lucide/svelte";
 
   const menuItem =
@@ -265,7 +265,7 @@
       // appState.tool notifies nothing, so Canvas's tool-change effect never re-fires enterOutline.
       if (appState.tool === "outline") outlineActions.reenter();
       else selectOutline(); // remembers the tool to hand back to when Outline is done
-    }}><Spline size={18} /></button
+    }}><SquareMinus size={18} /></button
   >
   <!-- aria-disabled, not disabled: the title explains the refusal, and a disabled button dispatches
        no pointer events, so the status bar's delegated hint could never read it (CLAUDE.md,
