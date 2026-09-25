@@ -7349,7 +7349,8 @@ direction, and not aligned with brush nib as it in real life would be"*.
 - **Corner joins, the cheap way.** With the edges on the tips, the outside of a sharp turn was
   shorter than before (measured against a dense true sweep of the same smoothed path: 159px² missing
   at a 150° zigzag vs 106px² on main), because nothing there held the nib AT the apex. A segment whose
-  damped normal is >60° off its own direction (`CORNER_SKEW` 0.5) is now filled as the hull of the
+  damped normal is more than 30° off PERPENDICULAR to its own direction (`CORNER_SKEW` 0.5 = the |cos|
+  between normal and direction) is now filled as the hull of the
   nib at both ends: the exact sweep of that segment, folded into its ONE existing subpath rather than
   added as a separate footprint (the rejected join). Fires 0 times on 2000-point jittery strokes.
   After: 7-20px² missing at 90-170° turns; "extra" ink (outside the true sweep) dropped from
@@ -7360,3 +7361,26 @@ direction, and not aligned with brush nib as it in real life would be"*.
 - Verified in Chrome by an A/B render (main vs branch) of a vertical stroke and a 155° zigzag: ends
   cut along the 45° nib, corners solid chisel turns. Confirmed on iPad with Pencil on the deployed
   branch build (2026-09-24): "yes, fixed now" — covers this entry and the bowtie one above.
+
+**Calligraphy: code-review follow-ups (2026-09-25).** A `/code-review` of the two 2026-09-24 calligraphy
+fixes found no crash or data-loss bug; everything it raised is addressed here except one, on purpose.
+- **End flicker (fixed).** With edges at the support point, a normal error moves the END CUT along the
+  nib by about a²/b per radian, and the ends had half the damping baseline (the walk runs out of
+  samples on one side). The live end is redrawn on every Pencil move, so it twitched. Replaying a
+  jittery stroke 5° off the nib prefix by prefix (1px jitter, positions smoothed as in the engine):
+  the end tip jumped mean 1.16px / max 6.9px per frame. `normals` now lets the other side walk the
+  shortfall when the STROKE runs out (never when a corner stops the walk): mean 0.49px / max 2.4px.
+- **Not changed: a flick along the nib leaves a mark as long as the nib.** The review flagged it as
+  close to the 2026-09-04 whisker. It is the physically right sweep and the direct result of the
+  nib-aligned ends the user asked for; the 09-04 whisker was a footprint protruding PAST a ribbon.
+- **Per-segment work.** Offsets are computed once per sample (were twice), with the nib angle's
+  cos/sin hoisted; an already-convex quad skips `convexHull`. Measured in Chrome: no difference in
+  redraw time (the fill dominates: ~14ms smooth 6000-pt curve, ~290-310ms hatch, both versions), so
+  this is allocation churn only.
+- `nibSupport` is now the projection of `nibSupportPoint` (one formula, not two copies); its test
+  checks against the ellipse's closed form written out in the test.
+- `CORNER_TURN_DEG` is documented as test-only; the renderer's corner rule is `CORNER_SKEW`. The
+  previous entry's wording of that rule was backwards and is corrected in place.
+- New test `inks the outside of sharp turns out to the nib`: rasterises the emitted path under
+  nonzero winding against the true sweep. 114px² missing with joins, 247px² with them disabled;
+  limit 160. README test count updated (it still said 1464).

@@ -265,14 +265,105 @@ describe("drawCalligraphyStroke (corner holes)", () => {
   });
 });
 
+describe("drawCalligraphyStroke (corner coverage)", () => {
+  /**
+   * The corner-holes test above can only see a piece crossing itself — which the hull now rules out
+   * by construction — so it cannot tell whether a corner is actually INKED. This one rasterises the
+   * emitted path under nonzero winding, the way the canvas fills it, and checks it against the true
+   * sweep: the union of the nib at every point of the path. A turn's outside is carried by the corner
+   * join (`CORNER_SKEW`); without it a 150° zigzag leaves ~2× as much of the sweep unpainted.
+   */
+  it("inks the outside of sharp turns out to the nib", () => {
+    const a = 13; // size 26
+    const b = a * (1 - 0.8);
+    const angle = Math.PI / 4;
+    const pts: { x: number; y: number; pressure: number }[] = [];
+    let x = 0;
+    let y = 0;
+    let dir = -Math.PI / 2 + 0.3;
+    for (let leg = 0; leg < 4; leg++) {
+      for (let k = 0; k < 40; k++) {
+        pts.push({ x, y, pressure: 1 });
+        x += 2 * Math.cos(dir);
+        y += 2 * Math.sin(dir);
+      }
+      dir += ((leg % 2 ? -1 : 1) * 150 * Math.PI) / 180;
+    }
+    const rings: number[][][] = [];
+    let cur: number[][] = [];
+    const ctx = {
+      save() {},
+      restore() {},
+      beginPath() {},
+      fill() {},
+      moveTo: (px: number, py: number) => (cur = [[px, py]]),
+      lineTo: (px: number, py: number) => cur.push([px, py]),
+      closePath: () => rings.push(cur),
+    } as unknown as CanvasRenderingContext2D;
+    const settings = {
+      size: 26,
+      nibAngle: 45,
+      nibFlatness: 0.8,
+      opacity: 100,
+      color: "#000",
+      isEraser: false,
+    } as BrushSettings;
+    drawCalligraphyStroke(ctx, pts as never, settings, 1);
+
+    const winding = (px: number, py: number) => {
+      let total = 0;
+      for (const r of rings) {
+        for (let i = 0; i < r.length; i++) {
+          const [ax, ay] = r[i];
+          const [bx, by] = r[(i + 1) % r.length];
+          const side = (bx - ax) * (py - ay) - (px - ax) * (by - ay);
+          if (ay <= py) {
+            if (by > py && side > 0) total++;
+          } else if (by <= py && side < 0) total--;
+        }
+      }
+      return total;
+    };
+    const inNib = (px: number, py: number, cx: number, cy: number) => {
+      const u = (px - cx) * Math.cos(angle) + (py - cy) * Math.sin(angle);
+      const v = -(px - cx) * Math.sin(angle) + (py - cy) * Math.cos(angle);
+      return (u * u) / (a * a) + (v * v) / (b * b) <= 1;
+    };
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    let missing = 0;
+    for (let py = -120; py <= 40; py++) {
+      for (let px = -30; px <= 120; px++) {
+        const sx = px + 0.13;
+        const sy = py + 0.29;
+        // The ends are flush by design (no footprint), so they are not part of this check.
+        if (Math.hypot(sx - first.x, sy - first.y) < a + 2) continue;
+        if (Math.hypot(sx - last.x, sy - last.y) < a + 2) continue;
+        if (!pts.some((p) => inNib(sx, sy, p.x, p.y))) continue;
+        if (winding(sx, sy) === 0) missing++;
+      }
+    }
+    // Measured: 114px² with the corner joins, 247px² without them (CORNER_SKEW disabled). The rest is
+    // the position smoothing rounding each apex, which is deliberate.
+    expect(missing).toBeLessThan(160);
+  });
+});
+
 describe("nibSupportPoint", () => {
-  it("projects onto the direction by exactly nibSupport, so the ribbon's width is unchanged", () => {
+  it("projects onto the direction by the ellipse's support function, so the width is unchanged", () => {
+    const angle = Math.PI / 4;
     for (const deg of [0, 20, 45, 90, 133, 200, 300]) {
       const t = (deg * Math.PI) / 180;
       const ux = Math.cos(t);
       const uy = Math.sin(t);
-      const s = nibSupportPoint(10, 1.5, Math.PI / 4, ux, uy);
-      expect(s.x * ux + s.y * uy).toBeCloseTo(nibSupport(10, 1.5, Math.PI / 4, ux, uy), 9);
+      // Closed form, written out independently of the engine: h(u) = |(a·u·major, b·u·minor)|.
+      const h = Math.hypot(
+        10 * (ux * Math.cos(angle) + uy * Math.sin(angle)),
+        1.5 * (-ux * Math.sin(angle) + uy * Math.cos(angle)),
+      );
+      const s = nibSupportPoint(10, 1.5, angle, ux, uy);
+      expect(s.x * ux + s.y * uy).toBeCloseTo(h, 9);
+      expect(nibSupport(10, 1.5, angle, ux, uy)).toBeCloseTo(h, 9);
     }
   });
 
