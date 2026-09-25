@@ -101,7 +101,7 @@
         min="0.5"
         max="60"
         step="0.5"
-        class="w-24"
+        class="w-16"
         bind:value={stroke.size}
         style={sliderFill(stroke.size, 0.5, 60)}
       />
@@ -141,7 +141,7 @@
         min="1"
         max="8"
         step="0.5"
-        class="w-24"
+        class="w-16"
         bind:value={stroke.sizeRange}
         style={sliderFill(stroke.sizeRange, 1, 8)}
       />
@@ -296,7 +296,7 @@
         type="range"
         min="0"
         max="128"
-        class="w-24"
+        class="w-16"
         bind:value={appState.fill.tolerance}
         style={sliderFill(appState.fill.tolerance, 0, 128)}
       />
