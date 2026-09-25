@@ -2561,6 +2561,13 @@ export const transformDragGuard: { settle: (() => void) | null } = { settle: nul
 /** Undo/redo, discarding any in-progress lift first (its captured context/baseline would be stale). */
 export function undo(): void {
   transformDragGuard.settle?.();
+  // A live Outline preview is written INTO the cell, so it looks like an edit already made — and ⌘Z
+  // is the artist undoing it. Cancel it and stop there: falling through (the discard below cancels
+  // it too) went on to undo the edit BEFORE it, the stroke the artist never meant to lose.
+  if (outlineActions.active()) {
+    outlineActions.cancel();
+    return;
+  }
   liftGuard.discard?.();
   if (!history.canUndo) return;
   history.undo();

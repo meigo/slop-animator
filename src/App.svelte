@@ -158,14 +158,17 @@
         selectionActions.enterWarp?.(3, 3);
       }
     } else if (e.key === "Escape") {
-      if (selectionRef.current?.active) selectionRef.current.cancel();
+      // Outline first: a marquee alongside it is only CLIPPING the outline, so Escape/Enter belong
+      // to the outline — checked after the selection, Enter merely cleared the marquee and left a
+      // stale clipped preview behind.
+      if (outlineActions.active()) outlineActions.cancel();
+      else if (selectionRef.current?.active) selectionRef.current.cancel();
       else if (poseActions.active()) poseActions.cancel();
-      else if (outlineActions.active()) outlineActions.cancel();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (selectionRef.current?.active) selectionRef.current.commit();
+      if (outlineActions.active()) outlineActions.apply();
+      else if (selectionRef.current?.active) selectionRef.current.commit();
       else if (poseActions.active()) poseActions.apply();
-      else if (outlineActions.active()) outlineActions.apply();
       else playbackController.toggle();
     } else if (e.key === "k") {
       e.preventDefault();

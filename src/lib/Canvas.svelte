@@ -104,6 +104,9 @@
     outlineMask,
     signedDistanceField,
     buildNoisePlanes,
+    localDepth,
+    bleedColor,
+    OUTLINE_MARGIN,
     MAX_THICKNESS,
   } from "../core/outline";
   import type { OutlineNoisePlanes } from "../core/outline";
@@ -1268,6 +1271,9 @@
             (activeLayer().kind === "draw" ? composeScaleOf(cellComposeSteps(activeLayer())) : 1));
         if (nub && Math.hypot(nub.x - p.x, nub.y - p.y) <= 12 * hitPx) {
           poseAdjusting = true;
+          // The nub reshapes the mesh too (rotation moves its bbox), so the bar hides exactly as
+          // for a handle drag — and stops re-anchoring (two layout reads) on every Pencil move.
+          poseBarDragging = true;
         } else {
           const hit = meshPose.handleAt(p, 10 * hitPx);
           activeHandle = hit !== null ? hit : meshPose.addHandleAt(p);
@@ -1377,8 +1383,14 @@
       return;
     }
     // The tool is driven entirely by the on-canvas bar (ToolOptions carries only a hint string,
-    // no knobs) — a canvas gesture must not fall through to the default paint path below.
-    if (appState.tool === "outline") return;
+    // no knobs) — a canvas gesture must not fall through to the default paint path below. A press
+    // with no live session enters it, the same fallback Pose and Deform have: otherwise any way of
+    // being on Outline without a session (a restored preference, "Nothing to outline" and then a
+    // frame step) left a lit button, no bar and a canvas that ignored every tap.
+    if (appState.tool === "outline") {
+      if (!outlineActive() && points.length === 1 && !done) enterOutline();
+      return;
+    }
     if (!strokeCanvas) {
       // First event of the stroke: resolve the target layer once and bail if it's
       // locked or hidden. Binding the layer here (rather than re-reading activeLayer() every
@@ -1443,9 +1455,13 @@
       // `endDrag()` call sites. Every non-drag change (deform mode switch, reset pins) still lands,
       // coalesced to a frame.
       if (selectionMode === "drag") return;
+      // The Outline preview is clipped by the marquee at WRITE time, so a changed marquee must
+      // re-derive it — otherwise the cell keeps the old clip until the next knob change.
+      if (outlineActive()) scheduleOutlinePreview();
       scheduleRecomposite();
     };
     selection.onStateChange = () => {
+      if (outlineActive()) scheduleOutlinePreview(); // a marquee made or cleared re-clips it
       recomposite();
       appState.selectionActive = !!selection && selection.active && !selection.hasFloating;
       appState.selectionFloating = !!selection && selection.hasFloating;
@@ -1885,17 +1901,15 @@
   let outlineBarPos = $state({ x: 0, y: 0 });
 
   function positionOutlineBar() {
-    if (!outlineCtx) return;
-    // The ink the tool is working on. `contentBounds` is device px, memoized per canvas ink
-    // revision (`cell-ink.ts`); `refreshOutlinePreview`'s `putImageData` runs through
-    // `markInkChanged`, which bumps that revision, so this re-measures on every preview and the bar
-    // tracks a thinning outline rather than the solid it started from. `appState.version` is read
-    // only so this call's caller (the effect below) re-runs — it is not the cache key.
-    const b = contentBounds(outlineCtx.canvas, appState.version);
-    const box = b
-      ? { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR }
-      : { x: 0, y: 0, w: appState.project.width, h: appState.project.height };
-    const p = anchorBarToBox(box, outlineBarEl);
+    const b = outlineInk;
+    if (!b) return;
+    // The ink as it was on ENTRY, in device px. Re-measuring the preview each tick cost a
+    // full-canvas `getImageData` + scan per scrub frame (the preview voids the bounds cache), and
+    // bought nothing: the band never strays more than `WOBBLE_MAX` from the original edge.
+    const p = anchorBarToBox(
+      { x: b.x / DPR, y: b.y / DPR, w: b.w / DPR, h: b.h / DPR },
+      outlineBarEl,
+    );
     if (p) outlineBarPos = p;
   }
 
@@ -2127,10 +2141,19 @@
   // group transform, boil, onion), and an app killed mid-tune leaves an outline rather than the
   // empty cell an overlay lift would.
   let outlineCtx: CanvasRenderingContext2D | null = null;
-  let outlineBefore: ImageData | null = null;
+  let outlineBefore: ImageData | null = null; // the WHOLE cell, for Cancel and the undo entry
+  // Everything below works on `outlineRect` only: the ink's bounds grown by `OUTLINE_MARGIN`, the
+  // furthest the band can reach. Nothing outside it can change, so a small drawing on a big cell
+  // no longer pays for the cell's full size on every scrub tick.
+  let outlineInk: { x: number; y: number; w: number; h: number } | null = null; // device px, at entry
+  let outlineRect: { x: number; y: number; w: number; h: number } | null = null;
+  let outlineSrc: ImageData | null = null; // outlineBefore cut to outlineRect
   let outlineField: Float32Array | null = null; // depends on the ART only — computed once per entry
-  let outlineAlpha: Uint8Array | null = null; // alpha plane extracted from outlineBefore — once per entry
-  // RGBA copy of outlineBefore, mutated in place each preview (only the alpha channel changes).
+  let outlineDepth: Float32Array | null = null; // localDepth of the field — once per entry
+  let outlineAlpha: Uint8Array | null = null; // alpha plane extracted from outlineSrc — once per entry
+  let outlineCov: Uint8ClampedArray | null = null; // coverage buffer, reused across previews
+  // RGBA copy of outlineSrc with its colour bled outward (`bleedColor`), mutated in place each
+  // preview (only the alpha channel changes).
   let outlinePreviewImg: ImageData | null = null;
   let outlineNoise: OutlineNoisePlanes | null = null; // depends on the seed only
   let outlineNoiseSeed: number | null = null; // seed outlineNoise was built for — rebuilt on mismatch
@@ -2160,26 +2183,31 @@
     )
       return;
     const mk = ensureDrawableKeyframe(al, appState.playhead, canvasOps);
-    const ctx = mk.canvas.getContext("2d", { willReadFrequently: true })!;
-    const before = ctx.getImageData(0, 0, mk.canvas.width, mk.canvas.height);
-    // Nothing drawn → nothing to outline. Leave the hold a hold.
-    let hasInk = false;
-    for (let p = 3; p < before.data.length; p += 4) {
-      if (before.data[p] > 0) {
-        hasInk = true;
-        break;
-      }
-    }
-    if (!hasInk) {
+    // Nothing drawn → nothing to outline. Leave the hold a hold. (Memoized per ink revision, and
+    // the bounds are needed anyway for the working region.)
+    const ink = contentBounds(mk.canvas, appState.version);
+    if (!ink) {
       if (mk.materialized) restoreCellTrack(al, mk.materialized.before);
       appState.statusHint = "Nothing to outline — this frame is empty";
       return;
     }
+    const ctx = mk.canvas.getContext("2d", { willReadFrequently: true })!;
+    const cw = mk.canvas.width,
+      ch = mk.canvas.height;
+    const x0 = Math.max(0, ink.x - OUTLINE_MARGIN),
+      y0 = Math.max(0, ink.y - OUTLINE_MARGIN);
+    const x1 = Math.min(cw, ink.x + ink.w + OUTLINE_MARGIN),
+      y1 = Math.min(ch, ink.y + ink.h + OUTLINE_MARGIN);
     outlineLayer = al;
     outlineMaterialized = mk.materialized;
     outlineCtx = ctx;
-    outlineBefore = before;
+    outlineBefore = ctx.getImageData(0, 0, cw, ch);
+    outlineInk = ink;
+    outlineRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    outlineSrc = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
     outlineField = null;
+    outlineDepth = null;
+    outlineCov = null;
     outlineAlpha = null;
     outlinePreviewImg = null;
     outlineNoise = null;
@@ -2208,39 +2236,52 @@
 
   function refreshOutlinePreview() {
     const ctx = outlineCtx,
-      before = outlineBefore;
-    if (!ctx || !before) return;
-    const w = ctx.canvas.width,
-      h = ctx.canvas.height;
-    const src = before.data;
-    // Both extracted from the immutable snapshot, so both are built once per entry and reused across
-    // every knob change — a preview used to redo this full-canvas work on every scrub tick.
+      src = outlineSrc,
+      r = outlineRect;
+    if (!ctx || !src || !r) return;
+    const w = r.w,
+      h = r.h;
+    // All extracted from the immutable snapshot, so built once per entry and reused across every
+    // knob change — a preview used to redo this work on every scrub tick.
     if (!outlineAlpha) {
       outlineAlpha = new Uint8Array(w * h);
-      for (let i = 0, p = 3; i < outlineAlpha.length; i++, p += 4) outlineAlpha[i] = src[p];
+      for (let i = 0, p = 3; i < outlineAlpha.length; i++, p += 4) outlineAlpha[i] = src.data[p];
     }
     const alpha = outlineAlpha;
-    // The field is a function of the ART, which the preview never changes — so it survives every
-    // knob change and only a fresh entry rebuilds it.
     outlineField ??= signedDistanceField(alpha, w, h);
+    outlineDepth ??= localDepth(outlineField, w, h);
     // The noise planes are a function of the seed only — rebuilt on a fresh entry (both nulled by
-    // enterOutline) and on a re-roll (the seed no longer matches what was cached).
+    // enterOutline) and on a re-roll (the seed no longer matches what was cached). Sampled at
+    // CANVAS coordinates, so the region's cut does not move the wobble.
     if (outlineNoise === null || outlineNoiseSeed !== appState.outline.seed) {
-      outlineNoise = buildNoisePlanes(w, h, appState.outline.seed);
+      outlineNoise = buildNoisePlanes(w, h, appState.outline.seed, r.x, r.y);
       outlineNoiseSeed = appState.outline.seed;
     }
-    const cov = outlineMask(alpha, w, h, { ...appState.outline }, outlineField, outlineNoise);
-    // RGB is carried over from the source: only alpha changes, so coloured art keeps its colour.
-    // Built once per entry and mutated in place after that — every preview overwrites every alpha
-    // byte below, so there is nothing left to re-copy from `src` on later calls.
-    outlinePreviewImg ??= new ImageData(new Uint8ClampedArray(src), w, h);
+    outlineCov ??= new Uint8ClampedArray(w * h);
+    const cov = outlineMask(
+      alpha,
+      w,
+      h,
+      { ...appState.outline },
+      outlineField,
+      outlineNoise,
+      outlineDepth,
+      outlineCov,
+    );
+    // Only alpha changes, so coloured art keeps its colour — with the colour first BLED outward,
+    // because outward Wobble lands on transparent pixels whose stored RGB is black (`bleedColor`).
+    outlinePreviewImg ??= new ImageData(bleedColor(src.data, w, h), w, h);
     const next = outlinePreviewImg;
-    for (let i = 0, p = 3; i < cov.length; i++, p += 4) next.data[p] = cov[i];
+    // Alpha lock keeps the layer's alpha where it is — the brushes and fill honour it, so the outline
+    // may hollow the art but never lay ink where the lock says there is none.
+    const lock = outlineLayer?.alphaLock === true;
+    for (let i = 0, p = 3; i < cov.length; i++, p += 4)
+      next.data[p] = lock ? Math.min(cov[i], alpha[i]) : cov[i];
     // A marquee clips the WRITE, not the maths: the field above is built from the whole drawing, so
     // the line's geometry where it meets the cut is the drawing's real outline, simply truncated —
     // no line is drawn along the marquee itself. Same rule the brush, eraser and fill follow.
     if (selection?.state === "selected") {
-      ctx.putImageData(before, 0, 0); // full original first — outside the marquee nothing changes
+      ctx.putImageData(src, r.x, r.y); // original first — outside the marquee nothing changes
       if (!outlineScratch) {
         outlineScratch = document.createElement("canvas");
         outlineScratch.width = w;
@@ -2253,26 +2294,15 @@
       selection.applyClip(ctx);
       // Inside the marquee the outline REPLACES the art, so the region is cleared before the draw —
       // drawing over it would leave the solid fill showing through the hollowed middle.
-      ctx.clearRect(0, 0, w / DPR, h / DPR);
-      ctx.drawImage(outlineScratch, 0, 0, w / DPR, h / DPR);
+      ctx.clearRect(r.x / DPR, r.y / DPR, w / DPR, h / DPR);
+      ctx.drawImage(outlineScratch, r.x / DPR, r.y / DPR, w / DPR, h / DPR);
       ctx.restore();
     } else {
-      ctx.putImageData(next, 0, 0);
+      ctx.putImageData(next, r.x, r.y);
     }
     markInkChanged(ctx.canvas);
     recomposite();
     positionOutlineBar();
-  }
-
-  /** Byte-for-byte comparison of two same-size `ImageData`s — used by `applyOutline` to detect the
-   *  "shape thinner than the thickness stays solid" case (spec decision 3), where the band ends up
-   *  identical to the source and there is nothing to record. */
-  function imageDataUnchanged(a: ImageData, b: ImageData): boolean {
-    const da = a.data,
-      db = b.data;
-    if (da.length !== db.length) return false;
-    for (let i = 0; i < da.length; i++) if (da[i] !== db[i]) return false;
-    return true;
   }
 
   function applyOutline() {
@@ -2288,12 +2318,14 @@
     const layerId = outlineLayer?.id ?? null;
     const mat = outlineMaterialized;
     // Nothing changed → nothing to record. Pushing a no-op undo entry (and keeping a hold
-    // materialised into a key for it) would be pure noise in the undo stack.
-    if (imageDataUnchanged(before, after)) {
+    // materialised into a key for it) would be pure noise in the undo stack. This is the "shape
+    // thinner than the thickness stays solid" case (spec decision 3).
+    if (sameImageData(before, after)) {
       if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
       clearOutline();
       recomposite();
       repaint(); // version only — nothing new to persist
+      leaveOutline(); // the tool hands back here too, exactly as on a real Apply
       return;
     }
     history.push(
@@ -2339,7 +2371,12 @@
     }
     outlineCtx = null;
     outlineBefore = null;
+    outlineInk = null;
+    outlineRect = null;
+    outlineSrc = null;
     outlineField = null;
+    outlineDepth = null;
+    outlineCov = null;
     outlineAlpha = null;
     outlinePreviewImg = null;
     outlineNoise = null;
