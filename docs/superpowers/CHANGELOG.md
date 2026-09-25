@@ -7421,3 +7421,19 @@ the Outline tool and its three follow-ups, the first calligraphy fix). 10 findin
   and marked with `markInkChanged`, or bounds come back stale): entry, colour, thin lines, Enter
   apply + hand-back, ⌘Z, no-op hand-back, press-to-enter, marquee clip, deselect re-clip, Enter with
   a marquee. Not yet seen on iPad.
+
+**New favicon: the slop mark from slop-vector-editor (2026-09-25).** Asked for as *"get new favicon from
+slop-vector-editor repo"*.
+- `public/favicon.svg` is that repo's file (its `fdcee3c`) with only the comment changed: the slop
+  mark, in the logo's `#667fff` in every theme, which replaces the black/white
+  `prefers-color-scheme` switch.
+- `tools/make-icons.mjs` now draws the blue mark on the app's `#1e1e1e` (the manifest's
+  `theme_color`) instead of black on white, matching the vector editor's home-screen icon, which uses
+  its own `#1e1e22`. All five PNGs regenerated: `favicon-32`, `icon-180` (apple-touch), `-192`,
+  `-512`, `-512-maskable`. The script needed no parsing changes. It already takes absolute `C`, fits
+  by ink bounds (so the path's translate-only `transform` is irrelevant), and even-odd vs nonzero
+  was checked with `sharp` to give identical pixels for this mark.
+- Checked by rasterising the SVG at 16 and 32px on a white and a dark tab bar: legible at 16px. The
+  icons are not content-hashed and `_headers` leaves them at `max-age=0, must-revalidate`, but
+  browsers cache favicons on their own, so an open tab or an existing Home Screen icon may keep the
+  old mark until it is reloaded or re-added.
