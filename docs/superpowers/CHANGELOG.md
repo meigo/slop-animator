@@ -7384,3 +7384,40 @@ fixes found no crash or data-loss bug; everything it raised is addressed here ex
 - New test `inks the outside of sharp turns out to the nib`: rasterises the emitted path under
   nonzero winding against the true sweep. 114px² missing with joins, 247px² with them disabled;
   limit 160. README test count updated (it still said 1464).
+
+**Review of `d0dbfaa..715f5d0` and its fixes: Outline, pose bar, cleanups (2026-09-25).** A `/code-review`
+of everything since the 2026-09-22 review (duplicate group, overlay opacity, pose bar restyle/anchoring,
+the Outline tool and its three follow-ups, the first calligraphy fix). 10 findings; 9 fixed here, the
+10th (the calligraphy apex normal) was already fixed by the hull + joins work.
+- **Outline broke thin strokes.** Inward Wobble could push the band `[offset, offset + width]` past a
+  thin stroke's middle (a 2px line is only 0.5 deep), so it vanished there: 176 of 380 columns of a
+  2px line broke at full Wobble. New `localDepth` (a 9×9 max of the field, once per entry) caps the
+  inward offset at the stroke's own depth, so the band always reaches its centre. Thick shapes are
+  byte-identical (tested). Spec: "the line must never break".
+- **Outline painted a black fringe on coloured art.** Outward Wobble lands on transparent pixels, whose
+  RGB reads back black. New `bleedColor` gives every pixel under half alpha the RGB of the nearest
+  solid one before alpha is written. Verified in Chrome on red art: 0 black pixels. What remains
+  off-colour is only alpha < 16, the canvas's premultiplied storage rounding. On an alpha-locked
+  layer the outline now only hollows (`min(coverage, source alpha)`), like the brushes and fill.
+- **Tool stuck on Outline**: the no-op Apply (outline identical to source) now hands the tool back
+  too; and a canvas press with no live session enters the tool (Pose/Deform's fallback), so a
+  restored preference or "Nothing to outline" then a frame with ink no longer leaves a dead canvas.
+- **Enter/Escape reach Outline before the marquee** (App.svelte): with a marquee clipping the
+  outline, Enter used to clear the marquee and leave a stale clipped preview. And a marquee made or
+  cleared while the preview is live now re-derives it (`onStateChange`/`onChange`).
+- **⌘Z during an Outline preview only cancels the preview.** `undo()` used to discard it via
+  `liftGuard` and then undo the edit BEFORE it. Redo is unchanged.
+- **Pose bar**: dragging the rotate/reach nub now hides the bar like a handle drag (it slid under the
+  Pencil and re-anchored, two layout reads, per move).
+- **Outline preview works on the ink's region**, not the cell: bounds at entry grown by
+  `OUTLINE_MARGIN` (Wobble's reach + AA). Noise is sampled at canvas coordinates
+  (`buildNoisePlanes(…, ox, oy)`), so the result is identical to a whole-cell run: tested in node, and
+  in Chrome the cell matched a whole-canvas `outlineMask` on every pixel. The coverage buffer is
+  reused, and the bar anchors to the entry bounds instead of re-scanning the cell each tick.
+- Cleanups: `applyOutline` uses the component's `sameImageData` (the duplicate is gone), entry uses
+  memoized `contentBounds` instead of its own alpha loop, and Duplicate group's tooltip counts
+  members with `isDrawingLayer` like `canDuplicateGroup`.
+- Browser-verified on [::1] with synthetic input (cells must be seeded at DPR 1, the store's `DPR`,
+  and marked with `markInkChanged`, or bounds come back stale): entry, colour, thin lines, Enter
+  apply + hand-back, ⌘Z, no-op hand-back, press-to-enter, marquee clip, deselect re-clip, Enter with
+  a marquee. Not yet seen on iPad.

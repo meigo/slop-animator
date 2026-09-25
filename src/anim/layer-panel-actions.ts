@@ -4,6 +4,7 @@ import {
   canDuplicateLayer,
   canRemoveGroup,
   canRemoveLayer,
+  isDrawingLayer,
   whyNotMergeDown,
   type Layer,
   type LayerGroup,
@@ -57,7 +58,7 @@ export function layerPanelActions(args: {
     const dupMembers =
       groupId == null
         ? 0
-        : args.layers.filter((l) => l.groupId === groupId && l.kind === "draw").length;
+        : args.layers.filter((l) => l.groupId === groupId && isDrawingLayer(l)).length;
     return {
       layerId: null,
       groupId,
