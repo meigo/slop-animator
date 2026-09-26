@@ -14,6 +14,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
+- Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a
+  custom picker
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
   so outlines and flats stay separate; eyedropper, lasso selection with float/transform
 - Fill every area an outline encloses in one press, behind the strokes — the animator's
