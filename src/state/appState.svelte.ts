@@ -2539,6 +2539,22 @@ export const selectionActions: {
   deselect: null,
 };
 
+/** App-owned Edit menu commands (2026-09-26). App holds the keyboard's clipboard routing — the
+ *  pixel selection first, else the timeline selection, and `currentPasteRoute()` for paste — so the
+ *  menu calls these rather than spelling that routing out a second time in Toolbar. `paste` returns
+ *  false when the clipboard route is an OS image, which the menu then reads itself. */
+export const editActions: {
+  copy: (() => void) | null;
+  cut: (() => void) | null;
+  del: (() => void) | null;
+  paste: (() => boolean) | null;
+} = {
+  copy: null,
+  cut: null,
+  del: null,
+  paste: null,
+};
+
 /** Canvas-owned view actions. The Viewport lives inside Canvas, so anything outside it (the View
  *  menu) reaches zoom/pan through here. */
 export const viewActions: {

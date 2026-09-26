@@ -7521,3 +7521,26 @@ too"*.
   reference came back selected, which never happens.
 - Browser-verified in desktop Chrome: Lasso → select the ref (Transform, owes Lasso) → reload →
   drawing layer selected, Lasso lit, nothing owed. Not yet seen on iPad.
+
+**Top menus reorganised as slop-paint's (2026-09-26).** From a suggestion list written for this app
+in the slop-paint session: the same four menus, in the same order and wording, in both apps.
+- **File**: New… · Open… · Save · Save to Files… (iPad) ─ Import image… · Import image from
+  clipboard · Import video… · Import audio… ─ Export…. Import/Export is gone as a menu; "Add
+  image/video" and "Paste image from clipboard" became Import… names.
+- **Edit** (new): Undo · Redo ─ Cut · Copy · Paste · Delete ─ Deselect, with key chips. Items that
+  cannot act are `aria-disabled` with the reason in `title`, never `disabled`, so the status bar can
+  say why on iPad. The routing lives in App as `editActions` (appState registry, like `viewActions`),
+  in the keys' precedence: pixel selection first, else the timeline selection. Paste uses
+  `currentPasteRoute()` (pixels, else cells). When it declines, the menu reads the OS clipboard image
+  as a reference layer, which is what Cmd+V does through the `paste` event. Deselect also accepts
+  a lifted float, as the options bar's does.
+- **Document**: Project settings… · Resize canvas… (current W × H as a chip) · Transparent background.
+  The last is one fixed label with a check when on (`menuitemcheckbox`). It used to flip between
+  "Opaque background" and "Transparent background".
+- **View**: Fit to view `0` · Actual size `1` as key chips, no longer "(0)" in the label.
+- Left out on purpose, because the app has no such commands: Select all, Clear, and Ctrl+O / Ctrl+S
+  chips. Adding them would be new features, not a reorganisation.
+- Every item has a `title`. The stale "File ▸ Save Project" in the autosave alert now reads
+  "File ▸ Save".
+- Seen in desktop Chrome: each menu opens, and the Transparent check toggles with the
+  checkerboard. Edit's cut/copy/paste were not run from the menu. Not yet seen on iPad.
