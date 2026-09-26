@@ -10,12 +10,14 @@
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import {
     seekPlayhead,
     setActiveLayer,
     repaint,
     state,
+    referenceFocused,
+    followReferenceFocus,
     undo,
     redo,
     playbackController,
@@ -383,6 +385,15 @@
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  });
+
+  // Selecting a reference layer switches to Transform; selecting away hands the tool back. Every way
+  // the working row changes (a tap, undo, a new or deleted layer, a restored project) lands here, so
+  // no call site has to remember. `untrack`: the switch reads and writes `state.tool`, which must not
+  // re-run this — only the row changing may.
+  $effect(() => {
+    const onRef = referenceFocused();
+    untrack(() => followReferenceFocus(onRef));
   });
 
   // Not a `$state` rune: this file imports `state` unaliased (CLAUDE.md gotcha #1).
