@@ -7450,3 +7450,12 @@ around the same ink and land on top of each other.
 - Canvas lost `outlineBarEl`/`positionOutlineBar` and the `outlineInk` box that only fed it.
   Enter/Escape are unchanged.
 - Not yet seen in a browser or on iPad.
+
+**Tool-options bar aligned with slop-paint (2026-09-26).** Asked for as *"slop paint has brush
+dropdown with lighter bg and larger padding"*, then *"also the order"*.
+- Brush type dropdown: `bg-surface-hover` (#2d2d33, slop-paint's `surface-raised`; this app keeps
+  that value under the hover/active names), `rounded-md`, `px-1.5`, `cursor-pointer`. Moved to the
+  FRONT of the brush/eraser bar (after the eraser tag): the type decides which settings apply.
+- Size and Press labels were `text-sm` beside `text-xs` Opacity; all `text-xs` now, as in paint.
+- Fill: Tolerance · Gap · Expand (was Expand · Gap), the order the fill runs them.
+- The day before, Size, Press and Tolerance sliders went from `w-24` to `w-16` like the rest.

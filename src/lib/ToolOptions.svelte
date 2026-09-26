@@ -113,7 +113,7 @@
       <option value="airbrush">Airbrush</option>
       <option value="calligraphy">Calligraphy</option>
     </select>
-    <label class="flex items-center gap-1 text-sm text-text-secondary"
+    <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Size
       <input
         type="range"
@@ -152,7 +152,7 @@
       {/each}
     </div>
     <label
-      class="flex items-center gap-1 text-sm text-text-secondary"
+      class="flex items-center gap-1 text-xs text-text-secondary"
       title="How much pen pressure widens the stroke"
       >Press
       <input
@@ -311,20 +311,6 @@
     </label>
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
-      title="Grow the filled region (px)"
-      >Expand
-      <input
-        type="range"
-        min="0"
-        max="8"
-        class="w-16"
-        bind:value={appState.fill.expand}
-        style={sliderFill(appState.fill.expand, 0, 8)}
-      />
-      <span class="text-xs w-4 tabular-nums">{appState.fill.expand}</span>
-    </label>
-    <label
-      class="flex items-center gap-1 text-xs text-text-secondary"
       title="Bridge breaks in the outline before filling, up to about twice this many pixels"
       >Gap
       <input
@@ -336,6 +322,20 @@
         style={sliderFill(appState.fill.gap, 0, MAX_GAP)}
       />
       <span class="text-xs w-4 tabular-nums">{appState.fill.gap}</span>
+    </label>
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title="Grow the filled region (px)"
+      >Expand
+      <input
+        type="range"
+        min="0"
+        max="8"
+        class="w-16"
+        bind:value={appState.fill.expand}
+        style={sliderFill(appState.fill.expand, 0, 8)}
+      />
+      <span class="text-xs w-4 tabular-nums">{appState.fill.expand}</span>
     </label>
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
       >Opacity
