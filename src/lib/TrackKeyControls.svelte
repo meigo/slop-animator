@@ -126,7 +126,7 @@
   const BTN =
     "w-7 h-7 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover border border-border aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
   const SELECT =
-    "h-7 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:cursor-default aria-disabled:opacity-40";
+    "h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary aria-disabled:cursor-default aria-disabled:opacity-40";
   const STEP =
     "h-7 w-12 rounded border border-border bg-surface px-1 text-xs text-text aria-disabled:opacity-40";
 </script>
