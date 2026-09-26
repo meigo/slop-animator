@@ -30,3 +30,17 @@ export function clampGutterLabelWidth(px: number, viewportW: number): number {
   const max = Math.max(MIN_GUTTER_LABEL_WIDTH, Math.round(viewportW * 0.4));
   return Math.max(MIN_GUTTER_LABEL_WIDTH, Math.min(px, max));
 }
+
+/** Width (px) the widest tool-options row needs to stay on one line. Measured 2026-09-26 in desktop
+ *  Chrome: eraser 837, brush 829, fill 686, outline 479, deform 396, transform 247, select 228. The
+ *  rows wrap rather than clip, but a wrapped row is taller and moves the canvas, so re-measure this
+ *  when a control is added to one. (A reference layer's "Reset to fit" can still wrap the brush row.) */
+export const TOOL_OPTIONS_WIDTH = 850;
+
+/** Whether the layer panel can start right under the top toolbar, beside the tool-options row
+ *  (desktop), or must start below that row because the row would wrap next to it (iPad at the
+ *  default panel width). As slop-paint's. The widest row decides for every tool, so switching
+ *  tools never moves the panel. */
+export function panelBesideToolOptions(viewportW: number, panelW: number): boolean {
+  return viewportW - panelW >= TOOL_OPTIONS_WIDTH;
+}

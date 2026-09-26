@@ -6,6 +6,8 @@ import {
   clampGutterLabelWidth,
   MIN_GUTTER_LABEL_WIDTH,
   DEFAULT_GUTTER_LABEL_WIDTH,
+  TOOL_OPTIONS_WIDTH,
+  panelBesideToolOptions,
 } from "../anim/panel-layout";
 
 describe("clampPanelWidth", () => {
@@ -59,5 +61,20 @@ describe("clampGutterLabelWidth", () => {
   it("DEFAULT matches the old fixed LABEL_W so nothing moves on first run", () => {
     expect(DEFAULT_GUTTER_LABEL_WIDTH).toBe(120);
     expect(clampGutterLabelWidth(DEFAULT_GUTTER_LABEL_WIDTH, 1400)).toBe(120);
+  });
+});
+
+describe("panelBesideToolOptions", () => {
+  it("puts the panel beside the options row when the row still fits next to it", () => {
+    expect(panelBesideToolOptions(TOOL_OPTIONS_WIDTH + 224, 224)).toBe(true); // exactly fits
+    expect(panelBesideToolOptions(1920, DEFAULT_PANEL_WIDTH)).toBe(true);
+  });
+  it("starts the panel below the row when the row would wrap beside it", () => {
+    expect(panelBesideToolOptions(TOOL_OPTIONS_WIDTH + 223, 224)).toBe(false);
+    expect(panelBesideToolOptions(1024, DEFAULT_PANEL_WIDTH)).toBe(false); // iPad landscape
+  });
+  it("a wider panel can push it back below the row", () => {
+    expect(panelBesideToolOptions(1440, 300)).toBe(true);
+    expect(panelBesideToolOptions(1440, 600)).toBe(false);
   });
 });
