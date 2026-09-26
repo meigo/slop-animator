@@ -99,6 +99,20 @@
 >
   {#if appState.tool === "brush" || appState.tool === "eraser"}
     {#if appState.tool === "eraser"}<span class="text-xs text-warn">Eraser</span>{/if}
+    <!-- First, as in slop-paint: the type decides which settings apply (the gear panel's rows among
+         them), so it is chosen before the numbers it governs. -->
+    <select
+      class="h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary"
+      bind:value={stroke.brushType}
+      title="Brush type"
+    >
+      <option value="smooth">Smooth</option>
+      <option value="ink">Ink</option>
+      <option value="pencil">Pencil</option>
+      <option value="charcoal">Charcoal</option>
+      <option value="airbrush">Airbrush</option>
+      <option value="calligraphy">Calligraphy</option>
+    </select>
     <label class="flex items-center gap-1 text-sm text-text-secondary"
       >Size
       <input
@@ -152,18 +166,6 @@
       />
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
-    <select
-      class="h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary"
-      bind:value={stroke.brushType}
-      title="Brush type"
-    >
-      <option value="smooth">Smooth</option>
-      <option value="ink">Ink</option>
-      <option value="pencil">Pencil</option>
-      <option value="charcoal">Charcoal</option>
-      <option value="airbrush">Airbrush</option>
-      <option value="calligraphy">Calligraphy</option>
-    </select>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Opacity
       <input
