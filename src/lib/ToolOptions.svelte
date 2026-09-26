@@ -153,7 +153,7 @@
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
     <select
-      class="h-7 border border-border rounded bg-surface text-text-secondary text-xs px-1"
+      class="h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary"
       bind:value={stroke.brushType}
       title="Brush type"
     >
