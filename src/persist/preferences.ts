@@ -5,6 +5,8 @@ export type CurvePrefs = { cp1: CurvePoint; cp2: CurvePoint };
 
 export interface Preferences {
   tool: Tool;
+  /** The tool a reference layer's Transform switch hands back to (2026-09-26). Absent = none. */
+  toolBeforeRef?: Tool | null;
   brush: ToolSettings;
   eraser: ToolSettings;
   fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
