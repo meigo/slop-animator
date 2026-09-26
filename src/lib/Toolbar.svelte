@@ -17,6 +17,8 @@
     selectToolsBlock,
     outlineActions,
     selectOutline,
+    selectionActions,
+    editActions,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -45,10 +47,16 @@
     PersonStanding,
     Pipette,
     SquareMinus,
+    Check,
   } from "@lucide/svelte";
 
+  // As slop-paint's: the label left, a key chip (or the check) pushed right.
   const menuItem =
-    "w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-hover flex items-center gap-2";
+    "w-full text-left px-3 py-1.5 text-sm whitespace-nowrap text-text-secondary hover:bg-surface-hover flex items-center justify-between gap-6";
+  const menuDivider = "my-1 h-px bg-border";
+  const kbd = "text-[11px] text-text-muted";
+  const dimmable =
+    "aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent";
   const toolBtn =
     "size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover";
   // Pixel tools do nothing on a reference. Dim them, still clickable — so `b` can arm the brush
@@ -287,10 +295,25 @@
     }}><Redo2 size={18} /></button
   >
   <div class="ml-auto flex max-w-full flex-wrap items-center gap-1 shrink-0">
+    <!-- File / Edit / Document / View, in slop-paint's order and wording (2026-09-26): what a menu
+         holds says what it acts on — the project's files, the selection and clipboard, the
+         document itself, or only the view. -->
     <ToolbarMenu label="File">
       {#snippet children(close)}
         <button
           class={menuItem}
+          role="menuitem"
+          title="Start a new project at a size you pick"
+          onclick={() => {
+            appState.sizeDialog.mode = "new";
+            appState.sizeDialog.open = true;
+            close();
+          }}>New…</button
+        >
+        <button
+          class={menuItem}
+          role="menuitem"
+          title="Open a saved project .zip"
           onclick={() => {
             pick("project");
             close();
@@ -298,6 +321,8 @@
         >
         <button
           class={menuItem}
+          role="menuitem"
+          title="Save the project as a .zip — drawings, references and audio"
           onclick={() => {
             saveProject();
             close();
@@ -307,6 +332,7 @@
           <!-- iPad/iPhone: the share sheet's Save to Files instead of a numbered download. -->
           <button
             class={menuItem}
+            role="menuitem"
             title="Save the project zip to a folder you pick in Files"
             onclick={() => {
               saveProject(true);
@@ -314,56 +340,48 @@
             }}>Save to Files…</button
           >
         {/if}
+        <div class={menuDivider}></div>
         <button
           class={menuItem}
-          onclick={() => {
-            appState.sizeDialog.mode = "new";
-            appState.sizeDialog.open = true;
-            close();
-          }}>New…</button
-        >
-        <button
-          class={menuItem}
-          onclick={() => {
-            appState.sizeDialog.mode = "resize";
-            appState.sizeDialog.open = true;
-            close();
-          }}>Resize canvas…</button
-        >
-      {/snippet}
-    </ToolbarMenu>
-    <ToolbarMenu label="Import/Export">
-      {#snippet children(close)}
-        <button
-          class={menuItem}
+          role="menuitem"
+          title="Add an image as a new reference layer"
           onclick={() => {
             pick("image");
             close();
-          }}>Add image…</button
+          }}>Import image…</button
         >
         <button
           class={menuItem}
+          role="menuitem"
+          title="Add the image on the clipboard as a new reference layer"
           onclick={() => {
             pasteImage();
             close();
-          }}>Paste image from clipboard</button
+          }}>Import image from clipboard</button
         >
         <button
           class={menuItem}
+          role="menuitem"
+          title="Add a video as a new reference layer"
           onclick={() => {
             pick("video");
             close();
-          }}>Add video…</button
+          }}>Import video…</button
         >
         <button
           class={menuItem}
+          role="menuitem"
+          title="Set the project's audio track (replaces the current one)"
           onclick={() => {
             pick("audio");
             close();
           }}>Import audio…</button
         >
+        <div class={menuDivider}></div>
         <button
           class={menuItem}
+          role="menuitem"
+          title="Export as a PNG sequence or frame, a PSD frame, MP4, WebM or an animated GIF"
           onclick={() => {
             appState.exportOpen = true;
             close();
@@ -371,39 +389,156 @@
         >
       {/snippet}
     </ToolbarMenu>
-    <ToolbarMenu label="View">
+    <ToolbarMenu label="Edit">
+      {#snippet children(close)}
+        <!-- aria-disabled, never disabled: a disabled button dispatches no pointer events, so the
+             status bar could not show the reason on iPad (CLAUDE.md, 2026-08-12). The copy/cut/delete
+             target mirrors the keys: a pixel selection first, else the timeline selection. -->
+        {@const hasSel = appState.selectionActive && !appState.selectionFloating}
+        {@const canClip = hasSel || !!appState.timelineSelection}
+        {@const nothing = " — nothing selected"}
+        <!-- As the options bar's Deselect: a lifted float can be dropped too. -->
+        {@const canDeselect = appState.selectionActive || appState.selectionFloating}
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!appState.canUndo}
+          title={appState.canUndo ? "Undo" : "Undo — nothing to undo"}
+          onclick={() => {
+            if (appState.canUndo) undo();
+            close();
+          }}>Undo <span class={kbd}>Ctrl+Z</span></button
+        >
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!appState.canRedo}
+          title={appState.canRedo ? "Redo" : "Redo — nothing to redo"}
+          onclick={() => {
+            if (appState.canRedo) redo();
+            close();
+          }}>Redo <span class={kbd}>Ctrl+Shift+Z</span></button
+        >
+        <div class={menuDivider}></div>
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!canClip}
+          title={canClip ? "Cut the selection" : "Cut" + nothing}
+          onclick={() => {
+            if (canClip) editActions.cut?.();
+            close();
+          }}>Cut <span class={kbd}>Ctrl+X</span></button
+        >
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!canClip}
+          title={canClip ? "Copy the selection" : "Copy" + nothing}
+          onclick={() => {
+            if (canClip) editActions.copy?.();
+            close();
+          }}>Copy <span class={kbd}>Ctrl+C</span></button
+        >
+        <button
+          class={menuItem}
+          role="menuitem"
+          title="Paste copied pixels or frames — or, with nothing copied here, the clipboard image as a reference layer"
+          onclick={() => {
+            if (!editActions.paste?.()) pasteImage();
+            close();
+          }}>Paste <span class={kbd}>Ctrl+V</span></button
+        >
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!canClip}
+          title={canClip ? "Delete the selection" : "Delete" + nothing}
+          onclick={() => {
+            if (canClip) editActions.del?.();
+            close();
+          }}>Delete <span class={kbd}>Del</span></button
+        >
+        <div class={menuDivider}></div>
+        <button
+          class="{menuItem} {dimmable}"
+          role="menuitem"
+          aria-disabled={!canDeselect}
+          title={canDeselect
+            ? "Drop the selection (a moved float goes back)"
+            : "Deselect" + nothing}
+          onclick={() => {
+            if (canDeselect) selectionActions.deselect?.();
+            close();
+          }}>Deselect <span class={kbd}>Esc</span></button
+        >
+      {/snippet}
+    </ToolbarMenu>
+    <ToolbarMenu label="Document">
       {#snippet children(close)}
         <button
           class={menuItem}
-          title="Fit the canvas to the window and re-centre it"
+          role="menuitem"
+          title="Name, background colour and transparency, frame rate"
           onclick={() => {
-            viewActions.fitView?.();
+            appState.settingsOpen = true;
             close();
-          }}>Fit to view (0)</button
+          }}>Project settings…</button
         >
         <button
           class={menuItem}
-          title="Show the canvas at 100% — one canvas pixel per screen pixel"
+          role="menuitem"
+          title="Change the canvas size"
           onclick={() => {
-            viewActions.actualSize?.();
+            appState.sizeDialog.mode = "resize";
+            appState.sizeDialog.open = true;
             close();
-          }}>Actual size (1)</button
+          }}
+          >Resize canvas… <span class={kbd}
+            >{appState.project.width} × {appState.project.height}</span
+          ></button
         >
+        <!-- One fixed label with an on-state, not a label that flips between "Transparent" and
+             "Opaque": a flipping label leaves you working out whether it names the state or the
+             action. -->
         <button
           class={menuItem}
+          role="menuitemcheckbox"
+          aria-checked={appState.project.transparentBg}
+          title={appState.project.transparentBg
+            ? "Transparent background — on: exports keep alpha; tap to turn off"
+            : "Transparent background — off: the background colour fills behind the drawing"}
           onclick={() => {
             appState.project.transparentBg = !appState.project.transparentBg;
             bump();
             close();
           }}
-          >{appState.project.transparentBg ? "Opaque background" : "Transparent background"}</button
+          >Transparent background <Check
+            size={14}
+            class={appState.project.transparentBg ? "text-accent" : "invisible"}
+          /></button
+        >
+      {/snippet}
+    </ToolbarMenu>
+    <ToolbarMenu label="View">
+      {#snippet children(close)}
+        <button
+          class={menuItem}
+          role="menuitem"
+          title="Fit the canvas to the window and re-centre it"
+          onclick={() => {
+            viewActions.fitView?.();
+            close();
+          }}>Fit to view <span class={kbd}>0</span></button
         >
         <button
           class={menuItem}
+          role="menuitem"
+          title="Show the canvas at 100% — one canvas pixel per screen pixel"
           onclick={() => {
-            appState.settingsOpen = true;
+            viewActions.actualSize?.();
             close();
-          }}>Project settings…</button
+          }}>Actual size <span class={kbd}>1</span></button
         >
       {/snippet}
     </ToolbarMenu>

@@ -12,6 +12,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 **Drawing**
 
+- File / Edit / Document / View menus, as in slop-paint: Edit holds undo/redo and the clipboard commands (dimmed with the reason when they can't act), so they are reachable on an iPad without a keyboard
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a

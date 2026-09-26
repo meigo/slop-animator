@@ -17,6 +17,7 @@
     repaint,
     state,
     referenceFocused,
+    editActions,
     followReferenceFocus,
     undo,
     redo,
@@ -68,6 +69,32 @@
       hasCellClipboard: !!state.cellClipboard,
     });
   }
+
+  // The Edit menu's clipboard commands, in the same precedence as the keys below: a committed pixel
+  // selection wins, else the timeline selection. Registered for Toolbar (see `editActions`).
+  const pixelSelectionActive = () =>
+    !!selectionRef.current?.active && !selectionRef.current.hasFloating;
+  editActions.copy = () => {
+    if (pixelSelectionActive()) selectionActions.copy?.();
+    else if (state.timelineSelection) copyTimelineSelection();
+  };
+  editActions.cut = () => {
+    if (pixelSelectionActive()) selectionActions.cut?.();
+    else if (state.timelineSelection) cutTimelineSelection();
+  };
+  editActions.del = () => {
+    if (pixelSelectionActive()) selectionActions.del?.();
+    else if (state.timelineSelection) deleteTimelineSelection();
+  };
+  editActions.paste = () => {
+    // As Cmd+V: the pixel float if it lands, else timeline cells; an OS image is the caller's.
+    if (currentPasteRoute() === "pixels" && selectionActions.paste?.()) return true;
+    if (state.cellClipboard) {
+      pasteCells(false);
+      return true;
+    }
+    return false;
+  };
 
   function onKey(e: KeyboardEvent) {
     // An export renders every frame from the LIVE project, one awaited frame at a time. Undoing (or
@@ -288,7 +315,7 @@
   function onAutosaveFailed(e: unknown) {
     autosaveDirty = true;
     console.error("autosave failed", e);
-    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save Project) so this work isn't lost.`;
+    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save) so this work isn't lost.`;
   }
 
   // The PAGE must never scroll — `app.css` pins `#app` so it cannot be dragged. iOS can still shift it
