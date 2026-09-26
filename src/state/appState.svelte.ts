@@ -101,6 +101,7 @@ import {
   transformScopeOf,
   type TransformScope,
 } from "../anim/active-row";
+import { refFocusChange } from "../anim/ref-tool";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
 import { bumpPersistGeneration } from "../persist/generation";
@@ -2303,6 +2304,26 @@ export function selectOutline() {
 export function leaveOutline() {
   if (state.tool !== "outline") return;
   state.tool = toolBeforeOutline === "outline" ? "brush" : toolBeforeOutline;
+}
+
+/** Whether the working row is a reference layer (a layer's own track row counts — it is the same
+ *  thing), i.e. the only thing the tools can act on is its transform. */
+export function referenceFocused(): boolean {
+  const id = targetLayerId(state.activeRow);
+  return id !== null && state.project.layers.find((l) => l.id === id)?.kind === "ref";
+}
+
+/** Switch to Transform on selecting a reference and hand the tool back on selecting away — see
+ *  `anim/ref-tool.ts`. App calls this from an effect on `referenceFocused()`; the `lastOnRef` latch
+ *  makes it act on a CHANGE only, so a tool picked while on a reference is not overridden. */
+let lastOnRef = false;
+let toolBeforeRef: Tool | null = null;
+export function followReferenceFocus(onRef: boolean) {
+  if (onRef === lastOnRef) return;
+  lastOnRef = onRef;
+  const next = refFocusChange<Tool>(onRef, state.tool, toolBeforeRef, "brush");
+  toolBeforeRef = next.before;
+  if (state.tool !== next.tool) state.tool = next.tool;
 }
 
 /** Signal that the (imperative) pressure curve changed, so the preferences save effect re-runs. */

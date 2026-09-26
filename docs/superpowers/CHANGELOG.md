@@ -7486,3 +7486,24 @@ under the top toolbar. could copy this over here"*, from slop-paint.
 - Seen in desktop Chrome at 1390px (beside). The below arrangement and iPad are not yet seen. An
   iPad at 1180px landscape with the default 224px panel lands beside (956 ≥ 850); portrait lands
   below.
+
+**Selecting a reference layer switches to Transform (2026-09-26).** Asked as *"was there any reason
+on selecting ref layer not switching over to transform tool (and memorizing last tool selected to
+switch back when drawing layer is selected)"*. There was none: the 2026-06-15 reference-transform
+spec (point 5) made the gizmo live under every tool so no tool change was needed, and an automatic
+switch was never weighed. The cost was a lit Brush that did nothing, brush options on the bar, and
+Flip / Keep proportions hidden.
+- `anim/ref-tool.ts` `refFocusChange` (pure, 6 tests): on a reference → Transform, remembering the
+  tool; off it → the remembered tool, but only if still on Transform (a tool picked meanwhile is
+  kept). Eyedropper and Outline are never handed back to (one-shots); they return Brush instead.
+  Already on Transform → nothing remembered.
+- `appState` `referenceFocused()` (working row is a ref, its own track row included) and
+  `followReferenceFocus(onRef)` with a `lastOnRef` latch, so it acts on a CHANGE only. App runs it
+  from one `$effect`, with `untrack` around the call so the tool write does not re-run it. One effect
+  covers every way the row changes (tap, undo/redo, add/delete layer, a restored project), with no
+  per-call-site hooks.
+- The gizmo under every tool is unchanged, so picking another tool on a reference still works.
+- Accepted: reloading with a reference selected saves `transform` as the preferred tool, and the
+  remembered tool is not persisted, so selecting a drawing layer after a reload stays on Transform.
+- Browser-verified in desktop Chrome through the store (add ref → Transform lit; back → Fill; pick
+  Lasso on ref → back keeps Lasso; undo). Not yet seen on iPad.
