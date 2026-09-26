@@ -275,11 +275,15 @@
         ><GripVertical size={14} /></span
       >
       <!-- Type slot, 15px = the group header's chevron, so a top-level layer's name starts exactly
-           where a group's does. Blank for drawing layers; reserved either way. -->
+           where a group's does. Blank for drawing layers; reserved either way.
+           `-ml-0.5 mr-0.5` (2026-09-26), the chevron's own treatment: the grip's glyph carries air on
+           its right, so the square sat ~12px from the grip's dots and ~7px from the name. Shifting
+           the BOX 2px left and giving it back on the right centres it (measured 8.2 / 8.1px) without
+           moving the name, and puts its centre exactly on the group chevron's. -->
       {#if layer.kind === "ref"}
         {@const t = layer.media.type === "missing" ? layer.media.was : layer.media.type}
         <span
-          class="flex w-[15px] shrink-0 justify-center"
+          class="-ml-0.5 mr-0.5 flex w-[15px] shrink-0 justify-center"
           class:text-text-muted={layer.media.type === "missing"}
           class:text-text-secondary={layer.media.type !== "missing"}
           title={layer.media.type === "missing"
@@ -301,7 +305,7 @@
         {@const rk = resolvedDisplayKeyCell(layer, appState.playhead)}
         {@const inked = !!rk && !isCellEmpty(rk.cell.canvas, appState.version)}
         <span
-          class="flex w-[15px] shrink-0 justify-center text-text-muted/60"
+          class="-ml-0.5 mr-0.5 flex w-[15px] shrink-0 justify-center text-text-muted/60"
           title={inked
             ? "Drawing layer — ink on this frame"
             : "Drawing layer — blank on this frame"}
