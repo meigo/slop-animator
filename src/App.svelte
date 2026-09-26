@@ -41,6 +41,8 @@
   import { hydrateFromStore, pruneMedia } from "./persist/media-store";
   import { referencedMediaIds } from "./persist/project-file";
   import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
+  import { innerWidth } from "svelte/reactivity/window";
+  import { panelBesideToolOptions } from "./anim/panel-layout";
 
   /** Is this keystroke a Cmd/Ctrl+V? `e.key` is LAYOUT-dependent — a Cyrillic or Greek layout
    *  reports "\u043c" for the physical V — so the physical `e.code` is matched too. That mattered
@@ -383,6 +385,11 @@
     };
   });
 
+  // Not a `$state` rune: this file imports `state` unaliased (CLAUDE.md gotcha #1).
+  const panelBeside = $derived(
+    panelBesideToolOptions(innerWidth.current ?? 0, state.layerPanelWidth),
+  );
+
   let prefsTimer: ReturnType<typeof setTimeout>;
   $effect(() => {
     const prefs = gatherPreferences(); // reads every tracked field → re-runs on any pref change
@@ -400,15 +407,29 @@
 
 <div class="h-full flex flex-col bg-surface text-text">
   <Toolbar />
-  <ToolOptions />
-  <!-- Zero-height anchor: the marker label editor overlays the top of the canvas area from here, far
-       from where the iPad keyboard appears (CLAUDE.md gotcha #15). -->
-  <div class="relative h-0">
-    <MarkerEditor />
-  </div>
-  <div class="flex-1 flex min-h-0">
-    <Canvas />
-    <LayerList />
+  <!-- One grid, two arrangements (as slop-paint), so switching never re-mounts the options row,
+       canvas or panel. Where the options row fits beside the layer panel, the panel starts right
+       under the top toolbar; otherwise (iPad at the default width) it starts below the row. -->
+  <div
+    class="grid min-h-0 flex-1"
+    style:grid-template-columns="minmax(0, 1fr) auto"
+    style:grid-template-rows="auto minmax(0, 1fr)"
+    style:grid-template-areas={panelBeside
+      ? '"options panel" "canvas panel"'
+      : '"options options" "canvas panel"'}
+  >
+    <div class="min-w-0" style:grid-area="options"><ToolOptions /></div>
+    <div class="flex min-h-0 min-w-0 flex-col" style:grid-area="canvas">
+      <!-- Zero-height anchor: the marker label editor overlays the top of the canvas area from here,
+           far from where the iPad keyboard appears (CLAUDE.md gotcha #15). -->
+      <div class="relative h-0">
+        <MarkerEditor />
+      </div>
+      <div class="flex min-h-0 flex-1">
+        <Canvas />
+      </div>
+    </div>
+    <div class="flex min-h-0" style:grid-area="panel"><LayerList /></div>
   </div>
   <Timeline />
   <StatusBar />

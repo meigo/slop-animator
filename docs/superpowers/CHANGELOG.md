@@ -7471,3 +7471,18 @@ be square. And maybe contain more general colors"* — slop-paint had already be
   default for both brush and fill, so a fresh project shows its marker. The marker compares
   lower-cased hex, since the eyedropper or a saved project may hold upper case.
 - Not yet seen in a browser or on iPad.
+
+**Layer panel beside the tool-options row (2026-09-26).** Asked for as *"layer panel's directly
+under the top toolbar. could copy this over here"*, from slop-paint.
+- `App.svelte`'s middle is now one grid with two arrangements (slop-paint's pattern, so nothing
+  re-mounts): `"options panel" "canvas panel"` when the options row fits beside the panel, else
+  `"options options" "canvas panel"`, the old layout. The top toolbar always spans the full width.
+- `panelBesideToolOptions(viewportW, panelW)` in `anim/panel-layout.ts` decides:
+  `viewportW - panelW >= TOOL_OPTIONS_WIDTH` (850). Measured in desktop Chrome: eraser 837, brush
+  829, fill 686, outline 479, deform 396, transform 247, select 228. The widest row decides for
+  every tool, so a tool switch never moves the panel. Re-measure when a control is added to a row.
+- Window width comes from `svelte/reactivity/window`'s `innerWidth`, not a `$state` rune, because
+  App imports `state` unaliased (gotcha #1).
+- Seen in desktop Chrome at 1390px (beside). The below arrangement and iPad are not yet seen. An
+  iPad at 1180px landscape with the default 224px panel lands beside (956 ≥ 850); portrait lands
+  below.
