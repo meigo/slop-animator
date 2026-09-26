@@ -249,6 +249,9 @@ interface AnimState {
   playhead: number; // current frame index
   activeLayerId: number;
   tool: Tool;
+  /** The tool to hand back to on leaving a reference layer (`anim/ref-tool.ts`); null = none.
+   *  In the store, not a module local, so the preferences save effect tracks it across reloads. */
+  toolBeforeRef: Tool | null;
   brush: ToolSettings;
   eraser: ToolSettings;
   /** The bucket's OWN colour and opacity. Separate from the brush on purpose — in a cel-painting
@@ -353,6 +356,7 @@ export const state: AnimState = $state({
   playhead: 0,
   activeLayerId: project.layers[0].id,
   tool: "brush",
+  toolBeforeRef: null,
   brush: {
     size: 4,
     color: "#1a1a1a",
@@ -2317,12 +2321,16 @@ export function referenceFocused(): boolean {
  *  `anim/ref-tool.ts`. App calls this from an effect on `referenceFocused()`; the `lastOnRef` latch
  *  makes it act on a CHANGE only, so a tool picked while on a reference is not overridden. */
 let lastOnRef = false;
-let toolBeforeRef: Tool | null = null;
+/** Preferences restored a tool owed from a reference: the session that saved them was on one. */
+function restoreReferenceFocus() {
+  lastOnRef = true;
+  followReferenceFocus(referenceFocused());
+}
 export function followReferenceFocus(onRef: boolean) {
   if (onRef === lastOnRef) return;
   lastOnRef = onRef;
-  const next = refFocusChange<Tool>(onRef, state.tool, toolBeforeRef, "brush");
-  toolBeforeRef = next.before;
+  const next = refFocusChange<Tool>(onRef, state.tool, state.toolBeforeRef, "brush");
+  state.toolBeforeRef = next.before;
   if (state.tool !== next.tool) state.tool = next.tool;
 }
 
@@ -2336,6 +2344,7 @@ export function gatherPreferences(): Preferences {
   void state.curveVersion; // track: the curve is imperative, so re-run the save effect on edits
   return {
     tool: state.tool,
+    toolBeforeRef: state.toolBeforeRef,
     brush: { ...state.brush },
     eraser: { ...state.eraser },
     fill: { ...state.fill },
@@ -2359,6 +2368,13 @@ export function gatherPreferences(): Preferences {
 /** Apply stored preferences over the current state, field-by-field with type guards. */
 export function applyPreferences(p: Partial<Preferences>): void {
   if (p.tool) state.tool = p.tool;
+  if (typeof p.toolBeforeRef === "string") {
+    // Saved while on a reference, so the saved `tool` is the Transform the switch chose. Opening
+    // a project selects its first DRAWING layer (`replaceProject`), so this is "selected away":
+    // mark the latch as on-a-reference and let the usual hand-back return the drawing tool.
+    state.toolBeforeRef = p.toolBeforeRef;
+    restoreReferenceFocus();
+  }
   if (p.brush && typeof p.brush === "object") state.brush = { ...state.brush, ...p.brush };
   if (p.eraser && typeof p.eraser === "object") state.eraser = { ...state.eraser, ...p.eraser };
   // Back-compat: older saves wrote brushType/sizeRange/streamline at the top level → onto the brush.

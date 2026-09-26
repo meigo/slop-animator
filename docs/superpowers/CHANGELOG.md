@@ -7503,7 +7503,21 @@ Flip / Keep proportions hidden.
   covers every way the row changes (tap, undo/redo, add/delete layer, a restored project), with no
   per-call-site hooks.
 - The gizmo under every tool is unchanged, so picking another tool on a reference still works.
-- Accepted: reloading with a reference selected saves `transform` as the preferred tool, and the
+- > **SUPERSEDED the same day** by *Remembered tool survives a reload* below.
+  Accepted: reloading with a reference selected saves `transform` as the preferred tool, and the
   remembered tool is not persisted, so selecting a drawing layer after a reload stays on Transform.
 - Browser-verified in desktop Chrome through the store (add ref → Transform lit; back → Fill; pick
   Lasso on ref → back keeps Lasso; undo). Not yet seen on iPad.
+
+**Remembered tool survives a reload (2026-09-26).** Asked for as *"remember the tool across reloads
+too"*.
+- `state.toolBeforeRef` (was a module local) is saved as the optional `toolBeforeRef` preference.
+  Living in the store is what lets the preferences save effect track it.
+- Opening a project, reload included, always selects the first DRAWING layer (`replaceProject`), so
+  after a reload you are never on the reference. The saved tool is therefore handed back at once:
+  `applyPreferences`, on finding one, sets the `lastOnRef` latch and calls `followReferenceFocus`,
+  which sees "selected away" and returns it. `refFocusChange` is unchanged. A first try changed its
+  "already on Transform" branch to keep the owed tool. That was undone: it only helped if the
+  reference came back selected, which never happens.
+- Browser-verified in desktop Chrome: Lasso → select the ref (Transform, owes Lasso) → reload →
+  drawing layer selected, Lasso lit, nothing owed. Not yet seen on iPad.
