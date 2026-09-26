@@ -428,7 +428,7 @@
        background-image and its `.ui-selected` inset bar with it, which is what the timeline gutter
        already does (reported: "in gutter we have vertical indicator lines on the edge but in layer
        panel we have a padding"). Every interactive thing still starts at 8px, clear of the grip's 8px
-       hit area, because the 4px only changed owner. The HEADER keeps its own `p-1`, and the
+       hit area, because the 4px only changed owner. The HEADER keeps its own padding, and the
        properties strip its `pl-2`: both are direct children, and padding the panel ROOT instead would
        inset the header's bottom border and leave it short of the left edge. -->
   <!-- Right padding is per-container and deliberately UNEQUAL (2026-09-12): the three right-hand
@@ -436,10 +436,13 @@
        boxes of different sizes, so equal padding put their optical edges 3.5px apart (bin 1170,
        pencil 1172.5, eye 1173.5 in a panel ending at 1180). Each padding is `8.5px − the box's own
        air`, which lands all three icon edges on 8.5px from the panel edge: this 28px button holds a
-       16px icon (6px of air) so it takes 2.5px. Written as `py-1 pl-1 pr-[2.5px]` rather than `p-1`
+       16px icon (6px of air) so it takes 2.5px. Written as `pl-1 pr-[2.5px]` rather than `p-1`
        plus an override, since two padding utilities on one element leave the winner to stylesheet
        order rather than to the reader. -->
-  <div class="flex items-center gap-1 py-1 pl-1 pr-[2.5px] border-b border-border">
+  <!-- h-10 (2026-09-26, as slop-paint): the tool-options row's height (`min-h-10`), which this header
+       sits beside on a wide screen (`panelBesideToolOptions`), so their bottom borders make one
+       line. It was 37px, `py-1` around the 28px buttons plus the border; h-10 centres them instead. -->
+  <div class="flex h-10 shrink-0 items-center gap-1 pl-1 pr-[2.5px] border-b border-border">
     <!-- `min-w-0 truncate` + flex-1 (basis 0): the title only takes LEFTOVER space, so on a narrow panel it
          gives way before the buttons shrink; they stay full 28px targets at the default width. -->
     <span class="min-w-0 flex-1 truncate px-1 text-xs font-semibold text-text-secondary"
