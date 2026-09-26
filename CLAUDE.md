@@ -90,6 +90,9 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
   `RefTransformGizmo`, `BrushCursor`, dialogs.
 - `src/persist/` — `project-file.ts` (zip: project.json + PNG per key cell; autosave + export),
   `preferences.ts` (localStorage), `autosave.ts` (IndexedDB, ~3s debounce).
+- `public/favicon.svg` — the slop mark in the family blue `#667fff`; `node tools/make-icons.mjs`
+  regenerates the PNG icons from it. Each slop app has its own colour, listed in
+  `../SLOP-FAVICON-COLOURS.md`.
 
 ## Gotchas (each cost real debugging — don't relearn them)
 
