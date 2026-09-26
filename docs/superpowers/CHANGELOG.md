@@ -7459,3 +7459,15 @@ dropdown with lighter bg and larger padding"*, then *"also the order"*.
 - Size and Press labels were `text-sm` beside `text-xs` Opacity; all `text-xs` now, as in paint.
 - Fill: Tolerance · Gap · Expand (was Expand · Gap), the order the fill runs them.
 - The day before, Size, Press and Tolerance sliders went from `w-24` to `w-16` like the rest.
+
+**Colour palette, ported from slop-paint (2026-09-26).** Asked for as *"color swatches. these could
+be square. And maybe contain more general colors"* — slop-paint had already been fixed (its
+`fa213aa`), *"bring over here"*.
+- New `ColorSwatch.svelte`: a 28px swatch that opens a popover of 24 square swatches (3×8: neutrals,
+  hues, skin/earth tones and tints) plus a Custom native picker. It replaces the bare
+  `<input type="color">` for the brush colour and the fill colour. The Project Settings background
+  colour keeps its native picker.
+- The swatch list is copied, not shared: the apps are separate repos. `#1a1a1a` (Ink) is the
+  default for both brush and fill, so a fresh project shows its marker. The marker compares
+  lower-cased hex, since the eyedropper or a saved project may hold upper case.
+- Not yet seen in a browser or on iPad.

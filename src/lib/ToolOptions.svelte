@@ -1,6 +1,7 @@
 <script lang="ts">
   import { sliderFill } from "./slider-fill";
   import NumberField from "./NumberField.svelte";
+  import ColorSwatch from "./ColorSwatch.svelte";
   import { onMount } from "svelte";
   import {
     state as appState,
@@ -295,7 +296,13 @@
         </div>
       {/if}
     </div>
-    {#if appState.tool !== "eraser"}<input type="color" bind:value={appState.brush.color} />{/if}
+    {#if appState.tool !== "eraser"}
+      <ColorSwatch
+        value={appState.brush.color}
+        title="Brush colour"
+        onPick={(c) => (appState.brush.color = c)}
+      />
+    {/if}
   {:else if appState.tool === "fill"}
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill color tolerance"
       >Tolerance
@@ -350,7 +357,11 @@
     </label>
     <!-- The bucket's OWN swatch. This control was always labelled "Fill color" while writing
          `brush.color`, so the label is now true rather than aspirational. -->
-    <input type="color" bind:value={appState.fill.color} title="Fill color" />
+    <ColorSwatch
+      value={appState.fill.color}
+      title="Fill colour"
+      onPick={(c) => (appState.fill.color = c)}
+    />
     <!-- PARAMETERS then the ACTION, split by the bar language's divider. "Fill enclosed" sat
          mid-row before, which broke the params into two unrelated halves. The swatch stays LAST of
          the params, matching the brush branch, which also ends on its colour. -->
