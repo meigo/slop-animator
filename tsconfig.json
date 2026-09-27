@@ -20,7 +20,10 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    /* Editor/tsserver only: lets .ts files see .svelte imports and references. tsc ignores it. */
+    "plugins": [{ "name": "typescript-svelte-plugin" }]
   },
   "include": ["src", "src/**/*.svelte"]
 }
