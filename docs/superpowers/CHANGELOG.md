@@ -7654,5 +7654,13 @@ Apply can be undone and Cancel cannot.
 - The Timeline retime / hold-resize paths already re-took their structural snapshot after settling
   the lift; that stays necessary, since applying also mutates the document.
 - No status message, unlike slop-paint's: `statusHint` is overwritten by the next pointer move.
+- **Branch review fixes.** Flip (layer and group) measured its mirror line from the ink bounds BEFORE
+  applying the lift, so a moved float counted as not there (and a group froze that box as its pivot);
+  the apply now runs before the measurement. The ruler length drag, the hold-resize drag and the loop
+  toggle now settle the lift before opening their bracket / reading the track (an untouched Deform or
+  Pose lift still CANCELS on a bank, which can remove a ◆ it materialised; a bracket taken first would
+  have restored it as a real key). Known and left: `keyMoveAt` settles at the first move, after grab,
+  so the same untouched-lift case can leave `keyDrag.from` naming a key that just went back to a hold
+  (narrower than main, where every lift reverted).
 - Desktop Chrome: marquee, move 100 px, Duplicate layer → the float applied in place, a third layer;
   undo → two layers, moved pixels kept; undo → the original pixels, byte-exact. Not yet seen on iPad.

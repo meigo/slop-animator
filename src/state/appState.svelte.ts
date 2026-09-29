@@ -842,7 +842,7 @@ export function removeLayer(id: number) {
 }
 
 /** Delete a group AND every layer in it, as one undo entry. Same guards as `removeLayer`, at group
- *  scale: a live lift is discarded first (it would otherwise bank into a removed canvas), any video
+ *  scale: a live lift is applied first (it would otherwise bank into a removed canvas), any video
  *  reference inside is paused, and the selection falls back to the first remaining drawing layer. */
 export function removeGroup(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
@@ -1106,6 +1106,11 @@ export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
     if (!isLayerVisible(layer, state.project.groups)) return;
     if (!isRefVisibleAtFrame(layer, state.playhead, state.project.fps)) return;
   }
+  // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
+  // bank those pixels back at the old placement, so apply it first (as every sibling structural
+  // action does) — and BEFORE the centre is measured, which reads the ink bounds: with a moved float
+  // still lifted out, the line would be the drawing's centre without it.
+  liftGuard.bank?.();
   const base = transformBaseRect(layer, state.project.width, state.project.height);
   if (!base) return; // reference media not loaded
   const frame = state.playhead;
@@ -1113,9 +1118,6 @@ export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
   const line = axis === "h" ? centre.x : centre.y;
   const baseCentre = { x: base.x + base.w / 2, y: base.y + base.h / 2 };
   const track = layerTransformTrack(layer);
-  // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
-  // bank those pixels back at the old placement. Every sibling structural action discards first.
-  liftGuard.bank?.();
   commitStructural(() => {
     // New objects only — undo snapshots share the layer (gotcha #8, at the bag level too).
     layer.transform = mirrorTransform(layer.transform, baseCentre, axis, line);
@@ -1134,6 +1136,9 @@ export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (!g) return;
   if (groupHasLockedLayer(g, state.project.layers)) return; // a locked member pins the whole group
+  // Apply a live lift first, before the box is measured — see `flipLayerTransform`. The box is also
+  // frozen as the pivot below, so a box measured with the float lifted out would stay wrong.
+  liftGuard.bank?.();
   const frame = state.playhead;
   const box = groupBoxLogical(g, state.project, frame, DPR, state.version);
   const t = groupTransformAt(g, frame);
@@ -1141,9 +1146,6 @@ export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
   const line = axis === "h" ? centre.x : centre.y;
   const baseCentre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
   const track = g.tracks?.transform;
-  // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
-  // bank those pixels back at the old placement. Every sibling structural action discards first.
-  liftGuard.bank?.();
   commitStructural(() => {
     // Freeze the pivot box exactly as a drag's grab does on an identity group: without it the box
     // stays live content bounds, and drawing more would slide the pivot under the flip.
@@ -2196,8 +2198,8 @@ export function applyAnimationLength(n: number): void {
   const target = Math.max(1, Math.min(9999, Math.floor(n)));
   if (target === state.project.frameCount) return;
   // Every layer's cell array is respliced (and a shrink DELETES cells), so a live selection/deform/
-  // pose lift would be banked into a canvas that is no longer in the document — the same reason
-  // rippleInsert/rippleDelete/deleteTool/resizeProject discard here. Guarded here rather than at the
+  // pose lift would be banked into a canvas that is no longer in the document — so it is applied
+  // first, as rippleInsert/rippleDelete/deleteTool/resizeProject do. Guarded here rather than at the
   // two call sites (ruler drag, playbar field) so no future caller can miss it.
   liftGuard.bank?.();
   for (const layer of state.project.layers) {
@@ -2235,7 +2237,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   // Same hole `replaceProject` had, reachable from a documented menu action: selection geometry is
   // DOCUMENT space, so a marquee near the bottom-right of a 1920x1080 project survives a resize to
   // 640x480 entirely off the paper — invisible, and still clipping both fills and all three stroke
-  // engines. Same ordering rationale as there: after `discard`, which leaves a floatless outline.
+  // engines. After the lift is applied (`bank`), which leaves a floatless outline.
   selectionActions.deselect?.();
   const rect = placeContent(
     state.project.width * DPR,

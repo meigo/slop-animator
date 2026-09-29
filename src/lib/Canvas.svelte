@@ -2673,8 +2673,9 @@
       dropStrokeUntilUp = true;
     }
   }
-  // Discard (don't bank) an in-progress lift — for ops that destroy/replace the target canvas or replay
-  // history (resize / replaceProject / undo / redo), where banking has no valid target. Restores the
+  // Discard (don't bank) an in-progress lift — for the ops where applying it is meaningless or unwanted:
+  // replaceProject (the document goes), undo / redo (history replays) and export (see
+  // `liftGuard`). Canvas-recreating ops apply it instead (`liftGuard.bank`). Restores the
   // original pixels via the captured context, so the destructive op then sees the un-lifted cell.
   function discardActiveEdits() {
     if (meshPose) cancelPose();

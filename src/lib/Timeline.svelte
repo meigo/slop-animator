@@ -934,6 +934,10 @@
       touchPanDown(e); // finger navigates, pen/mouse edits
       return;
     }
+    // Settle a live lift BEFORE the bracket opens, as `loopHandleDown` does: `applyAnimationLength`
+    // settles it too, but on the first move, inside the bracket — and a cancelled untouched lift
+    // removes a ◆ it materialised, which the bracket's revert would then restore as a real key.
+    liftGuard.bank?.();
     lenDrag = {
       startLen: appState.project.frameCount,
       dirty: false,
@@ -1806,11 +1810,20 @@
       // `setHoldSpan` splices the cell track, which a live lift/stroke holds a whole-track undo rider
       // against — undoing that lift would then also revert this resize. Must run BEFORE
       // `beginStructuralEdit`, since applying the lift can materialise a keyframe (a cancelled one
-      // reverts it) and that has to be part of the before-state. (Reachable without a layer/frame change: pressing this
-      // row re-selects the SAME layer, so nothing banks the lift for us.)
+      // reverts it) and that has to be part of the before-state. (Reachable without a layer/frame
+      // change: pressing this row re-selects the SAME layer, so nothing banks the lift for us.)
       liftGuard.bank?.();
+      // Settling can change this track (an untouched lift cancels, removing a ◆ it materialised),
+      // so read the grabbed edge again from the track as it now is.
+      const settled = planCellPointer(
+        layer.cells,
+        rowOffset(e),
+        CELL_W,
+        appState.project.frameCount,
+      );
+      if (settled.kind !== "resize") return;
       dragMode = "resize";
-      dragKey = plan.keyIndex;
+      dragKey = settled.keyIndex;
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
@@ -2127,9 +2140,11 @@
     const l = id == null ? undefined : appState.project.layers.find((x) => x.id === id);
     const action = loopBtn.action; // read once: the derived must not change under the commit
     if (l?.kind !== "draw" || !action) return;
+    // Splices/replaces cells; a live lift would target a stale track. Before `back` is measured:
+    // settling the lift can itself change the spans.
+    liftGuard.bank?.();
     const f = appState.playhead;
     const back = defaultLoopBack(spansFor(l, appState.version), f);
-    liftGuard.bank?.(); // splices/replaces cells; a live lift would target a stale track
     commitStructural(() => {
       if (action === "remove") removeLoop(l, f);
       else setLoop(l, f, back);
