@@ -7563,7 +7563,7 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   through untouched, still-pen events included, and has no corner pull (it would nudge a held gizmo
   handle by up to 3 px). Once the rope has caught up with a resting pen, the pen's events keep adding
   points at the rest point, so ink **Pool** (`dwellSwell`, which reads point timestamps) still swells
-  while the nib rests at the default Stream 50. The Pencil double-tap stays.
+  while the nib rests at the default Stream 50.
 - **Smooth**: `smoothPath` averages position and pressure over ±`32 · s / zoom` document px of arc
   length, both sides, ends pinned. **Differs from slop-paint:** it runs in `Canvas.svelte`
   `paintStroke` on the DOCUMENT-space points, before `inverseChain` maps them into cell space, so the
@@ -7585,6 +7585,9 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   Sharp corners).
 - Tests: `stroke-smoothing.test.ts` (16). Desktop Chrome, synthetic mouse events: Stream 100
   flattened a 3 px wobble; Smooth 0/50/100 measured 6.0/5.2/4.0 px peak-to-peak on a 100 px wave
-  (Gaussian σ = 16 predicts 6/5.3/3.6); no console errors. Not yet seen on iPad — the rope's feel,
-  the corner pause (synthetic events carry no real timing) and the Pencil double-tap need a Pencil
-  pass on a deploy.
+  (Gaussian σ = 16 predicts 6/5.3/3.6); no console errors. **iPad, deployed branch build: the user
+  reported it "feels good and seems to work without issues".**
+- **Dead Pencil-tip double-tap removed from `input.ts`** (same branch). `onPencilDoubleTap` had had no
+  caller since `2d51da4` (2026-06-17) moved the eraser toggle to a one-finger double-tap, because the
+  two tip taps left dots; slop-paint deleted its copy in `907b20b`. The Pencil's barrel double-tap is
+  not exposed to web apps at all.
