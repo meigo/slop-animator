@@ -829,7 +829,7 @@ export function removeLayer(id: number) {
   if (!canRemoveLayer(layers, id)) return; // keep one drawing layer
   // `setActiveLayer` below banks a live lift AFTER the layer is gone, i.e. into the removed layer's
   // canvas — so undoing twice brought the layer back with the lifted region still punched out.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     const removed = layers[idx];
     layers.splice(idx, 1);
@@ -848,7 +848,7 @@ export function removeGroup(groupId: number) {
   const g = state.project.groups.find((x) => x.id === groupId);
   if (!g) return;
   if (!canRemoveGroup(state.project.layers, state.project.groups, groupId)) return; // would take the last drawing layer
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     const doomed = state.project.layers.filter((l) => l.groupId === groupId);
     for (const l of doomed) if (l.kind === "ref" && l.media.type === "video") l.media.el.pause();
@@ -909,7 +909,7 @@ export function duplicateLayer(id: number) {
   if (!isDrawingLayer(src)) return; // only drawing layers duplicate (clone pixels); see canDuplicateLayer
   // Every key canvas is cloned below, and `setActiveLayer(dup.id)` then banks any live lift back
   // into the SOURCE — so the copy would be missing exactly the pixels that were floating.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     const dup = cloneDrawingLayer(src, `${src.name} copy`);
     // The copy stays in the source's group — inserted adjacent, so the run stays contiguous.
@@ -932,7 +932,7 @@ export function duplicateGroup(groupId: number) {
   if (!canDuplicateGroup(state.project.layers, state.project.groups, groupId)) return;
   // Same reason as `duplicateLayer`: selecting the copy banks any live lift back into the SOURCE,
   // so the clone would be missing exactly the pixels that were floating.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     const layers = state.project.layers;
     const dupGroup: LayerGroup = {
@@ -1004,7 +1004,7 @@ export function applyLayerTransform(layerId: number): void {
   }
   if (layer?.kind === "draw" && !isLayerEditable(layer, state.project.groups)) return; // locked/hidden = content is immutable
   if (!layer || layer.kind !== "draw" || isIdentityTransform(layer.transform)) return;
-  liftGuard.discard?.(); // bake replaces every key canvas
+  liftGuard.bank?.(); // bake replaces every key canvas
   commitStructural(() => bakeLayerTransform(layer));
 }
 
@@ -1029,7 +1029,7 @@ export function applyCellTransform(layerId: number, frame: number): void {
   if (!layer || layer.kind !== "draw") return;
   const rk = frameEditKeyCell(layer, frame);
   if (!rk || !rk.cell.transform || isIdentityTransform(rk.cell.transform)) return;
-  liftGuard.discard?.(); // bake replaces the cell canvas — a live lift would write to the detached one
+  liftGuard.bank?.(); // bake replaces the cell canvas — a live lift would write to the detached one
   commitStructural(() => {
     layer.cells[rk.index] = bakeCell(rk.cell, { ...IDENTITY_TRANSFORM });
   });
@@ -1115,7 +1115,7 @@ export function flipLayerTransform(layerId: number, axis: "h" | "v"): void {
   const track = layerTransformTrack(layer);
   // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
   // bank those pixels back at the old placement. Every sibling structural action discards first.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     // New objects only — undo snapshots share the layer (gotcha #8, at the bag level too).
     layer.transform = mirrorTransform(layer.transform, baseCentre, axis, line);
@@ -1143,7 +1143,7 @@ export function flipGroupTransform(groupId: number, axis: "h" | "v"): void {
   const track = g.tracks?.transform;
   // A live lift holds a detached canvas of the pre-flip drawing; mirroring the layer under it would
   // bank those pixels back at the old placement. Every sibling structural action discards first.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   commitStructural(() => {
     // Freeze the pivot box exactly as a drag's grab does on an identity group: without it the box
     // stays live content bounds, and drawing more would slide the pivot under the flip.
@@ -1615,7 +1615,7 @@ export function mergeDown(id: number) {
   const below = layers[idx - 1];
   if (!isDrawingLayer(upper) || !isDrawingLayer(below)) return; // unreachable; narrows for TS
 
-  liftGuard.discard?.(); // merge replaces both cell tracks; a live lift would bake into a detached canvas
+  liftGuard.bank?.(); // merge replaces both cell tracks; a live lift would bake into a detached canvas
   commitStructural(() => {
     // Merge into a fresh cell track: keyframes only at the union of both layers' keyframes
     // (holds stay holds), compositing each layer's resolved drawing. Reads the original cells,
@@ -2199,7 +2199,7 @@ export function applyAnimationLength(n: number): void {
   // pose lift would be banked into a canvas that is no longer in the document — the same reason
   // rippleInsert/rippleDelete/deleteTool/resizeProject discard here. Guarded here rather than at the
   // two call sites (ruler drag, playbar field) so no future caller can miss it.
-  liftGuard.discard?.();
+  liftGuard.bank?.();
   for (const layer of state.project.layers) {
     if (layer.kind === "draw") layer.cells = resizeCells(layer.cells, target);
   }
@@ -2231,7 +2231,7 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   if (w === state.project.width && h === state.project.height) return;
   state.timelineSelection = null;
   state.cellClipboard = null; // clipboard canvases belong to the old document size
-  liftGuard.discard?.(); // a live lift's captured cell canvas is about to be replaced
+  liftGuard.bank?.(); // a live lift's captured cell canvas is about to be replaced
   // Same hole `replaceProject` had, reachable from a documented menu action: selection geometry is
   // DOCUMENT space, so a marquee near the bottom-right of a 1920x1080 project survives a resize to
   // 640x480 entirely off the paper — invisible, and still clipping both fills and all three stroke
@@ -2597,11 +2597,23 @@ export const outlineActions: {
   reenter: () => {},
 };
 
-/** Canvas registers a discard-the-active-lift callback here. Call it BEFORE any operation that
- *  recreates/removes the active key cell's canvas or replays the history (resize, replaceProject,
- *  set-hold/delete-frame on the active cell, undo/redo) — otherwise a live selection/deform/pose lift
- *  would commit to a detached canvas or corrupt the undo baseline. */
-export const liftGuard: { discard: (() => void) | null } = { discard: null };
+/** Canvas registers two ways to settle a live selection/deform/pose lift (and an open stroke) here.
+ *  Call one BEFORE any operation that recreates/removes the active key cell's canvas or replays the
+ *  history — otherwise the lift would commit to a detached canvas or corrupt the undo baseline.
+ *
+ *  - `bank` APPLIES it (an untouched Deform/Pose lift still cancels, as on a tool switch), pushing its
+ *    own undo step. Use it wherever the lift's cell still exists when the op starts: the op then
+ *    works on what is on screen, and one more undo takes the transform back. Apply, not cancel,
+ *    because Apply can be undone and Cancel cannot (slop-paint 847f7ee, 2026-09-29).
+ *  - `discard` CANCELS it. Only where applying is meaningless or unwanted: the document is being
+ *    replaced (`replaceProject`), history is replaying (undo/redo), or an export must not commit an
+ *    edit on the artist's behalf (`ExportDialog`).
+ *
+ *  A live Outline preview cancels under both (see `bankActiveEdits`). */
+export const liftGuard: { discard: (() => void) | null; bank: (() => void) | null } = {
+  discard: null,
+  bank: null,
+};
 
 /** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`
  *  key and a tap on a marker in the strip can all open it. */
@@ -2699,7 +2711,7 @@ export function deleteTimelineSelection(): void {
   const rect = currentSelectionRect();
   if (!rect) return;
   if (!anyEditableLayer(state.project, rect.layerIds)) return; // all locked/hidden → no empty undo
-  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  liftGuard.bank?.(); // may replace the active cell's canvas → apply any live lift first
   commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
 }
 
@@ -2717,7 +2729,7 @@ export function moveTimelineSelection(delta: number): void {
   const applied = Math.max(delta, -rect.startFrame); // clamp before committing so a no-op doesn't push undo
   if (applied === 0) return;
   if (!anyEditableLayer(state.project, rect.layerIds)) return;
-  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  liftGuard.bank?.(); // may replace the active cell's canvas → apply any live lift first
   commitStructural(() =>
     moveBlockFrames(
       state.project,
@@ -2743,7 +2755,7 @@ export function pasteCells(insert = false): void {
   if (!anyEditablePasteTarget(state.project, state.activeLayerId)) return;
   const active = state.project.layers.find((l) => l.id === state.activeLayerId);
   if (!active || active.kind !== "draw") return; // paste anchors on a drawing layer only
-  liftGuard.discard?.(); // may replace the active cell's canvas → discard any live lift first
+  liftGuard.bank?.(); // may replace the active cell's canvas → apply any live lift first
   commitStructural(() => {
     if (insert)
       pasteBlockInsert(state.project, block, state.activeLayerId, state.playhead, canvasOps);
