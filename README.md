@@ -13,6 +13,8 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Drawing**
 
 - File / Edit / Document / View menus, as in slop-paint: Edit holds undo/redo and the clipboard commands (dimmed with the reason when they can't act), so they are reachable on an iPad without a keyboard
+- Undo keeps only the part of the picture each step changed, so a long session of strokes can be
+  undone 50 steps back, not a handful
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), Stream (the line trails the pen on a string, the same at any pointer rate) and Smooth (averages the stroke's path with no lag, optionally keeping corners where you pause), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a
@@ -65,6 +67,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - Free transform of a selection, and of a whole layer, reference or layer group — the Transform tool acts on whichever row is selected (transforms compose `group ∘ layer ∘ cell` at render); side handles stretch one axis, corners keep proportions (toggleable), and Flip horizontal/vertical mirrors a layer, reference or group in place — animated ones included
 - Flip a selection horizontally or vertically from the floating selection bar (lifts it as a free-transform float, so you can keep adjusting before committing)
+- A transform left open (a moved selection, a bent pose or deform) is never lost: merging, resizing, editing the timeline or exporting applies it first, and one undo takes it back. Undo while one is open cancels just the transform
 - A layer's transform can be animated: keys at any frame, per-key easing (linear, hold, ease in/out),
   and a step setting so a move can land on 2s/3s like the drawings. Drag a key along its row to
   retime it. Starting the track is on the timeline bar, not the Transform tool
@@ -87,7 +90,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 **Files & export**
 
-- Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB, global preferences
+- Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB (it waits while you're drawing, so a save never lands mid-stroke), global preferences
 - A project name drives the save and export filenames
 - **Export dialog** — pick a format (PNG sequence, PNG frame, PSD frame, MP4, WebM via [mediabunny](https://github.com/Vanilagy/mediabunny), animated GIF via [gifenc](https://github.com/mattdesl/gifenc)), then set what applies to it: size (100% / 50% / 25% — PSD always exports at full size), frame range (all frames, the play In-Out range, or a typed custom span), video quality (MP4/WebM), and colour count (GIF: 64/128/256)
 - **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away)
