@@ -106,6 +106,28 @@ describe("smoothPath", () => {
     });
   });
 
+  it("collapses a resting pen's repeat points, keeping the rest's first and last", () => {
+    const at = (x: number, t: number): InputPoint => ({
+      x,
+      y: 0,
+      pressure: 0.5,
+      hasPressure: true,
+      timestamp: t,
+    });
+    const line = Array.from({ length: 40 }, (_, i) => at(i * 2, i));
+    const held = [
+      ...line.slice(0, 20),
+      ...Array.from({ length: 1000 }, (_, k) => at(38, 20 + k)),
+      ...line.slice(20),
+    ];
+    const out = smoothPath(held, 10);
+    expect(out.length).toBe(line.length + 1); // the rest's first and last, both at x = 38
+    expect(out[0]).toEqual(held[0]);
+    expect(out[out.length - 1]).toEqual(held[held.length - 1]);
+    // Sharp corners still sees the pause: its span survives in the kept pair's timestamps.
+    expect(pauseBreaks(out, 1).length).toBe(1);
+  });
+
   it("isn't thrown by uneven spacing (a slow stretch, then a fast one)", () => {
     const pts = [
       ...Array.from({ length: 40 }, (_, i) => ({

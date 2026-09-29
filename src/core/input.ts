@@ -278,6 +278,7 @@ export function setupInput(
   canvas.addEventListener("contextmenu", onContextMenu);
 
   return () => {
+    cancelAnimationFrame(catchUpFrame); // a stroke open at teardown would otherwise loop forever
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);

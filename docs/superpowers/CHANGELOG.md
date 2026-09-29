@@ -7573,5 +7573,18 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   is a look worth keeping), a checkbox under Smooth; saved with the tool settings. With it on, the
   path is smoothed leg by leg between pauses.
 - Saved Stream/Smooth values keep their numbers and now mean the new scales.
-- Tests: `stroke-smoothing.test.ts` (15). Not yet seen in a browser or on iPad — the feel needs a
-  Pencil pass on a deploy.
+- **Branch review fixes.** Those kept resting-pen points made a held Smooth brush quadratic: each is
+  in every other's averaging window, so a 5 s hold at 240 Hz took a 2,000-point stroke's redraw from
+  0.56 ms to 13.2 ms (Mac), paid on every later frame. `smoothPath` now cuts each run at one position
+  to its first and last point (`collapseRests`; the pair keeps the pause's time span for Sharp
+  corners). The rope's rAF loop is cancelled in `setupInput`'s cleanup too.
+- **Known, left as slop-paint has them:** below Stream ≈ 27% (string ≤ `STILL_PX`) the corner pull
+  can draw the line back up to 3 screen px to where the pen came to rest, a tiny hook at a pause; and
+  the corner point is stamped with the pause's START, earlier than catch-up points already added, so
+  timestamps can step backwards there (read only by Pool, which skips a non-positive span, and by
+  Sharp corners).
+- Tests: `stroke-smoothing.test.ts` (16). Desktop Chrome, synthetic mouse events: Stream 100
+  flattened a 3 px wobble; Smooth 0/50/100 measured 6.0/5.2/4.0 px peak-to-peak on a 100 px wave
+  (Gaussian σ = 16 predicts 6/5.3/3.6); no console errors. Not yet seen on iPad — the rope's feel,
+  the corner pause (synthetic events carry no real timing) and the Pencil double-tap need a Pencil
+  pass on a deploy.

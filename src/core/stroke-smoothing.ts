@@ -113,6 +113,7 @@ export function smoothPath(
   sharpCorners = false,
 ): InputPoint[] {
   if (points.length < 3 || !(radius > 0)) return points;
+  points = collapseRests(points);
   const breaks = sharpCorners ? pauseBreaks(points, radius / 8) : [];
   if (!breaks.length) return smoothLeg(points, radius);
   const out: InputPoint[] = [];
@@ -123,6 +124,24 @@ export function smoothPath(
     // Each leg starts on the previous one's last point: keep it once.
     out.push(...(out.length ? leg.slice(1) : leg));
     from = b;
+  }
+  return out;
+}
+
+/** `points` with each run at one position cut to its first and last point. A resting pen keeps
+ *  adding points at the rest point (input.ts keeps them for the ink engine's Pool), and every one
+ *  of them is in every other's averaging window: a 5 s hold made each redraw ~20× slower. The pair
+ *  keeps the rest's time span, which `pauseBreaks` reads. (slop-animator only.) */
+function collapseRests(points: InputPoint[]): InputPoint[] {
+  const out: InputPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const prev = points[i - 1];
+    const next = points[i + 1];
+    const samePrev = prev && prev.x === p.x && prev.y === p.y;
+    const sameNext = next && next.x === p.x && next.y === p.y;
+    if (samePrev && sameNext) continue;
+    out.push(p);
   }
   return out;
 }
