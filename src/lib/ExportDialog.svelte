@@ -152,9 +152,10 @@
     // A live lift (selection float / deform / pose) has CLEARED its region from the cell canvas —
     // the pixels exist only on the overlay, which renderFrame never composites. Exporting through
     // that state writes a hole into every frame resolving to that key (a pose lift takes the whole
-    // content bbox, i.e. the layer goes blank for the hold span). Discard, not bank: the lift is an
-    // uncommitted edit and an export must not silently commit one.
-    liftGuard.discard?.();
+    // content bbox, i.e. the layer goes blank for the hold span). Apply it (bank), as every other
+    // op does since 2026-09-29: the export then shows what is on screen, and one undo takes the
+    // transform back. Discarding it (the 2026-08-16 rule) lost the edit for good with no undo.
+    liftGuard.bank?.();
     appState.exportBusy = true; // gate the global keyboard handler for the WHOLE render (A10)
     controller = new AbortController();
     const signal = controller.signal;
