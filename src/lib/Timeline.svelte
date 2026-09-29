@@ -934,6 +934,10 @@
       touchPanDown(e); // finger navigates, pen/mouse edits
       return;
     }
+    // Settle a live lift BEFORE the bracket opens, as `loopHandleDown` does: `applyAnimationLength`
+    // settles it too, but on the first move, inside the bracket — and a cancelled untouched lift
+    // removes a ◆ it materialised, which the bracket's revert would then restore as a real key.
+    liftGuard.bank?.();
     lenDrag = {
       startLen: appState.project.frameCount,
       dirty: false,
@@ -1623,16 +1627,18 @@
     );
     if (to === keyDrag.cur) return;
     // Retiming a key re-resolves the segment, so a lifted selection/pose would bake back through
-    // its GRAB-TIME compose and land at the old placement. Discarded here, at the first write that
-    // actually moves the key, rather than at grab: a press that only taps to seek must not throw
-    // away a float, and setActiveLayer/seekPlayhead on that path already bank it (gotcha #9).
+    // its GRAB-TIME compose and land at the old placement. Applied here, at the first write that
+    // actually moves the key (still at its old placement), rather than at grab: a press that only
+    // taps to seek must not settle a float, and setActiveLayer/seekPlayhead on that path already
+    // bank it (gotcha #9).
     if (keyDrag.cur === keyDrag.from) {
-      liftGuard.discard?.();
-      // and RE-TAKE the snapshot, because the discard can itself mutate the document:
-      // `discardActiveEdits` reverts a keyframe an open stroke materialised, so a bracket opened at
+      liftGuard.bank?.();
+      // and RE-TAKE the snapshot, because settling the lift can itself mutate the document:
+      // `bankActiveEdits` commits an open stroke or float (and the keyframe either materialised), and
+      // `discardActiveEdits` reverts such a keyframe, so a bracket opened at
       // grab would contain a cell the discard has since removed — undoing this retime would then
       // resurrect a blank ◆ on a frame that was a hold. Re-snapshotting here (rather than simply
-      // discarding at grab) is what lets both rules hold at once: a tap keeps its float, and the
+      // settling at grab) is what lets both rules hold at once: a tap keeps its float, and the
       // snapshot still post-dates every mutation it is supposed to describe.
       keyDrag.undo = beginStructuralEdit();
     }
@@ -1725,7 +1731,7 @@
     e.stopPropagation(); // the row's own handlers must not also start a gesture (gotcha #12)
     if (!isFinePointer(e) || !isLayerEditable(layer, appState.project.groups)) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    liftGuard.discard?.();
+    liftGuard.bank?.();
     loopDrag = {
       layerId: layer.id,
       frame: r.frame,
@@ -1803,12 +1809,21 @@
     if (plan.kind === "resize" && editable) {
       // `setHoldSpan` splices the cell track, which a live lift/stroke holds a whole-track undo rider
       // against — undoing that lift would then also revert this resize. Must run BEFORE
-      // `beginStructuralEdit`, since the discard reverts any keyframe the lift materialised and that
-      // has to be part of the before-state. (Reachable without a layer/frame change: pressing this
-      // row re-selects the SAME layer, so nothing banks the lift for us.)
-      liftGuard.discard?.();
+      // `beginStructuralEdit`, since applying the lift can materialise a keyframe (a cancelled one
+      // reverts it) and that has to be part of the before-state. (Reachable without a layer/frame
+      // change: pressing this row re-selects the SAME layer, so nothing banks the lift for us.)
+      liftGuard.bank?.();
+      // Settling can change this track (an untouched lift cancels, removing a ◆ it materialised),
+      // so read the grabbed edge again from the track as it now is.
+      const settled = planCellPointer(
+        layer.cells,
+        rowOffset(e),
+        CELL_W,
+        appState.project.frameCount,
+      );
+      if (settled.kind !== "resize") return;
       dragMode = "resize";
-      dragKey = plan.keyIndex;
+      dragKey = settled.keyIndex;
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
       dragUndo = beginStructuralEdit();
@@ -2049,7 +2064,7 @@
     // row keeps a dash, plus refs/audio so clips stay lined up. Not gated on the active layer —
     // skipping a locked row would break the alignment. Insert AFTER the playhead (the current
     // drawing stays put). Short layers are padded up to that column first.
-    liftGuard.discard?.();
+    liftGuard.bank?.();
     const at = appState.playhead + 1;
     commitStructural(() => {
       insertFrameAllLayers(appState.project, at);
@@ -2058,7 +2073,7 @@
   }
   function deleteTool() {
     if (appState.project.frameCount <= 1) return; // never leave a project with no frames
-    liftGuard.discard?.();
+    liftGuard.bank?.();
     commitStructural(() => deleteFrameAllLayers(appState.project, appState.playhead));
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
@@ -2079,7 +2094,7 @@
     // undo steps. A hold over an INKED key is not caught by this: clearing there ends the run.
     if (clearFrameIsNoOp(l.cells, appState.playhead, (c) => isCellEmpty(c, appState.version)))
       return;
-    liftGuard.discard?.(); // may replace a hold with a new canvas; a live lift would target the old one
+    liftGuard.bank?.(); // may replace a hold with a new canvas; a live lift would target the old one
     const { canvas, materialized } = ensureDrawableKeyframe(l, appState.playhead, canvasOps);
     const layerId = l.id; // resolved at restore time: `restoreStructure` can replace the layer object
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -2125,9 +2140,11 @@
     const l = id == null ? undefined : appState.project.layers.find((x) => x.id === id);
     const action = loopBtn.action; // read once: the derived must not change under the commit
     if (l?.kind !== "draw" || !action) return;
+    // Splices/replaces cells; a live lift would target a stale track. Before `back` is measured:
+    // settling the lift can itself change the spans.
+    liftGuard.bank?.();
     const f = appState.playhead;
     const back = defaultLoopBack(spansFor(l, appState.version), f);
-    liftGuard.discard?.(); // splices/replaces cells; a live lift would target a stale track
     commitStructural(() => {
       if (action === "remove") removeLoop(l, f);
       else setLoop(l, f, back);

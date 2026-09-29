@@ -1539,6 +1539,7 @@
 
     selectionRef.current = selection;
     liftGuard.discard = discardActiveEdits;
+    liftGuard.bank = bankActiveEdits;
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
@@ -1750,7 +1751,7 @@
 
   function pasteSelection(): boolean {
     if (!selectionClipboard) return false;
-    liftGuard.discard?.(); // drop any in-progress lift before setting up the new float
+    liftGuard.bank?.(); // apply any in-progress lift before setting up the new float
     const target = activeDrawableCtx();
     if (!target) return false;
     selCtx = target.ctx;
@@ -2556,6 +2557,7 @@
       selection?.cancel(); // stop the marching-ants rAF loop (and revert any live lift) on teardown
       selectionRef.current = null;
       liftGuard.discard = null;
+      liftGuard.bank = null;
       poseActions.active = () => false;
       selectionActions.enterWarp = null;
       selectionActions.copy = null;
@@ -2671,8 +2673,9 @@
       dropStrokeUntilUp = true;
     }
   }
-  // Discard (don't bank) an in-progress lift — for ops that destroy/replace the target canvas or replay
-  // history (resize / replaceProject / undo / redo), where banking has no valid target. Restores the
+  // Discard (don't bank) an in-progress lift — for the ops where applying it is meaningless or unwanted:
+  // replaceProject (the document goes), undo / redo (history replays) and export (see
+  // `liftGuard`). Canvas-recreating ops apply it instead (`liftGuard.bank`). Restores the
   // original pixels via the captured context, so the destructive op then sees the un-lifted cell.
   function discardActiveEdits() {
     if (meshPose) cancelPose();

@@ -7635,3 +7635,32 @@ visible chord. The ported `ropeCatchUp` glide (and `CATCH_UP_MS`) is gone.
   resting-pen points ink Pool reads still start then.
 - Tests: slop-paint's (curve follows the arc and not the chord, the loop bound, corners); 18 in
   `stroke-smoothing.test.ts`.
+
+**An open transform is applied, not cancelled, before a structural op (2026-09-29).** Roadmap port
+item (3), after slop-paint `847f7ee`'s rule: leaving a float without Apply/Cancel applies it, because
+Apply can be undone and Cancel cannot.
+- Before this, 23 ops ran `liftGuard.discard` — merge down, bake (layer / cell transform), flip
+  (layer / group), resize, remove / duplicate layer or group, animation length, delete / move / paste
+  timeline cells, the timeline's key retime, hold resize, loop handle and loop toggle, add / delete
+  frame, clear frame, and pasting pixels over a live float — so a moved selection, a bent pose or an
+  open stroke was thrown away with no undo. They now call **`liftGuard.bank`**
+  (`bankActiveEdits`, the June layer/frame/tool-switch rule, `bff8dbd`): the op then works on what is
+  on screen and pushes its own step after the transform's, so undo takes the op back first and the
+  transform second. An untouched Deform/Pose lift still cancels, and a live Outline preview still
+  cancels (its own rule).
+- **Still `discard`:** `replaceProject` (the document is thrown away), `undo()` / `redo()` (history
+  replays), and `ExportDialog` (the 2026-08-16 audit decision, `777486f`: an export must not commit an
+  edit on the artist's behalf — left as decided).
+- The Timeline retime / hold-resize paths already re-took their structural snapshot after settling
+  the lift; that stays necessary, since applying also mutates the document.
+- No status message, unlike slop-paint's: `statusHint` is overwritten by the next pointer move.
+- **Branch review fixes.** Flip (layer and group) measured its mirror line from the ink bounds BEFORE
+  applying the lift, so a moved float counted as not there (and a group froze that box as its pivot);
+  the apply now runs before the measurement. The ruler length drag, the hold-resize drag and the loop
+  toggle now settle the lift before opening their bracket / reading the track (an untouched Deform or
+  Pose lift still CANCELS on a bank, which can remove a ◆ it materialised; a bracket taken first would
+  have restored it as a real key). Known and left: `keyMoveAt` settles at the first move, after grab,
+  so the same untouched-lift case can leave `keyDrag.from` naming a key that just went back to a hold
+  (narrower than main, where every lift reverted).
+- Desktop Chrome: marquee, move 100 px, Duplicate layer → the float applied in place, a third layer;
+  undo → two layers, moved pixels kept; undo → the original pixels, byte-exact. Not yet seen on iPad.
