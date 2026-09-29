@@ -167,33 +167,57 @@ describe("corners", () => {
   const reach = (pts: { x: number; y: number }[]) =>
     Math.min(...pts.map((p) => Math.hypot(p.x - 300, p.y)));
 
-  it("catchUpPath follows the trail from the point nearest the brush, fading its offset out", () => {
-    const trail = [0, 10, 20, 30, 40].map((x) => ({ x, y: 0, pressure: 0.5 }));
-    const out = catchUpPath(trail, { x: 20, y: 4 }, 100).path;
-    expect(out.map((p) => p.x)).toEqual([30, 40]);
-    expect(out[0].y).toBeCloseTo(2, 9); // halfway along: half the 4 px gap left
-    expect(out[1]).toEqual({ x: 40, y: 0, pressure: 0.5 }); // ends exactly at the pen
+  const tp = (x: number, y: number, t = 0, pressure = 0.5) => ({ x, y, t, pressure });
+
+  it("catchUpPath runs a smooth curve from the brush to the pen, pen's pace and pressure", () => {
+    // straight trail, brush on it behind the pen: the catch-up is the straight run, 2 px apart
+    const trail = [0, 10, 20, 30, 40].map((x, i) => tp(x, 0, i * 10, 0.2 + i * 0.1));
+    const { path, from } = catchUpPath(trail, { x: 20, y: 0 }, 100);
+    expect(from).toEqual(trail[2]);
+    expect(path.at(-1)).toMatchObject({ x: 40, y: 0, t: 40 }); // ends exactly at the pen
+    expect(path.at(-1)!.pressure).toBeCloseTo(0.6, 9);
+    for (const p of path) expect(Math.abs(p.y)).toBeLessThan(1e-9);
+    for (let i = 1; i < path.length; i++) {
+      expect(path[i].x - path[i - 1].x).toBeCloseTo(2, 5);
+      expect(path[i].t).toBeGreaterThanOrEqual(path[i - 1].t);
+    }
     expect(catchUpPath(trail, { x: 40, y: 0 }, 100).path).toEqual([]);
     expect(catchUpPath([], { x: 0, y: 0 }, 100)).toEqual({ path: [], from: null });
-    expect(catchUpPath(trail, { x: 19, y: 2 }, 100).from).toEqual(trail[2]); // where it starts
+  });
+
+  it("catchUpPath leaves heading at the pen and arrives the way the pen moved", () => {
+    // Pen came down the y axis then turned along +x; brush lags up the y axis.
+    const trail = [tp(0, -40), tp(0, -20), tp(0, 0), tp(10, 0), tp(20, 0)];
+    const brush = { x: 0, y: -20 };
+    const { path } = catchUpPath(trail, brush, 100);
+    const dir = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const l = Math.hypot(b.x - a.x, b.y - a.y);
+      return { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+    };
+    const first = dir(brush, path[0]);
+    const toPen = dir(brush, { x: 20, y: 0 });
+    expect(first.x * toPen.x + first.y * toPen.y).toBeGreaterThan(0.99); // no kink where it joins
+    const last = dir(path.at(-2)!, path.at(-1)!);
+    expect(last.x).toBeGreaterThan(0.95); // arrives along +x, as the pen did
+  });
+
+  it("catchUpPath doesn't keep the hand's wobble", () => {
+    // a straight stroke with 1.5 px of hand jitter; the brush on the line 30 px behind
+    const trail = Array.from({ length: 21 }, (_, i) => tp(i * 3, i % 2 ? 1.5 : -1.5, i * 5));
+    trail[20] = tp(60, 0, 100);
+    const { path } = catchUpPath(trail, { x: 30, y: 0 }, 100);
+    // The trail swings ±1.5 px; the pen's last direction (read over 12 px) still tilts a little.
+    expect(Math.max(...path.map((p) => Math.abs(p.y)))).toBeLessThan(1);
   });
 
   it("catchUpPath searches back only so far, so a small loop's older pass isn't taken", () => {
     // A loop: out along y=0, round, and back across the start — the brush sits on the late pass.
-    const trail = [
-      { x: 0, y: 0 },
-      { x: 10, y: 0 },
-      { x: 20, y: 0 },
-      { x: 20, y: 10 },
-      { x: 10, y: 10 },
-      { x: 10, y: 1 }, // crossing back near (10, 0)
-      { x: 10, y: -10 },
-    ];
+    const trail = [tp(0, 0), tp(10, 0), tp(20, 0), tp(20, 10), tp(10, 10), tp(10, 1), tp(10, -10)];
     // The brush, on the late pass, happens to be nearer the OLD pass's (10, 0): unbounded, that
-    // would be taken and the catch-up would retrace the loop; bounded, it's out of reach.
+    // would be taken as where the catch-up starts; bounded, it's out of reach.
     const brush = { x: 10, y: 0.2 };
-    expect(catchUpPath(trail, brush, 1000).path.length).toBe(5); // the wrong pass
-    expect(catchUpPath(trail, brush, 15).path).toEqual([{ x: 10, y: -10 }]);
+    expect(catchUpPath(trail, brush, 1000).from).toEqual(trail[1]); // the wrong pass
+    expect(catchUpPath(trail, brush, 15).from).toEqual(trail[5]);
   });
 
   it("pauseBreaks finds a hold, and a still gap with no events between", () => {
@@ -223,7 +247,7 @@ describe("corners", () => {
    *  STILL_PX from the last; once still for PAUSE_MS, the line catches up along the trail. */
   function trailRope(pts: { x: number; y: number; timestamp: number }[], length: number) {
     let b = { x: pts[0].x, y: pts[0].y };
-    let anchor = { x: pts[0].x, y: pts[0].y };
+    let anchor = { x: pts[0].x, y: pts[0].y, t: pts[0].timestamp, pressure: 0.5 };
     let since = pts[0].timestamp;
     const trail = [anchor];
     const out = [b];
@@ -234,7 +258,7 @@ describe("corners", () => {
           out.push(...path);
           if (path.length) b = path[path.length - 1];
         }
-        anchor = { x: p.x, y: p.y };
+        anchor = { x: p.x, y: p.y, t: p.timestamp, pressure: 0.5 };
         since = p.timestamp;
         trail.push(anchor);
       }
@@ -262,10 +286,11 @@ describe("corners", () => {
     const tip = pts[240];
     // the rope's state just as the pen stops, then the catch-up as input.ts does it
     let b = { x: pts[0].x, y: pts[0].y };
-    const trail = [{ x: pts[0].x, y: pts[0].y }];
+    const trail = [{ x: pts[0].x, y: pts[0].y, t: 0, pressure: 0.5 }];
     for (const p of pts) {
       const last = trail[trail.length - 1];
-      if (Math.hypot(p.x - last.x, p.y - last.y) > STILL_PX) trail.push({ x: p.x, y: p.y });
+      if (Math.hypot(p.x - last.x, p.y - last.y) > STILL_PX)
+        trail.push({ x: p.x, y: p.y, t: p.timestamp, pressure: 0.5 });
       b = ropeStep(b, p, ropeLength(1));
     }
     const { path } = catchUpPath(trail, b, 2 * ropeLength(1) + 2 * STILL_PX);

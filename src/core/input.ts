@@ -7,6 +7,7 @@ import {
   trailTimeAt,
   ropeLength,
   ropeStep,
+  type TrailPt,
 } from "./stroke-smoothing";
 
 export interface InputPoint {
@@ -66,10 +67,9 @@ export function setupInput(
   }
   let rope: { x: number; y: number } | null = null;
   // The pen's recent path (client px), a point each time it has moved STILL_PX from the last —
-  // so a held pen's tremble adds nothing. When the rope has to catch up (a pause, a lift) the line
-  // follows THIS to the pen instead of a straight chord across the curve it just drew
-  // (slop-paint b158081).
-  type TrailPt = { x: number; y: number; pressure: number; t: number };
+  // so a held pen's tremble adds nothing. When the rope has to catch up (a pause, a lift) this gives
+  // the pen's last direction, pressure and times for the catch-up curve (`catchUpPath`, slop-paint
+  // b158081 then 9180de3).
   let trail: TrailPt[] = [];
   let trailLen = 0;
   // Corners: where the pen last moved more than STILL_PX (the trail's last point), and when. Held
