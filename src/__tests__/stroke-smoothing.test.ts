@@ -7,6 +7,7 @@ import {
   pathSmoothRadius,
   pauseBreaks,
   catchUpPath,
+  replayTimes,
   ropeLength,
   ropeStep,
   smoothPath,
@@ -168,12 +169,13 @@ describe("corners", () => {
 
   it("catchUpPath follows the trail from the point nearest the brush, fading its offset out", () => {
     const trail = [0, 10, 20, 30, 40].map((x) => ({ x, y: 0, pressure: 0.5 }));
-    const out = catchUpPath(trail, { x: 20, y: 4 }, 100);
+    const out = catchUpPath(trail, { x: 20, y: 4 }, 100).path;
     expect(out.map((p) => p.x)).toEqual([30, 40]);
     expect(out[0].y).toBeCloseTo(2, 9); // halfway along: half the 4 px gap left
     expect(out[1]).toEqual({ x: 40, y: 0, pressure: 0.5 }); // ends exactly at the pen
-    expect(catchUpPath(trail, { x: 40, y: 0 }, 100)).toEqual([]);
-    expect(catchUpPath([], { x: 0, y: 0 }, 100)).toEqual([]);
+    expect(catchUpPath(trail, { x: 40, y: 0 }, 100).path).toEqual([]);
+    expect(catchUpPath([], { x: 0, y: 0 }, 100)).toEqual({ path: [], from: null });
+    expect(catchUpPath(trail, { x: 19, y: 2 }, 100).from).toEqual(trail[2]); // where it starts
   });
 
   it("catchUpPath searches back only so far, so a small loop's older pass isn't taken", () => {
@@ -190,8 +192,8 @@ describe("corners", () => {
     // The brush, on the late pass, happens to be nearer the OLD pass's (10, 0): unbounded, that
     // would be taken and the catch-up would retrace the loop; bounded, it's out of reach.
     const brush = { x: 10, y: 0.2 };
-    expect(catchUpPath(trail, brush, 1000).length).toBe(5); // the wrong pass
-    expect(catchUpPath(trail, brush, 15)).toEqual([{ x: 10, y: -10 }]);
+    expect(catchUpPath(trail, brush, 1000).path.length).toBe(5); // the wrong pass
+    expect(catchUpPath(trail, brush, 15).path).toEqual([{ x: 10, y: -10 }]);
   });
 
   it("pauseBreaks finds a hold, and a still gap with no events between", () => {
@@ -228,7 +230,7 @@ describe("corners", () => {
     for (const p of pts) {
       if (Math.hypot(p.x - anchor.x, p.y - anchor.y) > STILL_PX) {
         if (p.timestamp - since >= PAUSE_MS) {
-          const path = catchUpPath(trail, b, 2 * length + 2 * STILL_PX);
+          const { path } = catchUpPath(trail, b, 2 * length + 2 * STILL_PX);
           out.push(...path);
           if (path.length) b = path[path.length - 1];
         }
@@ -266,7 +268,7 @@ describe("corners", () => {
       if (Math.hypot(p.x - last.x, p.y - last.y) > STILL_PX) trail.push({ x: p.x, y: p.y });
       b = ropeStep(b, p, ropeLength(1));
     }
-    const path = catchUpPath(trail, b, 2 * ropeLength(1) + 2 * STILL_PX);
+    const { path } = catchUpPath(trail, b, 2 * ropeLength(1) + 2 * STILL_PX);
     expect(path.length).toBeGreaterThan(5);
     expect(Math.hypot(path.at(-1)!.x - tip.x, path.at(-1)!.y - tip.y)).toBeLessThan(
       STILL_PX + 1e-9,
@@ -279,5 +281,27 @@ describe("corners", () => {
     const offLine = (p: { x: number; y: number }) =>
       Math.abs((p.x - sx) * dy - (p.y - sy) * dx) / len;
     expect(Math.max(...path.map(offLine))).toBeGreaterThan(1.5);
+  });
+});
+
+describe("replayTimes", () => {
+  it("replays the pen's own pace from the line's last point", () => {
+    // the pen passed these points at 100, 110, 130 ms, starting from 90; the line's last point is
+    // at 200 ms — so the catch-up runs 210, 220, 240: the same 10/10/20 ms gaps the pen took.
+    expect(replayTimes(90, [100, 110, 130], 200, 1000)).toEqual([210, 220, 240]);
+  });
+
+  it("never runs past now, and never goes backwards", () => {
+    expect(replayTimes(0, [50, 100, 150], 900, 1000)).toEqual([950, 1000, 1000]);
+    expect(replayTimes(100, [90, 95, 120], 500, 1000)).toEqual([500, 500, 520]);
+  });
+
+  it("gives Ink's Pool no false linger across the catch-up", () => {
+    // Pen at 0.5 px/ms, then a stop: the old catch-up put every point at one time after a 60 ms
+    // gap, which read as ~0 px/ms over the hop (a pool). Replayed, each step keeps 0.5 px/ms.
+    const trailT = [0, 20, 40, 60, 80]; // 10 px apart
+    const t = replayTimes(0, trailT.slice(1), 100, 1000);
+    const speeds = t.map((v, i) => 10 / (v - (i ? t[i - 1] : 100)));
+    for (const v of speeds) expect(v).toBeCloseTo(0.5, 9);
   });
 });
