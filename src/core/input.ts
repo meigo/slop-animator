@@ -4,7 +4,7 @@ import {
   STILL_PX,
   TRAIL_SPAN,
   catchUpPath,
-  replayTimes,
+  trailTimeAt,
   ropeLength,
   ropeStep,
 } from "./stroke-smoothing";
@@ -93,29 +93,23 @@ export function setupInput(
 
   const pressureOf = (e: PointerEvent) => (e.pointerType === "mouse" ? 0 : e.pressure);
 
-  /** Bring the lagging line up to the pen along the pen's own path, timed as the pen went (up to
-   *  `now` at the latest — see `replayTimes`; one shared timestamp read to ink's Pool as a linger
-   *  and pooled from the line's end to the tip, slop-paint 0a38872). Only with a string: at Stream 0
-   *  (every non-brush tool) the brush IS the pen, and a catch-up would pull it back up to STILL_PX
-   *  to the last trail point — nudging a held gizmo handle. */
-  function catchUpAlongTrail(now: number) {
+  /** Bring the lagging line up to the pen along the pen's own path, each point stamped with the
+   *  time the pen was there (never earlier than the line's last point): the line keeps the pen's
+   *  own pace, which is what ink's Pool reads (slop-paint 0a38872, 699d772). Only with a string:
+   *  at Stream 0 (every non-brush tool) the brush IS the pen, and a catch-up would pull it back up
+   *  to STILL_PX to the last trail point — nudging a held gizmo handle. */
+  function catchUpAlongTrail() {
     const len = getRopeLength();
     if (!rope || !penEvent || len === 0) return;
-    const { path, from } = catchUpPath(trail, rope, 2 * len + 2 * STILL_PX);
-    if (!path.length || !from) return;
-    const lastT = currentPoints[currentPoints.length - 1]?.timestamp ?? now;
-    const times = replayTimes(
-      from.t,
-      path.map((p) => p.t),
-      lastT,
-      now,
-    );
-    const ev = penEvent;
-    path.forEach((p, i) => {
-      addPoint({ ...getPoint(ev, p.x, p.y), pressure: p.pressure, timestamp: times[i] });
-    });
+    const { path } = catchUpPath(trail, rope, 2 * len + 2 * STILL_PX);
+    if (!path.length) return;
+    let t = currentPoints[currentPoints.length - 1]?.timestamp ?? path[0].t;
+    for (const p of path) {
+      t = Math.max(t, p.t);
+      addPoint({ ...getPoint(penEvent, p.x, p.y), pressure: p.pressure, timestamp: t });
+    }
     const end = path[path.length - 1];
-    if (end) rope = { x: end.x, y: end.y };
+    rope = { x: end.x, y: end.y };
   }
 
   /** The event as a stroke point, at client position (`cx`, `cy`) — the pen's own unless the rope
@@ -188,9 +182,9 @@ export function setupInput(
       if (Math.hypot(now.x - stillAt.x, now.y - stillAt.y) > STILL_PX) {
         // Setting off after a pause: if the frame loop hasn't caught up (frames late or not
         // running), finish it now — to where the pen came to rest, before this new point joins the
-        // trail — so the corner is kept regardless. Stamped with the pause's start, so Smooth sees
-        // the pause too.
-        if (ce.timeStamp - stillSince >= PAUSE_MS) catchUpAlongTrail(stillSince);
+        // trail — so the corner is kept regardless. The catch-up ends stamped with when the pen got
+        // there (the pause's start), so Smooth sees the pause too.
+        if (ce.timeStamp - stillSince >= PAUSE_MS) catchUpAlongTrail();
         stillAt = now;
         stillSince = ce.timeStamp;
         trailPush({ ...now, pressure: pressureOf(ce), t: ce.timeStamp });
@@ -203,10 +197,23 @@ export function setupInput(
         // Slack. Once the rope has caught up with a resting pen, keep its events as points at
         // the rest point: the line doesn't move, but the ink engine's Pool reads their timestamps
         // (`dwellSwell`) and a press held there still changes pressure. Before that, drop them.
-        if (rope.x !== stillAt.x || rope.y !== stillAt.y) continue;
+        // Stamped with the event's own time — the pen really is there now — not `trailTimeAt`
+        // below, which would give every one of them the moment the pen arrived: no time passing,
+        // so no pool.
+        if (rope.x === stillAt.x && rope.y === stillAt.y) addPoint(getPoint(ce, rope.x, rope.y));
+        continue;
       }
       rope = next;
-      addPoint(getPoint(ce, next.x, next.y));
+      // Stamped with when the PEN was here (see `trailTimeAt`), not now: the line runs up to a
+      // string's length behind, and "now" put the pen's slowdown into it that far early — ink's
+      // Pool swelled a knot before the real end. Never earlier than the point before.
+      const pt = getPoint(ce, next.x, next.y);
+      if (len > 0) {
+        const when = trailTimeAt(trail, next, 2 * len + 2 * STILL_PX);
+        const prevT = currentPoints[currentPoints.length - 1]?.timestamp ?? pt.timestamp;
+        pt.timestamp = Math.max(prevT, Math.min(pt.timestamp, when ?? pt.timestamp));
+      }
+      addPoint(pt);
     }
     // Only when a point was added. A slack rope adds none, and a repeat call with the first point
     // alone reads to a stroke handler as a NEW stroke (slop-paint 2b7f465: its undo snapshot was
@@ -222,7 +229,7 @@ export function setupInput(
     catchUpFrame = requestAnimationFrame(catchUp);
     if (now - stillSince < PAUSE_MS) return;
     const before = currentPoints.length;
-    catchUpAlongTrail(now);
+    catchUpAlongTrail();
     if (currentPoints.length !== before) onStroke(currentPoints, false);
   }
 
@@ -258,7 +265,7 @@ export function setupInput(
     cancelAnimationFrame(catchUpFrame);
     // The stroke ends at the pen, not where the rope held the brush: the line catches up along the
     // pen's path (not a straight chord), so a short hatch still reaches the lift point.
-    catchUpAlongTrail(e.timeStamp);
+    catchUpAlongTrail();
     rope = null;
     penEvent = null;
     // Pen pointerup reports pressure 0; keep the last move's pressure so the stroke doesn't taper.

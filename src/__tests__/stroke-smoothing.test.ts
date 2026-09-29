@@ -7,7 +7,7 @@ import {
   pathSmoothRadius,
   pauseBreaks,
   catchUpPath,
-  replayTimes,
+  trailTimeAt,
   ropeLength,
   ropeStep,
   smoothPath,
@@ -284,24 +284,54 @@ describe("corners", () => {
   });
 });
 
-describe("replayTimes", () => {
-  it("replays the pen's own pace from the line's last point", () => {
-    // the pen passed these points at 100, 110, 130 ms, starting from 90; the line's last point is
-    // at 200 ms — so the catch-up runs 210, 220, 240: the same 10/10/20 ms gaps the pen took.
-    expect(replayTimes(90, [100, 110, 130], 200, 1000)).toEqual([210, 220, 240]);
+describe("trailTimeAt", () => {
+  const trail = [
+    { x: 0, y: 0, t: 0 },
+    { x: 10, y: 0, t: 100 },
+    { x: 20, y: 0, t: 150 },
+  ];
+
+  it("interpolates the pen's time along the trail", () => {
+    expect(trailTimeAt(trail, { x: 5, y: 1 }, 100)).toBeCloseTo(50, 9);
+    expect(trailTimeAt(trail, { x: 15, y: -2 }, 100)).toBeCloseTo(125, 9);
+    expect(trailTimeAt(trail, { x: 20, y: 0 }, 100)).toBe(150);
+    expect(trailTimeAt([], { x: 0, y: 0 }, 100)).toBeNull();
   });
 
-  it("never runs past now, and never goes backwards", () => {
-    expect(replayTimes(0, [50, 100, 150], 900, 1000)).toEqual([950, 1000, 1000]);
-    expect(replayTimes(100, [90, 95, 120], 500, 1000)).toEqual([500, 500, 520]);
-  });
-
-  it("gives Ink's Pool no false linger across the catch-up", () => {
-    // Pen at 0.5 px/ms, then a stop: the old catch-up put every point at one time after a 60 ms
-    // gap, which read as ~0 px/ms over the hop (a pool). Replayed, each step keeps 0.5 px/ms.
-    const trailT = [0, 20, 40, 60, 80]; // 10 px apart
-    const t = replayTimes(0, trailT.slice(1), 100, 1000);
-    const speeds = t.map((v, i) => 10 / (v - (i ? t[i - 1] : 100)));
-    for (const v of speeds) expect(v).toBeCloseTo(0.5, 9);
+  it("puts the pen's slowdown where it happened, not a string's length early", () => {
+    // The pen cruises at 1 px/ms, then slows over its last 40 px to a stop — the reported case:
+    // stamped with the event's time, the lagging line slowed a string's length BEFORE the end,
+    // and Ink's Pool swelled a knot there.
+    const pen: { x: number; y: number; timestamp: number }[] = [];
+    let x = 0;
+    let t = 0;
+    while (x < 260) pen.push({ x: (x += 1), y: 0, timestamp: (t += 1) }); // 1 px/ms
+    while (x < 300) pen.push({ x: (x += 0.2), y: 0, timestamp: (t += 1) }); // 0.2 px/ms
+    const L = ropeLength(1);
+    let b = { x: 0, y: 0 };
+    let anchor = { x: 0, y: 0, t: 0 };
+    const trail = [anchor];
+    const line: { x: number; t: number; tNow: number }[] = [];
+    for (const p of pen) {
+      if (Math.abs(p.x - anchor.x) > STILL_PX)
+        trail.push((anchor = { x: p.x, y: 0, t: p.timestamp }));
+      const next = ropeStep(b, p, L);
+      if (next === b) continue;
+      b = next;
+      line.push({ x: b.x, t: trailTimeAt(trail, b, 2 * L + 2 * STILL_PX)!, tNow: p.timestamp });
+    }
+    // Speed over the line's stretch well before the pen's slowdown (x 100–200).
+    const speed = (key: "t" | "tNow") => {
+      const seg = line.filter((q) => q.x >= 100 && q.x <= 200);
+      return (seg.at(-1)!.x - seg[0].x) / (seg.at(-1)![key] - seg[0][key]);
+    };
+    expect(speed("t")).toBeCloseTo(1, 1); // the pen's own 1 px/ms
+    // Where the line reaches 220–260 the PEN was already crawling: stamped "now", that stretch
+    // read as slow — the knot. Stamped with the pen's time, it's still cruising.
+    const late = line.filter((q) => q.x >= 222 && q.x <= 258);
+    const v = (key: "t" | "tNow") =>
+      (late.at(-1)!.x - late[0].x) / (late.at(-1)![key] - late[0][key]);
+    expect(v("t")).toBeGreaterThan(0.9);
+    expect(v("tNow")).toBeLessThan(0.3);
   });
 });
