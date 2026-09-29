@@ -652,19 +652,19 @@
     }
     history.push(
       pixelCommand(
-        ctx.canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
-        () => {
+        (put) => {
           if (materialized) restoreTrackById(layerId, materialized.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           recomposite();
         },
-        before,
-        after,
       ),
     );
     bump();
@@ -743,19 +743,19 @@
     }
     history.push(
       pixelCommand(
-        ctx.canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           if (materialized) restoreTrackById(layerId, materialized.before); // a fill on a hold made this ◆
           recomposite();
         },
-        () => {
+        (put) => {
           if (materialized) restoreTrackById(layerId, materialized.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           recomposite();
         },
-        before,
-        after,
       ),
     );
     bump();
@@ -1175,21 +1175,21 @@
     const mat = strokeMaterialized;
     history.push(
       pixelCommand(
-        target.canvas,
-        () => {
-          target.putImageData(before, 0, 0);
+        target,
+        before,
+        after,
+        (put) => {
+          put();
           if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
           recomposite();
         },
-        () => {
+        (put) => {
           // Cell track FIRST: the canvas `target` writes into only belongs to the document once its
           // cell is back in the track.
           if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
-          target.putImageData(after, 0, 0);
+          put();
           recomposite();
         },
-        before,
-        after,
       ),
     );
     strokeCanvas = null;
@@ -1500,19 +1500,19 @@
       const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
       history.push(
         pixelCommand(
-          ctx.canvas,
-          () => {
-            ctx.putImageData(before, 0, 0);
+          ctx,
+          before,
+          after,
+          (put) => {
+            put();
             if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // lifting on a hold made this ◆
             recomposite();
           },
-          () => {
+          (put) => {
             if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
-            ctx.putImageData(after, 0, 0);
+            put();
             recomposite();
           },
-          before,
-          after,
         ),
       );
       clearLiftTarget();
@@ -1724,19 +1724,19 @@
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
-        ctx.canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           if (materialized) restoreTrackById(layerId, materialized.before); // deleting on a hold made this ◆
           bump();
         },
-        () => {
+        (put) => {
           if (materialized) restoreTrackById(layerId, materialized.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           bump();
         },
-        before,
-        after,
       ),
     );
     selection.cancel(); // clear the marquee (no float → onCancel no-ops)
@@ -2075,19 +2075,19 @@
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     history.push(
       pixelCommand(
-        ctx.canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // posing on a hold made this ◆
           recomposite();
         },
-        () => {
+        (put) => {
           if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           recomposite();
         },
-        before,
-        after,
       ),
     );
     meshPose = null;
@@ -2314,19 +2314,19 @@
     }
     history.push(
       pixelCommand(
-        ctx.canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           if (layerId !== null && mat) restoreTrackById(layerId, mat.before); // outlining a hold made this ◆
           recomposite();
         },
-        () => {
+        (put) => {
           if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           recomposite();
         },
-        before,
-        after,
       ),
     );
     clearOutline();

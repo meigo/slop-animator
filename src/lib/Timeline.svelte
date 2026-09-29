@@ -2091,21 +2091,21 @@
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);
     history.push(
       pixelCommand(
-        canvas,
-        () => {
-          ctx.putImageData(before, 0, 0);
+        ctx,
+        before,
+        after,
+        (put) => {
+          put();
           // Clearing a HOLD materialises a keyframe first; undo removes that too, so the frame goes
           // back to being a hold rather than staying an empty ◆.
           if (materialized) restoreTrackById(layerId, materialized.before);
           bump();
         },
-        () => {
+        (put) => {
           if (materialized) restoreTrackById(layerId, materialized.after);
-          ctx.putImageData(after, 0, 0);
+          put();
           bump();
         },
-        before,
-        after,
       ),
     );
     bump();

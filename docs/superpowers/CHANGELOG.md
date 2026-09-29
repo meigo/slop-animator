@@ -7591,3 +7591,28 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   caller since `2d51da4` (2026-06-17) moved the eraser toggle to a one-finger double-tap, because the
   two tip taps left dots; slop-paint deleted its copy in `907b20b`. The Pencil's barrel double-tap is
   not exposed to web apps at all.
+
+**Pixel undo keeps only the tiles a step changed — ported from slop-paint (2026-09-29).** Spec
+`docs/superpowers/specs/2026-09-29-tiled-undo-design.md`, plan
+`docs/superpowers/plans/2026-09-29-tiled-undo.md`. Source: slop-paint `610d67d`.
+- **Why.** Every `pixelCommand` kept two whole-canvas `ImageData`s. `DPR` is fixed at 1 here, so at
+  1920×1080 a step was 16.6 MB and the 256 MB budget held 16 steps (the roadmap note's "~4" was
+  slop-paint's dpr-2 number; 4K here is ~4), and the stack sat near 256 MB after ~16 strokes, which
+  matters on iPad.
+- **What.** `history.ts` gains `changedTiles` / `cropPixels` (64-px tiles, 32-bit compare, edge tiles
+  clipped). `pixelCommand(ctx, before, after, undo(put), redo(put))` crops the changed tiles of both
+  sides once, keeps neither full snapshot, and hands the caller a `put` that writes its side back
+  (`ImageData`s are made at put time). Budget `bytes` = the tiles. Size mismatch (not expected) keeps
+  both whole. `markInkChanged` unchanged.
+- **Call sites (9, unchanged in behaviour):** click fill, enclosed fill, stroke commit, selection
+  commit, delete selection, pose apply, outline apply (Canvas.svelte), clear frame (Timeline.svelte).
+  `put()` sits exactly where `putImageData(before|after, 0, 0)` was, so redo still restores the cell
+  track before the pixels. No callback references `before` / `after` (a closure that did would keep
+  the full snapshots alive).
+- Tests: `history-bounds.test.ts` (11): slop-paint's tile/crop tests, the budget at 1080p (a 16 px
+  corner-to-corner line fits ≥ 50 steps), and `pixelCommand` with stubbed `ImageData` and context
+  (three-step undo/redo round trip on a canvas that is not a tile multiple, tile-only bytes and
+  writes, an unchanged step still running its callbacks, size-mismatch fallback).
+- Desktop Chrome on a 1280×720 document: three strokes and a fill, then undo ×4 and redo ×4, each
+  compared pixel for pixel with the recorded state: all exact. The four steps took 7.9 MB against
+  29.5 MB whole. iPad, deployed branch build: the user reported it "seems to be ok".

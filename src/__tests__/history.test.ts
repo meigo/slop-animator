@@ -132,15 +132,17 @@ describe("pixelCommand marks its canvas's ink as changed", () => {
     const { pixelCommand } = await import("../anim/history");
     const { inkRevision } = await import("../lib/cell-ink");
     const canvas = {} as HTMLCanvasElement;
-    const img = { data: { byteLength: 4 } } as unknown as ImageData;
+    const ctx = { canvas } as CanvasRenderingContext2D;
+    // Identical snapshots: no tiles, so no ImageData is made (node has none).
+    const img = { width: 1, height: 1, data: new Uint8ClampedArray(4) } as ImageData;
     let undone = 0,
       redone = 0;
     const cmd = pixelCommand(
-      canvas,
+      ctx,
+      img,
+      img,
       () => undone++,
       () => redone++,
-      img,
-      img,
     );
     expect(inkRevision(canvas)).toBe(1);
     cmd.undo();
