@@ -7616,3 +7616,22 @@ in the slop-paint session: the same four menus, in the same order and wording, i
 - Desktop Chrome on a 1280×720 document: three strokes and a fill, then undo ×4 and redo ×4, each
   compared pixel for pixel with the recorded state: all exact. The four steps took 7.9 MB against
   29.5 MB whole. iPad, deployed branch build: the user reported it "seems to be ok".
+
+**Stream catches up along the pen's path, not in a straight line (2026-09-29).** Port of slop-paint
+`b158081`, flagged by the slop-paint session the same day: at high Stream, stopping the pen (or
+lifting it) drew a straight line from the lagging end of the line to the pen tip — on a curve, a
+visible chord. The ported `ropeCatchUp` glide (and `CATCH_UP_MS`) is gone.
+- `input.ts` keeps a trail of the pen's raw client-px points, a new one only when the pen has moved
+  more than `STILL_PX` (the same branch that moves `stillAt`), each with its pressure, trimmed to
+  `TRAIL_SPAN` (3) × `ROPE_MAX_PX` of path.
+- `catchUpPath(trail, brush, maxBack)` (`stroke-smoothing.ts`) returns the trail after the point
+  nearest the brush — searched back from the pen only up to `2 · rope + 2 · STILL_PX`, so a small
+  loop's older pass is not taken — shifted by the brush's offset from it, fading to zero at the pen:
+  it starts where the line is, keeps the path's shape and ends at the pen. Used at the per-frame
+  pause check (once still for `PAUSE_MS`, all at once), when setting off after a pause (before the
+  new trail point, stamped with the pause's start) and on lift (before the lift point).
+- **Kept from this app's port:** no catch-up at Stream 0 (the guard moved into `catchUpAlongTrail`);
+  after a catch-up the line ends exactly on the trail's last point, which is `stillAt`, so the
+  resting-pen points ink Pool reads still start then.
+- Tests: slop-paint's (curve follows the arc and not the chord, the loop bound, corners); 18 in
+  `stroke-smoothing.test.ts`.

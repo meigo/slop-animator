@@ -12,7 +12,8 @@
  * settles as the stroke grows past it).
  *
  * Both keep a CORNER where the pen pauses: a pen held nearly still for `PAUSE_MS` pulls the rope
- * in (`ropeCatchUp`), so the line reaches the corner before setting off again, and the path is
+ * in ALONG THE PEN'S OWN PATH (`catchUpPath`) — a straight pull cut across a curve — so the line
+ * reaches the corner before setting off again (a lift catches up the same way), and the path is
  * smoothed leg by leg between pauses (`pauseBreaks`) when Sharp corners is on, so the averaging
  * never spans the corner (off by default: the rounded corner is a look people like).
  * A turn made without stopping still rounds.
@@ -28,8 +29,9 @@ interface Pt {
 export const PAUSE_MS = 50;
 /** How far a pausing pen may still tremble (screen px). */
 export const STILL_PX = 3;
-/** Once paused, the rope pulls in with this time constant (ms): at the corner within ~0.1 s. */
-export const CATCH_UP_MS = 25;
+/** The pen's recent path is kept for this many times the string's length — more than the rope
+ *  can ever lag, so the catch-up always finds where the brush is. */
+export const TRAIL_SPAN = 3;
 
 /** Stream 100% = a string this long (screen px). */
 export const ROPE_MAX_PX = 40;
@@ -54,16 +56,47 @@ export function ropeStep(brush: Pt, pen: Pt, length: number): Pt {
   return { x: brush.x + dx * k, y: brush.y + dy * k };
 }
 
-/** The brush `dtMs` later while the pen pauses at `pen`: an exponential glide there, snapped to
- *  it when under half a px away. */
-export function ropeCatchUp(brush: Pt, pen: Pt, dtMs: number): Pt {
-  const dx = pen.x - brush.x;
-  const dy = pen.y - brush.y;
-  if (Math.hypot(dx, dy) < 0.5) return dx || dy ? pen : brush;
-  if (!(dtMs > 0)) return brush;
-  const k = 1 - Math.exp(-dtMs / CATCH_UP_MS);
-  const next = { x: brush.x + dx * k, y: brush.y + dy * k };
-  return Math.hypot(pen.x - next.x, pen.y - next.y) < 0.5 ? pen : next;
+/**
+ * The points that take the lagging brush to the end of `trail` — the pen's recent path, oldest
+ * first — ALONG it, not in a straight chord across the curve just drawn. The brush rides a little
+ * inside the pen's curves (a rope's nature: ~8 px on a 100 px radius at full Stream), so the path
+ * is taken from the trail point nearest the brush and shifted by that gap, the shift fading to
+ * nothing by the pen: it starts where the line is, keeps the pen path's shape, and ends at the
+ * pen. Empty when the brush is already at the end. Only the last `maxBack` of path (from the pen
+ * back) is searched: the brush is never further behind, and on a small loop an older pass can
+ * come nearer than the right one.
+ */
+export function catchUpPath<T extends Pt>(trail: readonly T[], brush: Pt, maxBack: number): T[] {
+  const n = trail.length;
+  if (n === 0) return [];
+  let nearest = n - 1;
+  let best = Math.hypot(trail[n - 1].x - brush.x, trail[n - 1].y - brush.y);
+  let back = 0;
+  for (let i = n - 2; i >= 0; i--) {
+    back += Math.hypot(trail[i + 1].x - trail[i].x, trail[i + 1].y - trail[i].y);
+    if (back > maxBack) break;
+    const d = Math.hypot(trail[i].x - brush.x, trail[i].y - brush.y);
+    if (d < best) {
+      best = d;
+      nearest = i;
+    }
+  }
+  const rest = trail.slice(nearest + 1);
+  if (!rest.length) return [];
+  const ox = brush.x - trail[nearest].x;
+  const oy = brush.y - trail[nearest].y;
+  const seg: number[] = [];
+  let total = 0;
+  let prev: Pt = trail[nearest];
+  for (const p of rest) {
+    total += Math.hypot(p.x - prev.x, p.y - prev.y);
+    seg.push(total);
+    prev = p;
+  }
+  return rest.map((p, i) => {
+    const k = total > 0 ? 1 - seg[i] / total : 0;
+    return { ...p, x: p.x + ox * k, y: p.y + oy * k };
+  });
 }
 
 /** Smooth `smoothing` (0–100) as a path-averaging radius in DOCUMENT px at `zoom` (screen px per

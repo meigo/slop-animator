@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  CATCH_UP_MS,
   PAUSE_MS,
   STILL_PX,
   ROPE_MAX_PX,
   SMOOTH_MAX_PX,
   pathSmoothRadius,
   pauseBreaks,
-  ropeCatchUp,
+  catchUpPath,
   ropeLength,
   ropeStep,
   smoothPath,
@@ -167,13 +166,32 @@ describe("corners", () => {
   const reach = (pts: { x: number; y: number }[]) =>
     Math.min(...pts.map((p) => Math.hypot(p.x - 300, p.y)));
 
-  it("ropeCatchUp glides to the pen and snaps when close", () => {
-    const pen = { x: 10, y: 0 };
-    const a = ropeCatchUp({ x: 0, y: 0 }, pen, CATCH_UP_MS);
-    expect(a.x).toBeCloseTo(10 * (1 - Math.exp(-1)), 6);
-    expect(ropeCatchUp({ x: 9.7, y: 0 }, pen, 1)).toBe(pen);
-    const still = { x: 0, y: 0 };
-    expect(ropeCatchUp(still, pen, 0)).toBe(still);
+  it("catchUpPath follows the trail from the point nearest the brush, fading its offset out", () => {
+    const trail = [0, 10, 20, 30, 40].map((x) => ({ x, y: 0, pressure: 0.5 }));
+    const out = catchUpPath(trail, { x: 20, y: 4 }, 100);
+    expect(out.map((p) => p.x)).toEqual([30, 40]);
+    expect(out[0].y).toBeCloseTo(2, 9); // halfway along: half the 4 px gap left
+    expect(out[1]).toEqual({ x: 40, y: 0, pressure: 0.5 }); // ends exactly at the pen
+    expect(catchUpPath(trail, { x: 40, y: 0 }, 100)).toEqual([]);
+    expect(catchUpPath([], { x: 0, y: 0 }, 100)).toEqual([]);
+  });
+
+  it("catchUpPath searches back only so far, so a small loop's older pass isn't taken", () => {
+    // A loop: out along y=0, round, and back across the start — the brush sits on the late pass.
+    const trail = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 10 },
+      { x: 10, y: 10 },
+      { x: 10, y: 1 }, // crossing back near (10, 0)
+      { x: 10, y: -10 },
+    ];
+    // The brush, on the late pass, happens to be nearer the OLD pass's (10, 0): unbounded, that
+    // would be taken and the catch-up would retrace the loop; bounded, it's out of reach.
+    const brush = { x: 10, y: 0.2 };
+    expect(catchUpPath(trail, brush, 1000).length).toBe(5); // the wrong pass
+    expect(catchUpPath(trail, brush, 15)).toEqual([{ x: 10, y: -10 }]);
   });
 
   it("pauseBreaks finds a hold, and a still gap with no events between", () => {
@@ -199,25 +217,67 @@ describe("corners", () => {
     expect(off).toBeLessThan(reach(smoothPath(lStroke(0), r)));
   });
 
-  it("Stream reaches the corner when the pen pauses, and cuts it when it doesn't", () => {
-    // The rope as input.ts runs it: a step per pen event, catch-up once still for PAUSE_MS.
-    function trail(pts: ReturnType<typeof lStroke>) {
-      let b = { x: pts[0].x, y: pts[0].y };
-      let anchor = b;
-      let since = 0;
-      const out = [b];
-      for (const p of pts) {
-        if (Math.hypot(p.x - anchor.x, p.y - anchor.y) > STILL_PX) {
-          anchor = p;
-          since = p.timestamp;
+  /** The rope as input.ts runs it: a step per pen event; a trail point each time the pen moves
+   *  STILL_PX from the last; once still for PAUSE_MS, the line catches up along the trail. */
+  function trailRope(pts: { x: number; y: number; timestamp: number }[], length: number) {
+    let b = { x: pts[0].x, y: pts[0].y };
+    let anchor = { x: pts[0].x, y: pts[0].y };
+    let since = pts[0].timestamp;
+    const trail = [anchor];
+    const out = [b];
+    for (const p of pts) {
+      if (Math.hypot(p.x - anchor.x, p.y - anchor.y) > STILL_PX) {
+        if (p.timestamp - since >= PAUSE_MS) {
+          const path = catchUpPath(trail, b, 2 * length + 2 * STILL_PX);
+          out.push(...path);
+          if (path.length) b = path[path.length - 1];
         }
-        b = ropeStep(b, p, ropeLength(1));
-        if (p.timestamp - since >= PAUSE_MS) b = ropeCatchUp(b, p, 1000 / 240);
-        out.push(b);
+        anchor = { x: p.x, y: p.y };
+        since = p.timestamp;
+        trail.push(anchor);
       }
-      return out;
+      b = ropeStep(b, p, length);
+      out.push(b);
     }
-    expect(reach(trail(lStroke(150)))).toBeLessThan(1.5);
-    expect(reach(trail(lStroke(0)))).toBeGreaterThan(10);
+    return out;
+  }
+
+  it("Stream reaches the corner when the pen pauses, and cuts it when it doesn't", () => {
+    expect(reach(trailRope(lStroke(150), ropeLength(1)))).toBeLessThan(1.5);
+    expect(reach(trailRope(lStroke(0), ropeLength(1)))).toBeGreaterThan(10);
+  });
+
+  it("catching up on a curve follows the curve — no straight chord to the pen", () => {
+    // A quarter circle, radius 100, then the pen stops — the case reported: a straight line from
+    // the lagging line's end to the tip. The rope rides ~8 px inside the arc; the catch-up must
+    // bend with it from there to the pen, where a chord would sag well inside.
+    const r = 100;
+    const arc = (a: number) => ({ x: r * Math.cos(a), y: r * Math.sin(a) });
+    const pts: { x: number; y: number; timestamp: number }[] = [];
+    let t = 0;
+    for (let i = 0; i <= 240; i++, t += 1000 / 240)
+      pts.push({ ...arc((i / 240) * (Math.PI / 2)), timestamp: t });
+    const tip = pts[240];
+    // the rope's state just as the pen stops, then the catch-up as input.ts does it
+    let b = { x: pts[0].x, y: pts[0].y };
+    const trail = [{ x: pts[0].x, y: pts[0].y }];
+    for (const p of pts) {
+      const last = trail[trail.length - 1];
+      if (Math.hypot(p.x - last.x, p.y - last.y) > STILL_PX) trail.push({ x: p.x, y: p.y });
+      b = ropeStep(b, p, ropeLength(1));
+    }
+    const path = catchUpPath(trail, b, 2 * ropeLength(1) + 2 * STILL_PX);
+    expect(path.length).toBeGreaterThan(5);
+    expect(Math.hypot(path.at(-1)!.x - tip.x, path.at(-1)!.y - tip.y)).toBeLessThan(
+      STILL_PX + 1e-9,
+    );
+    // It bends: its points stand well off the straight line from where it starts to the tip —
+    // the chord the old catch-up drew (that line's own points would stand at 0).
+    const [sx, sy] = [b.x, b.y];
+    const [dx, dy] = [tip.x - sx, tip.y - sy];
+    const len = Math.hypot(dx, dy);
+    const offLine = (p: { x: number; y: number }) =>
+      Math.abs((p.x - sx) * dy - (p.y - sy) * dx) / len;
+    expect(Math.max(...path.map(offLine))).toBeGreaterThan(1.5);
   });
 });
