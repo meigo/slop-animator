@@ -7677,3 +7677,13 @@ one timestamp (frame time on a pause, `stillSince` when setting off, the up even
   same moments as before.
 - The resting-pen points at the tip (this app's Pool keep-alive) still pool there, as they should.
 - Tests: slop-paint's `replayTimes` block (pace, clamps, no false linger at 0.5 px/ms); 1518 total.
+
+**Brush settings popover laid out as slop-paint's (2026-09-29).** Reported with screenshots: the
+sliders started at different x per row and "35%" ran out of its column. Each row was
+`w-14` label + `flex-1` range + `w-8` value, none `shrink-0`, and a range input's intrinsic width
+then squeezed the label or value instead ("Flatness" pushed its slider right, "Pool"/"Angle" let it
+start left). Now slop-paint's three classes (`rowCls` / `labelCls` `w-20 shrink-0` / `valueCls`
+`w-10 shrink-0`), sliders `min-w-0 flex-1`, popover `w-72`, and its order and wording: Smooth, Stream,
+Nib angle, Nib flatness, Pool, then "Taper stroke ends", "Sharp corners where you pause", "Paint
+behind". Desktop Chrome: every slider at x 597–723 and every value at 731–771 for Smooth, Ink and
+Calligraphy, no overflow.

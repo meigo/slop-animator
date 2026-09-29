@@ -52,6 +52,13 @@
   // off the right edge. It also makes the bar self-consistent: Angle/Flatness already hide when they
   // do not apply. Stream is NOT one of these — it is applied in input.ts, upstream of every engine,
   // so it stays live on every brush. See CLAUDE.md 2026-08-29.
+  // Brush-settings popover rows, as slop-paint lays them out: a fixed label column that never
+  // shrinks, the slider taking the rest (`min-w-0`, or a range input's intrinsic width squeezes the
+  // label and value instead), and a fixed right-aligned value column — so every slider starts and
+  // ends at the same x whatever the label or value.
+  const rowCls = "flex items-center gap-2 text-text-secondary";
+  const labelCls = "w-20 shrink-0";
+  const valueCls = "w-10 shrink-0 text-right text-text-muted tabular-nums";
   const smoothOnly = $derived(stroke.brushType === "smooth");
   const isCalligraphy = $derived(stroke.brushType === "calligraphy");
   const isInk = $derived(stroke.brushType === "ink");
@@ -192,108 +199,113 @@
       </button>
       {#if brushSettingsOpen}
         <div
-          class="absolute right-0 top-full z-30 mt-2 flex w-56 flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-xs shadow-md"
+          class="absolute right-0 top-full z-30 mt-2 flex w-72 flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-xs shadow-md"
         >
-          <label
-            class="flex items-center gap-2"
-            title="Stream — the line trails the pen on a string, so small wobbles never reach it; it catches up when you lift"
-            ><span class="w-14 text-text-secondary">Stream</span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              class="flex-1"
-              bind:value={stroke.streamline}
-              style={sliderFill(stroke.streamline, 0, 100)}
-            />
-            <span class="w-8 text-right text-text-muted tabular-nums">{stroke.streamline}</span>
-          </label>
-          {#if isInk}
-            <label
-              class="flex items-center gap-2"
-              title="Swell the mark where the pen lingers, the way ink soaks in — 0 is off"
-              ><span class="w-14 text-text-secondary">Pool</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                class="flex-1"
-                bind:value={stroke.dwellPool}
-                style={sliderFill(stroke.dwellPool ?? 0, 0, 100)}
-              />
-              <span class="w-8 text-right text-text-muted tabular-nums"
-                >{stroke.dwellPool ?? 0}</span
-              >
-            </label>
-          {/if}
-          <!-- Nib angle/flatness are set per nib, not per stroke, so they follow the gear's rule.
-               Measured on the deployed build: with them on the bar, Calligraphy ends at 1234px
-               against a 12.9" iPad's 1024px portrait viewport and three controls wrap; in here it
-               ends at ~835. -->
-          {#if isCalligraphy}
-            <label class="flex items-center gap-2" title="Fixed nib angle"
-              ><span class="w-14 text-text-secondary">Angle</span>
-              <input
-                type="range"
-                min="0"
-                max="180"
-                step="1"
-                class="flex-1"
-                bind:value={stroke.nibAngle}
-                style={sliderFill(stroke.nibAngle ?? 0, 0, 180)}
-              />
-              <span class="w-8 text-right text-text-muted tabular-nums">{stroke.nibAngle}°</span>
-            </label>
-            <label
-              class="flex items-center gap-2"
-              title="How elongated the nib is — 0% is a round tip"
-              ><span class="w-14 text-text-secondary">Flatness</span>
-              <input
-                type="range"
-                min="0"
-                max={MAX_NIB_FLATNESS}
-                step="0.01"
-                class="flex-1"
-                bind:value={stroke.nibFlatness}
-                style={sliderFill(stroke.nibFlatness ?? 0, 0, MAX_NIB_FLATNESS)}
-              />
-              <span class="w-8 text-right text-text-muted tabular-nums"
-                >{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span
-              >
-            </label>
-          {/if}
           {#if smoothOnly}
             <!-- Moved off the bar 2026-09-08 when the size presets became 24px squares: Smooth was
                  the only control that pushed the row past a 12.9" iPad's portrait width. It belongs
                  here anyway by the gear's own rule — you calibrate it once, like Stream, rather
                  than riding it mid-stroke. -->
             <label
-              class="flex items-center gap-2"
+              class={rowCls}
               title="Smooth — rounds out wobble in the stroke's path, with no lag (the tip settles as you draw)"
-              ><span class="w-14 text-text-secondary">Smooth</span>
+            >
+              <span class={labelCls}>Smooth</span>
               <input
                 type="range"
                 min="0"
                 max="100"
-                class="flex-1"
+                class="min-w-0 flex-1"
                 bind:value={stroke.smoothing}
                 style={sliderFill(stroke.smoothing, 0, 100)}
               />
-              <span class="w-8 text-right text-text-muted tabular-nums">{stroke.smoothing}</span>
+              <span class={valueCls}>{stroke.smoothing}</span>
             </label>
-            <label class="flex items-center gap-2" title="Keep a corner sharp where the pen paused">
-              <input type="checkbox" bind:checked={stroke.sharpCorners} /> Sharp corners
+          {/if}
+          <label
+            class={rowCls}
+            title="Stream — the line trails the pen on a string, so small wobbles never reach it; it catches up when you lift"
+          >
+            <span class={labelCls}>Stream</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              class="min-w-0 flex-1"
+              bind:value={stroke.streamline}
+              style={sliderFill(stroke.streamline, 0, 100)}
+            />
+            <span class={valueCls}>{stroke.streamline}</span>
+          </label>
+          <!-- Nib angle/flatness are set per nib, not per stroke, so they follow the gear's rule.
+               Measured on the deployed build: with them on the bar, Calligraphy ends at 1234px
+               against a 12.9" iPad's 1024px portrait viewport and three controls wrap; in here it
+               ends at ~835. -->
+          {#if isCalligraphy}
+            <label class={rowCls} title="Fixed nib angle">
+              <span class={labelCls}>Nib angle</span>
+              <input
+                type="range"
+                min="0"
+                max="180"
+                step="1"
+                class="min-w-0 flex-1"
+                bind:value={stroke.nibAngle}
+                style={sliderFill(stroke.nibAngle ?? 0, 0, 180)}
+              />
+              <span class={valueCls}>{stroke.nibAngle}°</span>
             </label>
-            <label class="flex items-center gap-2" title="Taper stroke ends">
-              <input type="checkbox" bind:checked={stroke.taper} /> Taper
+            <label class={rowCls} title="How elongated the nib is — 0% is a round tip">
+              <span class={labelCls}>Nib flatness</span>
+              <input
+                type="range"
+                min="0"
+                max={MAX_NIB_FLATNESS}
+                step="0.01"
+                class="min-w-0 flex-1"
+                bind:value={stroke.nibFlatness}
+                style={sliderFill(stroke.nibFlatness ?? 0, 0, MAX_NIB_FLATNESS)}
+              />
+              <span class={valueCls}>{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span>
+            </label>
+          {/if}
+          {#if isInk}
+            <label
+              class={rowCls}
+              title="Swell the mark where the pen lingers, the way ink soaks in — 0 is off"
+            >
+              <span class={labelCls}>Pool</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.dwellPool}
+                style={sliderFill(stroke.dwellPool ?? 0, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.dwellPool ?? 0}</span>
+            </label>
+          {/if}
+          {#if smoothOnly}
+            <label
+              class={rowCls}
+              title="Taper the stroke's ends to a point instead of capping them"
+            >
+              <input type="checkbox" bind:checked={stroke.taper} /> Taper stroke ends
+            </label>
+            <label
+              class={rowCls}
+              title="Keep a corner sharp where you pause the pen; off, Smooth rounds it"
+            >
+              <input type="checkbox" bind:checked={stroke.sharpCorners} /> Sharp corners where you pause
             </label>
           {/if}
           {#if appState.tool !== "eraser"}
             <label
-              class="flex items-center gap-2"
+              class={rowCls}
               title="Paint behind existing pixels (e.g. white fill under a black outline)"
             >
-              <input type="checkbox" bind:checked={stroke.drawBehind} /> Behind
+              <input type="checkbox" bind:checked={stroke.drawBehind} /> Paint behind
             </label>
           {/if}
           <span class="text-text-secondary"
