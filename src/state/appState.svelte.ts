@@ -2608,13 +2608,19 @@ export const outlineActions: {
  *    works on what is on screen, and one more undo takes the transform back. Apply, not cancel,
  *    because Apply can be undone and Cancel cannot (slop-paint 847f7ee, 2026-09-29).
  *  - `discard` CANCELS it. Only where applying is meaningless or unwanted: the document is being
- *    replaced (`replaceProject`), history is replaying (undo/redo), or an export must not commit an
- *    edit on the artist's behalf (`ExportDialog`).
+ *    replaced (`replaceProject`), or history is replaying (undo/redo — where a lift with edits is
+ *    cancelled INSTEAD of undoing, see `undo()`). Export applies (since 2026-09-29).
  *
  *  A live Outline preview cancels under both (see `bankActiveEdits`). */
-export const liftGuard: { discard: (() => void) | null; bank: (() => void) | null } = {
+export const liftGuard: {
+  discard: (() => void) | null;
+  bank: (() => void) | null;
+  /** A live lift that `bank` would APPLY (not cancel): a float, or a dragged Pose/Deform. */
+  hasEdits: (() => boolean) | null;
+} = {
   discard: null,
   bank: null,
+  hasEdits: null,
 };
 
 /** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`
@@ -2635,6 +2641,14 @@ export function undo(): void {
   // it too) went on to undo the edit BEFORE it, the stroke the artist never meant to lose.
   if (outlineActions.active()) {
     outlineActions.cancel();
+    return;
+  }
+  // Same for a moved selection, a pasted float or a dragged Pose/Deform (2026-09-29): it is on
+  // screen like an edit already made, so ⌘Z cancels it and stops. Falling through took back the
+  // edit before it too — one press, two things undone, and the transform itself gone for good. An
+  // untouched lift changes nothing, so it is cancelled below and the undo goes on.
+  if (liftGuard.hasEdits?.()) {
+    liftGuard.discard?.();
     return;
   }
   liftGuard.discard?.();

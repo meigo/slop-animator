@@ -1540,6 +1540,7 @@
     selectionRef.current = selection;
     liftGuard.discard = discardActiveEdits;
     liftGuard.bank = bankActiveEdits;
+    liftGuard.hasEdits = liftHasEdits;
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
@@ -2558,6 +2559,7 @@
       selectionRef.current = null;
       liftGuard.discard = null;
       liftGuard.bank = null;
+      liftGuard.hasEdits = null;
       poseActions.active = () => false;
       selectionActions.enterWarp = null;
       selectionActions.copy = null;
@@ -2651,6 +2653,12 @@
   // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
   // started on, so switching the active layer or frame leaves a clean slate — mirrors the tool-switch
   // banker. A plain marquee is document-level and kept; the gizmo-based layer transform self-retargets.
+  /** A live lift that `bankActiveEdits` would apply rather than cancel — the same rule. */
+  function liftHasEdits(): boolean {
+    if (meshPose && poseDirty) return true;
+    return !!selection?.hasFloating && !(appState.tool === "deform" && !deformDirty);
+  }
+
   function bankActiveEdits() {
     // Same rule as the tool switch: an untouched lift is discarded, not banked. Stepping a frame
     // with Deform selected must not stamp an undo entry per frame.
@@ -2674,8 +2682,7 @@
     }
   }
   // Discard (don't bank) an in-progress lift — for the ops where applying it is meaningless or unwanted:
-  // replaceProject (the document goes), undo / redo (history replays) and export (see
-  // `liftGuard`). Canvas-recreating ops apply it instead (`liftGuard.bank`). Restores the
+  // replaceProject (the document goes) and undo / redo (history replays; see `liftGuard`). Canvas-recreating ops apply it instead (`liftGuard.bank`). Restores the
   // original pixels via the captured context, so the destructive op then sees the un-lifted cell.
   function discardActiveEdits() {
     if (meshPose) cancelPose();

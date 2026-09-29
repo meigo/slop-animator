@@ -7721,3 +7721,18 @@ Stream is there to remove — and kinked where the line, riding inside the curve
 - Tests: slop-paint's (straight trail → straight 2 px run ending on the pen's t and pressure; leaves
   toward the pen and arrives along its last direction; ±1.5 px jitter → within 1 px of straight; the
   loop bound via `from`). 1519 total.
+
+**Undo with an open transform cancels only the transform; export applies it (2026-09-29).**
+- **Undo:** `undo()` cancelled a live lift and then ALSO undid the edit before it — one press, two
+  things back, and the moved selection / pasted float / bent pose itself gone for good (redo brings
+  the edit back, never the transform). It now cancels a lift WITH edits and stops, as it already did
+  for a live Outline preview. "With edits" = what `bankActiveEdits` would apply: a float, or a
+  dragged Pose/Deform (`liftGuard.hasEdits`, `Canvas.svelte` `liftHasEdits`). An untouched Pose/Deform
+  grid still cancels silently and the undo goes on. Redo is unchanged.
+- **Export:** `ExportDialog.run()` now `liftGuard.bank`s instead of discarding, reversing the
+  2026-08-16 audit's "an export must not silently commit an edit": discarding lost the transform with
+  no undo, where applying exports what is on screen and one undo takes it back — the rule every other
+  op follows since the entry above. Asked for by the user ("go on" on this suggestion).
+- Desktop Chrome: two strokes, marquee + move, undo → the float gone and stroke B still there, undo →
+  back to stroke A. Export path not exercised in the browser.
+- Also: roadmap (6), the opacity slider, measured (see CLAUDE.md) — not ported.
