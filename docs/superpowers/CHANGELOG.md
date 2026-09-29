@@ -7615,4 +7615,4 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   writes, an unchanged step still running its callbacks, size-mismatch fallback).
 - Desktop Chrome on a 1280×720 document: three strokes and a fill, then undo ×4 and redo ×4, each
   compared pixel for pixel with the recorded state: all exact. The four steps took 7.9 MB against
-  29.5 MB whole. Not yet seen on iPad.
+  29.5 MB whole. iPad, deployed branch build: the user reported it "seems to be ok".
