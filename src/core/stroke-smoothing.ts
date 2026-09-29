@@ -12,7 +12,7 @@
  * settles as the stroke grows past it).
  *
  * Both keep a CORNER where the pen pauses: a pen held nearly still for `PAUSE_MS` pulls the rope
- * in ALONG THE PEN'S OWN PATH (`catchUpPath`) — a straight pull cut across a curve — so the line
+ * in along a smooth curve from the line to the pen (`catchUpPath`) — a straight pull cut across a curve — so the line
  * reaches the corner before setting off again (a lift catches up the same way), and the path is
  * smoothed leg by leg between pauses (`pauseBreaks`) when Sharp corners is on, so the averaging
  * never spans the corner (off by default: the rounded corner is a look people like).
@@ -56,40 +56,109 @@ export function ropeStep(brush: Pt, pen: Pt, length: number): Pt {
   return { x: brush.x + dx * k, y: brush.y + dy * k };
 }
 
+/** A trail point: where the pen was, how hard, and when. */
+export interface TrailPt extends Pt {
+  pressure: number;
+  t: number;
+}
+
+/** Catch-up points are this far apart (screen px) along their curve. */
+const CATCH_UP_STEP = 2;
+
 /**
- * The points that take the lagging brush to the end of `trail` — the pen's recent path, oldest
- * first — ALONG it, not in a straight chord across the curve just drawn. The brush rides a little
- * inside the pen's curves (a rope's nature: ~8 px on a 100 px radius at full Stream), so the path
- * is taken from the trail point nearest the brush and shifted by that gap, the shift fading to
- * nothing by the pen: it starts where the line is, keeps the pen path's shape, and ends at the
- * pen. Empty when the brush is already at the end. Only the last `maxBack` of path (from the pen
- * back) is searched: the brush is never further behind, and on a small loop an older pass can
- * come nearer than the right one.
+ * The points that take the lagging brush to the pen — the end of `trail`, the pen's recent path,
+ * oldest first — along a smooth curve: a cubic Hermite that leaves the brush heading where the
+ * line was already heading (at the pen: a rope always points there) and arrives at the pen in the
+ * direction the pen last moved. A straight glide there cut a chord across a curve; retracing the
+ * trail kept the hand's wobble (which is what Stream is for) and kinked where the line, riding
+ * inside the curve, joined the pen's path. At a paused corner both directions lie along the leg,
+ * so the curve is the straight run into the corner.
+ *
+ * Pressure and time come from the trail, by arc fraction from the trail point nearest the brush
+ * (`from`) to the pen: the catch-up keeps the pen's pace, which Ink's Pool reads. Only the last
+ * `maxBack` of path (from the pen back) is searched for `from`: the brush is never further behind,
+ * and on a small loop an older pass can come nearer. Empty when the brush is already at the pen.
  */
-export function catchUpPath<T extends Pt>(
+export function catchUpPath<T extends TrailPt>(
   trail: readonly T[],
   brush: Pt,
   maxBack: number,
-): { path: T[]; from: T | null } {
+): { path: TrailPt[]; from: T | null } {
   const nearest = nearestTrailIndex(trail, brush, maxBack);
   if (nearest < 0) return { path: [], from: null };
-  const rest = trail.slice(nearest + 1);
-  if (!rest.length) return { path: [], from: trail[nearest] };
-  const ox = brush.x - trail[nearest].x;
-  const oy = brush.y - trail[nearest].y;
-  const seg: number[] = [];
-  let total = 0;
-  let prev: Pt = trail[nearest];
-  for (const p of rest) {
-    total += Math.hypot(p.x - prev.x, p.y - prev.y);
-    seg.push(total);
-    prev = p;
+  const from = trail[nearest];
+  const sub = trail.slice(nearest);
+  const end = sub[sub.length - 1];
+  const d = Math.hypot(end.x - brush.x, end.y - brush.y);
+  if (sub.length < 2 || d < 0.5) return { path: [], from };
+
+  // Arc length along the trail, for sampling its pressure and time by fraction.
+  const cum = [0];
+  for (let i = 1; i < sub.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(sub[i].x - sub[i - 1].x, sub[i].y - sub[i - 1].y));
   }
-  const path = rest.map((p, i) => {
-    const k = total > 0 ? 1 - seg[i] / total : 0;
-    return { ...p, x: p.x + ox * k, y: p.y + oy * k };
-  });
-  return { path, from: trail[nearest] };
+  const S = cum[cum.length - 1];
+  const along = (s: number) => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < s) i++;
+    const span = cum[i] - cum[i - 1];
+    const k = span > 0 ? Math.min(1, Math.max(0, (s - cum[i - 1]) / span)) : 1;
+    const a = sub[i - 1];
+    const b = sub[i];
+    return {
+      x: a.x + (b.x - a.x) * k,
+      y: a.y + (b.y - a.y) * k,
+      pressure: a.pressure + (b.pressure - a.pressure) * k,
+      t: a.t + (b.t - a.t) * k,
+    };
+  };
+
+  // Directions: the line's (brush → pen), and the pen's last (over up to half the trail, at most
+  // 12 px, so one jittery last sample doesn't swing it).
+  const t0 = { x: (end.x - brush.x) / d, y: (end.y - brush.y) / d };
+  const back = along(Math.max(0, S - Math.min(S / 2, 12)));
+  const bl = Math.hypot(end.x - back.x, end.y - back.y);
+  const t1 = bl > 1e-9 ? { x: (end.x - back.x) / bl, y: (end.y - back.y) / bl } : t0;
+
+  const hermite = (u: number): Pt => {
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    return {
+      x: h00 * brush.x + h10 * d * t0.x + h01 * end.x + h11 * d * t1.x,
+      y: h00 * brush.y + h10 * d * t0.y + h01 * end.y + h11 * d * t1.y,
+    };
+  };
+
+  // Sample densely, then keep points CATCH_UP_STEP apart by the curve's own arc length.
+  const fine = Array.from({ length: 65 }, (_, i) => hermite(i / 64));
+  const fcum = [0];
+  for (let i = 1; i < fine.length; i++) {
+    fcum.push(fcum[i - 1] + Math.hypot(fine[i].x - fine[i - 1].x, fine[i].y - fine[i - 1].y));
+  }
+  const L = fcum[fcum.length - 1];
+  const n = Math.max(1, Math.ceil(L / CATCH_UP_STEP));
+  const path: TrailPt[] = [];
+  let j = 1;
+  for (let k = 1; k <= n; k++) {
+    const target = (L * k) / n;
+    while (j < fcum.length - 1 && fcum[j] < target) j++;
+    const span = fcum[j] - fcum[j - 1];
+    const f = span > 0 ? (target - fcum[j - 1]) / span : 1;
+    const p =
+      k === n
+        ? { x: end.x, y: end.y }
+        : {
+            x: fine[j - 1].x + (fine[j].x - fine[j - 1].x) * f,
+            y: fine[j - 1].y + (fine[j].y - fine[j - 1].y) * f,
+          };
+    const src = along((S * k) / n); // pen's pressure and time at the same fraction of its path
+    path.push({ x: p.x, y: p.y, pressure: src.pressure, t: src.t });
+  }
+  return { path, from };
 }
 
 /** The index of the trail point nearest `p`, searching back from the pen only `maxBack` of path

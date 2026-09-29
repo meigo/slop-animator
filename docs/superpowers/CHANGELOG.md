@@ -7705,3 +7705,19 @@ length behind the pen, so the pen's slowdown over its last stretch showed in the
 - Tests: `replayTimes` block replaced by slop-paint's `trailTimeAt` block (interpolation; a pen
   slowing from 1 to 0.2 px/ms over its last 40 px reads > 0.9 px/ms in the line's 222–258 px stretch,
   < 0.3 stamped "now"). 1517 total.
+
+**Stream catch-up is a smooth curve — no hand wobble, no kink at the join (2026-09-29).** Port of
+slop-paint `9180de3`, flagged by the slop-paint session: at high Stream on curved strokes the ending
+looked oddly bent. Retracing the pen's trail (`b158081`, above) brought back the hand's wobble — what
+Stream is there to remove — and kinked where the line, riding inside the curve, joined the pen's path.
+- `catchUpPath` is now a cubic Hermite from the brush to the pen: leaving along brush → pen (where a
+  rope already points), arriving along the pen's last direction (read over up to 12 px of trail).
+  Sampled finely, emitted every 2 px of its own arc length, the last point exactly the pen. Pressure
+  and time come from the trail at the same arc fraction, so Pool keeps the pen's pace (the monotone
+  clamp in `catchUpAlongTrail` is unchanged). A paused corner has both directions along the leg, so
+  it stays a straight run in.
+- `TrailPt` moved to `stroke-smoothing.ts`. The resting-pen points still start at the rest point:
+  the curve ends exactly on the trail's last point, which is `stillAt`.
+- Tests: slop-paint's (straight trail → straight 2 px run ending on the pen's t and pressure; leaves
+  toward the pen and arrives along its last direction; ±1.5 px jitter → within 1 px of straight; the
+  loop bound via `from`). 1519 total.
