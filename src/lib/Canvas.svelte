@@ -6,6 +6,7 @@
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
+  import { pathSmoothRadius, smoothPath } from "../core/stroke-smoothing";
   import {
     floodFill,
     enclosedFillRegion,
@@ -765,10 +766,21 @@
   // full redraw from the pre-stroke snapshot; stamp = incremental. All clip to the selection.
   function paintStroke(pts: InputPoint[], done: boolean, asEraser = appState.tool === "eraser") {
     if (!strokeCtx) return;
+    const stroke = asEraser ? appState.eraser : appState.brush;
     let inPts = pts;
+    // Smooth averages the Smooth brush's path here, in DOCUMENT space — before the cell-space
+    // mapping below — so its radius is a screen distance even on a scaled layer. Re-smoothed from
+    // the raw points on every redraw, so there is no lag; the tip settles as the stroke grows.
+    if (stroke.brushType === "smooth" && viewport) {
+      inPts = smoothPath(
+        inPts,
+        pathSmoothRadius(stroke.smoothing, viewport.zoom),
+        stroke.sharpCorners ?? false,
+      );
+    }
     const steps = strokeSteps;
     if (steps?.some((s) => !isIdentityTransform(s.t))) {
-      inPts = pts.map((p) => {
+      inPts = inPts.map((p) => {
         const q = inverseChain(steps, { x: p.x, y: p.y });
         return { ...p, x: q.x, y: q.y };
       });
@@ -778,7 +790,6 @@
     const curve = asEraser ? pressureCurves.eraser : pressureCurves.brush;
     const curved = inPts.map((p) => ({ ...p, pressure: curve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
-    const stroke = asEraser ? appState.eraser : appState.brush;
     const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
     // SPREAD, never field by field. This was a hand-written list of every BrushSettings key, and
     // when `dwellPool` was added it was not added here — so the ink pooling feature shipped, was

@@ -362,6 +362,7 @@ export const state: AnimState = $state({
     color: "#1a1a1a",
     opacity: 100,
     smoothing: 50,
+    sharpCorners: false,
     drawBehind: false,
     alphaLock: false,
     taper: false,
@@ -377,6 +378,7 @@ export const state: AnimState = $state({
     color: "#000000", // unused (eraser composites destination-out)
     opacity: 100,
     smoothing: 50,
+    sharpCorners: false,
     drawBehind: false,
     alphaLock: false,
     taper: false,

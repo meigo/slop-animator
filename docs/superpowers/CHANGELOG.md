@@ -7544,3 +7544,50 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   "File ▸ Save".
 - Seen in desktop Chrome: each menu opens, and the Transparent check toggles with the
   checkerboard. Edit's cut/copy/paste were not run from the menu. Not yet seen on iPad.
+
+**Stream as a rope, Smooth smooths the path — ported from slop-paint (2026-09-29).** Spec
+`docs/superpowers/specs/2026-09-29-stream-smooth-port-design.md`, plan
+`docs/superpowers/plans/2026-09-29-stream-smooth-port.md`. Source: slop-paint `0ad830e`, `c13ed06`,
+`2b7f465`.
+- **Why.** Stream was a per-event average (`t = 1 − 0.88v`), so it weakened as the pointer rate rose:
+  at 100% a 240 Hz Pencil kept 1.9 of a 3 px wobble, the iPad being the weakest case. Smooth fed
+  perfect-freehand's `smoothing`, which is only outline point spacing and is capped by
+  `decimationSmoothing`, so most of the slider did nothing.
+- **Stream** (`src/core/stroke-smoothing.ts` + `input.ts`): a rope in screen px, `40 · v²` (50% =
+  10 px). A pen held within 3 px for 50 ms pulls the rope in to where it rested (a rAF loop, since a
+  still pen sends no events), and setting off again finishes the pull first, so the line turns at the
+  corner. On lift the stroke ends at the pen, with the last move's pressure. `onStroke` fires only
+  when a move added a point (`2b7f465`; this app's brush path snapshots once per stroke so it never
+  had that undo bug, but the Pose/Deform/Outline branches enter on a one-point call).
+- **Differs from slop-paint in input.ts:** Stream 0, which every non-brush tool uses, passes the pen
+  through untouched, still-pen events included, and has no corner pull (it would nudge a held gizmo
+  handle by up to 3 px). Once the rope has caught up with a resting pen, the pen's events keep adding
+  points at the rest point, so ink **Pool** (`dwellSwell`, which reads point timestamps) still swells
+  while the nib rests at the default Stream 50.
+- **Smooth**: `smoothPath` averages position and pressure over ±`32 · s / zoom` document px of arc
+  length, both sides, ends pinned. **Differs from slop-paint:** it runs in `Canvas.svelte`
+  `paintStroke` on the DOCUMENT-space points, before `inverseChain` maps them into cell space, so the
+  radius is a screen distance on a scaled layer too. `brush.ts` passes a fixed `OUTLINE_SPACING = 0.5`
+  to perfect-freehand. Smooth brush only, as before.
+- **Sharp corners where you pause**: `BrushSettings.sharpCorners`, off by default (the rounded corner
+  is a look worth keeping), a checkbox under Smooth; saved with the tool settings. With it on, the
+  path is smoothed leg by leg between pauses.
+- Saved Stream/Smooth values keep their numbers and now mean the new scales.
+- **Branch review fixes.** Those kept resting-pen points made a held Smooth brush quadratic: each is
+  in every other's averaging window, so a 5 s hold at 240 Hz took a 2,000-point stroke's redraw from
+  0.56 ms to 13.2 ms (Mac), paid on every later frame. `smoothPath` now cuts each run at one position
+  to its first and last point (`collapseRests`; the pair keeps the pause's time span for Sharp
+  corners). The rope's rAF loop is cancelled in `setupInput`'s cleanup too.
+- **Known, left as slop-paint has them:** below Stream ≈ 27% (string ≤ `STILL_PX`) the corner pull
+  can draw the line back up to 3 screen px to where the pen came to rest, a tiny hook at a pause; and
+  the corner point is stamped with the pause's START, earlier than catch-up points already added, so
+  timestamps can step backwards there (read only by Pool, which skips a non-positive span, and by
+  Sharp corners).
+- Tests: `stroke-smoothing.test.ts` (16). Desktop Chrome, synthetic mouse events: Stream 100
+  flattened a 3 px wobble; Smooth 0/50/100 measured 6.0/5.2/4.0 px peak-to-peak on a 100 px wave
+  (Gaussian σ = 16 predicts 6/5.3/3.6); no console errors. **iPad, deployed branch build: the user
+  reported it "feels good and seems to work without issues".**
+- **Dead Pencil-tip double-tap removed from `input.ts`** (same branch). `onPencilDoubleTap` had had no
+  caller since `2d51da4` (2026-06-17) moved the eraser toggle to a one-finger double-tap, because the
+  two tip taps left dots; slop-paint deleted its copy in `907b20b`. The Pencil's barrel double-tap is
+  not exposed to web apps at all.
