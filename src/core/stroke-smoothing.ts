@@ -71,20 +71,8 @@ export function catchUpPath<T extends Pt>(
   brush: Pt,
   maxBack: number,
 ): { path: T[]; from: T | null } {
-  const n = trail.length;
-  if (n === 0) return { path: [], from: null };
-  let nearest = n - 1;
-  let best = Math.hypot(trail[n - 1].x - brush.x, trail[n - 1].y - brush.y);
-  let back = 0;
-  for (let i = n - 2; i >= 0; i--) {
-    back += Math.hypot(trail[i + 1].x - trail[i].x, trail[i + 1].y - trail[i].y);
-    if (back > maxBack) break;
-    const d = Math.hypot(trail[i].x - brush.x, trail[i].y - brush.y);
-    if (d < best) {
-      best = d;
-      nearest = i;
-    }
-  }
+  const nearest = nearestTrailIndex(trail, brush, maxBack);
+  if (nearest < 0) return { path: [], from: null };
   const rest = trail.slice(nearest + 1);
   if (!rest.length) return { path: [], from: trail[nearest] };
   const ox = brush.x - trail[nearest].x;
@@ -104,17 +92,53 @@ export function catchUpPath<T extends Pt>(
   return { path, from: trail[nearest] };
 }
 
+/** The index of the trail point nearest `p`, searching back from the pen only `maxBack` of path
+ *  (see `catchUpPath`); -1 for an empty trail. */
+export function nearestTrailIndex(trail: readonly Pt[], p: Pt, maxBack: number): number {
+  const n = trail.length;
+  if (n === 0) return -1;
+  let nearest = n - 1;
+  let best = Math.hypot(trail[n - 1].x - p.x, trail[n - 1].y - p.y);
+  let back = 0;
+  for (let i = n - 2; i >= 0; i--) {
+    back += Math.hypot(trail[i + 1].x - trail[i].x, trail[i + 1].y - trail[i].y);
+    if (back > maxBack) break;
+    const d = Math.hypot(trail[i].x - p.x, trail[i].y - p.y);
+    if (d < best) {
+      best = d;
+      nearest = i;
+    }
+  }
+  return nearest;
+}
+
 /**
- * Timestamps for the catch-up points: the pen's own times along the path (`times`, from `fromT`
- * where it starts), replayed from `lastT` — the line's last point — and held at or under `now`,
- * never going backwards. The line then catches up at the pace the pen actually drew. Ink's Pool
- * reads speed from these: one timestamp for the whole catch-up read as a long stretch drawn in no
- * time, and the pause before it as a long wait over a short hop — a pool from the lagging end to
- * the tip.
+ * When the pen was at `p` — a point of the lagging line — from the trail's times: projected onto
+ * the trail segments either side of the nearest point and interpolated. The line's points are
+ * stamped with THIS, not the event's time: the rope trails the pen by up to a string length, so
+ * stamping it "now" put the pen's slowdown into the line a string's length early, and Ink's Pool
+ * swelled a knot there, before the real end. Null for an empty trail.
  */
-export function replayTimes(fromT: number, times: number[], lastT: number, now: number): number[] {
-  let prev = lastT;
-  return times.map((t) => (prev = Math.max(prev, Math.min(now, lastT + (t - fromT)))));
+export function trailTimeAt(
+  trail: readonly (Pt & { t: number })[],
+  p: Pt,
+  maxBack: number,
+): number | null {
+  const i = nearestTrailIndex(trail, p, maxBack);
+  if (i < 0) return null;
+  let best = { d: Infinity, t: trail[i].t };
+  for (const j of [i - 1, i]) {
+    const a = trail[j];
+    const b = trail[j + 1];
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const k = len2 > 0 ? Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+    const d = Math.hypot(a.x + dx * k - p.x, a.y + dy * k - p.y);
+    if (d < best.d) best = { d, t: a.t + (b.t - a.t) * k };
+  }
+  return best.t;
 }
 
 /** Smooth `smoothing` (0–100) as a path-averaging radius in DOCUMENT px at `zoom` (screen px per

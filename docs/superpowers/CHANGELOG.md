@@ -7677,3 +7677,21 @@ one timestamp (frame time on a pause, `stillSince` when setting off, the up even
   same moments as before.
 - The resting-pen points at the tip (this app's Pool keep-alive) still pool there, as they should.
 - Tests: slop-paint's `replayTimes` block (pace, clamps, no false linger at 0.5 px/ms); 1518 total.
+
+**Stream: the lagging line is stamped with the pen's time there — no Pool knot (2026-09-29).** Port
+of slop-paint `699d772`, which replaces `replayTimes` (the entry above) — flagged by the slop-paint
+session: after the catch-up fix, ink still pooled a small knot a short way BEFORE the end at high
+Stream. Every rope point was stamped with its event's time, but the line runs up to a string's
+length behind the pen, so the pen's slowdown over its last stretch showed in the line that far early.
+- `nearestTrailIndex` (the search `catchUpPath` had, shared); `trailTimeAt(trail, p, maxBack)`: when
+  the pen was at `p`, projected onto the trail segments either side of the nearest point and
+  interpolated.
+- Rope steps (Stream > 0) are stamped `max(prevT, min(eventT, trailTimeAt(…) ?? eventT))`; catch-up
+  points with their own trail time, kept non-decreasing (`catchUpAlongTrail()` takes no argument;
+  setting off after a pause still ends at `stillSince`, so Smooth's pause detection is unchanged).
+- **This app's resting-pen points** (the Pool keep-alive) are now added in their own branch with the
+  EVENT's time: falling through to the rope-step stamping would have given every one the moment the
+  pen arrived — no time passing, so no pool at the tip.
+- Tests: `replayTimes` block replaced by slop-paint's `trailTimeAt` block (interpolation; a pen
+  slowing from 1 to 0.2 px/ms over its last 40 px reads > 0.9 px/ms in the line's 222–258 px stretch,
+  < 0.3 stamped "now"). 1517 total.
