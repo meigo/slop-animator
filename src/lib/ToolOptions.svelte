@@ -194,7 +194,9 @@
         <div
           class="absolute right-0 top-full z-30 mt-2 flex w-56 flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-xs shadow-md"
         >
-          <label class="flex items-center gap-2" title="Smooth the incoming pointer path"
+          <label
+            class="flex items-center gap-2"
+            title="Stream — the line trails the pen on a string, so small wobbles never reach it; it catches up when you lift"
             ><span class="w-14 text-text-secondary">Stream</span>
             <input
               type="range"
@@ -265,7 +267,9 @@
                  the only control that pushed the row past a 12.9" iPad's portrait width. It belongs
                  here anyway by the gear's own rule — you calibrate it once, like Stream, rather
                  than riding it mid-stroke. -->
-            <label class="flex items-center gap-2" title="Smooth the perfect-freehand outline"
+            <label
+              class="flex items-center gap-2"
+              title="Smooth — rounds out wobble in the stroke's path, with no lag (the tip settles as you draw)"
               ><span class="w-14 text-text-secondary">Smooth</span>
               <input
                 type="range"
@@ -276,6 +280,9 @@
                 style={sliderFill(stroke.smoothing, 0, 100)}
               />
               <span class="w-8 text-right text-text-muted tabular-nums">{stroke.smoothing}</span>
+            </label>
+            <label class="flex items-center gap-2" title="Keep a corner sharp where the pen paused">
+              <input type="checkbox" bind:checked={stroke.sharpCorners} /> Sharp corners
             </label>
             <label class="flex items-center gap-2" title="Taper stroke ends">
               <input type="checkbox" bind:checked={stroke.taper} /> Taper

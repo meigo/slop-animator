@@ -14,7 +14,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 
 - File / Edit / Document / View menus, as in slop-paint: Edit holds undo/redo and the clipboard commands (dimmed with the reason when they can't act), so they are reachable on an iPad without a keyboard
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
-- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
+- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), Stream (the line trails the pen on a string, the same at any pointer rate) and Smooth (averages the stroke's path with no lag, optionally keeping corners where you pause), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a
   custom picker
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
@@ -117,7 +117,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1477); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1501); canvas/DOM code isn't node-testable
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
 ```

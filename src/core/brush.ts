@@ -48,7 +48,11 @@ export interface BrushSettings {
   size: number;
   color: string;
   opacity: number;
+  /** Smooth 0–100. Not read here: Canvas.svelte turns it into a path-averaging radius
+   *  (`pathSmoothRadius`) and smooths the Smooth brush's points before they reach `drawStroke`. */
   smoothing: number;
+  /** Smooth brush: keep a corner sharp where the pen paused, instead of smoothing it round. */
+  sharpCorners?: boolean;
   isEraser: boolean;
   drawBehind: boolean;
   alphaLock: boolean;
@@ -61,6 +65,10 @@ export interface BrushSettings {
    *  `dwellSwell` in ink-brush.ts. Same engine-specific relationship as the nib fields. */
   dwellPool?: number;
 }
+
+/** perfect-freehand's outline point spacing (its `smoothing`), before the thin-stroke cap. It was
+ *  the Smooth slider once, but it only rounds the outline's edge; Smooth now smooths the path. */
+const OUTLINE_SPACING = 0.5;
 
 /**
  * Convert perfect-freehand output points to an SVG path string,
@@ -96,7 +104,7 @@ export function drawStroke(
     // the stamp/ink engines (which treat size as diameter) and the on-canvas size cursor.
     size: pfSize,
     thinning: 1,
-    smoothing: decimationSmoothing(settings.smoothing / 100, minStrokeWidth, pfSize),
+    smoothing: decimationSmoothing(OUTLINE_SPACING, minStrokeWidth, pfSize),
     streamline: 0.3,
     start: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
     end: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
