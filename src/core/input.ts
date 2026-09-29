@@ -4,6 +4,7 @@ import {
   STILL_PX,
   TRAIL_SPAN,
   catchUpPath,
+  replayTimes,
   ropeLength,
   ropeStep,
 } from "./stroke-smoothing";
@@ -68,7 +69,7 @@ export function setupInput(
   // so a held pen's tremble adds nothing. When the rope has to catch up (a pause, a lift) the line
   // follows THIS to the pen instead of a straight chord across the curve it just drew
   // (slop-paint b158081).
-  type TrailPt = { x: number; y: number; pressure: number };
+  type TrailPt = { x: number; y: number; pressure: number; t: number };
   let trail: TrailPt[] = [];
   let trailLen = 0;
   // Corners: where the pen last moved more than STILL_PX (the trail's last point), and when. Held
@@ -92,16 +93,27 @@ export function setupInput(
 
   const pressureOf = (e: PointerEvent) => (e.pointerType === "mouse" ? 0 : e.pressure);
 
-  /** Bring the lagging line up to the pen along the pen's own path, stamped `timestamp`. Only with
-   *  a string: at Stream 0 (every non-brush tool) the brush IS the pen, and a catch-up would pull
-   *  it back up to STILL_PX to the last trail point — nudging a held gizmo handle. */
-  function catchUpAlongTrail(timestamp: number) {
+  /** Bring the lagging line up to the pen along the pen's own path, timed as the pen went (up to
+   *  `now` at the latest — see `replayTimes`; one shared timestamp read to ink's Pool as a linger
+   *  and pooled from the line's end to the tip, slop-paint 0a38872). Only with a string: at Stream 0
+   *  (every non-brush tool) the brush IS the pen, and a catch-up would pull it back up to STILL_PX
+   *  to the last trail point — nudging a held gizmo handle. */
+  function catchUpAlongTrail(now: number) {
     const len = getRopeLength();
     if (!rope || !penEvent || len === 0) return;
-    const path = catchUpPath(trail, rope, 2 * len + 2 * STILL_PX);
-    for (const p of path) {
-      addPoint({ ...getPoint(penEvent, p.x, p.y), pressure: p.pressure, timestamp });
-    }
+    const { path, from } = catchUpPath(trail, rope, 2 * len + 2 * STILL_PX);
+    if (!path.length || !from) return;
+    const lastT = currentPoints[currentPoints.length - 1]?.timestamp ?? now;
+    const times = replayTimes(
+      from.t,
+      path.map((p) => p.t),
+      lastT,
+      now,
+    );
+    const ev = penEvent;
+    path.forEach((p, i) => {
+      addPoint({ ...getPoint(ev, p.x, p.y), pressure: p.pressure, timestamp: times[i] });
+    });
     const end = path[path.length - 1];
     if (end) rope = { x: end.x, y: end.y };
   }
@@ -153,7 +165,7 @@ export function setupInput(
     stillSince = e.timeStamp;
     trail = [];
     trailLen = 0;
-    trailPush({ ...rope, pressure: pressureOf(e) });
+    trailPush({ ...rope, pressure: pressureOf(e), t: e.timeStamp });
     catchUpFrame = requestAnimationFrame(catchUp);
     currentPoints = [first];
     onStroke(currentPoints, false);
@@ -181,7 +193,7 @@ export function setupInput(
         if (ce.timeStamp - stillSince >= PAUSE_MS) catchUpAlongTrail(stillSince);
         stillAt = now;
         stillSince = ce.timeStamp;
-        trailPush({ ...now, pressure: pressureOf(ce) });
+        trailPush({ ...now, pressure: pressureOf(ce), t: ce.timeStamp });
       }
       penEvent = ce;
       const len = getRopeLength();

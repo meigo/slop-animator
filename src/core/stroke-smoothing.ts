@@ -66,9 +66,13 @@ export function ropeStep(brush: Pt, pen: Pt, length: number): Pt {
  * back) is searched: the brush is never further behind, and on a small loop an older pass can
  * come nearer than the right one.
  */
-export function catchUpPath<T extends Pt>(trail: readonly T[], brush: Pt, maxBack: number): T[] {
+export function catchUpPath<T extends Pt>(
+  trail: readonly T[],
+  brush: Pt,
+  maxBack: number,
+): { path: T[]; from: T | null } {
   const n = trail.length;
-  if (n === 0) return [];
+  if (n === 0) return { path: [], from: null };
   let nearest = n - 1;
   let best = Math.hypot(trail[n - 1].x - brush.x, trail[n - 1].y - brush.y);
   let back = 0;
@@ -82,7 +86,7 @@ export function catchUpPath<T extends Pt>(trail: readonly T[], brush: Pt, maxBac
     }
   }
   const rest = trail.slice(nearest + 1);
-  if (!rest.length) return [];
+  if (!rest.length) return { path: [], from: trail[nearest] };
   const ox = brush.x - trail[nearest].x;
   const oy = brush.y - trail[nearest].y;
   const seg: number[] = [];
@@ -93,10 +97,24 @@ export function catchUpPath<T extends Pt>(trail: readonly T[], brush: Pt, maxBac
     seg.push(total);
     prev = p;
   }
-  return rest.map((p, i) => {
+  const path = rest.map((p, i) => {
     const k = total > 0 ? 1 - seg[i] / total : 0;
     return { ...p, x: p.x + ox * k, y: p.y + oy * k };
   });
+  return { path, from: trail[nearest] };
+}
+
+/**
+ * Timestamps for the catch-up points: the pen's own times along the path (`times`, from `fromT`
+ * where it starts), replayed from `lastT` — the line's last point — and held at or under `now`,
+ * never going backwards. The line then catches up at the pace the pen actually drew. Ink's Pool
+ * reads speed from these: one timestamp for the whole catch-up read as a long stretch drawn in no
+ * time, and the pause before it as a long wait over a short hop — a pool from the lagging end to
+ * the tip.
+ */
+export function replayTimes(fromT: number, times: number[], lastT: number, now: number): number[] {
+  let prev = lastT;
+  return times.map((t) => (prev = Math.max(prev, Math.min(now, lastT + (t - fromT)))));
 }
 
 /** Smooth `smoothing` (0–100) as a path-averaging radius in DOCUMENT px at `zoom` (screen px per

@@ -7635,3 +7635,16 @@ visible chord. The ported `ropeCatchUp` glide (and `CATCH_UP_MS`) is gone.
   resting-pen points ink Pool reads still start then.
 - Tests: slop-paint's (curve follows the arc and not the chord, the loop bound, corners); 18 in
   `stroke-smoothing.test.ts`.
+
+**Stream catch-up is timed as the pen went: no false Ink Pool to the tip (2026-09-29).** Port of
+slop-paint `0a38872`, flagged by the slop-paint session: with a lagging Stream and ink **Pool** on, a
+pool appeared from the line's end to the pen tip where a stroke finished. Every catch-up point shared
+one timestamp (frame time on a pause, `stillSince` when setting off, the up event's on lift), so
+`dwellSwell` read the hop from the last real point as a long wait over a short distance — a linger.
+- The trail keeps each point's event time (`TrailPt.t`); `catchUpPath` returns `{ path, from }`
+  (`from` = the trail point it starts at); new pure `replayTimes(fromT, times, lastT, now)` stamps each
+  catch-up point `lastT + (t − fromT)` — the pen's own pace replayed from the line's last point —
+  clamped to `now` and never decreasing. `catchUpAlongTrail(now)` uses it; the call sites pass the
+  same moments as before.
+- The resting-pen points at the tip (this app's Pool keep-alive) still pool there, as they should.
+- Tests: slop-paint's `replayTimes` block (pace, clamps, no false linger at 0.5 px/ms); 1518 total.
