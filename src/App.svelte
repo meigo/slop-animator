@@ -384,13 +384,63 @@
     if (!autosaveReady) return; // restore still in flight — state.project is not the user's document yet
     autosaveDirty = true;
     clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(() => {
-      autosaveDirty = false;
-      // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
-      // next hide-event can retry rather than skipping the save on a stale "clean" status.
-      void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
-    }, 3000);
+    autosaveTimer = setTimeout(autosaveWhenQuiet, 3000);
   });
+
+  function flushAutosave() {
+    autosaveDirty = false;
+    // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
+    // next hide-event can retry rather than skipping the save on a stale "clean" status.
+    void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
+  }
+
+  // The timed save waits while anyone is drawing (port of slop-paint 4064b59, where a blocking
+  // encode dropped pen events and the stroke drew a straight chord across the gap). The save here is
+  // mostly async (`canvas.toBlob` per key cell, yielding between them), but each cell's pixel
+  // readback still runs on the main thread, and the 3 s debounce counts from a stroke's END — so it
+  // used to fire about two seconds into the NEXT stroke. It now waits while any pointer is pressed
+  // and until AUTOSAVE_QUIET_MS after the last one lifts. The hide-flush below still saves at once.
+  const AUTOSAVE_QUIET_MS = 1500;
+  /** A pressed pointer that has sent nothing for this long is taken as lifted: an `up` that was
+   *  somehow missed must not hold the autosave off for good. (A moving pen reports constantly.) */
+  const POINTER_STALE_MS = 5000;
+  const pointersDown = new Map<number, number>(); // id → when it last reported
+  let lastPointerUp = 0;
+  $effect(() => {
+    const seen = (e: PointerEvent) => {
+      if (e.type === "pointerdown" || pointersDown.has(e.pointerId)) {
+        pointersDown.set(e.pointerId, performance.now());
+      }
+    };
+    const up = (e: PointerEvent) => {
+      pointersDown.delete(e.pointerId);
+      lastPointerUp = performance.now();
+    };
+    window.addEventListener("pointerdown", seen, true);
+    window.addEventListener("pointermove", seen, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    return () => {
+      window.removeEventListener("pointerdown", seen, true);
+      window.removeEventListener("pointermove", seen, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  });
+
+  /** The timed autosave: now if nobody is drawing, else as soon as they've stopped for a moment. */
+  function autosaveWhenQuiet() {
+    const now = performance.now();
+    for (const [id, at] of pointersDown) if (now - at > POINTER_STALE_MS) pointersDown.delete(id);
+    const wait =
+      pointersDown.size > 0 ? AUTOSAVE_QUIET_MS : lastPointerUp + AUTOSAVE_QUIET_MS - now;
+    if (wait > 0) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(autosaveWhenQuiet, wait);
+      return;
+    }
+    flushAutosave();
+  }
 
   // A backgrounded tab can be killed by the OS at any moment (routinely, on iPad), so don't wait
   // out the debounce — flush as soon as the page is hidden. The write is async, so if the tab dies
@@ -400,8 +450,7 @@
     const flush = () => {
       if (!autosaveReady || !autosaveDirty) return;
       clearTimeout(autosaveTimer);
-      autosaveDirty = false;
-      void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
+      flushAutosave();
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();

@@ -7736,3 +7736,13 @@ Stream is there to remove — and kinked where the line, riding inside the curve
 - Desktop Chrome: two strokes, marquee + move, undo → the float gone and stroke B still there, undo →
   back to stroke A. Export path not exercised in the browser.
 - Also: roadmap (6), the opacity slider, measured (see CLAUDE.md) — not ported.
+
+**Autosave waits while you draw (2026-09-29).** Port of slop-paint `4064b59`, roadmap port item (4) —
+a precaution: no chords were seen here. The 3 s debounce (`persistTick`) counts from a stroke's END,
+so the timed save fired about two seconds into the NEXT stroke; `saveProjectBlob` is mostly async
+(`toBlob` per key cell, yielding between them) but each cell's pixel readback still runs on the main
+thread. `App.svelte`'s timer now calls `autosaveWhenQuiet`: it waits while any pointer is pressed
+(tracked by id on window, capture phase) and until 1.5 s after the last one lifts; a pointer silent
+for 5 s counts as lifted, so a missed `pointerup` can't hold saving off. The hide / pagehide flush
+still saves at once (`flushAutosave`, shared). Build- and review-verified only: the timing isn't
+observable from the page without instrumenting the save.
