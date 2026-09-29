@@ -1,4 +1,12 @@
-import { PAUSE_MS, STILL_PX, ropeCatchUp, ropeLength, ropeStep } from "./stroke-smoothing";
+import {
+  PAUSE_MS,
+  ROPE_MAX_PX,
+  STILL_PX,
+  TRAIL_SPAN,
+  catchUpPath,
+  ropeLength,
+  ropeStep,
+} from "./stroke-smoothing";
 
 export interface InputPoint {
   x: number;
@@ -56,14 +64,47 @@ export function setupInput(
     return ropeLength(v);
   }
   let rope: { x: number; y: number } | null = null;
-  // Corners: where the pen last moved more than STILL_PX, and when. Held still for PAUSE_MS, the
-  // rope pulls in (a frame loop — a still pen sends no events), so the line reaches the corner
-  // before the pen sets off in the new direction instead of cutting across it.
+  // The pen's recent path (client px), a point each time it has moved STILL_PX from the last —
+  // so a held pen's tremble adds nothing. When the rope has to catch up (a pause, a lift) the line
+  // follows THIS to the pen instead of a straight chord across the curve it just drew
+  // (slop-paint b158081).
+  type TrailPt = { x: number; y: number; pressure: number };
+  let trail: TrailPt[] = [];
+  let trailLen = 0;
+  // Corners: where the pen last moved more than STILL_PX (the trail's last point), and when. Held
+  // still for PAUSE_MS, the rope catches up (a frame loop — a still pen sends no events), so the
+  // line reaches the corner before the pen sets off in the new direction.
   let penEvent: PointerEvent | null = null;
   let stillAt = { x: 0, y: 0 };
   let stillSince = 0;
   let catchUpFrame = 0;
-  let lastTick = 0;
+
+  function trailPush(p: TrailPt) {
+    const last = trail[trail.length - 1];
+    if (last) trailLen += Math.hypot(p.x - last.x, p.y - last.y);
+    trail.push(p);
+    // Keep only what the rope could still be lagging along (and some): TRAIL_SPAN strings.
+    while (trail.length > 2 && trailLen > TRAIL_SPAN * ROPE_MAX_PX) {
+      trailLen -= Math.hypot(trail[1].x - trail[0].x, trail[1].y - trail[0].y);
+      trail.shift();
+    }
+  }
+
+  const pressureOf = (e: PointerEvent) => (e.pointerType === "mouse" ? 0 : e.pressure);
+
+  /** Bring the lagging line up to the pen along the pen's own path, stamped `timestamp`. Only with
+   *  a string: at Stream 0 (every non-brush tool) the brush IS the pen, and a catch-up would pull
+   *  it back up to STILL_PX to the last trail point — nudging a held gizmo handle. */
+  function catchUpAlongTrail(timestamp: number) {
+    const len = getRopeLength();
+    if (!rope || !penEvent || len === 0) return;
+    const path = catchUpPath(trail, rope, 2 * len + 2 * STILL_PX);
+    for (const p of path) {
+      addPoint({ ...getPoint(penEvent, p.x, p.y), pressure: p.pressure, timestamp });
+    }
+    const end = path[path.length - 1];
+    if (end) rope = { x: end.x, y: end.y };
+  }
 
   /** The event as a stroke point, at client position (`cx`, `cy`) — the pen's own unless the rope
    *  holds the brush elsewhere. */
@@ -109,7 +150,10 @@ export function setupInput(
     rope = { x: e.clientX, y: e.clientY };
     penEvent = e;
     stillAt = { ...rope };
-    stillSince = lastTick = e.timeStamp;
+    stillSince = e.timeStamp;
+    trail = [];
+    trailLen = 0;
+    trailPush({ ...rope, pressure: pressureOf(e) });
     catchUpFrame = requestAnimationFrame(catchUp);
     currentPoints = [first];
     onStroke(currentPoints, false);
@@ -130,21 +174,14 @@ export function setupInput(
       // point (the pen's pressure then is dropped with it).
       const now = { x: ce.clientX, y: ce.clientY };
       if (Math.hypot(now.x - stillAt.x, now.y - stillAt.y) > STILL_PX) {
-        // Setting off after a pause: if the frame loop hasn't pulled the rope all the way in
-        // (frames late or not running), finish it now, so the corner is kept regardless. Stamped
-        // with the pause's start, so Smooth sees the pause too. Aimed at where the pen came to
-        // rest (the corner), not its latest position, which is already up to STILL_PX along the
-        // new leg.
-        // Only with a string: at Stream 0 (every non-brush tool) the brush IS the pen, and pulling
-        // it back up to STILL_PX to where the pen rested would nudge a held gizmo handle.
-        if (rope && penEvent && ce.timeStamp - stillSince >= PAUSE_MS && getRopeLength() > 0) {
-          if (rope.x !== stillAt.x || rope.y !== stillAt.y) {
-            rope = { ...stillAt };
-            addPoint({ ...getPoint(penEvent, stillAt.x, stillAt.y), timestamp: stillSince });
-          }
-        }
+        // Setting off after a pause: if the frame loop hasn't caught up (frames late or not
+        // running), finish it now — to where the pen came to rest, before this new point joins the
+        // trail — so the corner is kept regardless. Stamped with the pause's start, so Smooth sees
+        // the pause too.
+        if (ce.timeStamp - stillSince >= PAUSE_MS) catchUpAlongTrail(stillSince);
         stillAt = now;
         stillSince = ce.timeStamp;
+        trailPush({ ...now, pressure: pressureOf(ce) });
       }
       penEvent = ce;
       const len = getRopeLength();
@@ -166,19 +203,15 @@ export function setupInput(
     if (currentPoints.length !== countBefore) onStroke(currentPoints, false);
   }
 
-  /** While the pen pauses, glide the rope's end to where it came to rest — once per frame. */
+  /** While the pen pauses, bring the line up to where it came to rest, along its path. Checked
+   *  once per frame; after the first catch-up there is nothing left to add until it moves again. */
   function catchUp(now: number) {
     if (!isDrawing || !rope || !penEvent) return;
     catchUpFrame = requestAnimationFrame(catchUp);
-    const dt = now - lastTick;
-    lastTick = now;
-    if (now - stillSince < PAUSE_MS || getRopeLength() === 0) return;
-    // To where the pen came to rest, so its tremble while held doesn't wiggle the corner.
-    const next = ropeCatchUp(rope, stillAt, dt);
-    if (next === rope) return;
-    rope = next;
-    addPoint({ ...getPoint(penEvent, next.x, next.y), timestamp: now });
-    onStroke(currentPoints, false);
+    if (now - stillSince < PAUSE_MS) return;
+    const before = currentPoints.length;
+    catchUpAlongTrail(now);
+    if (currentPoints.length !== before) onStroke(currentPoints, false);
   }
 
   function addPoint(pt: InputPoint) {
@@ -210,12 +243,13 @@ export function setupInput(
     e.preventDefault();
     isDrawing = false;
     drawPointer = -1;
+    cancelAnimationFrame(catchUpFrame);
+    // The stroke ends at the pen, not where the rope held the brush: the line catches up along the
+    // pen's path (not a straight chord), so a short hatch still reaches the lift point.
+    catchUpAlongTrail(e.timeStamp);
     rope = null;
     penEvent = null;
-    cancelAnimationFrame(catchUpFrame);
-    // The stroke ends at the pen, not where the rope held the brush: the line catches up, so a
-    // short hatch still reaches the lift point. Pen pointerup reports pressure 0; keep the last
-    // move's pressure so the stroke doesn't taper.
+    // Pen pointerup reports pressure 0; keep the last move's pressure so the stroke doesn't taper.
     const up = getPoint(e);
     const last = currentPoints[currentPoints.length - 1];
     if (last) up.pressure = last.pressure;
