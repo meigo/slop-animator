@@ -1,4 +1,4 @@
-import { triangulateSilhouette, type Mesh } from "./triangulate";
+import { coverSilhouette, type Mesh } from "./triangulate";
 import { poseWeights } from "./geodesic";
 import { mlsRigidWeighted, type Pt } from "./mls";
 import { drawTriangle, type SelectionRect } from "./selection";
@@ -134,7 +134,10 @@ export class MeshPose {
       y >= 0 &&
       y < img.height &&
       (fill ? fill.mask[y * img.width + x] === 1 : data[(y * img.width + x) * 4 + 3] > 10);
-    const mesh: Mesh = triangulateSilhouette(inside, img.width, img.height, { spacing });
+    // The lift clears the whole content rect and Apply paints back only what the triangles carry,
+    // so the mesh must cover every pixel with any ink at all, faint anti-aliasing included.
+    const ink = (x: number, y: number) => data[(y * img.width + x) * 4 + 3] > 0;
+    const mesh: Mesh = coverSilhouette(ink, inside, img.width, img.height, { spacing });
     if (mesh.triangles.length === 0) return null;
     const rest = mesh.vertices.map((v) => ({ x: rect.x + v.x / dpr, y: rect.y + v.y / dpr }));
     return new MeshPose(rest, mesh.triangles, img, rect, fill);
