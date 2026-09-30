@@ -167,7 +167,10 @@ export function coverSilhouette(
 /** Points bucketed in `cell`-sized squares, for "is any point closer than d (<= cell)?". */
 class PointHash {
   private cells = new Map<string, Pt[]>();
-  constructor(private cell: number) {}
+  private cell: number;
+  constructor(cell: number) {
+    this.cell = cell;
+  }
   add(p: Pt) {
     const k = `${Math.floor(p.x / this.cell)},${Math.floor(p.y / this.cell)}`;
     const list = this.cells.get(k);
