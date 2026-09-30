@@ -268,7 +268,7 @@ export function drawInkStroke(
 
   // Same ladder as brush.ts / calligraphy-brush.ts / stamp-brush.ts — this engine used to
   // hardcode source-over, which silently made the "Behind" toggle a no-op for Ink alone.
-  const alpha = settings.isEraser ? 1 : settings.opacity / 100;
+  const alpha = settings.opacity / 100; // the eraser's own Opacity too (it was always full)
   const op: GlobalCompositeOperation = settings.isEraser
     ? "destination-out"
     : settings.alphaLock
@@ -277,7 +277,7 @@ export function drawInkStroke(
         ? "destination-over"
         : "source-over";
 
-  // Opaque (and every eraser stroke): the runs can go straight onto the target. Where they
+  // Opaque: the runs can go straight onto the target. Where they
   // overlap they paint the same colour at full alpha, so overlapping twice is invisible.
   const sctx = alpha < 1 ? inkScratch(ctx.canvas.width, ctx.canvas.height) : null;
   if (!sctx) {

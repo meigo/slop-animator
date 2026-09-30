@@ -120,8 +120,9 @@ export function drawStroke(
   ctx.save();
 
   if (settings.isEraser) {
+    // The eraser's own Opacity: a partial erase (it was always full for this engine).
     ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = settings.opacity / 100;
   } else if (settings.alphaLock) {
     ctx.globalCompositeOperation = "source-atop";
     ctx.globalAlpha = settings.opacity / 100;
