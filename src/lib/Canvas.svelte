@@ -1541,6 +1541,7 @@
     liftGuard.discard = discardActiveEdits;
     liftGuard.bank = bankActiveEdits;
     liftGuard.hasEdits = liftHasEdits;
+    liftGuard.isOpen = () => !!meshPose || !!selection?.hasFloating || outlineActive();
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
@@ -2568,6 +2569,7 @@
       liftGuard.discard = null;
       liftGuard.bank = null;
       liftGuard.hasEdits = null;
+      liftGuard.isOpen = null;
       poseActions.active = () => false;
       selectionActions.enterWarp = null;
       selectionActions.copy = null;

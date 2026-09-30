@@ -2617,10 +2617,14 @@ export const liftGuard: {
   bank: (() => void) | null;
   /** A live lift that `bank` would APPLY (not cancel): a float, or a dragged Pose/Deform. */
   hasEdits: (() => boolean) | null;
+  /** Anything that has changed the cell's pixels without being applied yet: any lift (its region is
+   *  cleared from the cell) or an Outline preview (written into it). Autosave waits while true. */
+  isOpen: (() => boolean) | null;
 } = {
   discard: null,
   bank: null,
   hasEdits: null,
+  isOpen: null,
 };
 
 /** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`

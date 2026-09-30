@@ -19,6 +19,7 @@
     selectOutline,
     selectionActions,
     editActions,
+    liftGuard,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer } from "../anim/reference";
@@ -168,6 +169,10 @@
     // This is the user's backup. A failure here (OOM zipping a large project on iPad) used to be an
     // unhandled rejection with no message at all — no file appeared and nothing said why, which is
     // exactly the state in which someone closes the tab believing they are saved.
+    // An open lift has cleared its region from the cell, and an Outline preview is written into
+    // it — saving then would store the hole or the preview as the drawing. Apply first, as Export
+    // does: the file then holds what is on screen, and one undo takes the transform back.
+    liftGuard.bank?.();
     try {
       appState.statusHint = "Saving…";
       const name = `${sanitizeFilename(appState.project.name)}.zip`;
