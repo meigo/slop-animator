@@ -373,6 +373,14 @@ export class Selection {
     const pw = Math.round(r.w * dpr);
     const ph = Math.round(r.h * dpr);
     if (pw <= 0 || ph <= 0) return null;
+    // The selection takes the whole pixels it copied (slop-paint 1c8b5fd, roadmap 14a). A marquee
+    // dragged at zoom or with the Pencil has fractional edges, and clearing and redrawing at those
+    // while copying whole pixels resampled the art: an untouched lift + Apply blurred it and left a
+    // half-cleared line at the edge, worse on every repeat. Callers crop before they clear, so the
+    // hole, the float, the commit and the clipboard all sit on this grid. A lasso's bounds snap;
+    // its outline stays as drawn.
+    this.rect = { x: px / dpr, y: py / dpr, w: pw / dpr, h: ph / dpr };
+    const r2 = this.rect;
 
     const cvs = document.createElement("canvas");
     cvs.width = pw;
@@ -383,8 +391,8 @@ export class Selection {
       ctx.save();
       const clipPath = new Path2D();
       for (let i = 0; i < this.lassoPoints.length; i++) {
-        const lx = (this.lassoPoints[i].x - r.x) * dpr;
-        const ly = (this.lassoPoints[i].y - r.y) * dpr;
+        const lx = (this.lassoPoints[i].x - r2.x) * dpr;
+        const ly = (this.lassoPoints[i].y - r2.y) * dpr;
         if (i === 0) clipPath.moveTo(lx, ly);
         else clipPath.lineTo(lx, ly);
       }
