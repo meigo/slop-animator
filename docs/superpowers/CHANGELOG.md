@@ -7784,5 +7784,6 @@ was grouped into batches like slop-paint's; A is everything that loses work. One
   overwrite the project. Now `name-frames.zip`; opening a zip without `project.json` says so.
 - Build 0/0, 1550 tests. Nothing here was run in a browser or on the iPad: owed a pass for Pose
   (Apply keeps dots, thin strokes and the outer rim), the finger gate, Save with a float open, and
-  the Open confirm. Batches B–E (wrong pixels, undo/lifecycle, perf, UI) are still to do; the
-  findings are in the session's review output, not in the repo.
+  the Open confirm. Batches B–E (wrong pixels, undo/lifecycle, perf, UI) are still to do; every
+  finding, with scenario, suggested fix and verifier note, is in
+  `docs/superpowers/reviews/2026-09-30-code-review.md`.
