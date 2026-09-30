@@ -498,6 +498,39 @@ export function setHoldSpan(layer: DrawingLayer, keyFrame: number, span: number)
 }
 
 /**
+ * Where the span of the key at `keyFrame` visibly ends. A TRAILING span (no key after it) runs on
+ * to the document's last frame, which the longest OTHER drawing layer sets (`othersLen`) — past the
+ * end of this layer's own stored track when the layer is the shorter one.
+ */
+export function spanVisualEnd(layer: DrawingLayer, keyFrame: number, othersLen: number): number {
+  const end = holdSpanEnd(layer, keyFrame);
+  return end >= layer.cells.length ? Math.max(end, othersLen) : end;
+}
+
+/**
+ * The timeline's span-edge drag: `setHoldSpan`, plus the layer's own track keys rippled by how far
+ * the span's VISIBLE end moved. Measuring the stored track instead treated the holds that
+ * `setHoldSpan` pads a short layer with as inserted frames, so a one-column drag on a 30-cell layer
+ * in a 40-frame document moved its transform/opacity keys past frame 30 by eleven frames
+ * (2026-09-30 review). A trailing span shrunk inside the other layers' length changes nothing
+ * visible, so it moves no key.
+ */
+export function resizeHoldSpan(
+  layer: DrawingLayer,
+  keyFrame: number,
+  span: number,
+  othersLen: number,
+): void {
+  const before = spanVisualEnd(layer, keyFrame, othersLen);
+  setHoldSpan(layer, keyFrame, span);
+  const after = spanVisualEnd(layer, keyFrame, othersLen);
+  // `shiftLayerTrackKeys` moves by ONE frame, so a multi-frame resize repeats it: growing inserts
+  // `after - before` frames at `before`, shrinking removes them from `after`.
+  for (let i = 0; i < after - before; i++) shiftLayerTrackKeys(layer, before, 1);
+  for (let i = 0; i < before - after; i++) shiftLayerTrackKeys(layer, after, -1);
+}
+
+/**
  * Move the keyframe at `from` to `to` on the same layer.
  * - Source cell becomes a hold.
  * - If `to` is a hold cell → the key lands there.
