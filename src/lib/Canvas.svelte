@@ -2385,12 +2385,19 @@
   // mesh has to rebuild from the SAME lifted bitmap and reset handles — vertex indices change.
   function rebuildPoseMesh() {
     if (!meshPose) return;
-    meshPose =
-      MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
-        fillHoles: appState.pose.fillHoles,
-        gap: appState.pose.gap,
-      }) ?? meshPose;
-    appState.poseActive = meshPose !== null;
+    const rebuilt = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
+      fillHoles: appState.pose.fillHoles,
+      gap: appState.pose.gap,
+    });
+    // No mesh at this setting: keep the current one AS IT IS — its handles and bend included. Going
+    // on to reset them left the bent picture on screen with `poseDirty` false, so the next tool or
+    // frame switch cancelled the pose instead of applying it, with no undo.
+    if (!rebuilt) {
+      appState.statusHint = "Couldn't build a mesh with this setting — kept the current one";
+      return;
+    }
+    meshPose = rebuilt;
+    appState.poseActive = true;
     poseDrag = null;
     poseBarDragging = false;
     activeHandle = null;
