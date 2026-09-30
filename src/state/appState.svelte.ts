@@ -2668,6 +2668,14 @@ function resyncAudioAfterHistory(): void {
 }
 export function redo(): void {
   transformDragGuard.settle?.();
+  // A moved selection, a pasted float, a dragged Pose/Deform or an Outline preview is on screen like
+  // an edit already made, and redo cannot take it back later: Cancel pushes no undo step. Discarding
+  // it here (as this did until 2026-09-30) lost the move for good on a stray ⌘⇧Z or three-finger
+  // tap. Applying it would push a step, which clears the redo stack anyway — so redo waits.
+  if (outlineActions.active() || liftGuard.hasEdits?.()) {
+    if (history.canRedo) state.statusHint = "Apply or cancel the transform first, then redo";
+    return;
+  }
   liftGuard.discard?.();
   if (!history.canRedo) return;
   history.redo();
