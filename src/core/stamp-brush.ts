@@ -33,12 +33,33 @@ export function stampFootprint(width: number): { drawSize: number; alphaScale: n
 
 // Track how many points we've already drawn for incremental stamping
 let lastStampCount = 0;
+/** Distance travelled since the last stamp, carried across segments AND calls (each repaint is one
+ *  call). It was reset per call — at least one stamp per input segment whatever the size — and
+ *  started the next segment at minus the overshoot, so gaps swung between ~0 and 2× the step:
+ *  slow strokes (short segments) came out several times denser than fast ones (slop-paint 64952cd). */
+let sinceLastStamp = 0;
+
+/**
+ * Where to stamp along one segment of length `segLen`, `step` apart, when `since` has been
+ * travelled since the last stamp: the positions, and the distance left over for the next segment.
+ */
+export function spaceStamps(
+  segLen: number,
+  step: number,
+  since: number,
+): { positions: number[]; since: number } {
+  const positions: number[] = [];
+  for (let pos = Math.max(0, step - since); pos <= segLen; pos += step) positions.push(pos);
+  const last = positions[positions.length - 1];
+  return { positions, since: last === undefined ? since + segLen : segLen - last };
+}
 let tintedTip: HTMLCanvasElement | null = null;
 let tintedColor = "";
 let tintedType: BrushType | null = null;
 
 export function resetStampState() {
   lastStampCount = 0;
+  sinceLastStamp = 0;
   tintedTip = null;
 }
 
@@ -77,6 +98,10 @@ export function drawStampStrokeIncremental(
   // Model 2 range (see widthRange in brush.ts): pressure thins below / widens above nominal.
   const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
   const tip = getTintedTip(settings.brushType, settings.color);
+  // A mouse has no pressure (reported 0): its width is already the nominal one, and its alpha
+  // mustn't take the light-pressure half either — mouse stamps drew at half the chosen opacity.
+  const hasPressure = points[0].hasPressure;
+  const pressureAlpha = (p: number) => (hasPressure ? 0.5 + p * 0.5 : 1);
 
   ctx.save();
   if (settings.isEraser) {
@@ -102,12 +127,12 @@ export function drawStampStrokeIncremental(
   if (lastStampCount === 0 && newPoints.length > 0) {
     const p = newPoints[0];
     const { drawSize, alphaScale } = stampFootprint(minSize + p.pressure * (maxSize - minSize));
-    ctx.globalAlpha = (settings.opacity / 100) * (0.5 + p.pressure * 0.5) * alphaScale;
+    ctx.globalAlpha = (settings.opacity / 100) * pressureAlpha(p.pressure) * alphaScale;
     ctx.drawImage(tip, p.x - drawSize / 2, p.y - drawSize / 2, drawSize, drawSize);
+    sinceLastStamp = 0;
   }
 
   // Stamp along new segments
-  let dist = 0;
   for (let i = 1; i < newPoints.length; i++) {
     const prev = newPoints[i - 1];
     const curr = newPoints[i];
@@ -119,21 +144,17 @@ export function drawStampStrokeIncremental(
     const avgSize = minSize + ((prev.pressure + curr.pressure) / 2) * (maxSize - minSize);
     const stepSize = Math.max(1, avgSize * spacing);
 
-    let pos = -dist; // start from leftover distance of previous segment
-    while (pos < segLen) {
-      if (pos >= 0) {
-        const t = pos / segLen;
-        const x = prev.x + dx * t;
-        const y = prev.y + dy * t;
-        const p = prev.pressure + (curr.pressure - prev.pressure) * t;
-        const { drawSize, alphaScale } = stampFootprint(minSize + p * (maxSize - minSize));
-
-        ctx.globalAlpha = (settings.opacity / 100) * (0.5 + p * 0.5) * alphaScale;
-        ctx.drawImage(tip, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
-      }
-      pos += stepSize;
+    const spaced = spaceStamps(segLen, stepSize, sinceLastStamp);
+    for (const pos of spaced.positions) {
+      const t = pos / segLen;
+      const x = prev.x + dx * t;
+      const y = prev.y + dy * t;
+      const p = prev.pressure + (curr.pressure - prev.pressure) * t;
+      const { drawSize, alphaScale } = stampFootprint(minSize + p * (maxSize - minSize));
+      ctx.globalAlpha = (settings.opacity / 100) * pressureAlpha(p) * alphaScale;
+      ctx.drawImage(tip, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
     }
-    dist = pos - segLen;
+    sinceLastStamp = spaced.since;
   }
 
   lastStampCount = points.length;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stampFootprint, MIN_STAMP_PX } from "../core/stamp-brush";
+import { spaceStamps, stampFootprint, MIN_STAMP_PX } from "../core/stamp-brush";
 
 /**
  * A 64px tip drawn into a box smaller than MIN_STAMP_PX downsamples to alpha 0 in
@@ -44,5 +44,36 @@ describe("stampFootprint", () => {
     const at = stampFootprint(MIN_STAMP_PX);
     expect(below.alphaScale).toBeCloseTo(at.alphaScale, 4);
     expect(below.drawSize).toBeCloseTo(at.drawSize, 4);
+  });
+});
+
+describe("spaceStamps", () => {
+  /** Stamps for a line cut into `seg`-long segments, one call each (as pointermoves arrive). */
+  function count(total: number, seg: number, step: number) {
+    let since = 0;
+    let n = 1; // the stroke's first point is stamped on its own
+    for (let d = 0; d < total; d += seg) {
+      const r = spaceStamps(seg, step, since);
+      n += r.positions.length;
+      since = r.since;
+    }
+    return n;
+  }
+
+  it("spaces stamps by the step whatever the segment length", () => {
+    // Size 80 at spacing 0.15 → a 12 px step: ~17 stamps over 200 px, however the points arrive.
+    // (The old loop gave a slow 0.5-1 px stroke several times the stamps of a fast one.)
+    expect(count(200, 1, 12)).toBe(17);
+    expect(count(200, 4, 12)).toBe(17);
+    expect(count(200, 50, 12)).toBe(17);
+  });
+
+  it("carries the distance since the last stamp into the next segment", () => {
+    expect(spaceStamps(5, 12, 0)).toEqual({ positions: [], since: 5 });
+    expect(spaceStamps(10, 12, 5)).toEqual({ positions: [7], since: 3 });
+  });
+
+  it("stamps at the segment start when a step is already due", () => {
+    expect(spaceStamps(3, 2, 5).positions).toEqual([0, 2]);
   });
 });
