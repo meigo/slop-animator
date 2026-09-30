@@ -22,7 +22,7 @@
     liftGuard,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
-  import { loadImageLayer, loadVideoLayer } from "../anim/reference";
+  import { loadImageLayer, loadVideoLayer, releaseReferenceMedia } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
   import {
     saveProjectBlob,
@@ -113,6 +113,19 @@
           () => repaint(),
           () => (appState.statusHint = "Storage full — references won't survive a reload"),
         );
+        // Opening replaces the document as New does: history cleared, the autosave overwritten
+        // seconds later, the old project's stored reference media pruned — nothing to undo it with.
+        // New asked first; Open did not (2026-09-30 review). Asked AFTER the file has loaded, so a
+        // file that fails to open never asks, and before anything is replaced.
+        if (
+          !window.confirm(
+            `Open ${file.name}?\n\nIt replaces the current project and its autosave. Save the current project first if you want to keep it.`,
+          )
+        ) {
+          // Its reference videos are already decoding: let them go.
+          for (const l of project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+          return;
+        }
         // Pre-name-field saves carry no name — adopt the picked file's basename.
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
         replaceProject(project);
