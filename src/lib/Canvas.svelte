@@ -2451,9 +2451,10 @@
         syncOverlayScale();
         repaintPoseOverlay();
       },
+      isDrawing: () => input.isDrawing(),
     });
 
-    const cleanup = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
+    const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
       // Streamline is a brush preference. On select, pose, deform, and transform it made handles
       // trail the Pencil and stop short of the lift.
       streamline: () =>
@@ -2549,7 +2550,7 @@
 
     return () => {
       overlayRo.disconnect();
-      cleanup();
+      input.dispose();
       cleanupTouch();
       stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
       stage.removeEventListener("pointermove", stagePanMove, { capture: true });
