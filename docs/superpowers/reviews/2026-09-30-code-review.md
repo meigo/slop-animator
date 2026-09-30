@@ -11,7 +11,7 @@ code, not the number. When a finding is fixed, mark it **FIXED** here with the c
 
 Batches, in the order to fix them:
 - **A — lost work:** all FIXED on `fix/review-batch-a` (see CHANGELOG, "Code review batch A").
-- **B — wrong pixels or wrong place**
+- **B — wrong pixels or wrong place:** all FIXED on `fix/review-batch-b` (see CHANGELOG, "Code review batch B").
 - **C — undo and lifecycle**
 - **D — performance**
 - **E — UI and keyboard**
@@ -132,11 +132,13 @@ activation not tested in Chrome.
 - **Suggested fix:** Give the sequence a different name (e.g. `${stem}-frames.zip`). In loadProjectBlob, throw a clear 'not a slop-animator project (no project.json)' error when the entry is missing.
 - **Verifier:** stem = sanitizeFilename(project.name) (ExportDialog.svelte:66). The PNG sequence goes out as `${stem}.zip` (122, 180), the same name Save uses (Toolbar.svelte:173). loadProjectBlob:636 calls strFromU8(zip['project.json']) with no check, so opening a frames zip throws a raw TypeError. Severity lowered to minor: on iPad the overwrite only happens when the user taps Replace, in the same folder, on a prompt that names the file. On desktop the browser renames the download to 'walk (1).zip', so nothing is lost.
 
-## Batch B — wrong pixels or wrong place
+## Batch B — wrong pixels or wrong place (FIXED)
 
 ### 9. Canvas resize ignores layer and group transforms, so transformed art moves
 
 **confirmed / major / correctness** — `src/state/appState.svelte.ts:2250` (area: state-undo; also found by ui-input)
+
+**FIXED 2026-10-01** in `ab7229c` (branch `fix/review-batch-b`).
 
 *As reported by the state-undo reviewer:*
 
@@ -156,6 +158,8 @@ activation not tested in Chrome.
 
 **confirmed / major / correctness** — `src/anim/document.ts:428` (area: model-render)
 
+**FIXED 2026-10-01** in `067c8e0` (branch `fix/review-batch-b`). Refused (new block "group"); the lower layer's opacity still multiplies in, as in Photoshop.
+
 - **Problem:** whyNotMergeDown only refuses a cross-group merge when a group is ANIMATED (lines 426-431); its own comment admits the static case is 'pre-existing in shape'. mergeDown (src/state/appState.svelte.ts:1614-1636) calls bakeLayerTransform, which bakes only layer.transform (and the cell transform through bakeCell), never the group's. The merged pixels then land in the lower layer's group (or none), so the upper content loses its old group's static transform and opacity, and gains the lower one's. Separately, mergeDown draws the upper at upper.opacity into a canvas that is then shown at below.opacity (line 1635), so the upper content ends up at upper×below opacity. Whether Photoshop-style 'takes the lower layer's opacity' is the intended rule is not recorded anywhere; the group case is clearly wrong.
 - **Scenario:** Group G (static transform rotation 30°, or opacity 50) whose bottom member L2 sits directly above ungrouped L1. Select L2 and Merge down: the button is enabled. L2's drawing snaps back unrotated and to full opacity inside L1. A second case: L1 at opacity 50, L2 at 100, same group or none: after the merge L2's ink shows at 50%. Undo restores both, but the change happens silently.
 - **Suggested fix:** In whyNotMergeDown, also refuse (or bake) when the groups differ and either group has a non-identity static transform or opacity != 100. In mergeDown, either bake the group contribution into the upper pixels or refuse. For the lower layer's opacity, either refuse when below.opacity != 100 or draw the upper at upper.opacity/below.opacity where that stays ≤ 1.
@@ -164,6 +168,8 @@ activation not tested in Chrome.
 ### 11. Selection lift/Apply resamples a fractional rect: art blurs and edge pixels half-clear on every lift, even untouched
 
 **confirmed / major / correctness** — `src/core/selection.ts:371` (area: selection) — roadmap port item **14a**
+
+**FIXED 2026-10-01** in `5c1b1ed` (branch `fix/review-batch-b`).
 
 - **Problem:** copyPixelsFromDoc rounds the crop to whole device pixels (px=Math.round(r.x*dpr), pw=Math.round(r.w*dpr), lines 371-374) but leaves this.rect fractional. renderFloatingTo (line 760) and drawOverlay (line 1006) then draw that pw x ph bitmap into the FRACTIONAL rect (rect.x, rect.y, rect.w, rect.h), a sub-pixel shift plus a slight stretch, so the image is bilinearly resampled. clearRegion's rect branch (line 432, called from liftPaperCrop at Canvas.svelte:1649) does clearRect on the same fractional rect, so the border pixels are only partly cleared and then get the resampled float composited over them. Marquee coordinates come from the viewport's screen-to-document mapping and Pencil input, so in practice they are almost never integers. The same mismatch feeds the pixel clipboard: copySelection stores the fractional rect beside a rounded canvas (Canvas.svelte:1712), and pasteFloat stretches it again. Onion/compose paths are not involved: this happens on an identity layer.
 - **Scenario:** At any zoom other than 100%, or with Pencil input, drag a rect marquee over line art. Tap inside it (that lifts it), then tap outside (that commits it), or move it 10 px and back and press Enter. The lines inside the marquee come back softened, a faint seam of partly-cleared pixels runs along the marquee edge, and one undo step is pushed. Each repeat blurs the art further.
@@ -174,6 +180,8 @@ activation not tested in Chrome.
 
 **plausible / minor / correctness** — `src/core/selection.ts:416` (area: selection)
 
+**FIXED 2026-10-01** in `a09c2f7` (branch `fix/review-batch-b`). An unmoved lift now takes the Cancel path on Apply; a moved lift's edge is the ordinary composite.
+
 - **Problem:** clearRegion clears the lasso polygon through an anti-aliased clip (lines 416-430), so a boundary pixel with coverage c keeps alpha a*(1-c). copyPixelsFromDoc lifts the same polygon through its own anti-aliased clip (lines 382-393), so the float carries a*c. On commit (Canvas.svelte:1488, source-over), an untouched boundary pixel comes back as a*c + a*(1-c)*(1-a*c): 0.75 for solid ink at c=0.5, not 1. The lasso clip is also placed at (pt - r.x)*dpr against a source origin rounded to Math.round(r.x*dpr), so the two clips are not even aligned, which makes it worse. Uncertainty: this assumes the engine anti-aliases the clip. Skia and WebKit both do for non-axis-aligned paths, but I have not eyeballed it in a browser.
 - **Scenario:** Lasso across a solid filled shape. Tap inside (lift), then tap outside, or Enter (commit), without moving. A faint lighter line appears through the fill exactly where the lasso crossed it, and each lift/commit cycle adds another.
 - **Suggested fix:** Make the hole and the float complementary. For example, clear with the float's own alpha as a mask (destination-out of the lifted bitmap drawn at the same place), rather than re-rasterising the polygon a second time. Or commit an untouched lift as a cancel (restore selBefore) the way deformDirty does for Deform.
@@ -182,6 +190,8 @@ activation not tested in Chrome.
 ### 13. A tap in Pose snaps the nearest vertex to the tap point and marks the pose dirty, moving the art
 
 **confirmed / major / correctness** — `src/lib/Canvas.svelte:1305` (area: transform)
+
+**FIXED 2026-10-01** in `d8ff4bd` (branch `fix/review-batch-b`).
 
 - **Problem:** On press, `meshPose.addHandleAt(p)` pins the NEAREST vertex at its current position (mesh-pose.ts:171-186). The release sample then always runs `meshPose.dragHandle(poseDrag, p)` and `poseDirty = true` (Canvas.svelte:1305-1308). `dragHandle` sets `to = p`, the absolute pointer, not an offset from where the grab happened (mesh-pose.ts:188-192). So a press-release with no movement moves that vertex from where it was to the tap point. With a single handle, rigid MLS moves the WHOLE drawing by that offset. The offset is up to about spacing/sqrt(2) (~11px) on the art, and arbitrarily large for a tap outside the silhouette, because the nearest vertex can be far away. Grabbing an existing handle within its 10px tolerance jumps it the same way. This contradicts the stated intent at Canvas.svelte:406-407 ('Adding a pose handle doesn't count: it changes the mesh, not the picture'). Deform has a `deformGrab` same-spot check (line 1339); Pose has none. The nub (1297-1303) likewise rewrites angle and reach from the raw pointer on a no-move release.
 - **Scenario:** Pose tool, drawing on screen. Tap once about 8px beside the drawing's edge to place a pin. The whole drawing shifts 5-10px toward the tap and poseDirty is now true, so switching tools or changing frame bakes the shifted drawing into the cell. Tapping 200px away from the drawing drags the nearest part of it 200px across the canvas.
@@ -192,6 +202,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / ux** — `src/core/fill.ts:139` (area: selection)
 
+**FIXED 2026-10-01** in `8febec2` (branch `fix/review-batch-b`). A painted area is recoloured; an empty one still fills behind.
+
 - **Problem:** With expand > 0 (the default is fill.expand = 2, appState.svelte.ts:392), floodFill composites the flood with destination-over (lines 139-164), which only lands where the destination is transparent. A tap on an existing opaque colour region therefore changes nothing inside it, only a faint rim behind its anti-aliased edge. If nothing changes, doFill reports 'Nothing filled — that area is already this color' (Canvas.svelte:650), which is false. The alpha-lock branch already works around exactly this (expand forced to 0, Canvas.svelte:604-609), so the behaviour is known there. The unlocked bucket was never given the same treatment. A related refusal: the same-colour guard (fill.ts:48-55) compares the target to the fill colour using the region TOLERANCE (32 per channel), so filling a #000000 area with the default #1a1a1a is refused as 'already this color'. Uncertainty: 'fill paints behind' may be intended for the empty-area case. The report is about the tap on an already-coloured region.
 - **Scenario:** Fill an enclosed area red with the bucket. Change the bucket colour to blue and tap the red area with default settings. The area stays red; at most a faint blue rim appears behind the line edges, and it is pushed as an undo step. Or, when nothing at all changes, the bar says the area is already this colour.
 - **Suggested fix:** Paint behind only the dilation ring. Write the flood region itself with source-over (or copy), and use destination-over only for the expand ring outside it. Alternatively, force expand to 0 when the tapped pixel is opaque. Use an exact (or much tighter) comparison for the same-colour early-out.
@@ -200,6 +212,8 @@ activation not tested in Chrome.
 ### 15. Resizing a trailing span on a layer shorter than the document shifts its track keys by the padding, not by the drag
 
 **confirmed / major / correctness** — `src/lib/Timeline.svelte:1905` (area: timeline)
+
+**FIXED 2026-10-01** in `af6f160` (branch `fix/review-batch-b`).
 
 - **Problem:** For a key whose holds run to the end of the stored track, `planCellPointer` puts the resize hotspot at the DOCUMENT end: `spanEnd = end >= cells.length ? Math.max(end, count) : end` (timeline-grid.ts:64). So `dragStartBoundary` is `count`. In rowMoveAt, `setHoldSpan(layer, dragKey, dragLastBoundary - dragKey)` then pads the track from `cells.length` up to the boundary. `shiftKeysForSplice(layer, spanBefore, holdSpanEnd(...))` treats that padding as frames inserted at `spanBefore = cells.length` (2059). The result: every transform/opacity key at a frame in [cells.length, count) moves right by (count - cells.length) plus the real delta, even though visually only the frames at or after `count` moved. Layers shorter than the document are common, because documentLength is the max over draw layers and a per-layer resize grows only one layer. Track keys past a layer's last cell are ordinary: a single-drawing layer moved by transform keys across the whole shot.
 - **Scenario:** Layer B has 30 cells. The document is 40 frames because layer A was extended. B has transform keys at 0 and 35. With the Pencil, grab B's last span edge (drawn at frame 40) and drag one column right to 41. Expected: nothing before frame 40 moves. Actual: B is padded 30→41 and shiftLayerTrackKeys(B, 30, +1) runs 11 times, so the key at 35 lands on 46 and B's motion is retimed. It is one undo step, but the drag visibly did something else. Holding still at the start boundary also shifts the keys live, until release reverts it.
@@ -210,6 +224,8 @@ activation not tested in Chrome.
 
 **confirmed / major / correctness** — `src/core/stamp-brush.ts:122` (area: brushes) — roadmap port item **13a**
 
+**FIXED 2026-10-01** in `6332bfa` (branch `fix/review-batch-b`).
+
 - **Problem:** The carry-over is wrong in two ways. (1) `let dist = 0` (line 110) is local, so every call (one per rAF frame, plus the commit) restarts at pos 0 and stamps the first new segment's start point wherever the last stamp actually was. This is item 13a. (2) This app has a sign bug on top of that: `dist = pos - segLen` (line 136) is how far into the NEXT segment the next stamp is due, but line 122 starts the next segment at `pos = -dist`, so the next stamp lands at `step - dist` instead of `dist`. Stamp gaps therefore swing between about 0 and 2×step depending on segment length. I simulated the loop in node with 40 equal segments: 0.5 px segments at step 6 gave 20 stamps where about 4 were expected (5× too dense); 1 px at step 6 gave 20 vs about 7; 4 px segments at step 6 gave 20 vs about 27 (gaps of 8, 33% too sparse). input.ts interpolates to 4 px or less (INTERPOLATION_THRESHOLD), so slow strokes, which have tiny segments, come out far denser than fast ones.
 - **Scenario:** Airbrush or charcoal at size 40 (step = 0.15×40 = 6 px) with opacity below 100. Draw one line slowly (events about 0.5–1 px apart) and one fast (4 px apart). The slow line gets 3–5× the stamps and is much darker and heavier, and it costs that much more to draw. The fast line is sparser than the spacing setting asks for. The per-frame restart adds one extra stamp every frame on top of that.
 - **Suggested fix:** Carry `sinceLastStamp` across segments AND calls in module state (reset in resetStampState), and start each segment at `pos = step - sinceLastStamp` (equivalently `pos = dist` with the current overshoot definition), not `-dist`. slop-paint's `spaceStamps` does this; add a unit test on stamp positions.
@@ -219,6 +235,8 @@ activation not tested in Chrome.
 
 **confirmed / major / correctness** — `src/core/brush.ts:124` (area: brushes) — roadmap port item **13b**
 
+**FIXED 2026-10-01** in `16e2930` (branch `fix/review-batch-b`).
+
 - **Problem:** The eraser has its own Opacity slider (ToolOptions binds `stroke.opacity` for the active stroke settings), but three engines hard-code full strength for the eraser: brush.ts:124 `ctx.globalAlpha = 1`, calligraphy-brush.ts:424 `ctx.globalAlpha = 1`, and ink-brush.ts:271 `const alpha = settings.isEraser ? 1 : settings.opacity / 100`. Only the stamp engine honours it.
 - **Scenario:** Pick the eraser, choose the Smooth (or Ink or Calligraphy) brush type, set Opacity to 30%, and erase over ink. The ink is removed completely, the same as at 100%.
 - **Suggested fix:** Use `settings.opacity / 100` for the eraser too. destination-out with a partial globalAlpha erases partially, and ink's scratch path already handles alpha < 1 with `op` set to destination-out.
@@ -227,6 +245,8 @@ activation not tested in Chrome.
 ### 18. Mouse stamp strokes (brush and eraser) draw at half opacity
 
 **confirmed / minor / correctness** — `src/core/stamp-brush.ts:131` (area: brushes) — roadmap port item **13c**
+
+**FIXED 2026-10-01** in `6332bfa` (branch `fix/review-batch-b`).
 
 - **Problem:** Stamp alpha is `opacity × (0.5 + p × 0.5)`, at lines 105 and 131. input.ts:134 gives a mouse pressure 0 (hasPressure false), and paintStroke passes that through `curve.evaluate(0)`, which returns 0. So every mouse stamp is at 50% of the set opacity. The width path is handled (sr = 1 for no-pressure strokes); the alpha path is not.
 - **Scenario:** On desktop with a mouse, choose Pencil at Opacity 100 and draw on white: the line comes out 50% grey-black. The Pencil eraser also removes only half the alpha per stamp pass.
