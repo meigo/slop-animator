@@ -1478,6 +1478,11 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
+      // Nothing moved: put the cell back as it was (see `untouchedLift`) — no seam, no undo step.
+      if (selection.untouchedLift) {
+        selection.onCancel?.();
+        return;
+      }
       // renderFloatingTo draws the paper crop in document space; inverse compose + dpr
       // map it into the cell. Identity compose is a no-op → today's blit. save/restore because the
       // cell ctx is SHARED and carries the plain dpr transform by convention.

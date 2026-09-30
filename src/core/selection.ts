@@ -225,6 +225,9 @@ export class Selection {
   /** Corners keep the aspect ratio. Mirrors `appState.keepProportions`; Canvas sets it at grab. */
   keepProportions = true;
 
+  /** The float came from `pasteFloat`, not from lifting the layer's own pixels. */
+  private fromPaste = false;
+
   onCommit: (() => void) | null = null;
   onCancel: (() => void) | null = null;
   onChange: (() => void) | null = null;
@@ -454,6 +457,7 @@ export class Selection {
   /** Enter the transforming state with the lifted pixels. */
   beginTransform(pixels: HTMLCanvasElement) {
     this.floatingPixels = pixels;
+    this.fromPaste = false;
     this.matrix = identity();
     this.state = "transforming";
     this.drawOverlay();
@@ -468,6 +472,29 @@ export class Selection {
     this.lassoPath = null;
     this.lassoPoints = [];
     this.beginTransform(pixels);
+    this.fromPaste = true;
+  }
+
+  /**
+   * A float lifted out of the layer and never moved, turned or stretched. Applying it puts back
+   * exactly what was there, so the caller restores the cell instead: redrawing it left a faint seam
+   * along a lasso edge (the hole and the float are two anti-aliased clips of the same outline, and
+   * composited they don't add back to full alpha) and pushed an undo step for nothing. A paste is
+   * never "untouched" — placing it is the edit.
+   */
+  get untouchedLift(): boolean {
+    const m = this.matrix;
+    return (
+      this.state === "transforming" &&
+      this.floatingPixels !== null &&
+      !this.fromPaste &&
+      m.a === 1 &&
+      m.b === 0 &&
+      m.c === 0 &&
+      m.d === 1 &&
+      m.e === 0 &&
+      m.f === 0
+    );
   }
 
   /** Mirror the lifted float horizontally or vertically about its own centre. Free transform only
