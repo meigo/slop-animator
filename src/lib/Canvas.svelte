@@ -606,11 +606,11 @@
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
-        // `expand` > 0 switches floodFill to painting BEHIND existing content (it exists to tuck a
-        // fill under anti-aliased line edges), which could never recolour a pixel — and alpha lock
-        // refuses every empty one — so under the lock it would be a guaranteed no-op. 0 = write
-        // the colour into the region, which the `source-atop` composite below then keeps inside the
-        // existing alpha: a recolour of what is there.
+        // `expand` > 0 adds a ring painted BEHIND existing content (it exists to tuck a fill under
+        // anti-aliased line edges) — and alpha lock refuses every empty pixel, so under the lock
+        // the ring could only ever be dropped. 0 = write the colour into the region, which the
+        // `source-atop` composite below then keeps inside the existing alpha: a recolour of what
+        // is there.
         expand: alphaLock ? 0 : appState.fill.expand,
       });
       ctx.save();

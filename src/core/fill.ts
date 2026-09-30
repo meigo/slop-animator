@@ -44,12 +44,13 @@ export function floodFill(
   // Don't fill if clicking on a wall pixel
   if (alphaThreshold > 0 && targetA >= alphaThreshold) return;
 
-  // Don't fill if clicking on the same color
+  // Don't fill if clicking on the same color — exactly the same. Within the region tolerance (as
+  // it was) refused real recolours: #000000 could not be filled with the default #1a1a1a.
   if (
-    Math.abs(targetR - fillColor.r) <= tolerance &&
-    Math.abs(targetG - fillColor.g) <= tolerance &&
-    Math.abs(targetB - fillColor.b) <= tolerance &&
-    Math.abs(targetA - fillColor.a) <= tolerance
+    targetR === fillColor.r &&
+    targetG === fillColor.g &&
+    targetB === fillColor.b &&
+    targetA === fillColor.a
   ) {
     return;
   }
@@ -136,6 +137,25 @@ export function floodFill(
   }
 
   // --- Pass 3: Apply fill behind existing content ---
+  // Tapping a PAINTED area recolours it: the region itself is written (as with expand 0) and only
+  // the expand ring goes behind. Painting the whole region behind could never change an opaque
+  // pixel, so at the default expand a recolour tap did nothing but add a faint rim. An EMPTY area
+  // (the usual fill between lines) still goes all behind, so faint anti-aliased line pixels that
+  // fall inside the region stay on top of the fill.
+  const painted = targetA > tolerance;
+  if (expand > 0 && painted) {
+    for (let i = 0; i < w * h; i++) {
+      if (mask[i]) {
+        const pi = i * 4;
+        data[pi] = fillColor.r;
+        data[pi + 1] = fillColor.g;
+        data[pi + 2] = fillColor.b;
+        data[pi + 3] = fillColor.a;
+        finalMask[i] = 0; // written; what is left of finalMask is the ring
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
   if (expand > 0) {
     // Draw fill to a temp canvas, then composite behind existing content
     const tempCanvas = document.createElement("canvas");
