@@ -17,6 +17,7 @@ import {
   nextId,
   nonEmptyGroups,
   mediaIntrinsicSize,
+  containRect,
   isIdentityTransform,
   isSameTransform,
   groupHasLockedLayer,
@@ -142,7 +143,16 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 };
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
-import { placeContent, type ResizeMode, type Anchor } from "../anim/resize";
+import {
+  placeContent,
+  resizeBox,
+  resizeContentPivotTransform,
+  resizeDocPivotTransform,
+  resizeFitTransform,
+  type ResizeMode,
+  type Anchor,
+  type Placement,
+} from "../anim/resize";
 import type { Selection } from "../core/selection";
 import type { OnionConfig } from "../anim/onion";
 import {
@@ -2263,9 +2273,63 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
         return { kind: "key", canvas: nc };
       });
     }
+    // Transforms are document-space too: without this every moved, turned or scaled layer,
+    // reference or group ended up somewhere else once the pixels had been placed (2026-09-30
+    // review). Assigned, never mutated — snapshots deep-copy these fields, but the rule stands.
+    const oldW = state.project.width;
+    const oldH = state.project.height;
+    const pl: Placement = {
+      f: rect.w / (oldW * DPR),
+      ox: rect.x / DPR,
+      oy: rect.y / DPR,
+      oldW,
+      oldH,
+      newW: w,
+      newH: h,
+    };
+    for (const layer of state.project.layers) {
+      let map: (t: RefTransform) => RefTransform;
+      if (layer.kind === "draw") {
+        map = (t) => resizeDocPivotTransform(t, pl);
+      } else {
+        // A reference is re-fitted to the new document on its own; `k` is by how much.
+        const size = mediaIntrinsicSize(layer.media);
+        const k =
+          size.w > 0 && size.h > 0
+            ? containRect(size.w, size.h, w, h).w / containRect(size.w, size.h, oldW, oldH).w
+            : pl.f; // media not loaded: assume the fit follows the placement
+        map = (t) => resizeFitTransform(t, pl, k);
+      }
+      layer.transform = map(layer.transform);
+      const tr = layer.tracks?.transform;
+      if (tr) layer.tracks = { ...layer.tracks, transform: resizeTrack(tr, pl, map) };
+    }
+    for (const g of state.project.groups) {
+      const map = (t: RefTransform) => resizeContentPivotTransform(t, pl);
+      if (g.transform) g.transform = map(g.transform);
+      if (g.transformBox) g.transformBox = resizeBox(g.transformBox, pl);
+      const tr = g.tracks?.transform;
+      if (tr) g.tracks = { ...g.tracks, transform: resizeTrack(tr, pl, map) };
+    }
     state.project.width = w;
     state.project.height = h;
   });
+}
+
+/** A transform track through a resize: every key's value by `map`. A track with a frozen pivot box
+ *  turns about that box, which the placement carries along — so its keys only scale their
+ *  translation, whatever the owner's own rule. */
+function resizeTrack(
+  tr: TransformTrack,
+  pl: Placement,
+  map: (t: RefTransform) => RefTransform,
+): TransformTrack {
+  const byBox = tr.box ? (t: RefTransform) => resizeContentPivotTransform(t, pl) : map;
+  return {
+    ...tr,
+    keys: tr.keys.map((k) => ({ ...k, v: byBox(k.v) })),
+    box: tr.box ? resizeBox(tr.box, pl) : null,
+  };
 }
 
 /** Toggle the eraser on/off, restoring the tool that was active before (for a quick gesture toggle). */
