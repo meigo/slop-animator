@@ -902,13 +902,6 @@ export function removeGroup(groupId: number) {
   });
 }
 
-/** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
-export function reorderLayers(ordered: Layer[]) {
-  commitStructural(() => {
-    state.project.layers = ordered;
-  });
-}
-
 /** A full copy of a drawing layer: every key cell's canvas, its per-cell transforms, its loops and
  *  its animation. ONE place, because both Duplicate layer and Duplicate group clone a layer and a
  *  hand-maintained field list here has already gone stale once (an animated layer's copy came back
