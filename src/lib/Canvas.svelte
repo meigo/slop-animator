@@ -420,6 +420,11 @@
    *  gesture at grab and release, never per pointermove, so this costs no per-move reactivity. */
   let poseBarDragging = $state(false);
   let poseDrag: number | null = null;
+  /** Where the current Pose press landed, and the handle's offset from it. A handle follows the
+   *  pointer by that offset, and nothing changes until the pointer leaves the spot: `to = p` put
+   *  the nearest vertex AT the tap, so a tap to place a pin moved the drawing (with one handle, all
+   *  of it), and a tap far off dragged the nearest part across the canvas. */
+  let poseGrab: { x: number; y: number; dx: number; dy: number; moved: boolean } | null = null;
   let activeHandle: number | null = null;
   let poseAdjusting = false;
   // Coalesces view-driven pose repaints (see repaintPoseOverlay); pose gestures still paint directly.
@@ -601,11 +606,11 @@
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
-        // `expand` > 0 switches floodFill to painting BEHIND existing content (it exists to tuck a
-        // fill under anti-aliased line edges), which could never recolour a pixel — and alpha lock
-        // refuses every empty one — so under the lock it would be a guaranteed no-op. 0 = write
-        // the colour into the region, which the `source-atop` composite below then keeps inside the
-        // existing alpha: a recolour of what is there.
+        // `expand` > 0 adds a ring painted BEHIND existing content (it exists to tuck a fill under
+        // anti-aliased line edges) — and alpha lock refuses every empty pixel, so under the lock
+        // the ring could only ever be dropped. 0 = write the colour into the region, which the
+        // `source-atop` composite below then keeps inside the existing alpha: a recolour of what
+        // is there.
         expand: alphaLock ? 0 : appState.fill.expand,
       });
       ctx.save();
@@ -1290,11 +1295,17 @@
           poseDrag = activeHandle;
           poseBarDragging = true;
         }
+        const at =
+          activeHandle !== null ? meshPose.deformed[meshPose.handles[activeHandle].vertex] : p;
+        poseGrab = { x: p.x, y: p.y, dx: p.x - at.x, dy: p.y - at.y, moved: false };
         repaintPoseOverlay();
       } else {
         // Move and release share this. The pointerup sample is not a move event; skipping it left
         // the handle where the last move landed, short of the Pencil.
-        if (poseAdjusting && activeHandle !== null) {
+        if (poseGrab && (p.x !== poseGrab.x || p.y !== poseGrab.y)) poseGrab.moved = true;
+        if (poseGrab && !poseGrab.moved) {
+          // Still on the spot it was pressed: a tap places or picks a handle, nothing more.
+        } else if (poseAdjusting && activeHandle !== null) {
           // Coupled: direction sets rotation, distance sets reach (snap to unlimited past the extent).
           const c = meshPose.deformed[meshPose.handles[activeHandle].vertex];
           const d = Math.hypot(p.x - c.x, p.y - c.y);
@@ -1303,12 +1314,16 @@
           poseDirty = true;
           repaintPoseOverlay();
         } else if (poseDrag !== null) {
-          meshPose.dragHandle(poseDrag, p);
+          meshPose.dragHandle(poseDrag, {
+            x: p.x - (poseGrab?.dx ?? 0),
+            y: p.y - (poseGrab?.dy ?? 0),
+          });
           poseDirty = true;
           repaintPoseOverlay();
         }
         if (done) {
           poseDrag = null;
+          poseGrab = null;
           poseBarDragging = false;
           poseAdjusting = false;
         }
@@ -1478,6 +1493,11 @@
 
     selection.onCommit = () => {
       if (!selCtx || !selBefore) return;
+      // Nothing moved: put the cell back as it was (see `untouchedLift`) — no seam, no undo step.
+      if (selection.untouchedLift) {
+        selection.onCancel?.();
+        return;
+      }
       // renderFloatingTo draws the paper crop in document space; inverse compose + dpr
       // map it into the cell. Identity compose is a no-op → today's blit. save/restore because the
       // cell ctx is SHARED and carries the plain dpr transform by convention.

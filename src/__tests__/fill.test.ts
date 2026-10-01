@@ -67,6 +67,73 @@ describe("floodFill (expand:0)", () => {
   });
 });
 
+describe("floodFill with expand (the default is 2)", () => {
+  // The ring is drawn from a temp canvas with destination-over. Fake just enough of it: the temp
+  // records its pixels, and drawImage composites them BEHIND the target's, as the browser would.
+  function withRing(w: number, h: number, init: (i: number) => [number, number, number, number]) {
+    const g = gridCtx(w, h, init);
+    let ring: Uint8ClampedArray | null = null;
+    const temp = {
+      width: w,
+      height: h,
+      getContext: () => ({
+        createImageData: (cw: number, ch: number) => ({ data: new Uint8ClampedArray(cw * ch * 4) }),
+        putImageData: (img: { data: Uint8ClampedArray }) => (ring = img.data),
+      }),
+    };
+    (globalThis as { document?: unknown }).document = { createElement: () => temp };
+    Object.assign(g.ctx, {
+      save: () => {},
+      restore: () => {},
+      resetTransform: () => {},
+      drawImage: () => {
+        for (let i = 0; i < w * h; i++) {
+          if (!ring || g.data[i * 4 + 3] !== 0) continue; // behind: only where the target is empty
+          for (let k = 0; k < 4; k++) g.data[i * 4 + k] = ring[i * 4 + k];
+        }
+      },
+    });
+    return g;
+  }
+  const red: [number, number, number, number] = [255, 0, 0, 255];
+  const line: [number, number, number, number] = [0, 0, 0, 255];
+  const blue = { r: 0, g: 0, b: 255, a: 255 };
+
+  it("recolours a painted area (it used to paint only behind it, changing nothing)", () => {
+    // 5×1: red red LINE empty empty. Tap the red.
+    const { ctx, data } = withRing(5, 1, (i) => (i < 2 ? red : i === 2 ? line : [0, 0, 0, 0]));
+    floodFill(ctx, 0, 0, blue, { tolerance: 32, expand: 2 });
+    expect(px(data, 0)).toEqual([0, 0, 255, 255]);
+    expect(px(data, 1)).toEqual([0, 0, 255, 255]);
+    expect(px(data, 2)).toEqual([0, 0, 0, 255]); // the line stays on top
+    expect(px(data, 3)).toEqual([0, 0, 255, 255]); // the expand ring still goes behind (empty here)
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it("still fills an empty area behind, so a faint line pixel inside it stays on top", () => {
+    const faint: [number, number, number, number] = [0, 0, 0, 20]; // within tolerance of empty
+    const { ctx, data } = withRing(3, 1, (i) => (i === 1 ? faint : [0, 0, 0, 0]));
+    floodFill(ctx, 0, 0, blue, { tolerance: 32, expand: 2 });
+    expect(px(data, 0)).toEqual([0, 0, 255, 255]);
+    expect(px(data, 1)).toEqual(faint); // behind it, not over it
+    delete (globalThis as { document?: unknown }).document;
+  });
+});
+
+describe("floodFill same-colour check", () => {
+  it("fills black with a near-black (it was refused as 'already this color')", () => {
+    const { ctx, data } = gridCtx(2, 1, () => [0, 0, 0, 255]);
+    floodFill(ctx, 0, 0, { r: 26, g: 26, b: 26, a: 255 }, { tolerance: 32, expand: 0 });
+    expect(px(data, 0)).toEqual([26, 26, 26, 255]);
+  });
+
+  it("does nothing on exactly the fill colour", () => {
+    const { ctx, data } = gridCtx(2, 1, () => [26, 26, 26, 255]);
+    floodFill(ctx, 0, 0, { r: 26, g: 26, b: 26, a: 255 }, { tolerance: 32, expand: 0 });
+    expect(px(data, 0)).toEqual([26, 26, 26, 255]);
+  });
+});
+
 describe("rgbToHex", () => {
   it("maps black and white", () => {
     expect(rgbToHex(0, 0, 0)).toBe("#000000");

@@ -78,9 +78,7 @@
     ensureDrawableKeyframe,
     clearFrameIsNoOp,
     restoreCellTrack,
-    setHoldSpan,
-    holdSpanEnd,
-    shiftLayerTrackKeys,
+    resizeHoldSpan,
     setLoop,
     removeLoop,
     setLoopBack,
@@ -1137,6 +1135,8 @@
   let dragUndo: StructSnapshot | null = null;
   let dragStartBoundary = -1;
   let dragLastBoundary = -1;
+  /** The longest OTHER drawing layer at grab: where this layer's trailing span visibly ends. */
+  let dragOthersLen = 1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
 
@@ -1826,6 +1826,7 @@
       dragKey = settled.keyIndex;
       dragStartBoundary = rowBoundary(e);
       dragLastBoundary = dragStartBoundary;
+      dragOthersLen = othersLength(layer);
       dragUndo = beginStructuralEdit();
       transformDragGuard.settle = settleRowDrag;
       armRowEdgeScroll(layer);
@@ -1898,11 +1899,7 @@
     if (dragMode === "resize") {
       if (!isLayerEditable(layer, appState.project.groups)) return; // locked/hidden row: hold-span is content, not selection
       dragLastBoundary = rowBoundaryAt(clientX);
-      // Measured around the write rather than from the pointer: setHoldSpan clamps the span and
-      // no-ops when nothing changes, so the actual splice is the difference between these two.
-      const spanBefore = holdSpanEnd(layer, dragKey);
-      setHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey));
-      shiftKeysForSplice(layer, spanBefore, holdSpanEnd(layer, dragKey));
+      resizeHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey), dragOthersLen);
       bump();
       return;
     }
@@ -2052,12 +2049,11 @@
     const l = appState.project.layers.find((x) => x.id === layerId);
     if (l?.kind === "draw") restoreCellTrack(l, cells);
   }
-  /** Shift the layer's own transform keys for a splice that turned boundary `before` into `after`.
-   *  `shiftLayerTrackKeys` moves by ONE frame, so a multi-frame hold-span resize repeats it:
-   *  growing inserts `after - before` frames at `before`, shrinking removes them from `after`. */
-  function shiftKeysForSplice(l: DrawingLayer, before: number, after: number) {
-    for (let i = 0; i < after - before; i++) shiftLayerTrackKeys(l, before, 1);
-    for (let i = 0; i < before - after; i++) shiftLayerTrackKeys(l, after, -1);
+  function othersLength(l: DrawingLayer): number {
+    let n = 1;
+    for (const o of appState.project.layers)
+      if (o.kind === "draw" && o.id !== l.id) n = Math.max(n, o.cells.length);
+    return n;
   }
   function frameTool() {
     // Document-wide, same as growing the global length: a hold on every drawing layer so every

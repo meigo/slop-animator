@@ -27,6 +27,8 @@ import {
   setHoldSpan,
   planMergeDown,
   shiftLayerTrackKeys,
+  resizeHoldSpan,
+  spanVisualEnd,
   shiftTransformTrackFrames,
   type CanvasOps,
 } from "../anim/timeline";
@@ -937,6 +939,46 @@ describe("ripple insert/delete shift document-space clips", () => {
 
   // The per-layer counterpart: the frame tools resplice ONE layer's cells, so only that layer's
   // track may move. A reference RANGE is document-space and stays out of it.
+  describe("resizeHoldSpan (the span-edge drag)", () => {
+    const T = (dx: number) => ({ dx, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+    /** A layer of `n` cells, one key at 0 then holds, with transform keys at `frames`. */
+    const short = (n: number, frames: number[]) => {
+      const cells: Cell[] = [{ kind: "key", canvas: fakeOps.create() }];
+      for (let i = 1; i < n; i++) cells.push({ kind: "hold" });
+      const l = layer(cells);
+      l.tracks = { transform: { keys: frames.map((f) => ({ frame: f, v: T(f) })), box: null } };
+      return l;
+    };
+
+    it("a trailing span on a short layer ends where the document does", () => {
+      expect(spanVisualEnd(short(30, []), 0, 40)).toBe(40);
+      expect(spanVisualEnd(short(30, []), 0, 20)).toBe(30);
+    });
+
+    it("dragging one column past the document end moves only the keys past it", () => {
+      // 30 cells in a 40-frame document, keys at 0 and 35; drag the edge from 40 to 41.
+      const l = short(30, [0, 35]);
+      resizeHoldSpan(l, 0, 41, 40);
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 35]); // 35 < 40: untouched (was 46)
+      const l2 = short(30, [0, 42]);
+      resizeHoldSpan(l2, 0, 41, 40);
+      expect(track(l2).keys.map((k) => k.frame)).toEqual([0, 43]);
+    });
+
+    it("pressing the edge without moving changes no key", () => {
+      const l = short(30, [0, 35]);
+      resizeHoldSpan(l, 0, 40, 40); // the drag's first sample, at the grabbed boundary
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 35]);
+    });
+
+    it("a span that is not trailing ripples exactly as before", () => {
+      const l = short(10, [0, 8]);
+      l.cells[5] = { kind: "key", canvas: fakeOps.create() }; // span of key 0 ends at 5
+      resizeHoldSpan(l, 0, 7, 40); // grow 5 → 7
+      expect(track(l).keys.map((k) => k.frame)).toEqual([0, 10]);
+    });
+  });
+
   describe("shiftLayerTrackKeys", () => {
     const T = (dx: number) => ({ dx, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 });
     const withTrack = (frames: number[]) => {

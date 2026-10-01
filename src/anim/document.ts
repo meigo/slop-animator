@@ -392,7 +392,13 @@ export function canDuplicateGroup(layers: Layer[], groups: LayerGroup[], groupId
 }
 
 /** Why `mergeDown` would refuse, in the order it checks. */
-export type MergeDownBlock = "no-layer-below" | "not-drawing" | "read-only" | "animated" | "loop";
+export type MergeDownBlock =
+  | "no-layer-below"
+  | "not-drawing"
+  | "read-only"
+  | "animated"
+  | "group"
+  | "loop";
 
 export function whyNotMergeDown(
   layers: Layer[],
@@ -428,12 +434,23 @@ export function whyNotMergeDown(
   if ((gUpper?.id ?? null) !== (gBelow?.id ?? null)) {
     if (gUpper && isGroupAnimated(gUpper)) return "animated";
     if (gBelow && isGroupAnimated(gBelow)) return "animated";
+    // A STATIC group contribution is lost (or gained) the same way — the "pre-existing in shape"
+    // case above, which the merge let through: the upper layer's drawing snapped back unrotated
+    // and to full strength inside the lower layer (2026-09-30 review). Refused rather than baked,
+    // as for the animated case; moving the layer out of the group, or Reset, clears the way.
+    if (gUpper && groupHasEffect(gUpper)) return "group";
+    if (gBelow && groupHasEffect(gBelow)) return "group";
   }
   // A loop survives a merge only when the composite provably repeats; anything else would need every
   // pass baked into its own canvas. The document length is the longest drawing layer (`documentLength`).
   const frameCount = Math.max(1, ...layers.filter(isDrawingLayer).map((l) => l.cells.length));
   if (!mergeLoopsOk(below.cells, upper.cells, frameCount)) return "loop";
   return null;
+}
+
+/** A group that changes how its members show: moved/scaled/turned, or faded. */
+function groupHasEffect(g: LayerGroup): boolean {
+  return (g.opacity ?? 100) !== 100 || (!!g.transform && !isIdentityTransform(g.transform));
 }
 
 /** Effective lock: the layer's own flag OR its group's. Derived (never cascaded) — same contract as

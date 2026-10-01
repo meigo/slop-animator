@@ -30,6 +30,8 @@ const MERGE_REASON: Record<MergeDownBlock, string> = {
   "not-drawing": "only drawing layers can be merged",
   "read-only": "a layer is locked or hidden",
   animated: "a layer is animated — Stop animating first",
+  group:
+    "the layers are in different groups, and a group is transformed or faded — move the layer out of it, or reset the group, first",
   loop: "a loop repeats over frames that change on the other layer — end the loop first",
 };
 

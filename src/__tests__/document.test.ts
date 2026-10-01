@@ -955,6 +955,34 @@ describe("layer-action availability (what the LayerList buttons dim on)", () => 
       ).toBe("animated");
     });
 
+    // The static case of the one above: the upper layer's drawing lost its group's rotation or fade
+    // (or gained the lower one's), silently, while the button was enabled.
+    it("refuses across a group boundary when a group is statically transformed or faded", () => {
+      const turned = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0.5 };
+      const below = layer(1, [makeKey()]);
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([below, upper], [g({ transform: turned })], 2)).toBe("group");
+      expect(whyNotMergeDown([below, upper], [g({ opacity: 50 })], 2)).toBe("group");
+      const belowIn = { ...layer(1, [makeKey()]), groupId: 7 };
+      expect(whyNotMergeDown([belowIn, layer(2, [makeKey()])], [g({ opacity: 50 })], 2)).toBe(
+        "group",
+      );
+      // An identity transform and full opacity change nothing: allowed.
+      const still = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+      expect(
+        whyNotMergeDown([below, upper], [g({ transform: still, opacity: 100 })], 2),
+      ).toBeNull();
+    });
+
+    it("allows a merge INSIDE a transformed group", () => {
+      const turned = { dx: 0, dy: 0, scaleX: 1, scaleY: 1, rotation: 0.5 };
+      const below = { ...layer(1, [makeKey()]), groupId: 7 };
+      const upper = { ...layer(2, [makeKey()]), groupId: 7 };
+      expect(
+        whyNotMergeDown([below, upper], [g({ transform: turned, opacity: 50 })], 2),
+      ).toBeNull();
+    });
+
     it("allows a merge INSIDE an animated group — the contribution is unchanged either way", () => {
       const opacity = { keys: [{ frame: 0, v: 100 }] };
       const below = { ...layer(1, [makeKey()]), groupId: 7 };

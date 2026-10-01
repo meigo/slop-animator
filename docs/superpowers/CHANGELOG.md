@@ -7787,3 +7787,40 @@ was grouped into batches like slop-paint's; A is everything that loses work. One
   the Open confirm. Batches B–E (wrong pixels, undo/lifecycle, perf, UI) are still to do; every
   finding, with scenario, suggested fix and verifier note, is in
   `docs/superpowers/reviews/2026-09-30-code-review.md`.
+
+**Code review batch B: wrong pixels or wrong place (2026-10-01, branch `fix/review-batch-b`, cut from
+batch A's).** Ten findings from `docs/superpowers/reviews/2026-09-30-code-review.md`, one commit each:
+- **Brushes** (`6332bfa`, `16e2930`; roadmap 13a–c, ports of slop-paint `64952cd`): `spaceStamps`
+  carries the distance since the last stamp across segments and calls — the old loop restarted per
+  call AND started each segment at minus the overshoot, so gaps swung between ~0 and 2× the step and
+  slow strokes came out several times denser; a mouse's stamp alpha no longer takes the
+  light-pressure half; the Smooth, Ink and Calligraphy erasers honour their Opacity. **Note:** an
+  eraser Opacity below 100 saved in preferences, which did nothing for those engines, now applies.
+- **Selection** (`5c1b1ed`, roadmap 14a, port of slop-paint `1c8b5fd`): `copyPixelsFromDoc` snaps
+  `rect` to the pixels it copied before anything is cleared, and the lasso clip uses the same origin.
+  (`a09c2f7`) `Selection.untouchedLift` (lifted, not pasted, identity matrix): Apply takes the Cancel
+  path, so a tap-in/tap-out leaves no lasso seam and pushes no step.
+- **Pose tap** (`d8ff4bd`): `poseGrab` keeps the grab offset; nothing changes (handle, nub angle or
+  reach) until the pointer leaves the pressed spot. A tap used to pull the drawing to the tap point.
+- **Bucket** (`8febec2`): with Expand > 0 a tap on a PAINTED area (tapped alpha > tolerance) writes
+  the region and paints only the ring behind; an empty area still fills all behind, keeping faint
+  line pixels on top. Same-colour early-out is exact (#000000 → #1a1a1a was refused).
+- **Span-edge drag** (`af6f160`): `resizeHoldSpan` / `spanVisualEnd` (`timeline.ts`) ripple track
+  keys by the VISIBLE end's move (a trailing span ends at the longest other layer), not by the
+  holds `setHoldSpan` pads a short layer with. `Timeline.svelte`'s `shiftKeysForSplice` is gone.
+- **Merge down** (`067c8e0`): new block `"group"` — refused across a group boundary when either
+  group has a static transform or opacity ≠ 100, like the animated case. Kept on purpose: the lower
+  layer's opacity multiplies into the merged ink (Photoshop's Merge Down does the same).
+- **Resize canvas** (`ab7229c`): `resize.ts` `resizeDocPivotTransform` (drawing layers, pivot = doc
+  centre: `d' = f·d + (I − A)(M(C) − C')`), `resizeFitTransform` (references, re-fitted by `k`:
+  scale × f/k, `d' = f·d + M(C) − C'`), `resizeContentPivotTransform` + `resizeBox` (groups and any
+  track with a frozen box: `d' = f·d`, box through the placement). Applied to static transforms,
+  every transform-track key and group boxes inside the resize's undo step. Tested against
+  `forwardTransformPoint` (both modes, four anchors, a turned + mirrored + stretched transform).
+  Known limit: between keys of a layer that rotates while cropped to a corner the interpolated path
+  can differ slightly (the correction depends on the rotation); keys are exact.
+- Build 0/0, 1567 tests. Not run in a browser or on the iPad: owed a pass for the brushes (stamp
+  density slow vs fast, mouse opacity, eraser opacity), a lasso lift + Apply, a Pose tap, a bucket
+  recolour, a span drag on a short layer, the merge-down block message, and a resize of a project
+  with a moved layer, a moved reference and a rotated group.
+
