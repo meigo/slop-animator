@@ -2358,6 +2358,16 @@ function resizeTrack(
   };
 }
 
+/** A modal dialog is open (New/Resize, Project Settings, Export, the iPad share-ready sheet). Their
+ *  backdrops stop pointers, not keys: app shortcuts must stand aside, or Enter on a dialog button
+ *  started playback behind it and Backspace deleted a timeline selection unseen (2026-09-30
+ *  review). */
+export function modalOpen(): boolean {
+  return (
+    state.sizeDialog.open || state.settingsOpen || state.exportOpen || state.shareReady !== null
+  );
+}
+
 /** Toggle the eraser on/off, restoring the tool that was active before (for a quick gesture toggle). */
 let toolBeforeEraser: Tool = "brush";
 export function toggleEraser() {

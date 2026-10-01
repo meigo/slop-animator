@@ -37,6 +37,7 @@
     commitStructuralEdit,
     transformScope,
     selectToolsBlock,
+    modalOpen,
     type BrushKind,
   } from "../state/appState.svelte";
   import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
@@ -318,9 +319,11 @@
     // These are the app's OTHER window-level key handlers, so they need the export gate `App.svelte`
     // has: a space tap restarts playback onto the boil GL surface the export shares, and the render
     // loop re-reads the live project every frame. The dialog's backdrop blocks pointers, not keys.
-    if (appState.exportBusy) return;
-    const tag = (document.activeElement as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack typing
+    if (appState.exportBusy || modalOpen()) return;
+    // Don't hijack typing — but only typing: a focused slider or checkbox used to block Space-pan,
+    // 0 and 1, and Space then toggled the checkbox instead (see App's `onKey`).
+    if (isTextEntry(document.activeElement as HTMLElement | null)) return;
+    if ((document.activeElement as HTMLElement | null)?.tagName === "SELECT") return;
     if (e.key === " ") {
       // Space always holds grab-to-pan (Photoshop-style), even when a toolbar button is focused —
       // preventDefault stops both page scroll and the focused button's space-activation. Reliable
