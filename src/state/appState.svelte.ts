@@ -126,7 +126,7 @@ import {
   type Pt,
 } from "../core/ref-transform";
 import { audioEngine } from "../audio/engine";
-import { History } from "../anim/history";
+import { History, detachedBytes } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
 import { PressureCurve } from "../core/pressure-curve";
@@ -703,6 +703,7 @@ export function commitStructuralEdit(before: StructSnapshot): void {
   history.push({
     undo: () => restoreStructure(before),
     redo: () => restoreStructure(after),
+    bytes: detachedBytes(before, after), // canvases/audio only this step keeps alive
   });
 }
 
