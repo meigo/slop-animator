@@ -7824,3 +7824,36 @@ batch A's).** Ten findings from `docs/superpowers/reviews/2026-09-30-code-review
   recolour, a span drag on a short layer, the merge-down block message, and a resize of a project
   with a moved layer, a moved reference and a rotated group.
 
+**Code review batch C: undo and lifecycle (2026-10-01, branch `fix/review-batch-c`, cut from
+batch B's).** Twelve findings from `docs/superpowers/reviews/2026-09-30-code-review.md`:
+- **Ref drag pinned mid-gesture** (`dc1f2da`): the reference branch of `onStroke` now settles
+  (`finishTransformDragUndo`) when the ref is locked/hidden/out of span, as the drawing branch did.
+- **Second pointer on the timeline** (`1afedac`): `rowPointer` owns a pen/mouse row gesture; other
+  pointers are ignored until it lifts (a finger lifting on another row dropped a live hold-span
+  resize's bracket — writes kept, no undo). `clipDrag` and AudioLane's `dragStart` carry a
+  `pointerId` the same way. A row owner that has lost capture is settled on the next press.
+- **Lift settled inside the bracket** (`d2284a7`): `setAnimationLength` and `addLayerToProject`
+  `liftGuard.bank` before their snapshot.
+- **Empty undo steps** (`7c85760`, `45ae5ea`): `deleteSelection` checks `sameImageData` (and gives
+  back the ◆ it made); `deleteTimelineSelection` returns when `deleteBlockChanges` (tested) says the
+  range is holds only.
+- **Undo budget** (`33104a2`, roadmap 14c): `detachedBytes` (history.ts, tested) — canvases only one
+  side of a structural step holds, plus the audio when it differs, the larger side — is the step's
+  `bytes`. One very large step (resizing a long project) now evicts older steps.
+- **Boil GL** (`e1aba55`): `init` wraps `build`; a compile/link failure marks WebGL boil
+  `unsupported` for the session (2D path); `boilBegin` checks `isContextLost`.
+- **Export cache key** (`0fd1e32`): `newRenderVersion()` (render.ts) gives each export run a fresh
+  negative version, shared by its frames; all five exporters use it (they passed none, so every
+  export shared 0 and an in-place cell swap left stale boil ordinals and group boxes).
+- **Brush engine pinned** (`8bcba92`): `strokeBrushType` is set at stroke start and used by
+  `paintStroke` (other settings stay live).
+- **Cancelled pen** (`7abcb00`): `input.ts` appends the event's point only for a real `pointerup`.
+- **Video export teardown** (`84ab268`): a failed frame or finalize `output.cancel()`s first.
+- **Reference media** (`500c768`): `retiredRefMedia` collects media one side of a structural step
+  holds and the other doesn't; `replaceProject` releases them (history is cleared there). Not on
+  trim, where a later step's snapshot could still bring the layer back.
+- Build 0/0, 1575 tests. Not run in a browser or on the iPad: owed a pass for a ref drag through a
+  lock, a Pencil span resize with a finger lifting on another row, Length/New layer during an
+  Outline preview then undo, Delete on empty marquee/holds, a brush-type tap mid-stroke, and a
+  video export failure (hard to provoke).
+

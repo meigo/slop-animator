@@ -12,7 +12,7 @@ code, not the number. When a finding is fixed, mark it **FIXED** here with the c
 Batches, in the order to fix them:
 - **A — lost work:** all FIXED on `fix/review-batch-a` (see CHANGELOG, "Code review batch A").
 - **B — wrong pixels or wrong place:** all FIXED on `fix/review-batch-b` (see CHANGELOG, "Code review batch B").
-- **C — undo and lifecycle**
+- **C — undo and lifecycle:** all FIXED on `fix/review-batch-c` (see CHANGELOG, "Code review batch C").
 - **D — performance**
 - **E — UI and keyboard**
 
@@ -253,11 +253,13 @@ activation not tested in Chrome.
 - **Suggested fix:** Use pressure 1 for the alpha term when `!points[i].hasPressure`, or pass a flag from paintStroke.
 - **Verifier:** input.ts:134 gives a mouse pressure 0. PressureCurve.evaluate returns 0 for t<=0, and the stamp alpha is opacity*(0.5+0.5p)*alphaScale (lines 105 and 131), so every mouse stamp draws at half opacity. sr=1 fixes only the width. Known item 13c.
 
-## Batch C — undo and lifecycle
+## Batch C — undo and lifecycle (FIXED)
 
 ### 19. Reference drag left open when the ref becomes pinned mid-gesture; the next press jumps the ref and merges both gestures into one undo
 
 **confirmed / major / undo** — `src/lib/Canvas.svelte:1248` (area: transform)
+
+**FIXED 2026-10-01** in `dc1f2da` (branch `fix/review-batch-c`).
 
 - **Problem:** For a reference layer, `onStroke` calls `onTransformDrag` only while `!refPinned` (1244-1249). If the ref becomes locked, hidden, or outside its frame span mid-gesture, the remaining events are dropped, including the `done` one. Nothing settles `refDrag`, `refDragUndo` or `transformDragFrame`. The draw-layer branch just below handles exactly this case (1259-1264: 'settle any drag that was in flight when the lock/hide landed'); the ref branch does not. Visibility and lock toggles and playhead moves do not call `transformDragGuard.settle`; only undo, redo, replaceProject, flip and a tool or scope switch do. On the next press, `refDrag` is still set with the same layerId (1071), so the grab block at 1076 is skipped. `dragTransform(d.handle, d.startT, d.center, d.start, pc)` then runs against the OLD gesture's start point, and the undo bracket spans both gestures.
 - **Scenario:** Drag a trimmed reference video with the Pencil while playback loops. The comment at 882-886 calls nudging during playback a natural way to work. The playhead leaves the ref's span, so the Pencil lift is swallowed (a finger tap on the ref's eye or lock in the layer list does the same). Later press on the ref again, for example after unhiding it. The ref jumps by (new press - old press) relative to the old start transform. One Cmd+Z then reverts both gestures, and the status bar keeps naming the stale drag frame meanwhile.
@@ -268,6 +270,8 @@ activation not tested in Chrome.
 
 **confirmed / major / undo** — `src/lib/Timeline.svelte:1995` (area: timeline)
 
+**FIXED 2026-10-01** in `1afedac` (branch `fix/review-batch-c`). Row, clip and audio-lane drags keep their owning pointer; the ruler scrub (no undo) is unchanged.
+
 - **Problem:** The row handlers never record or check which pointer owns the gesture. `rowDown` (1769) stores no pointerId, and for a finger it also overwrites `dragRowEl` and `edgePointerX/Y` (1771-1773) before it hands off to `touchPanDown`. `rowUp` (1995) and `rowCancel` (1985) run for ANY pointer. In `rowUp`, the resize branch only commits when `dragLayerId === layer.id` (2016), but `resetRowDrag()` (2038) runs every time and sets `dragUndo = null` (1971), `dragMode = "none"`, and clears `transformDragGuard.settle`. The resize has already been written live by `setHoldSpan` + `shiftKeysForSplice` + `bump()` (1904-1906). So a finger lifting on ANOTHER row throws away the bracket with the writes still in the document. That breaks the invariant the file states itself at 503-508: every writer of a snapshot-captured field must push a command. The key drag already guards against exactly this (`keyDrag.pointerId`, 1518-1521, 1598, 1656). The row drag, clipUp (583, it settles on any pointer including touch), AudioLane `laneUp` (130) and `rulerUp` (851) do not.
 - **Scenario:** On iPad, grab a span's right edge on layer A with the Pencil and drag it 3 frames right, so the holds are spliced live. Before lifting the Pencil, touch and lift a finger on layer B's row (for example to start scrolling). rowUp(finger, B) skips the commit branch and resetRowDrag nulls dragUndo. The Pencil's further moves do nothing. The 3-frame resize stays in the document with no undo entry. Later, ⌘Z of any earlier structural edit restores a snapshot without the resize, so it silently disappears, and redo cannot bring it back. Also: a finger or palm pointercancel ends the Pencil's resize or move-block early, and a finger lift during a move-block commits it at that instant.
 - **Suggested fix:** Store `pointerId` in rowDown for the pen/mouse gesture. In rowMove/rowUp/rowCancel, send non-owning pointers only to the touch-pan path and never to settle or resetRowDrag. Don't let a finger's rowDown overwrite dragRowEl or edgePointerX/Y while a drag is live. Apply the same pointerId filter to clipUp, laneUp and rulerUp.
@@ -276,6 +280,8 @@ activation not tested in Chrome.
 ### 21. A lift settled inside the undo bracket brings back a keyframe it had added
 
 **confirmed / minor / undo** — `src/state/appState.svelte.ts:2204` (area: state-undo)
+
+**FIXED 2026-10-01** in `d2284a7` (branch `fix/review-batch-c`).
 
 - **Problem:** When a lift, a pose, a deform or an Outline preview starts on a HOLD frame, it creates a keyframe for that frame (◆). If the lift is then cancelled untouched, that keyframe is removed again (restoreCellTrack, Canvas.svelte 1834/2035/2050/2345). Timeline.svelte 937-939 and 1810-1814 already describe the trap: settle BEFORE `beginStructuralEdit`, 'or a cancelled untouched lift removes a ◆ it materialised, which the bracket's revert would then restore as a real key'. Two paths here settle AFTER the before-snapshot. (1) `setAnimationLength` (2191) runs `commitStructural(() => applyAnimationLength(target))`, and `applyAnimationLength` calls `liftGuard.bank?.()` at 2204, inside the bracket. The Playbar Length field (Playbar.svelte 58) doesn't bank first. (2) `addLayerToProject` (721-731) calls `setActiveLayer` inside `commitStructural` without banking first. Canvas's layer-switch effect (Canvas.svelte 2720-2726) settles the lift only after BOTH snapshots were taken, so both hold the temporary keyframe. A touched lift has the same result: its pixel step's rider puts the track back to the hold, and then the structural undo puts the keyframe back.
 - **Scenario:** Layer 1 has a key at frame 0 and holds on frames 1-9. Go to frame 5 and pick Outline, or Deform over a selection: frame 5 gets a temporary keyframe. Without applying, type 30 in the Playbar Length field, or press + New layer in the layer panel. The lift cancels and frame 5 is a hold again. Press Cmd+Z: frame 5 is now a real keyframe, a separate copy of frame 0's drawing. Later edits to frame 0 no longer show on frame 5, and exports and saves carry the extra key.
@@ -286,6 +292,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / undo** — `src/lib/Canvas.svelte:1718` (area: selection)
 
+**FIXED 2026-10-01** in `7c85760` (branch `fix/review-batch-c`).
+
 - **Problem:** deleteSelection takes before/after snapshots and always pushes a pixelCommand plus bump(), with no sameImageData check. activeDrawableCtx has already run ensureDrawableKeyframe, so on a hold it turns the hold into a keyframe too. doFill, fillAllEnclosedOnCell and applyOutline all guard this exact case (sameImageData -> restore the materialised track, no push). Cut goes through the same path. This is the roadmap 14b class ('structural undo step pushed when nothing changed wipes redo'), but on the pixel side and in this area.
 - **Scenario:** On a hold frame, marquee an empty area and press Delete (or Cut). The timeline gains a new keyframe where the hold was, the redo stack is wiped, a dead Cmd+Z entry appears, and autosave re-encodes for a gesture that removed nothing.
 - **Suggested fix:** After clearRegion, compare before/after with sameImageData. If they are equal, restore materialized.before, skip the push and bump, and set a statusHint ('Nothing to delete in the selection').
@@ -294,6 +302,8 @@ activation not tested in Chrome.
 ### 23. Delete on a timeline selection of holds adds an empty undo step and clears redo
 
 **confirmed / minor / undo** — `src/state/appState.svelte.ts:2731` (area: state-undo) — roadmap port item **14b**
+
+**FIXED 2026-10-01** in `45ae5ea` (branch `fix/review-batch-c`).
 
 - **Problem:** `deleteTimelineSelection` checks only `anyEditableLayer`, then always calls `commitStructural(() => deleteBlock(...))`. `deleteBlock` (timeline-block.ts 190-204) writes a new `{kind:'hold'}` into every selected frame, even frames that were holds already. If the selection has no keys or loops, nothing visible changes, but `commitStructural` still pushes a step, and `History.push` empties the redo stack. `cutTimelineSelection` goes the same way. This is the 14(b) pattern. The guarded cases slop-paint named (merge with nothing below, deleting the last layer) are already guarded here by `whyNotMergeDown` and `canRemoveLayer`.
 - **Scenario:** Undo a stroke, so it can be redone. Drag a marquee over frames that are all holds and press Delete (or Cut). The redo is gone, and the next Cmd+Z appears to do nothing, because it undoes the empty step.
@@ -304,6 +314,8 @@ activation not tested in Chrome.
 
 **confirmed / major / perf** — `src/anim/history.ts:148` (area: state-undo) — roadmap port item **14c**
 
+**FIXED 2026-10-01** in `33104a2` (branch `fix/review-batch-c`).
+
 - **Problem:** `History` evicts by `cmd.bytes` against DEFAULT_HISTORY_BYTES (256 MB), but only `pixelCommand` sets `bytes`. `commitStructuralEdit` (appState 690-696) pushes steps with no `bytes`. Their before and after snapshots hold every cell canvas that has left the document: removed layers and groups, merge-down's replaced tracks, cells replaced by applyLayerTransform or applyCellTransform, every old key canvas after resizeProject, cells cut by deleteBlock, applyAnimationLength or ripple. They also hold the decoded audio `buffer` after a remove or replace. Only the 50-step count limits any of that. This is the slop-paint 14(c) item and it applies here. The shared CLAUDE.md note makes it serious: iOS reclaims a backgrounded page's image memory, and a blank-layer autosave can then overwrite the only copy.
 - **Scenario:** A 1920x1080 project where one layer has 120 keys (about 1 GB of canvases at 8.3 MB each). Delete that layer, or Resize the canvas once. The step's before-snapshot keeps all 120 old canvases alive, the budget still reads the pixel total only, and 256 MB more of pixel undo fits on top. A few such steps on iPad reach the multi-GB range, where the tab is killed or the layers come back blank.
 - **Suggested fix:** When a structural step is pushed, count the canvases in `before` that are not in `after` (and the reverse), at w·h·4 each, plus any audio buffer that was dropped, and store the sum as `cmd.bytes`, the way slop-paint's `detachedLayerBytes` does. trim() then evicts old structural steps too.
@@ -312,6 +324,8 @@ activation not tested in Chrome.
 ### 25. boil-gl init() leaves `gl` set when shader compilation throws, so every later boil render silently draws no drawing layers
 
 **confirmed / minor / lifecycle** — `src/core/boil-gl.ts:81` (area: model-render)
+
+**FIXED 2026-10-01** in `e1aba55` (branch `fix/review-batch-c`).
 
 - **Problem:** init() assigns `gl` at line 81 and creates `prog` at 84, then compile() throws on a failed compile (line 64). The throw leaves `gl` non-null (only the link-failure branch resets it, line 89), and no uniforms, buffer or texture are set up. On the next call init() returns true because `if (gl) return true`, boilBegin succeeds, boilLayer uploads into a null texture with an unlinked program, and boilBlit draws an empty GL canvas. The result is that every drawing layer vanishes from boil playback and from boil exports, with no error after the first frame. A related gap: boilBegin never checks gl.isContextLost(), so in the interval between an iOS context loss and the async webglcontextlost event, frames render with no drawing layers instead of falling back to the 2D path. For an export, that is a finished-looking file missing drawings, which the video exporter's comment at video.ts:136-139 says must never happen. Uncertain how often either path fires on iPad; highp and compilation are normally fine there, while context loss under memory pressure is real.
 - **Scenario:** (a) A GPU or driver rejects the fragment shader: the first boil frame throws, then playback or export with boil shows only the background and references. (b) The iPad drops the WebGL context mid-export: the frame(s) rendered before the lost event arrives are exported without ink.
@@ -322,6 +336,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / correctness** — `src/anim/document.ts:1138` (area: model-render)
 
+**FIXED 2026-10-01** in `0fd1e32` (branch `fix/review-batch-c`). The past-the-end disagreement with countBoiledBefore (only via a loop past a short layer) is not changed.
+
 - **Problem:** boiledFrameOrdinal caches a prefix array per cells ARRAY plus `version`. The PNG, GIF and video exporters call renderFrame without `version` (png-sequence.ts:31, gif.ts:114, video.ts:147), so compositeFrameLayers passes 0 (render.ts:295). Cell edits replace elements IN the same array (gotcha #8, e.g. ensureDrawableKeyframe promoting a hold to a key), so the WeakMap key survives an edit. Export, edit, export again (with no boil playback in between to overwrite the entry at the live version): the second export hits the entry cached at version 0 and counts crisp keys from the old cell layout. The crisp test itself is recomputed correctly, so only the boil STATE sequence is wrong, but with step > 1 that is exactly the uneven-hold bug the cache's own comment (2026-09-18) was fixed for. A related gap: the cached path counts every frame past cells.length as boiled (line 1150), while countBoiledBefore (the uncached path the tests use) asks isCrispFrame, which, through a loop running to the document end on a layer shorter than the document, can answer crisp. So the tested path and the shipped path disagree there.
 - **Scenario:** Boil on, holds-only, step 2. Export a PNG sequence, then draw on a hold frame (it becomes a key in place) and export again without pressing play. In the second export the boil states around the new key run 1/3 frames instead of 2/2, and the pattern differs from what playback shows.
 - **Suggested fix:** Have exporters pass appState.version (or a unique token per export), or key the cache on a per-cells-array revision that every in-place cell write bumps. Make the past-the-end branch agree with countBoiledBefore when the last non-hold cell is a loop.
@@ -330,6 +346,8 @@ activation not tested in Chrome.
 ### 27. A brush-type change mid-stroke switches engines under the open stroke (stale stamp counter, half-drawn stroke)
 
 **confirmed / minor / correctness** — `src/lib/Canvas.svelte:769` (area: brushes)
+
+**FIXED 2026-10-01** in `8bcba92` (branch `fix/review-batch-c`).
 
 - **Problem:** paintStroke re-reads `appState.brush`/`appState.eraser` on every repaint, including `stroke.brushType` (line 813 `const kind = stroke.brushType`). Only the tool (brush/eraser) is pinned at a switch, via the tool $effect. `resetStampState()` runs only when the stroke STARTED with a stamp type (line 1419). So a Smooth→Pencil switch mid-stroke hands the stamp engine the module-global `lastStampCount` left over from an earlier stamp stroke. If that count exceeds the current number of points, line 96 returns without drawing until the stroke passes it, and then stamps only from that index. The smooth render already on the canvas is never restored from the snapshot. The code already says the tool can change under an open Pencil stroke (a finger on the toolbar), and the same applies to the brush-type picker.
 - **Scenario:** On iPad, draw a Pencil (stamp) stroke of about 500 points, then start a Smooth stroke. Mid-stroke, tap Pencil in the brush picker with a finger. The rest of the stroke draws nothing until it has 500 points, and the result is a Smooth start with a gap and then stamps.
@@ -340,6 +358,8 @@ activation not tested in Chrome.
 
 **plausible / minor / correctness** — `src/core/input.ts:272` (area: brushes)
 
+**FIXED 2026-10-01** in `7abcb00` (branch `fix/review-batch-c`).
+
 - **Problem:** onPointerUp also handles `pointercancel` and `lostpointercapture` (lines 283, 286). It pushes `getPoint(e)`, the event's clientX/clientY mapped to the document, as the final point and commits. For a cancel or capture-loss event those coordinates are not a real pen position: as far as I recall the engine sources, Chromium's CreatePointerCancelEvent and capture events, and WebKit's pointercancel from PointerCaptureController::cancelPointer, build the event with only id, type and isPrimary, so clientX/Y are 0. I have not verified this on a device, and a touchcancel-derived cancel on iOS may carry the real location. The eyedropper goes through the same path: onStroke(done) samples `points[points.length-1]`.
 - **Scenario:** While the pen is mid-stroke, the OS cancels the pointer (iPad palm rejection, a system gesture, a Windows pen press-and-hold). The committed stroke gains a straight streak from where the pen was to the document point under the screen's top-left corner, as one undo step with the stroke. With the eyedropper, a cancelled press picks the colour at that corner and switches back to the brush.
 - **Suggested fix:** For `pointercancel` and `lostpointercapture`, don't append `getPoint(e)`: finish on the last real point (after catchUpAlongTrail) with done = true. The eyedropper could also skip applying the colour on a cancel.
@@ -349,6 +369,8 @@ activation not tested in Chrome.
 
 **plausible / minor / lifecycle** — `src/export/video.ts:165` (area: persist-export)
 
+**FIXED 2026-10-01** in `84ab268` (branch `fix/review-batch-c`).
+
 - **Problem:** output.cancel() is called only on the abort paths (video.ts:141-144, 170-173). A throw inside the frame try (renderFrame or source.add failing; rethrown at 162-167), or from output.finalize() (video.ts:176), leaves the Output started with its VideoEncoder (and AudioEncoder) still open. On iPad, hardware encoder instances are limited, so a failed export can make later exports fail too, until the page is reloaded.
 - **Scenario:** An encoder error on frame N of an MP4 export (e.g. memory pressure on iPad): the dialog shows 'Failed: frame N…', the encoder stays allocated, and the retry fails straight away at setup.
 - **Suggested fix:** Wrap everything after output.start() in try/catch and call `await output.cancel().catch(() => {})` before rethrowing a non-abort error.
@@ -357,6 +379,8 @@ activation not tested in Chrome.
 ### 30. Removed reference media is never released, even after history clears
 
 **plausible / minor / lifecycle** — `src/state/appState.svelte.ts:2435` (area: state-undo)
+
+**FIXED 2026-10-01** in `500c768` (branch `fix/review-batch-c`). Released when the document is replaced (history cleared); not on trim, where a later step could still bring the layer back.
 
 - **Problem:** `removeLayer`, `removeGroup` and `rasterizeReference` only pause a removed reference's video. They don't call `releaseReferenceMedia`, on purpose, because undo can bring the layer back. Nothing releases the media later, though. When `History.trim()` evicts the step, or `replaceProject` calls `history.clear()` (2434), the snapshot goes away. `replaceProject` releases media only for layers in the CURRENT project (2435). The removed layer's blob: URL is never revoked, and its <video> still has `src` set, so the video's decode buffers stay allocated. The blob stays in memory until the page unloads.
 - **Scenario:** Import a 300 MB video reference, delete it, then open another project (or autosave-restore). The blob URL is never revoked and the video element keeps its decoder, so about 300 MB stays resident for the rest of the session, per deleted or replaced reference. That matters on iPad.
