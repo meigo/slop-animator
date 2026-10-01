@@ -43,6 +43,9 @@
   // where a step is visible — 1→2 is a 100% change, 16→24 is not worth a button — with the default
   // (4) present and the fat end left to the slider and the number field beside them.
   const SIZE_PRESETS = [1, 2, 3, 4, 6, 8, 12, 16, 60];
+  // Below 960px (iPad portrait) only these show, so the brush and eraser rows fit one line at 834px
+  // (the Eraser's row needed ~835 and wrapped to 69px, moving the canvas; slop-paint cd14268).
+  const NARROW_PRESETS = new Set([1, 3, 8, 16, 60]);
 
   const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
   // Smooth and Taper are read ONLY by brush.ts (the perfect-freehand path). The ink and stamp
@@ -157,6 +160,7 @@
       {#each SIZE_PRESETS as preset (preset)}
         <button
           class="size-6 shrink-0 flex items-center justify-center text-xs rounded text-text-secondary hover:bg-surface-hover tabular-nums"
+          class:max-[960px]:hidden={!NARROW_PRESETS.has(preset)}
           class:ui-on={stroke.size === preset}
           onclick={() => (stroke.size = preset)}>{preset}</button
         >

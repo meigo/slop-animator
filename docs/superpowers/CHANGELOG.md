@@ -8083,3 +8083,15 @@ the user. Spec and plan: `docs/superpowers/specs/2026-10-01-dry-brush-design.md`
   geometry alone on a Mac late in such a stroke). If it lags, fix it in slop-paint's engine and copy
   the file again, keeping the two identical.
 
+**The tool-options row stays one line in iPad portrait (2026-10-01, branch `fix/portrait-options-row`;
+port note 15, from slop-paint `cd14268` / slop-spine `9a7ba65`).** At 834 px (iPad Pro 11 portrait) the
+Eraser's row needed ~835 px and wrapped to 69 px, so switching to it moved the canvas; the Brush row fit
+by 7 px. Below 960 px `ToolOptions.svelte` now shows 5 of the 9 size presets (`NARROW_PRESETS`: 1, 3, 8,
+16, 60 — the spread slop-paint picked, from this app's set) via `class:max-[960px]:hidden`; wider
+screens show all nine. slop-paint also tightened the row's gap and truncated an Outline hint; neither
+was needed here (the row has ~100 px to spare without the four presets, and this app's Outline row has
+no hint text).
+- `test:ipad` gained a portrait pass in a context of its own (iPad Pro 11 portrait) that taps all ten
+  tools and requires the row to be 40 px for each. It failed first: `Eraser 69`, every other tool 40.
+  Screenshots read: portrait `1 3 8 16 60`, landscape all nine.
+
