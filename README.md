@@ -16,7 +16,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - Undo keeps only the part of the picture each step changed, so a long session of strokes can be
   undone 50 steps back, not a handful
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
-- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), Stream (the line trails the pen on a string, the same at any pointer rate) and Smooth (averages the stroke's path with no lag, optionally keeping corners where you pause), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
+- Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy, and a dry brush (bristle stripes that break up where the brush runs out of paint, with Dryness and Taper settings) — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), Stream (the line trails the pen on a string, the same at any pointer rate) and Smooth (averages the stroke's path with no lag, optionally keeping corners where you pause), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
 - Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a
   custom picker
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
@@ -121,7 +121,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1610); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1623); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)

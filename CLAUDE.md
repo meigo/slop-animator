@@ -36,13 +36,13 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1610 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1623 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
   profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
   URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger drag pans,
-  a finger drag of a layer row, a finger tap opens the File menu, no page errors, plus the browser-side fixes of the 2026-09-30
+  a finger drag of a layer row, a Dry brush stroke (its partial tones vs a Smooth stroke's), a finger tap opens the File menu, no page errors, plus the browser-side fixes of the 2026-09-30
   review (added 2026-10-01; each confirmed to FAIL on the pre-review code): a finger or a two-finger
   tap mid-stroke, a canvas press blurring a text field, Cmd chords / focused sliders / open dialogs
   vs the tool keys, redo with a moved selection, the eyedropper on transparent, a cancelled timeline
@@ -94,7 +94,7 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
 - `src/anim/render.ts` — `compositeFrameLayers`/`renderFrame`; `drawTransformed` (refs),
   `drawCellComposed` (draw cells, composes `layer ∘ cell`); 2D path + WebGL **boil** path.
 - `src/anim/onion.ts` — onion-skin ghosts. `src/core/boil-gl.ts` — WebGL line-boil.
-- `src/core/brush.ts` (perfect-freehand "smooth"), `ink-brush.ts`, `stamp-brush.ts`
+- `src/core/brush.ts` (perfect-freehand "smooth"), `ink-brush.ts`, `dry-brush.ts` (slop-paint's Dry brush, copied unchanged), `stamp-brush.ts`
   (pencil/charcoal/airbrush), `pressure-curve.ts`, `ref-transform.ts` (gizmo math:
   `inverseTransformPoint`/`forwardTransformPoint`/`applyMove|Scale|Rotate`), `selection.ts`,
   `fill.ts`, `input.ts`. `src/lib/cell-ink.ts` — per-cell ink/`contentBounds` caches.
