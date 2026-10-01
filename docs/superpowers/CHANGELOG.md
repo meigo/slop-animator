@@ -8050,3 +8050,36 @@ brush's width under Stream (most visible on a light-pressure texture like slop-p
 - **Owed on the iPad:** a light-start, light-finish Pencil stroke at a high Stream — the thin ends
   should stay where they were drawn.
 
+**Dry brush (2026-10-01, branch `feat/dry-brush`, port of slop-paint `917f44f`).** Asked for by the
+slop-paint session (port note 17, on the unmerged `docs/port-portrait-options-row`) and approved by
+the user. Spec and plan: `docs/superpowers/specs/2026-10-01-dry-brush-design.md`, `…/plans/2026-10-01-dry-brush.md`.
+- **What it is:** a new brush type, **Dry brush** (after Calligraphy in the brush menu): a bristle
+  brush running short of paint — parallel hair stripes along the stroke, broken where the hairs run
+  dry, ragged edges, a splayed start and a frayed end; light pressure lets only the middle hairs
+  touch. **Dryness** (0–100, default 50) and **Taper** (0–100, default 10) behind the gear, on the
+  brush and the eraser (the brush-type menu is shared), saved with the other brush settings (older
+  saves load the defaults: `applyPreferences` merges over them).
+- **Engine:** `src/core/dry-brush.ts` is slop-paint's file at `917f44f`, byte for byte — its imports
+  (`./input`, `./brush`) match this app's `src/core/`. That includes the follow-ups `955809f` (a narrow
+  stroke came out as sparse dashes), `ae89e79` (light pressure drew solid, the opposite of a dry
+  brush), `afa8b13` (tapered hair runs, lighter outer hairs) and `917f44f` (the Taper slider). Its
+  tests came with it; the only change there: the fixture points gained `hasPressure: true` (this
+  app's `InputPoint` requires it; the engine reads only `=== false`, as a mouse).
+- **Wiring:** full redraw like Ink (`Canvas.svelte` `paintStroke`, from the pre-stroke snapshot, with
+  the selection clip), and `"dry"` added to the stamp-state reset's exclusions — without that a new
+  kind falls through to the stamp engine. `BrushSettings` gained `dryness` / `dryTaper`; the gear's
+  tooltip names dryness.
+- **Each stroke's hairs are seeded from its first point's position and time**, so the same line drawn
+  twice (or on another frame) gets its own pattern — hand-drawn variation, by design.
+- **Tests:** 1610 → 1623 (slop-paint's 13 engine tests). `test:ipad` draws a Smooth and a Dry stroke at
+  size 20 and compares the share of partial tones across each stroke's area: dry 57–67% over seven
+  runs, smooth 3%; it FAILED (dry 3%) with the Dry branch drawing a Smooth stroke. The plan's first
+  measure — unpainted samples along one middle line — was flaky (0–61/61 between identical runs,
+  because of the time-based seed) and was replaced. A WebKit look at light, heavy and varied pressure
+  showed the hair stripes; no page errors.
+- **Owed on the iPad:** the feel with a real Pencil at light and heavy pressure, the Dry eraser, and
+  a long (screen-length) Dry stroke at size 40+ / Press 3 for lag: each frame rebuilds every hair over
+  the whole stroke and composites a document-sized scratch (the final review measured 4–7 ms of
+  geometry alone on a Mac late in such a stroke). If it lags, fix it in slop-paint's engine and copy
+  the file again, keeping the two identical.
+

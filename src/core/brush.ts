@@ -64,6 +64,11 @@ export interface BrushSettings {
   /** Ink only — 0-100, 0 is off. How much the mark swells where the nib lingers; see
    *  `dwellSwell` in ink-brush.ts. Same engine-specific relationship as the nib fields. */
   dwellPool?: number;
+  /** Dry brush only: 0-100, how dry the brush runs — higher breaks the hairs sooner (`hairPaints`
+   *  in dry-brush.ts). 50 by default. Same engine-specific relationship as `dwellPool`. */
+  dryness?: number;
+  /** Dry brush only: 0-100, how long each hair tapers at its ends (`dryTaperPx`); 10 by default. */
+  dryTaper?: number;
 }
 
 /** perfect-freehand's outline point spacing (its `smoothing`), before the thin-stroke cap. It was

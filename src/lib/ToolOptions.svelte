@@ -62,6 +62,7 @@
   const smoothOnly = $derived(stroke.brushType === "smooth");
   const isCalligraphy = $derived(stroke.brushType === "calligraphy");
   const isInk = $derived(stroke.brushType === "ink");
+  const isDry = $derived(stroke.brushType === "dry");
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -121,6 +122,7 @@
       <option value="charcoal">Charcoal</option>
       <option value="airbrush">Airbrush</option>
       <option value="calligraphy">Calligraphy</option>
+      <option value="dry">Dry brush</option>
     </select>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Size
@@ -193,7 +195,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, dryness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -285,6 +287,32 @@
                 style={sliderFill(stroke.dwellPool ?? 0, 0, 100)}
               />
               <span class={valueCls}>{stroke.dwellPool ?? 0}</span>
+            </label>
+          {/if}
+          {#if isDry}
+            <label class={rowCls} title="How dry the brush runs — higher breaks the hairs sooner">
+              <span class={labelCls}>Dryness</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.dryness}
+                style={sliderFill(stroke.dryness ?? 50, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.dryness ?? 50}</span>
+            </label>
+            <label class={rowCls} title="How long each hair tapers at its ends">
+              <span class={labelCls}>Taper</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.dryTaper}
+                style={sliderFill(stroke.dryTaper ?? 10, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.dryTaper ?? 10}</span>
             </label>
           {/if}
           {#if smoothOnly}
