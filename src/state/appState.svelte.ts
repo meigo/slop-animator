@@ -729,6 +729,9 @@ export function commitStructural(mutate: () => void): void {
 /** Add a layer (drawing or reference) directly above the selected ROW, as its sibling, and make
  *  it active. The placement rule and its reasoning live in `newLayerSlot`. */
 export function addLayerToProject(layer: Layer) {
+  // Before the snapshot: the layer switch below settles a live lift only AFTER both snapshots were
+  // taken (Canvas's layer-switch effect), so a ◆ it had made came back with the next ⌘Z.
+  liftGuard.bank?.();
   commitStructural(() => {
     // The ROW, not `activeLayerId`: a selected group row keeps `activeLayerId` pointing at a member
     // as a remembered anchor, so reading it put every new layer inside the group — with a single
@@ -2196,6 +2199,11 @@ export function setAnimationLength(n: number) {
   // The no-op guard has to sit ABOVE the commit: inside `applyAnimationLength` it returns from the
   // mutate callback, but commitStructural has already snapshotted and still pushes — an undo entry
   // that restores the state it was taken in, i.e. a ⌘Z that visibly does nothing.
+  // Settle a live lift BEFORE the snapshot (as removeLayer / mergeDown do): one started on a hold
+  // made a ◆ there, and settling it inside the bracket (`applyAnimationLength` banks too) left that
+  // ◆ in the before-snapshot, so ⌘Z brought it back as a real key (2026-09-30 review). Settling can
+  // change the length (a cancelled lift past a layer's end shrinks it), so it goes first.
+  liftGuard.bank?.();
   const target = Math.max(1, Math.min(9999, Math.floor(n)));
   if (target === state.project.frameCount) return;
   commitStructural(() => applyAnimationLength(target));
