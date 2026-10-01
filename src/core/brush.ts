@@ -69,6 +69,11 @@ export interface BrushSettings {
   dryness?: number;
   /** Dry brush only: 0-100, how long each hair tapers at its ends (`dryTaperPx`); 10 by default. */
   dryTaper?: number;
+  /** Pencil only: its grade, "4H" (hard, light) to "8B" (soft, dark); HB by default (`pencilGrade`
+   *  in stamp-brush.ts). */
+  pencilGrade?: string;
+  /** Charcoal only: "rough" (big holes) … "dense"; "medium" by default (`charcoalHoles`). */
+  charcoalTexture?: string;
 }
 
 /** perfect-freehand's outline point spacing (its `smoothing`), before the thin-stroke cap. It was
