@@ -268,11 +268,16 @@ export function setupInput(
     catchUpAlongTrail();
     rope = null;
     penEvent = null;
-    // Pen pointerup reports pressure 0; keep the last move's pressure so the stroke doesn't taper.
-    const up = getPoint(e);
-    const last = currentPoints[currentPoints.length - 1];
-    if (last) up.pressure = last.pressure;
-    currentPoints.push(up);
+    // A cancel or a lost capture carries no pen position (engines build it with only the id and
+    // type, so clientX/Y read 0): appending it streaked the stroke to the screen's top-left corner.
+    // The stroke ends on its last real point instead.
+    if (e.type === "pointerup") {
+      // Pen pointerup reports pressure 0; keep the last move's pressure so the stroke doesn't taper.
+      const up = getPoint(e);
+      const last = currentPoints[currentPoints.length - 1];
+      if (last) up.pressure = last.pressure;
+      currentPoints.push(up);
+    }
     onStroke(currentPoints, true);
     currentPoints = [];
   }
