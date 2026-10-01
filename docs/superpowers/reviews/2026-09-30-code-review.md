@@ -14,7 +14,7 @@ Batches, in the order to fix them:
 - **B — wrong pixels or wrong place:** all FIXED on `fix/review-batch-b` (see CHANGELOG, "Code review batch B").
 - **C — undo and lifecycle:** all FIXED on `fix/review-batch-c` (see CHANGELOG, "Code review batch C").
 - **D — performance:** all FIXED on `fix/review-batch-d` (see CHANGELOG, "Code review batch D").
-- **E — UI and keyboard**
+- **E — UI and keyboard:** all FIXED on `fix/review-batch-e` (see CHANGELOG, "Code review batch E").
 
 Roadmap port items 13/14 (CLAUDE.md), checked here: **present** 13a, 13b, 13c, 13e (fixed), 14a,
 14b (timeline Delete only), 14c, and 13's "saves capture a live Outline preview" (fixed); 14f
@@ -422,11 +422,13 @@ activation not tested in Chrome.
 - **Suggested fix:** Cache peaks keyed by (buffer, w) and only redraw the dimming/plate when trim, offset or frameCount change. Or key the action on those fields instead of state.version.
 - **Verifier:** use:waveform={{ audioVersion: state.version }}, and update: draw re-runs computePeaks over the whole channel-0 buffer on every version bump, with no caching. The magnitude on iPad is not measured.
 
-## Batch E — UI and keyboard
+## Batch E — UI and keyboard (FIXED)
 
 ### 34. Canvas pen or mouse press preventDefaults without blurring a focused text field
 
 **plausible / minor / ux** — `src/core/input.ts:151` (area: brushes; also found by ui-input) — roadmap port item **14f**
+
+**FIXED 2026-10-01** in `3878faa` (branch `fix/review-batch-e`).
 
 *As reported by the brushes reviewer:*
 
@@ -446,6 +448,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / ux** — `src/App.svelte:176` (area: ui-input)
 
+**FIXED 2026-10-01** in `f23be5a` (branch `fix/review-batch-e`).
+
 - **Problem:** The single-key branches (lines 176-180, 186, 204-209, 220-221, 242-245) never check `meta`; only `n` and `<`/`>` do. A habitual Cmd+S (save) switches to the Select tool and opens the browser's Save Page dialog. The tool switch also banks or commits a live lift through Canvas's tool-change effect. Cmd+O toggles onion skins, Cmd+G (Find next) picks Fill, Cmd+L picks Lasso, and Cmd+[ / Cmd+] (browser back/forward) change the brush size. The ',' and '.' frame steps also fire with Cmd.
 - **Scenario:** Draw, press Cmd+S out of habit. The tool changes to Select, and if a Deform warp was open it is committed; the browser's save dialog also appears.
 - **Suggested fix:** Skip the single-key block when e.ctrlKey || e.metaKey || e.altKey (the chords above it have already returned).
@@ -454,6 +458,8 @@ activation not tested in Chrome.
 ### 36. Keyboard shortcuts stay live under the modal dialogs; Enter on a dialog button toggles playback instead
 
 **confirmed / minor / ux** — `src/App.svelte:198` (area: ui-input)
+
+**FIXED 2026-10-01** in `f23be5a` (branch `fix/review-batch-e`).
 
 - **Problem:** onKey only returns early for exportBusy (line 104). With SizeDialog or ProjectSettingsDialog open, and focus on one of their buttons (not an INPUT), every shortcut still acts on the document behind the backdrop. Enter is preventDefault'ed at line 199, which also stops the focused button from activating, and then toggles playback or commits a selection (lines 198-203). Delete/Backspace deletes a timeline selection (170-173), ArrowUp/Down switches layers, and Cmd+Z undoes behind the dialog. slop-paint ignores app shortcuts while a dialog is open.
 - **Scenario:** Open Document ▸ Resize canvas…, click the 1280×720 preset, press Enter expecting to confirm. Playback starts behind the dialog and nothing is resized. With frames selected in the timeline, Backspace in the dialog ripple-deletes them unseen.
@@ -464,6 +470,8 @@ activation not tested in Chrome.
 
 **plausible / minor / ux** — `src/App.svelte:114` (area: ui-input)
 
+**FIXED 2026-10-01** in `f23be5a` (branch `fix/review-batch-e`).
+
 - **Problem:** `if (tag === "INPUT" || tag === "TEXTAREA") return;` (App.svelte:113-114) and the same test in Canvas onViewKeyDown (Canvas.svelte:320-321) cover range sliders and checkboxes as well as text fields. A clicked range input or checkbox keeps focus, and per the finding above a canvas press never takes it away. Until the user clicks some other non-input control: every single-key tool shortcut, `[`/`]`, `,`/`.`, Home/End, Enter/Escape (commit or cancel a selection or outline), Delete, Space-pan and 0/1 are all ignored. Arrow keys still go to the focused slider and change its value. On the LayerProps opacity slider of an animated layer, that writes a key and pushes an undo step (LayerProps.svelte:162-201). Space with a checkbox focused (Taper, Sharp corners, Paint behind, Fill outlines) toggles it, because onViewKeyDown returns before its preventDefault. slop-paint hit the same thing and narrowed the test to real text entry (`isTextEntry`, noted in 14f's commit).
 - **Scenario:** Drag the layer Opacity slider, draw a stroke, then press ArrowRight to step a frame. The playhead stays put and the layer's opacity goes up by 1; on an animated layer that keys the current frame with an undo entry. Or: drag the brush Size slider, make a selection, press Escape. Nothing is cancelled.
 - **Suggested fix:** Skip global shortcuts only for text entry (INPUT types text/number/search/etc., TEXTAREA, contenteditable), in both App.onKey and Canvas.onViewKeyDown. Let Ctrl/Cmd chords through on SELECT. Blur range/checkbox inputs on change, or leave them to the canvas-press blur.
@@ -472,6 +480,8 @@ activation not tested in Chrome.
 ### 38. Eyedropper samples display-only pixels: onion ghost tints, and black on a transparent background
 
 **confirmed / minor / ux** — `src/lib/Canvas.svelte:865` (area: brushes)
+
+**FIXED 2026-10-01** in `91fd7b5` (branch `fix/review-batch-e`). Only the transparent-background case; onion ghosts are still sampled (the spec samples what you see).
 
 - **Problem:** sampleAt reads `displayCtx`, which recomposite fills with `renderFrameWithOnion` whenever onion skin is on (line 501), so tinted ghosts are part of what is sampled. It also discards alpha (`const [r, g, b] = …data`), so with `transparentBg` an empty area (alpha 0) returns #000000. The BrushCursor swatch uses the same function.
 - **Scenario:** (1) With onion skin on, press the eyedropper on a previous frame's ghost line where nothing is drawn on the current frame: the brush colour becomes the onion tint (for example a pale red). (2) With Project Settings ▸ transparent background, release the eyedropper over an empty area: the colour becomes black.
@@ -482,6 +492,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / ux** — `src/lib/Timeline.svelte:1991` (area: timeline)
 
+**FIXED 2026-10-01** in `f44226a` (branch `fix/review-batch-e`).
+
 - **Problem:** `touchPanUp(e)` suppresses the fling only when handed a `pointercancel` event (466), and its doc comment says a cancelled gesture must not fling. Only the name/marker/track/group gutter bindings pass the event. `rowCancel` (1991) calls `touchPanUp()` with no argument, and so do `clipUp` (585), `videoTrimUp` (693), `rangeUp` (803), `rulerUp` (854), `lenGripUp` (1032), `rangeHandleUp` (1084) and AudioLane's `onTouchUp` (its prop type takes no event). So an OS-cancelled finger pan starting on a drawing row, the ruler, a clip or the audio lane coasts anyway.
 - **Scenario:** On iPad, pan the timeline with a finger on a drawing row, then an edge swipe or palm rejection fires pointercancel. rowCancel → touchPanUp() with no event → the view flings although the finger never released.
 - **Suggested fix:** Pass the event through, for example `touchPanUp(e)` in rowCancel and in the `*Up` handlers bound to pointercancel. Widen AudioLane's `onTouchUp` prop to accept the event, as MarkerStrip already does.
@@ -490,6 +502,8 @@ activation not tested in Chrome.
 ### 40. Running audio is not re-synced after an fps change, a ripple insert/delete, or trim-to-playhead during playback
 
 **confirmed / minor / correctness** — `src/lib/Playbar.svelte:42` (area: timeline)
+
+**FIXED 2026-10-01** in `01c3811` (branch `fix/review-batch-e`). commitStructural re-syncs only when the commit moved the track, its offset or its trim.
 
 - **Problem:** `audioEngine` schedules the buffer once at play/sync time from the fps, offset and trim of that moment. It is only re-aligned by `setFrame` on a jump or wrap (appState 2477), undo/redo (`resyncAudioAfterHistory`), mute, and the AudioLane drags' up handlers (AudioLane 131, 241). Several edits reachable during playback change that mapping without calling `audioEngine.syncTo`. `setFps` (Playbar 41-44, also ProjectSettingsDialog 21) changes `Playback.step`'s frame duration immediately while the buffer keeps its old frame→time alignment. `frameTool`/`deleteTool` (Timeline 2062-2078) ripple `project.audio.offsetFrames` via `rippleDocumentFrames` (timeline.ts 397-400) inside commitStructural, which does no resync. `trimToPlayhead` (appState 2095+) commits new offset/trim values the same way.
 - **Scenario:** Play a 12 fps animation with audio, open the playback gear, and tap the 24 preset. Frames now advance twice as fast but the sound keeps its old alignment, so picture and audio drift apart until the next loop wrap or seek. Likewise, press Insert frame mid-playback: the audio offset moves by one frame while the running buffer keeps its old position.
@@ -500,6 +514,8 @@ activation not tested in Chrome.
 
 **plausible / minor / ux** — `src/lib/cell-ink.ts:249` (area: transform)
 
+**FIXED 2026-10-01** in `d098ecf` (branch `fix/review-batch-e`). Only the live box changes; a transformed group keeps its frozen pivot box.
+
 - **Problem:** `groupContentBoxLogical` unions each member's RAW cell `contentBounds` (cell-ink.ts:243-255) without passing them through that member's layer or cell transform. That box is the group's base: the gizmo base at group scope (RefTransformGizmo.svelte:193), the canvas drag base (Canvas.svelte:1029), and the render pivot (render.ts:161). It is also what gets frozen as `transformBox` at grab (Canvas.svelte:1087, RefTransformGizmo.svelte:266) and at `animateGroup`. So the spec's promise that the 'gizmo hugs the bbox of grouped draw layers' (group-transform spec line 254) fails whenever a member has its own transform. This is the character-rig case the feature exists for. Confidence is moderate that this is unintended: the spec does not discuss member transforms explicitly.
 - **Scenario:** Group two layers and move one of them 300px right with its layer transform. Select the group row and choose Transform. The gizmo box is drawn around where the art was before the move, not where it is on screen. Rotate and scale then pivot about that off-content centre, and the frozen box keeps the wrong pivot for the rest of the group's life.
 - **Suggested fix:** Map each member's content box through `forwardChain([cell step, layer step])` at the frame, and union the transformed corners. Keep the existing freeze-at-grab so the pivot stays stable afterwards.
@@ -508,6 +524,8 @@ activation not tested in Chrome.
 ### 42. `reorderLayers` has no callers
 
 **confirmed / minor / dead-code** — `src/state/appState.svelte.ts:865` (area: state-undo)
+
+**FIXED 2026-10-01** in `2c59e78` (branch `fix/review-batch-e`).
 
 - **Problem:** Nothing in src or tests calls `reorderLayers(ordered)`. The layer drag uses `reorderLayersWithGroups`. The unused function also skips the no-op guard and the empty-group pruning that its live sibling has, so it would push empty undo steps if someone wired it up again.
 - **Scenario:** No runtime effect today. A future caller that picks it by name would get a reorder with no no-op guard and no empty-group pruning.
