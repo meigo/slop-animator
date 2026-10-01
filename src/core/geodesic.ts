@@ -6,11 +6,13 @@ export interface MeshHandle {
   to: Pt;
 }
 
-/** Geodesic distance from each source vertex to every vertex, via Dijkstra over the mesh edge graph
- *  (edge weight = Euclidean length). dist[s][v]; Infinity if unreachable. */
-export function geodesicDistances(mesh: Mesh, sources: number[]): number[][] {
+/** The mesh's edge graph (edge weight = Euclidean length), for `geodesicFrom`. Build it once per
+ *  mesh: a pose asks for one source at a time, as handles are added. */
+export type MeshAdjacency = { to: number; w: number }[][];
+
+export function meshAdjacency(mesh: Mesh): MeshAdjacency {
   const V = mesh.vertices.length;
-  const adj: { to: number; w: number }[][] = Array.from({ length: V }, () => []);
+  const adj: MeshAdjacency = Array.from({ length: V }, () => []);
   const seen = new Set<number>();
   const addEdge = (a: number, b: number) => {
     const key = a < b ? a * V + b : b * V + a;
@@ -28,27 +30,66 @@ export function geodesicDistances(mesh: Mesh, sources: number[]): number[][] {
     addEdge(b, c);
     addEdge(c, a);
   }
-  return sources.map((s) => dijkstra(adj, V, s));
+  return adj;
 }
 
-function dijkstra(adj: { to: number; w: number }[][], V: number, src: number): number[] {
+/** Geodesic distance from each source vertex to every vertex, via Dijkstra over the mesh edge graph
+ *  (edge weight = Euclidean length). dist[s][v]; Infinity if unreachable. */
+export function geodesicDistances(mesh: Mesh, sources: number[]): number[][] {
+  const adj = meshAdjacency(mesh);
+  return sources.map((s) => geodesicFrom(adj, s));
+}
+
+/**
+ * Dijkstra from one vertex, with a binary heap. It was a linear scan for the nearest unvisited
+ * vertex — O(V²) — and ran for every handle on every Pencil event of a reach-nub drag: measured
+ * 62 ms an event for 3 handles on 1600×1000 content at the default spacing, over a second at the
+ * densest (2026-09-30 review). Stale heap entries are skipped rather than decreased.
+ */
+export function geodesicFrom(adj: MeshAdjacency, src: number): number[] {
+  const V = adj.length;
   const dist = new Array<number>(V).fill(Infinity);
-  const done = new Array<boolean>(V).fill(false);
+  if (src < 0 || src >= V) return dist;
   dist[src] = 0;
-  for (let iter = 0; iter < V; iter++) {
-    let u = -1,
-      best = Infinity;
-    for (let i = 0; i < V; i++) {
-      if (!done[i] && dist[i] < best) {
-        best = dist[i];
-        u = i;
+  const hd: number[] = [0]; // heap of distances…
+  const hv: number[] = [src]; // …and their vertices
+  const swap = (i: number, j: number) => {
+    [hd[i], hd[j]] = [hd[j], hd[i]];
+    [hv[i], hv[j]] = [hv[j], hv[i]];
+  };
+  while (hd.length) {
+    const d = hd[0];
+    const u = hv[0];
+    const lastD = hd.pop()!;
+    const lastV = hv.pop()!;
+    if (hd.length) {
+      hd[0] = lastD;
+      hv[0] = lastV;
+      for (let i = 0; ; ) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < hd.length && hd[l] < hd[m]) m = l;
+        if (r < hd.length && hd[r] < hd[m]) m = r;
+        if (m === i) break;
+        swap(i, m);
+        i = m;
       }
     }
-    if (u === -1) break;
-    done[u] = true;
+    if (d > dist[u]) continue; // stale entry
     for (const e of adj[u]) {
-      const nd = dist[u] + e.w;
-      if (nd < dist[e.to]) dist[e.to] = nd;
+      const nd = d + e.w;
+      if (nd < dist[e.to]) {
+        dist[e.to] = nd;
+        hd.push(nd);
+        hv.push(e.to);
+        for (let i = hd.length - 1; i > 0; ) {
+          const p = (i - 1) >> 1;
+          if (hd[p] <= hd[i]) break;
+          swap(i, p);
+          i = p;
+        }
+      }
     }
   }
   return dist;
@@ -61,8 +102,10 @@ export function poseWeights(
   handleVertices: number[],
   alpha = 1,
   reaches?: (number | undefined)[],
+  /** Each handle's distance row, when the caller already has them (they do not depend on reach). */
+  distances?: number[][],
 ): { from: Pt[]; weights: number[][] } {
-  const dist = geodesicDistances(mesh, handleVertices);
+  const dist = distances ?? geodesicDistances(mesh, handleVertices);
   const from = handleVertices.map((v) => mesh.vertices[v]);
   const weights = mesh.vertices.map((_, v) =>
     handleVertices.map((_, h) => {

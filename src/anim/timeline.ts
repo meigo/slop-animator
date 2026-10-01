@@ -520,7 +520,8 @@ export function resizeHoldSpan(
   keyFrame: number,
   span: number,
   othersLen: number,
-): void {
+): boolean {
+  const stored = holdSpanEnd(layer, keyFrame);
   const before = spanVisualEnd(layer, keyFrame, othersLen);
   setHoldSpan(layer, keyFrame, span);
   const after = spanVisualEnd(layer, keyFrame, othersLen);
@@ -528,6 +529,9 @@ export function resizeHoldSpan(
   // `after - before` frames at `before`, shrinking removes them from `after`.
   for (let i = 0; i < after - before; i++) shiftLayerTrackKeys(layer, before, 1);
   for (let i = 0; i < before - after; i++) shiftLayerTrackKeys(layer, after, -1);
+  // Whether anything was written, so the drag can skip its bump (a full re-derive and recomposite)
+  // on the many pointer events that stay inside one column.
+  return holdSpanEnd(layer, keyFrame) !== stored;
 }
 
 /**
