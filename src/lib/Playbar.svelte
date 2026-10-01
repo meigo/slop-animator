@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     state as appState,
-    bump,
     seekPlayhead,
     playbackController,
     setAnimationLength,
@@ -11,6 +10,7 @@
     addMarkerAtPlayhead,
     deleteMarkerAt,
     markerActions,
+    setProjectFps,
   } from "../state/appState.svelte";
   import { countKeyframesPastLength } from "../anim/document";
   import { markerAt } from "../anim/markers";
@@ -39,8 +39,7 @@
     seekPlayhead(f);
   }
   function setFps(v: number) {
-    appState.project.fps = Math.max(1, Math.min(60, Math.round(v)));
-    bump();
+    setProjectFps(v);
   }
   // Called once per gesture (release of a drag, Enter, or blur) — never per pointermove, so the
   // confirm below cannot fire mid-drag and a drag cannot leave a trail of undo entries.

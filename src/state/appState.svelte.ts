@@ -742,6 +742,16 @@ export function commitStructural(mutate: () => void): void {
   // that selects a row it just created (those all select AFTER the commit).
   state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
   commitStructuralEdit(before);
+  // A ripple insert/delete or a trim to the playhead can move the audio under running playback.
+  // Only then: re-scheduling the buffer restarts it, which is audible for an edit that left it be.
+  const a = state.project.audio;
+  if (
+    a !== before.audio ||
+    (a?.offsetFrames ?? null) !== before.audioOffsetFrames ||
+    (a?.trimInFrames ?? null) !== (before.audioTrimInFrames ?? null) ||
+    (a?.trimLenFrames ?? null) !== (before.audioTrimLenFrames ?? null)
+  )
+    resyncAudio();
 }
 
 /** Add a layer (drawing or reference) directly above the selected ROW, as its sibling, and make
@@ -889,13 +899,6 @@ export function removeGroup(groupId: number) {
       const firstDrawing = state.project.layers.find(isDrawingLayer);
       if (firstDrawing) setActiveLayer(firstDrawing.id);
     }
-  });
-}
-
-/** Reorder the layer stack to exactly `ordered` (bottom→top) and repaint. */
-export function reorderLayers(ordered: Layer[]) {
-  commitStructural(() => {
-    state.project.layers = ordered;
   });
 }
 
@@ -2358,6 +2361,24 @@ function resizeTrack(
   };
 }
 
+/** Set the frame rate. Running audio is re-aligned to it: playback steps at the new rate at once,
+ *  while the scheduled buffer kept the old frame-to-time mapping until the next seek or wrap. */
+export function setProjectFps(v: number): void {
+  state.project.fps = Math.max(1, Math.min(60, Math.round(v) || 1));
+  bump();
+  resyncAudio();
+}
+
+/** A modal dialog is open (New/Resize, Project Settings, Export, the iPad share-ready sheet). Their
+ *  backdrops stop pointers, not keys: app shortcuts must stand aside, or Enter on a dialog button
+ *  started playback behind it and Backspace deleted a timeline selection unseen (2026-09-30
+ *  review). */
+export function modalOpen(): boolean {
+  return (
+    state.sizeDialog.open || state.settingsOpen || state.exportOpen || state.shareReady !== null
+  );
+}
+
 /** Toggle the eraser on/off, restoring the tool that was active before (for a quick gesture toggle). */
 let toolBeforeEraser: Tool = "brush";
 export function toggleEraser() {
@@ -2754,13 +2775,14 @@ export function undo(): void {
   invalidateInk(); // safety net: a pixel write that forgot to mark cannot outlive an undo
   state.timelineSelection = null; // a structural restore can invalidate stored endpoints
   bump(); // pixel commands only recomposite — glyphs, contentBounds, and autosave key off version
-  resyncAudioAfterHistory();
+  resyncAudio();
 }
 
 /** A structural restore can move the audio offset (the lane drag and ripple insert/delete both write
  *  it), and running playback has already scheduled its buffer — without this the number changes but
- *  the sound keeps playing at the old position until the next seek. */
-function resyncAudioAfterHistory(): void {
+ *  the sound keeps playing at the old position until the next seek. Also after every structural
+ *  commit (a ripple insert/delete, trim to playhead) and an fps change (2026-09-30 review). */
+function resyncAudio(): void {
   if (state.playback.isPlaying) audioEngine.syncTo(state.playhead, state.project.fps);
 }
 export function redo(): void {
@@ -2779,7 +2801,7 @@ export function redo(): void {
   invalidateInk();
   state.timelineSelection = null;
   bump();
-  resyncAudioAfterHistory();
+  resyncAudio();
 }
 
 /** Pressure-response curves, remapping raw pen pressure before drawing. Imperative widgets, one per

@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { Check, X } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
-  import { setupInput, type InputPoint } from "../core/input";
+  import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
+  import { isTextEntry } from "./text-entry";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
@@ -36,6 +37,7 @@
     commitStructuralEdit,
     transformScope,
     selectToolsBlock,
+    modalOpen,
     type BrushKind,
   } from "../state/appState.svelte";
   import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
@@ -317,9 +319,11 @@
     // These are the app's OTHER window-level key handlers, so they need the export gate `App.svelte`
     // has: a space tap restarts playback onto the boil GL surface the export shares, and the render
     // loop re-reads the live project every frame. The dialog's backdrop blocks pointers, not keys.
-    if (appState.exportBusy) return;
-    const tag = (document.activeElement as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return; // don't hijack typing
+    if (appState.exportBusy || modalOpen()) return;
+    // Don't hijack typing — but only typing: a focused slider or checkbox used to block Space-pan,
+    // 0 and 1, and Space then toggled the checkbox instead (see App's `onKey`).
+    if (isTextEntry(document.activeElement as HTMLElement | null)) return;
+    if ((document.activeElement as HTMLElement | null)?.tagName === "SELECT") return;
     if (e.key === " ") {
       // Space always holds grab-to-pan (Photoshop-style), even when a toolbar button is focused —
       // preventDefault stops both page scroll and the focused button's space-activation. Reliable
@@ -877,7 +881,11 @@
     const px = Math.round(p.x * DPR * ss),
       py = Math.round(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
-    const [r, g, b] = displayCtx.getImageData(px, py, 1, 1).data;
+    const [r, g, b, a] = displayCtx.getImageData(px, py, 1, 1).data;
+    // Nothing there: with a transparent background an empty pixel has no colour, and reading its
+    // channels picked black (the checkerboard is a DOM element under the canvas). On an opaque
+    // background every pixel is painted, so this only ever refuses a truly empty one.
+    if (a === 0) return null;
     return rgbToHex(r, g, b);
   }
 
@@ -1243,7 +1251,9 @@
       // under the pointer throughout, for mouse and Pencil.
       if (done) {
         const hex = sampleAt(points[points.length - 1]);
-        if (hex) applyEyedropper(hex); // sets colour + switches the tool back
+        if (hex)
+          applyEyedropper(hex); // sets colour + switches the tool back
+        else appState.statusHint = "Nothing to pick there — that spot is empty";
       }
       return;
     }
@@ -2485,6 +2495,18 @@
     const overlayRo = new ResizeObserver(() => sizeOverlay());
     overlayRo.observe(stage);
 
+    // A press on the canvas leaves a text field (layer rename, size box, a NumberField): the pen and
+    // finger handlers preventDefault the press, which also stops the browser moving focus, so the
+    // field stayed focused — on iPad the keyboard stayed up and a rename stayed uncommitted, and
+    // on desktop the next tool key went into the field (roadmap 14f, slop-paint 1c8b5fd). Not on
+    // the stage's own panels: the pose bar's Gap field lives there.
+    const blurTextEntry = (e: PointerEvent) => {
+      if (isStageChromeTarget(e.target)) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && isTextEntry(el)) el.blur();
+    };
+    stage.addEventListener("pointerdown", blurTextEntry, true);
+
     // Finger gestures: 1-finger pan, 1-finger double-tap toggle eraser, 2-finger pinch zoom+rotate,
     // 2-finger tap undo, 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
     const cleanupTouch = setupTouchGestures(stage, viewport, {
@@ -2597,6 +2619,7 @@
       overlayRo.disconnect();
       input.dispose();
       cleanupTouch();
+      stage.removeEventListener("pointerdown", blurTextEntry, true);
       stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
       stage.removeEventListener("pointermove", stagePanMove, { capture: true });
       stage.removeEventListener("pointerup", stagePanUp, { capture: true });

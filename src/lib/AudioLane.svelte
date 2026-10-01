@@ -37,7 +37,8 @@
     minWidth?: number;
     onTouchDown: (e: PointerEvent) => void;
     onTouchMove: (e: PointerEvent) => boolean;
-    onTouchUp: () => void;
+    /** Pass the event: a `pointercancel` must not fling (see Timeline's `touchPanUp`). */
+    onTouchUp: (e?: PointerEvent) => void;
     /** Edge auto-scroll, owned by Timeline because it owns the scroller. `apply` is how this lane
      *  re-applies its own drag at the last pointer x while the content slides under a still pointer.
      *  `owner` names the drag: the tick is one shared resource, so a settle only stops it when its
@@ -136,7 +137,7 @@
     if (dragStart && state.playback.isPlaying)
       audioEngine.syncTo(state.playhead, state.project.fps);
     settleLaneDrag();
-    onTouchUp();
+    onTouchUp(e);
   }
 
   // The kept span in BUFFER-frame space, resolved once for both the handle markup and the drag
@@ -240,7 +241,7 @@
 
   function trimUp(e: PointerEvent) {
     if (e.pointerType === "touch") {
-      onTouchUp();
+      onTouchUp(e);
       return;
     }
     if (trimDrag && state.playback.isPlaying) audioEngine.syncTo(state.playhead, state.project.fps);

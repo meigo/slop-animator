@@ -1,5 +1,11 @@
 import type { Project, LayerGroup } from "../anim/document";
-import { resolveDisplayKey } from "../anim/document";
+import {
+  cellTransform,
+  isIdentityTransform,
+  resolveDisplayKey,
+  transformAt,
+} from "../anim/document";
+import { forwardTransformPoint } from "../core/ref-transform";
 
 // Cheap "does this keyframe have any ink?" test for the timeline display.
 // A full-resolution scan per cell would be far too expensive to run every render, so we
@@ -249,18 +255,44 @@ export function groupContentBoxLogical(
     if (cell.kind !== "key") continue;
     const b = contentBounds(cell.canvas, version);
     if (!b) continue;
-    if (b.x < minX) minX = b.x;
-    if (b.y < minY) minY = b.y;
-    if (b.x + b.w - 1 > maxX) maxX = b.x + b.w - 1;
-    if (b.y + b.h - 1 > maxY) maxY = b.y + b.h - 1;
+    // Where the member SHOWS, not where its pixels sit: through its cell and layer transforms, in
+    // render's order (cell, then layer). Raw bounds put the gizmo and pivot around where a moved
+    // member's art used to be (2026-09-30 review). The group's own box freezes at grab as before,
+    // so this only decides the pivot a group is first transformed about.
+    const cellT = cellTransform(cell);
+    const cellBox = isIdentityTransform(cellT)
+      ? null
+      : contentBoxLogical(
+          cell.canvas,
+          cell.transformBox,
+          project.width,
+          project.height,
+          dpr,
+          version,
+        );
+    const layerT = transformAt(layer, frame);
+    const docBox = { x: 0, y: 0, w: project.width, h: project.height };
+    const x0 = b.x / dpr,
+      y0 = b.y / dpr,
+      x1 = (b.x + b.w) / dpr,
+      y1 = (b.y + b.h) / dpr;
+    for (const [px, py] of [
+      [x0, y0],
+      [x1, y0],
+      [x0, y1],
+      [x1, y1],
+    ]) {
+      let p = { x: px, y: py };
+      if (cellBox) p = forwardTransformPoint(cellBox, cellT, p);
+      if (!isIdentityTransform(layerT)) p = forwardTransformPoint(docBox, layerT, p);
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
   }
   if (maxX === -Infinity) return { x: 0, y: 0, w: project.width, h: project.height };
-  return {
-    x: minX / dpr,
-    y: minY / dpr,
-    w: (maxX - minX + 1) / dpr,
-    h: (maxY - minY + 1) / dpr,
-  };
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
 /**

@@ -39,7 +39,9 @@
     jumpToMarker,
     markerActions,
     liftGuard,
+    modalOpen,
   } from "./state/appState.svelte";
+  import { isTextEntry } from "./lib/text-entry";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore, pruneMedia } from "./persist/media-store";
@@ -103,6 +105,7 @@
     // one file with no warning, so no shortcut is live for the duration of the render — including
     // ⌘Z, which is handled above the INPUT/TEXTAREA guard below.
     if (state.exportBusy) return;
+    if (modalOpen()) return; // keys belong to the dialog — see `modalOpen`
     const meta = e.ctrlKey || e.metaKey;
     if (meta && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -110,9 +113,13 @@
       else undo();
       return;
     }
-    // Don't hijack single-key shortcuts while typing in a field (e.g. the fps input).
-    const tag = (e.target as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    // Don't hijack single-key shortcuts while typing in a field (e.g. the fps input) — a TEXT field.
+    // Every <input> used to count, so after a slider or checkbox had been touched (it keeps focus:
+    // the canvas press does not take it) the tool keys, Enter/Escape and the frame keys were dead
+    // and the arrow keys edited the slider (slop-paint's isTextEntry). A dropdown keeps its own keys.
+    const target = e.target as HTMLElement | null;
+    if (isTextEntry(target)) return;
+    if (target?.tagName === "SELECT") return;
 
     const selActive = !!selectionRef.current?.active && !selectionRef.current.hasFloating;
 
@@ -173,6 +180,10 @@
       deleteTimelineSelection();
       return;
     }
+
+    // Single keys only: Cmd+S switched to the Select tool (committing a live warp on the way) as the
+    // browser's Save dialog opened, Cmd+O toggled onion skins, Cmd+[ resized the brush.
+    if (meta || e.altKey) return;
 
     if (e.key === "b") state.tool = "brush";
     else if (e.key === "e") state.tool = "eraser";

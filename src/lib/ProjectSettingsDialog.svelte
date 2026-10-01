@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { state as appState, bump } from "../state/appState.svelte";
+  import { state as appState, bump, setProjectFps } from "../state/appState.svelte";
   import NumberField from "./NumberField.svelte";
 
   function close() {
@@ -18,8 +18,7 @@
     bump();
   }
   function setFps(v: number) {
-    appState.project.fps = Math.max(1, Math.min(60, Math.round(v) || 1));
-    bump();
+    setProjectFps(v);
   }
   function openResize() {
     appState.settingsOpen = false;

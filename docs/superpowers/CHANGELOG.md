@@ -7868,3 +7868,27 @@ batch B's).** Twelve findings from `docs/superpowers/reviews/2026-09-30-code-rev
   frameCount, fps, cellW) instead of `state.version`, and caches peaks per buffer and width.
 - Build 0/0, 1577 tests. Owed on the iPad: a reach-nub drag on a large drawing with 3+ handles.
 
+**Code review batch E: UI and keyboard (2026-10-01, branch `fix/review-batch-e`, cut from batch D's).**
+Also on this branch, first: `npm run test:ipad` (`93bbc2e`, port of slop-paint `0b2a071`; see
+CLAUDE.md Commands).
+- **Canvas press blurs a text field** (`3878faa`, roadmap 14f, slop-paint `1c8b5fd`): a capture
+  pointerdown on the stage blurs a focused text entry (`lib/text-entry.ts` `isTextEntry`, ported with
+  its test), except on the stage's own panels (the pose bar's Gap field). The iPad check covers it.
+- **Keyboard** (`f23be5a`, items 35–37): single-key shortcuts need no Cmd/Ctrl/Alt; `modalOpen()`
+  (New/Resize, Project Settings, Export, share sheet) stops App's and the canvas's key handlers;
+  only text entry and SELECT keep their keys (a focused slider or checkbox no longer kills the
+  shortcuts — the arrow keys now step frames instead of nudging a focused slider).
+- **Eyedropper** (`91fd7b5`): an empty pixel (transparent background) picks nothing, with a hint.
+  Onion ghosts still sample: the eyedropper spec samples what you see on purpose.
+- **Cancelled pans** (`f44226a`): every pointercancel-bound timeline handler passes its event to
+  `touchPanUp`; AudioLane's `onTouchUp` takes it.
+- **Audio resync** (`01c3811`): `setProjectFps` (Playbar, Project Settings) re-syncs running audio;
+  `commitStructural` does when the commit moved the track, offset or trim (`resyncAudioAfterHistory`
+  is now `resyncAudio`).
+- **Group box** (`d098ecf`): `groupContentBoxLogical` maps each member's bounds through its cell and
+  layer transforms. Only the live box changes; transformed groups keep their frozen box.
+- **Dead code** (`2c59e78`): `reorderLayers` removed (no callers).
+- Build 0/0, 1580 tests, `npm run test:ipad` all passing. Owed on the iPad: rename a layer then
+  draw (keyboard goes away), Cmd+S with a tool, Enter in the Resize dialog, an fps preset during
+  playback with audio, a group transform after moving a member.
+

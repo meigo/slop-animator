@@ -130,6 +130,18 @@ describe("groupContentBoxLogical", () => {
     const p = makeProject([drawLayerWith(1, 7, { x: 4, y: 6, w: 8, h: 4 })], [g]);
     expect(groupContentBoxLogical(g, p, 0, 2, 1)).toEqual({ x: 2, y: 3, w: 4, h: 2 });
   });
+
+  // The rig case the group transform exists for: a member moved by its own layer transform. The
+  // box (gizmo and pivot) must be where it SHOWS, not where its pixels sit.
+  it("follows a member's layer transform", () => {
+    const moved = drawLayerWith(1, 7, { x: 2, y: 3, w: 4, h: 2 });
+    moved.transform = { dx: 3, dy: 1, scaleX: 1, scaleY: 1, rotation: 0 };
+    const p = makeProject([moved], [g]);
+    expect(groupContentBoxLogical(g, p, 0, 1, 1)).toEqual({ x: 5, y: 4, w: 4, h: 2 });
+    // Scaled ×2 about the document centre (5, 5): [2..6]×[3..5] → [-1..7]×[1..5].
+    moved.transform = { dx: 0, dy: 0, scaleX: 2, scaleY: 2, rotation: 0 };
+    expect(groupContentBoxLogical(g, p, 0, 1, 1)).toEqual({ x: -1, y: 1, w: 8, h: 4 });
+  });
 });
 
 /** An RGBA buffer from rows of "." (transparent) and "#" (opaque). */
