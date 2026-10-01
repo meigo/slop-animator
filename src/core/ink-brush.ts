@@ -196,14 +196,20 @@ function strokeRuns(
   points: InputPoint[],
   mids: { x: number; y: number }[],
   widths: number[],
+  from = 0,
+  to = Infinity,
 ) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   for (const run of inkRuns(widths)) {
-    const start = run.from === 0 ? points[0] : mids[run.from - 1];
+    // Only the segments in [from, to): see `drawInkStroke`'s range.
+    const a = Math.max(run.from, from);
+    const b = Math.min(run.to, to);
+    if (a >= b) continue;
+    const start = a === 0 ? points[0] : mids[a - 1];
     const path = new Path2D();
     path.moveTo(start.x, start.y);
-    for (let s = run.from; s < run.to; s++) {
+    for (let s = a; s < b; s++) {
       path.quadraticCurveTo(points[s].x, points[s].y, mids[s].x, mids[s].y);
     }
     ctx.lineWidth = run.width;
@@ -238,11 +244,19 @@ function inkScratch(width: number, height: number): CanvasRenderingContext2D | n
   return ctx;
 }
 
+/**
+ * `from` / `to`: draw only the segments in that range (segment s is the curve through
+ * `points[s]`), with the geometry still worked out from the whole stroke — so a range draws
+ * exactly the pixels the whole stroke would there. App freezes the settled part of a long opaque
+ * stroke this way and redraws only the rest each frame (2026-10-01).
+ */
 export function drawInkStroke(
   ctx: CanvasRenderingContext2D,
   points: InputPoint[],
   settings: BrushSettings,
   sizeRange: number = 1.0,
+  from = 0,
+  to = Infinity,
 ) {
   if (points.length < 2) return;
 
@@ -284,7 +298,7 @@ export function drawInkStroke(
     ctx.strokeStyle = settings.color;
     ctx.globalCompositeOperation = op;
     ctx.globalAlpha = alpha;
-    strokeRuns(ctx, points, mids, pooled);
+    strokeRuns(ctx, points, mids, pooled, from, to);
     return;
   }
 
@@ -294,7 +308,7 @@ export function drawInkStroke(
   // survives the transform change, so it still applies.
   sctx.setTransform(ctx.getTransform());
   sctx.strokeStyle = settings.color;
-  strokeRuns(sctx, points, mids, pooled);
+  strokeRuns(sctx, points, mids, pooled, from, to);
 
   ctx.save();
   try {
