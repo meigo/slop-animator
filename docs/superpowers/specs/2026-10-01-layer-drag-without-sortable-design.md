@@ -73,6 +73,11 @@ function applyOrder(layers: Layer[], order: { id: number; groupId: number | null
   - group header: upper half → above the whole block (top level); lower half → expanded: into the
     group at its top (`into` = the group); collapsed: below the block (top level);
   - member row: upper half → above it, lower half → below it, in that group (`into` = the group).
+  - (amended 2026-10-01 after the final review) at or past the LAST row's bottom → the end of the
+    list at the top level (`line` = that bottom, `into` = null; null if that changes nothing).
+    Without it the clamp picks the last row, so a layer could never land below an expanded group
+    that ends the list — the last member's lower half means "into that group". A group drag
+    already lands below the bottom block.
 - **Group drag**, by the top-level block under `y` (a block spans its header and visible members):
   upper half → above the block, lower half → below it. Over its own block → no drop.
 - **`null`** when the resulting order equals the current one (over the dragged row itself, or next

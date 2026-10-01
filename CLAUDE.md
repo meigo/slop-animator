@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1599 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1603 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh

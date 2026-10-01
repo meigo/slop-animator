@@ -78,7 +78,9 @@ export function dropTarget(
 
 /** A layer goes by the row under the pointer: above or below a layer row in that row's group;
  *  above a group header = above the block; below it = into the group's top, or below the block
- *  when the group is collapsed (its members are not rows, and a drop never hides a layer). */
+ *  when the group is collapsed (its members are not rows, and a drop never hides a layer).
+ *  Past the last row = the end of the list at the top level: without it a layer could never land
+ *  below an expanded group that ends the list (the clamp picks its last member = into it). */
 function placeLayer(
   display: OrderEntry[],
   groups: LayerGroup[],
@@ -88,6 +90,12 @@ function placeLayer(
 ): Placed | null {
   const from = display.findIndex((e) => e.id === id);
   if (from < 0) return null;
+  const end = rows[rows.length - 1].bottom;
+  if (y >= end) {
+    const next = display.filter((e) => e.id !== id);
+    next.push({ id, groupId: null });
+    return { display: next, line: end, into: null };
+  }
   const row = under(rows, y);
   const upper = y < mid(row);
   let at: number;

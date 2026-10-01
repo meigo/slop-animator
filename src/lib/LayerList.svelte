@@ -54,6 +54,7 @@
   import { isDoubleTap, type Tap } from "./double-tap";
   import { dropTarget, rowKey, type Drag, type Drop, type RowBox } from "../anim/layer-drop";
   import { autoScrollStep, ghostTop, pastThreshold, shiftedRowIds } from "./layer-drag-visual";
+  import { isTextEntry } from "./text-entry";
 
   let listEl: HTMLDivElement;
 
@@ -219,10 +220,15 @@
   }
 
   function startDrag(e: PointerEvent, drag: Drag, label: string, count: number) {
+    if (dragging) return; // one drag at a time: a second finger or pen never takes over
     if (e.button !== 0) return;
     const row = (e.currentTarget as Element | null)?.closest<HTMLElement>("[data-row-key]");
     if (!row) return;
     e.preventDefault();
+    // preventDefault also stops the press from moving focus: a rename field would keep it (and the
+    // iPad keyboard stay up), so let go of it here.
+    const focused = document.activeElement as HTMLElement | null;
+    if (isTextEntry(focused)) focused?.blur();
     try {
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     } catch {
@@ -273,6 +279,7 @@
   }
 
   function update(d: Dragging) {
+    if (!d.row.isConnected) return finishDrag(); // its row went away (an undo removed the layer)
     if (!ghost) return;
     const y = d.clientY - listEl.getBoundingClientRect().top + listEl.scrollTop;
     drop = dropTarget(appState.project.layers, appState.project.groups, d.boxes, y, d.drag);
@@ -285,7 +292,7 @@
   function edgeScroll() {
     const d = dragging;
     if (!d) return;
-    if (!listEl) return finishDrag(); // the panel went away under the drag
+    if (!listEl || !d.row.isConnected) return finishDrag(); // the panel or the row went away
     const view = listEl.getBoundingClientRect();
     const step = autoScrollStep(d.clientY, view.top, view.bottom);
     const max = Math.max(d.contentHeight - listEl.clientHeight, 0);
@@ -530,8 +537,15 @@
   </div>
 {/snippet}
 
+<!-- The drag's move/up/cancel also arrive here, so a drag whose grip left the DOM mid-drag (its
+     capture lost, `lostpointercapture` sent to the document) still ends. While the grip holds the
+     capture its own handlers run first (delegated, at the root) and close the drag; these then
+     find `dragging` null and do nothing, so a release commits once. -->
 <svelte:window
   onresize={onWindowResize}
+  onpointermove={moveDrag}
+  onpointerup={(e) => endDrag(e, true)}
+  onpointercancel={(e) => endDrag(e, false)}
   onkeydowncapture={(e) => {
     // Escape cancels a drag, and only the drag: captured so the app's own Escape doesn't also run.
     if (e.key !== "Escape" || !dragging) return;
