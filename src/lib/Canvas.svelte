@@ -1424,7 +1424,7 @@
           if (selection.hasFloating) selection.commit();
           else if (selection.active) selection.cancel();
           selectionMode = "create";
-          selection.startCreate(p.x, p.y);
+          selection.startCreate(p.x, p.y, appState.tool === "lasso" ? "lasso" : "rect");
         }
       } else if (!done) {
         if (selectionMode === "create") selection.updateCreate(p.x, p.y);
