@@ -8125,3 +8125,41 @@ slop-paint session.
 - **Owed on the iPad:** a long Dry spiral (the boxes should be gone) and the lag check from the Dry
   brush entry.
 
+**Long opaque Ink and Calligraphy strokes freeze their settled part (2026-10-02, branch
+`perf/freeze-long-strokes`; port of slop-paint `b89284d`, confirmed there on the iPad).** Requested by
+the slop-paint session; the user said to go ahead without stops. Spec and plan:
+`docs/superpowers/specs/2026-10-02-freeze-long-strokes-design.md`, `…/plans/2026-10-02-freeze-long-strokes.md`.
+- **Measured here first** (WebKit on a Mac, 1920×1080): a frame of Ink cost 14 ms at size 12 and 45 ms
+  at size 40 at 4800 points (~20 s of Pencil), Calligraphy 7 / 14 ms — growing with the stroke, since
+  both redraw the whole stroke every frame.
+- **Engines:** `drawInkStroke` / `drawCalligraphyStroke` take optional `from` / `to` input-point indices
+  and draw only that range from geometry worked out over the whole stroke (slop-paint's hunks applied
+  as is; our files equalled its pre-change ones but for three comments).
+- **Canvas.svelte**, where it differs from slop-paint: the frame restores from `beforeSnapshot`, which
+  is also the undo step's "before", so the settled part is baked into a separate document-sized
+  `frozenCanvas` (made at the first freeze), and the Ink / Calligraphy branches restore from it
+  (`copy`) once it exists. Every 300 points, the part at least 2 × the widest width + 30 px and 40
+  points behind the pen is baked, from 8 points before the last cut. Opaque only (opacity 100), not
+  with the dev-only `window.slopNoFreeze`; reset at stroke start, commit and discard.
+- **Check** (throwaway script, real pen events, Stream 0 so both runs get the same points, 3000-point
+  self-crossing scribble at size 30): freeze on vs off differs in at most ~200 pixels by more than 16
+  levels (Ink 157 / 266 differing pixels in all, Calligraphy 1579 in WebKit and 8122 in Chromium, of
+  which 7643 by ≤ 4 levels — antialiasing from a different drawing order), out of ~220–260 thousand
+  inked; translucent Ink identical (never frozen). Late frames: Ink ~30 ms → 16–17 ms (the display
+  cap) in WebKit. Broken on purpose (the frame not restoring from `frozenCanvas`): ~231 000 pixels
+  differ, FAIL. Screenshot read: no seam.
+- **Fixed after the final review (beyond slop-paint):** the "settled" margin summed raw path length, so
+  a Pencil resting at Stream 0 — still sending jitter points — "travelled" the margin standing still;
+  the freeze then landed inside the rest, and Calligraphy (which keeps no sample there: its
+  decimation spacing is up to 3 px) baked a piece running to the moving end, never redrawn — a notch
+  at the corner where the artist paused (the reviewer's simulation: up to 288 px² at size 40). The
+  margin walk is now `settledIndex` (`src/core/stroke-freeze.ts`, tested), counting only steps of
+  3 px or more; the test failed first on the old loop (settled at point 758, inside the rest). slop-paint
+  `b89284d` has the same loop; told.
+- **Deferred (review minors):** the engines could be unit-tested with a recording fake context after
+  all; a brush control changed mid-stroke (size, colour, opacity below 100) applies only to the
+  unfrozen tail; `frozenCanvas` is released by dropping the reference only (on iOS, `width = 0` first,
+  or one reused canvas, would free it sooner).
+- **Owed on the iPad:** a long (20 s+) opaque Ink and Calligraphy stroke at a large size — it should
+  keep up with the Pencil; and a Calligraphy corner where the Pencil rests a few seconds at Stream 0.
+

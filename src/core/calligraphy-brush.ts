@@ -238,17 +238,18 @@ export function normals(
  * never the ribbon around it. Endpoints are always kept so the stroke still ends where the pen
  * did.
  */
-function decimate(points: InputPoint[], minDist: number): InputPoint[] {
-  if (points.length < 3) return points;
-  const out = [points[0]];
+/** The indices of the points `minDist` apart (the first and last always kept). */
+function decimateIndices(points: InputPoint[], minDist: number): number[] {
+  if (points.length < 3) return points.map((_, i) => i);
+  const out = [0];
   let last = points[0];
   for (let i = 1; i < points.length - 1; i++) {
     if (Math.hypot(points[i].x - last.x, points[i].y - last.y) >= minDist) {
-      out.push(points[i]);
+      out.push(i);
       last = points[i];
     }
   }
-  out.push(points[points.length - 1]);
+  out.push(points.length - 1);
   return out;
 }
 
@@ -395,11 +396,19 @@ export function isCorner(
  * put N big overlapping ellipses into a single fill and made a long stroke quadratic: 1663ms for a
  * 6000-point redraw, against 13ms for this.
  */
+/**
+ * `from` / `to`: draw only the pieces that start at an input point in that range, with the
+ * geometry still worked out from the whole stroke — so a range draws exactly the pixels the whole
+ * stroke would there. App freezes the settled part of a long opaque stroke this way and redraws
+ * only the rest each frame (2026-10-01).
+ */
 export function drawCalligraphyStroke(
   ctx: CanvasRenderingContext2D,
   points: InputPoint[],
   settings: BrushSettings,
   sizeRange: number = 1.0,
+  from = 0,
+  to = Infinity,
 ) {
   if (points.length === 0) return;
 
@@ -408,7 +417,10 @@ export function drawCalligraphyStroke(
   const flat = clampNibFlatness(settings.nibFlatness ?? 0);
   // Smooth BEFORE decimating, so the dropped samples still inform the ones that survive; the
   // spacing is capped at 3px (measured harmless) and floored so a small nib is not coarsened.
-  const pts = decimate(smoothPositions(points), Math.min(3, Math.max(0.75, maxW / 16)));
+  const smoothed = smoothPositions(points);
+  // Which input point each kept sample is (smoothing keeps the indices), for the range.
+  const src = decimateIndices(smoothed, Math.min(3, Math.max(0.75, maxW / 16)));
+  const pts = src.map((i) => smoothed[i]);
   const nib = pts.map((p) => nibSemiAxes((minW + p.pressure * (maxW - minW)) / 2, flat));
   // Reach scales with the widest nib the stroke reaches, so the damping matches the worst case
   // rather than whatever width happens to be under the pointer at one sample.
@@ -437,7 +449,7 @@ export function drawCalligraphyStroke(
   // a tap with a Pencil still jitters half a pixel or so, which clears any epsilon and then paints
   // quads of essentially zero area, i.e. NOTHING for a deliberate tap. Caught by testing a jittery
   // dab specifically; an exact-coincidence check looks correct and fails on every real tap.
-  if (pts.length < 2 || strokeExtent(pts) < DAB_TRAVEL_PX) {
+  if (from === 0 && (pts.length < 2 || strokeExtent(pts) < DAB_TRAVEL_PX)) {
     addRing(ctx, nibRing(pts[0].x, pts[0].y, nib[0].a, nib[0].b, angle));
   }
   // NOTE: no footprint at the ends of a stroke that travelled. The true swept region does include
@@ -448,6 +460,7 @@ export function drawCalligraphyStroke(
   // cut is the chord between the nib's two support points, which lies along the nib — the chisel
   // entry/exit that actually reads as calligraphy. Compared side by side before choosing.
   for (let i = 1; i < pts.length; i++) {
+    if (src[i - 1] < from || src[i - 1] >= to) continue;
     const p1 = pts[i - 1];
     const p2 = pts[i];
     const o1 = off[i - 1];
