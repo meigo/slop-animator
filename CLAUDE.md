@@ -41,9 +41,14 @@ TypeScript + Vite + Tailwind 4 + Vitest.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
   profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
-  URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger landing
-  mid-stroke does not pan (review batch A), a finger drag pans, a finger tap opens the File menu, no
-  page errors; screenshots in `test-results/ipad/` (gitignored). First run per machine:
+  URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger drag pans,
+  a finger tap opens the File menu, no page errors, plus the browser-side fixes of the 2026-09-30
+  review (added 2026-10-01; each confirmed to FAIL on the pre-review code): a finger or a two-finger
+  tap mid-stroke, a canvas press blurring a text field, Cmd chords / focused sliders / open dialogs
+  vs the tool keys, redo with a moved selection, the eyedropper on transparent, a cancelled timeline
+  pan's fling, Open asking first, and an autosave surviving a reload. It runs in a PERSISTENT temp
+  profile: Playwright's default context is ephemeral, and ephemeral WebKit refuses Blobs in
+  IndexedDB, so every autosave failed there. ~11 s. Screenshots in `test-results/ipad/` (gitignored). First run per machine:
   `npx playwright install webkit`. It is DESKTOP WebKit, not iPadOS: gotcha #14 and #15 would not
   have shown, nor the real Pencil or iPadOS pointer ordering. In this sandbox the dev server needs
   local port binding (`sandbox.network.allowLocalBinding`). Run it after UI or input changes.
