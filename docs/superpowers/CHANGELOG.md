@@ -8077,5 +8077,9 @@ the user. Spec and plan: `docs/superpowers/specs/2026-10-01-dry-brush-design.md`
   measure — unpainted samples along one middle line — was flaky (0–61/61 between identical runs,
   because of the time-based seed) and was replaced. A WebKit look at light, heavy and varied pressure
   showed the hair stripes; no page errors.
-- **Owed on the iPad:** the feel with a real Pencil at light and heavy pressure, and the Dry eraser.
+- **Owed on the iPad:** the feel with a real Pencil at light and heavy pressure, the Dry eraser, and
+  a long (screen-length) Dry stroke at size 40+ / Press 3 for lag: each frame rebuilds every hair over
+  the whole stroke and composites a document-sized scratch (the final review measured 4–7 ms of
+  geometry alone on a Mac late in such a stroke). If it lags, fix it in slop-paint's engine and copy
+  the file again, keeping the two identical.
 
