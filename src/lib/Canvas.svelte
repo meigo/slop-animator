@@ -1250,7 +1250,15 @@
         isLayerLocked(al, appState.project.groups) ||
         !isLayerVisible(al, appState.project.groups) ||
         !isRefVisibleAtFrame(al, appState.playhead, appState.project.fps);
-      if (!refPinned) onTransformDrag(al, points, done);
+      if (!refPinned) {
+        onTransformDrag(al, points, done);
+        return;
+      }
+      // Pinned mid-gesture (lock or hide tapped, or playback left its span): settle the drag now,
+      // as the drawing-layer branch below does. Left open, the next press skipped the grab and
+      // carried on from the OLD press point, jumping the ref, with both gestures in one undo step.
+      finishTransformDragUndo();
+      refDrag = null;
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {
