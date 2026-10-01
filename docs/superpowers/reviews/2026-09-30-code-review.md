@@ -13,7 +13,7 @@ Batches, in the order to fix them:
 - **A — lost work:** all FIXED on `fix/review-batch-a` (see CHANGELOG, "Code review batch A").
 - **B — wrong pixels or wrong place:** all FIXED on `fix/review-batch-b` (see CHANGELOG, "Code review batch B").
 - **C — undo and lifecycle:** all FIXED on `fix/review-batch-c` (see CHANGELOG, "Code review batch C").
-- **D — performance**
+- **D — performance:** all FIXED on `fix/review-batch-d` (see CHANGELOG, "Code review batch D").
 - **E — UI and keyboard**
 
 Roadmap port items 13/14 (CLAUDE.md), checked here: **present** 13a, 13b, 13c, 13e (fixed), 14a,
@@ -387,11 +387,13 @@ activation not tested in Chrome.
 - **Suggested fix:** In replaceProject, before `history.clear()`, collect the media of reference layers held by undo/redo snapshots that are not live, and release them. Optionally do the same in History.trim for evicted steps, but only when no remaining snapshot or live layer shares the media object.
 - **Verifier:** True that nothing releases a removed reference's media when its snapshot leaves history: replaceProject (2434-2435) releases only live ref layers, and trim/clear drop snapshots silently. The memory impact is overstated, though. Once the unreferenced <video> element is garbage-collected, its decoder goes with it. A blob URL from an <input> File is usually disk-backed, so it pins a handle, not 300 MB of RAM. Blobs rebuilt from IndexedDB or embedded zips may sit in memory. The real cost depends on the browser.
 
-## Batch D — performance
+## Batch D — performance (FIXED)
 
 ### 31. Pose nub drag re-runs O(V^2) Dijkstra for every handle on every pointer event, and denser meshes freeze the page
 
 **confirmed / major / perf** — `src/core/mesh-pose.ts:203` (area: transform)
+
+**FIXED 2026-10-01** in `8f1d269` (branch `fix/review-batch-d`).
 
 - **Problem:** The nub drag calls `setReach` on every move (Canvas.svelte:1302). That calls `recompute()` (mesh-pose.ts:146-157), which calls `poseWeights`, and that recomputes `geodesicDistances` for ALL handles. The distances do not depend on reach, so this work is wasted. Each Dijkstra is O(V^2) with a linear-scan minimum (geodesic.ts:38-53). Measured with Node on the Mac, for 3 handles: 1600x1000 content at the default spacing 16 (V=5044) took 62 ms per event; 800x600 at spacing 4 (V=23835, reachable with the density buttons, `Math.max(4, …)` at Canvas.svelte:2405) took 1278 ms per event. The nub runs at the Pencil event rate (120-240 Hz), and only the repaint is coalesced (`repaintPoseOverlay`), not the solve (gotcha #17's class). `addHandleAt` pays the same cost once per new handle.
 - **Scenario:** Pose a large drawing with 3-5 handles and drag a handle's reach nub on iPad. Every Pencil sample blocks for tens to hundreds of ms and the nub lags far behind the Pencil. After pressing Denser a few times, each sample blocks for over a second.
@@ -402,6 +404,8 @@ activation not tested in Chrome.
 
 **confirmed / minor / perf** — `src/lib/Timeline.svelte:1906` (area: timeline)
 
+**FIXED 2026-10-01** in `3e4977b` (branch `fix/review-batch-d`).
+
 - **Problem:** `rowMoveAt`'s resize branch calls `bump()` unconditionally (1906), after a `setHoldSpan` that no-ops whenever the boundary column did not change. Every other drag in the file writes and bumps only on change (clipMoveAt 566, rangeMoveAt 775, keyMoveAt 1628, loopHandleMove 1752, lenGripMoveAt 964, AudioLane laneMoveAt 112). Each bump increments `state.version` and `persistTick`. That invalidates every row's glyph/span/loop cache (keyed on version, 240-283). It makes Canvas's rAF poll recomposite the whole document, onion ghosts and reference video included (Canvas.svelte 2459-2477). It re-runs AudioLane's full waveform scan (next finding) and re-arms the autosave debounce.
 - **Scenario:** On iPad with onion skins or a reference video on, press a span edge with the Pencil and drag slowly within one column. Each Pencil event (120-240 Hz) triggers a full timeline re-derive and a document recomposite per frame for a resize that has not changed.
 - **Suggested fix:** Bump only when the splice changed, for example `if (holdSpanEnd(layer, dragKey) !== spanBefore) { shiftKeysForSplice(...); bump(); }`.
@@ -410,6 +414,8 @@ activation not tested in Chrome.
 ### 33. AudioLane recomputes the entire waveform peak scan on every state.version bump
 
 **confirmed / minor / perf** — `src/lib/AudioLane.svelte:401` (area: timeline)
+
+**FIXED 2026-10-01** in `8c00c3e` (branch `fix/review-batch-d`).
 
 - **Problem:** The waveform action's only declared dependency is `{ audioVersion: state.version }` (401). `draw()` reallocates the canvas (`node.width = w`, 264) and runs `computePeaks(audio.buffer.getChannelData(0), w)` (312), which walks EVERY sample of the buffer (peaks.ts:2-19). `state.version` increments on every stroke, every structural edit, every live drag step (clip, range, length, loop, key, resize), and on repaint() (play/stop, onion layer switch). The peaks depend only on the buffer and the width, but they are never cached.
 - **Scenario:** Load a 3-minute 48 kHz track (about 8.6M samples). Every brush-stroke commit, and every pointermove of a timeline drag that bumps, rescans 8.6M floats on the main thread before the next frame. On iPad that is likely several ms or more per bump. It is not measured, so treat the magnitude as an estimate.

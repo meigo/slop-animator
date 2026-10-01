@@ -7857,3 +7857,14 @@ batch B's).** Twelve findings from `docs/superpowers/reviews/2026-09-30-code-rev
   Outline preview then undo, Delete on empty marquee/holds, a brush-type tap mid-stroke, and a
   video export failure (hard to provoke).
 
+**Code review batch D: performance (2026-10-01, branch `fix/review-batch-d`, cut from batch C's).**
+- **Pose reach nub** (`8f1d269`): `geodesic.ts` gains `meshAdjacency` and a binary-heap `geodesicFrom`
+  (tested against the old O(V²) scan); `MeshPose` caches each handle vertex's distance row and the
+  adjacency, and `poseWeights` takes the rows, so a nub drag only re-derives weights. Measured with
+  3 handles: 1600×1000 content at spacing 16 went from ~62 ms per event to none (7.7 ms once, when a
+  handle is added); 800×600 at spacing 4 from ~1.3 s to 20 ms once.
+- **Span-edge drag** (`3e4977b`): `resizeHoldSpan` returns whether it wrote; the drag bumps only then.
+- **Waveform** (`8c00c3e`): the action is keyed on what it draws from (track, offset, trim,
+  frameCount, fps, cellW) instead of `state.version`, and caches peaks per buffer and width.
+- Build 0/0, 1577 tests. Owed on the iPad: a reach-nub drag on a large drawing with 3+ handles.
+
