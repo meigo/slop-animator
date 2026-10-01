@@ -38,6 +38,15 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   **0 errors, 0 warnings.**
 - `npm test` — Vitest (node env, no DOM). Baseline **1577 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
+- `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
+  `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
+  profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
+  URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger landing
+  mid-stroke does not pan (review batch A), a finger drag pans, a finger tap opens the File menu, no
+  page errors; screenshots in `test-results/ipad/` (gitignored). First run per machine:
+  `npx playwright install webkit`. It is DESKTOP WebKit, not iPadOS: gotcha #14 and #15 would not
+  have shown, nor the real Pencil or iPadOS pointer ordering. In this sandbox the dev server needs
+  local port binding (`sandbox.network.allowLocalBinding`). Run it after UI or input changes.
 - `npm run deploy` — build, then `wrangler deploy` to Cloudflare Workers static assets. Builds first
   on purpose, so the 0-errors/0-warnings gate always runs before anything ships. Config is
   `wrangler.jsonc`: **assets-only, no `main`/Worker script** — static-asset requests are free and

@@ -5,3 +5,6 @@ temp/
 .wrangler/
 .worktrees/
 .superpowers/
+
+# npm run test:ipad screenshots
+test-results/
