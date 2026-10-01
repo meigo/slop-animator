@@ -387,6 +387,8 @@ export const state: AnimState = $state({
     dwellPool: 0,
     dryness: 50,
     dryTaper: 10,
+    pencilGrade: "HB",
+    charcoalTexture: "medium",
   },
   eraser: {
     size: 8,
@@ -405,6 +407,8 @@ export const state: AnimState = $state({
     dwellPool: 0,
     dryness: 50,
     dryTaper: 10,
+    pencilGrade: "HB",
+    charcoalTexture: "medium",
   },
   fill: { tolerance: 32, expand: 2, gap: 0, color: "#1a1a1a", opacity: 100 },
   version: 0,

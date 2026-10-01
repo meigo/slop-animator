@@ -35,6 +35,8 @@
   import { MAX_GAP } from "../core/fill-holes";
   import { MAX_THICKNESS } from "../core/outline";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
+  import { PENCIL_GRADES } from "../core/stamp-brush";
+  import { CHARCOAL_TEXTURES } from "../core/brush-textures";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
@@ -199,7 +201,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, dryness, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -292,6 +294,46 @@
               />
               <span class={valueCls}>{stroke.dwellPool ?? 0}</span>
             </label>
+          {/if}
+          {#if stroke.brushType === "pencil"}
+            <div
+              class={rowCls}
+              title="Pencil grade, as on real pencils: H is hard — lighter, more paper grain; B is soft — darker, even at a light touch"
+            >
+              <span class={labelCls}>Grade</span>
+              <div class="flex min-w-0 flex-1 gap-px">
+                {#each PENCIL_GRADES as g (g)}
+                  <button
+                    class="h-6 min-w-0 flex-1 rounded text-[10px] text-text-secondary hover:bg-surface-hover"
+                    class:ui-on={(stroke.pencilGrade ?? "HB") === g}
+                    aria-pressed={(stroke.pencilGrade ?? "HB") === g}
+                    title="{g} pencil{g === 'HB' ? ' — the default' : ''}"
+                    onclick={() => (stroke.pencilGrade = g)}>{g}</button
+                  >
+                {/each}
+              </div>
+            </div>
+          {/if}
+          {#if stroke.brushType === "charcoal"}
+            <div
+              class={rowCls}
+              title="Charcoal texture: Rough has big holes in it, Dense hardly any"
+            >
+              <span class={labelCls}>Texture</span>
+              <div class="flex min-w-0 flex-1 gap-px">
+                {#each CHARCOAL_TEXTURES as t (t)}
+                  <button
+                    class="h-6 min-w-0 flex-1 rounded text-[10px] capitalize text-text-secondary hover:bg-surface-hover"
+                    class:ui-on={(stroke.charcoalTexture ?? "medium") === t}
+                    aria-pressed={(stroke.charcoalTexture ?? "medium") === t}
+                    title="{t[0].toUpperCase() + t.slice(1)} charcoal{t === 'medium'
+                      ? ' — the default'
+                      : ''}"
+                    onclick={() => (stroke.charcoalTexture = t)}>{t}</button
+                  >
+                {/each}
+              </div>
+            </div>
           {/if}
           {#if isDry}
             <label class={rowCls} title="How dry the brush runs — higher breaks the hairs sooner">
