@@ -121,7 +121,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1609); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1610); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)

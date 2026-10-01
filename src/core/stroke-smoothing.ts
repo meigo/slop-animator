@@ -193,9 +193,29 @@ export function trailTimeAt(
   p: Pt,
   maxBack: number,
 ): number | null {
+  return trailValueAt(trail, p, maxBack, (q) => q.t);
+}
+
+/** How hard the pen pressed at `p` — a point of the lagging line — from the trail, as
+ *  `trailTimeAt`. The line's points take THIS, not the pen's pressure now: a string's length
+ *  behind, "now" moved the stroke's light start and finish along it, so with a high Stream the
+ *  light-pressure ends drew as if pressed harder (slop-paint 0b6f291, 2026-10-01). Null for an
+ *  empty trail. */
+export function trailPressureAt(trail: readonly TrailPt[], p: Pt, maxBack: number): number | null {
+  return trailValueAt(trail, p, maxBack, (q) => q.pressure);
+}
+
+/** `value` of the trail at `p`: projected onto the trail segments either side of the nearest
+ *  point and interpolated. */
+function trailValueAt<T extends Pt>(
+  trail: readonly T[],
+  p: Pt,
+  maxBack: number,
+  value: (q: T) => number,
+): number | null {
   const i = nearestTrailIndex(trail, p, maxBack);
   if (i < 0) return null;
-  let best = { d: Infinity, t: trail[i].t };
+  let best = { d: Infinity, v: value(trail[i]) };
   for (const j of [i - 1, i]) {
     const a = trail[j];
     const b = trail[j + 1];
@@ -205,9 +225,9 @@ export function trailTimeAt(
     const len2 = dx * dx + dy * dy;
     const k = len2 > 0 ? Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
     const d = Math.hypot(a.x + dx * k - p.x, a.y + dy * k - p.y);
-    if (d < best.d) best = { d, t: a.t + (b.t - a.t) * k };
+    if (d < best.d) best = { d, v: value(a) + (value(b) - value(a)) * k };
   }
-  return best.t;
+  return best.v;
 }
 
 /** Smooth `smoothing` (0–100) as a path-averaging radius in DOCUMENT px at `zoom` (screen px per
