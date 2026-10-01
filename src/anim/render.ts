@@ -350,6 +350,18 @@ export function compositeFrameLayers(
  * Paint `frame` of `project` onto `ctx`. `dpr` is the device pixel ratio the cell
  * canvases were created at, used to reset the transform before raw drawImage calls.
  */
+let renderRun = 0;
+/**
+ * A cache key for one export run. The bounds, group-pivot and boil-ordinal caches are keyed on the
+ * content version, and exporters used to pass none — so every export shared version 0, and an
+ * export after an edit (without playback in between to replace the entries) reused counts and
+ * boxes from the export before it (2026-09-30 review). Negative, so it never meets the app's own
+ * version; fresh per run, and shared by the run's frames, so each export still caches.
+ */
+export function newRenderVersion(): number {
+  return --renderRun;
+}
+
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   project: Project,

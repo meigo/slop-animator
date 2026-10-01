@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { History, type Command } from "../anim/history";
+import { History, detachedBytes, type Command } from "../anim/history";
 
 function counterCmd(state: { n: number }, delta: number): Command {
   return {
@@ -151,5 +151,37 @@ describe("pixelCommand marks its canvas's ink as changed", () => {
     cmd.redo();
     expect(redone).toBe(1);
     expect(inkRevision(canvas)).toBe(3);
+  });
+});
+
+describe("detachedBytes (structural steps count toward the budget)", () => {
+  const cv = (w = 10, h = 10) => ({ width: w, height: h });
+  const lay = (...canvases: { width: number; height: number }[]) => ({
+    kind: "draw",
+    cells: canvases.map((canvas) => ({ kind: "key", canvas })),
+  });
+
+  it("counts the canvases of a layer the step removed", () => {
+    const a = cv(),
+      b = cv();
+    expect(detachedBytes({ layers: [lay(a), lay(b)] }, { layers: [lay(a)] })).toBe(400);
+  });
+
+  it("counts a resize once (old canvases or new ones — only one side is off the document)", () => {
+    const old = [cv(), cv()];
+    const fresh = [cv(20, 20), cv(20, 20)];
+    expect(detachedBytes({ layers: [lay(...old)] }, { layers: [lay(...fresh)] })).toBe(3200);
+  });
+
+  it("counts nothing for a step that keeps every canvas (reorder, rename, length)", () => {
+    const a = cv(),
+      b = cv();
+    expect(detachedBytes({ layers: [lay(a), lay(b)] }, { layers: [lay(b), lay(a)] })).toBe(0);
+  });
+
+  it("counts a removed audio track's decoded samples and bytes", () => {
+    const audio = { buffer: { length: 1000, numberOfChannels: 2 }, bytes: { byteLength: 500 } };
+    expect(detachedBytes({ layers: [], audio }, { layers: [], audio: null })).toBe(8500);
+    expect(detachedBytes({ layers: [], audio }, { layers: [], audio })).toBe(0);
   });
 });

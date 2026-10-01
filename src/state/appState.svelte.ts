@@ -79,6 +79,7 @@ import {
   deleteBlock,
   moveBlockFrames,
   anyEditableLayer,
+  deleteBlockChanges,
   anyEditablePasteTarget,
   type CellBlock,
 } from "../anim/timeline-block";
@@ -125,7 +126,7 @@ import {
   type Pt,
 } from "../core/ref-transform";
 import { audioEngine } from "../audio/engine";
-import { History } from "../anim/history";
+import { History, detachedBytes } from "../anim/history";
 import type { BrushSettings } from "../core/brush";
 import type { BrushType } from "../core/brush-textures";
 import { PressureCurve } from "../core/pressure-curve";
@@ -697,11 +698,28 @@ export function beginStructuralEdit(): StructSnapshot {
 }
 
 /** Finish a structural edit started with beginStructuralEdit: push one undo command. */
+/** Reference media that one side of an undo step holds and the other does not — a removed (or
+ *  added-then-undone) reference. It can't be released while history might bring the layer back,
+ *  and history only ever holds it inside closures, so nothing freed it: a deleted 300 MB video
+ *  kept its blob URL and decoder for the session (2026-09-30 review). `replaceProject`, which
+ *  clears history, releases them. */
+const retiredRefMedia = new Set<ReferenceMedia>();
+function noteRetiredRefMedia(a: StructSnapshot, b: StructSnapshot): void {
+  const media = (s: StructSnapshot) =>
+    new Set(s.layers.flatMap((l) => (l.kind === "ref" ? [l.media] : [])));
+  const ma = media(a);
+  const mb = media(b);
+  for (const m of ma) if (!mb.has(m)) retiredRefMedia.add(m);
+  for (const m of mb) if (!ma.has(m)) retiredRefMedia.add(m);
+}
+
 export function commitStructuralEdit(before: StructSnapshot): void {
   const after = snapshotStructure();
+  noteRetiredRefMedia(before, after);
   history.push({
     undo: () => restoreStructure(before),
     redo: () => restoreStructure(after),
+    bytes: detachedBytes(before, after), // canvases/audio only this step keeps alive
   });
 }
 
@@ -729,6 +747,9 @@ export function commitStructural(mutate: () => void): void {
 /** Add a layer (drawing or reference) directly above the selected ROW, as its sibling, and make
  *  it active. The placement rule and its reasoning live in `newLayerSlot`. */
 export function addLayerToProject(layer: Layer) {
+  // Before the snapshot: the layer switch below settles a live lift only AFTER both snapshots were
+  // taken (Canvas's layer-switch effect), so a ◆ it had made came back with the next ⌘Z.
+  liftGuard.bank?.();
   commitStructural(() => {
     // The ROW, not `activeLayerId`: a selected group row keeps `activeLayerId` pointing at a member
     // as a remembered anchor, so reading it put every new layer inside the group — with a single
@@ -2196,6 +2217,11 @@ export function setAnimationLength(n: number) {
   // The no-op guard has to sit ABOVE the commit: inside `applyAnimationLength` it returns from the
   // mutate callback, but commitStructural has already snapshotted and still pushes — an undo entry
   // that restores the state it was taken in, i.e. a ⌘Z that visibly does nothing.
+  // Settle a live lift BEFORE the snapshot (as removeLayer / mergeDown do): one started on a hold
+  // made a ◆ there, and settling it inside the bracket (`applyAnimationLength` banks too) left that
+  // ◆ in the before-snapshot, so ⌘Z brought it back as a real key (2026-09-30 review). Settling can
+  // change the length (a cancelled lift past a layer's end shrinks it), so it goes first.
+  liftGuard.bank?.();
   const target = Math.max(1, Math.min(9999, Math.floor(n)));
   if (target === state.project.frameCount) return;
   commitStructural(() => applyAnimationLength(target));
@@ -2496,7 +2522,10 @@ export function replaceProject(project: Project) {
   transformDragGuard.settle?.();
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
-  for (const l of state.project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+  for (const l of state.project.layers) if (l.kind === "ref") retiredRefMedia.add(l.media);
+  // History is gone, so no snapshot can bring any of these back.
+  for (const m of retiredRefMedia) releaseReferenceMedia(m);
+  retiredRefMedia.clear();
   state.project = project;
   audioEngine.setTrack(state.project.audio); // the PROXY, not raw project.audio — see setAudioTrack
   state.playhead = 0;
@@ -2804,6 +2833,8 @@ export function deleteTimelineSelection(): void {
   if (!rect) return;
   if (!anyEditableLayer(state.project, rect.layerIds)) return; // all locked/hidden → no empty undo
   liftGuard.bank?.(); // may replace the active cell's canvas → apply any live lift first
+  // Holds only (after the bank, which can cancel a lift's ◆): nothing to delete, push nothing.
+  if (!deleteBlockChanges(state.project, rect.layerIds, rect.startFrame, rect.endFrame)) return;
   commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
 }
 

@@ -511,12 +511,14 @@
     startFrame: number;
     from: number;
     undo: ReturnType<typeof beginStructuralEdit>;
+    /** Only this pointer's lift ends the slide (a finger lifting ended a Pencil's slide early). */
+    pointerId: number;
   } | null = null;
 
   function clipDown(e: PointerEvent, layer: ReferenceLayer) {
     // A trim handle is a sibling, not a child, so this usually does not see handle presses.
     // Guard anyway: if a handle already owns the gesture, do not also start a body slide.
-    if (videoTrimDrag) return;
+    if (videoTrimDrag || clipDrag) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isFinePointer(e)) {
       touchPanDown(e);
@@ -539,6 +541,7 @@
       startFrame,
       from: layer.offsetFrames,
       undo: beginStructuralEdit(),
+      pointerId: e.pointerId,
     };
     edgePointerX = e.clientX;
     startEdgeScroll(clipMoveAt, "clip");
@@ -546,6 +549,7 @@
   }
 
   function clipMove(e: PointerEvent) {
+    if (clipDrag && e.pointerId !== clipDrag.pointerId) return;
     if (e.pointerType === "touch") {
       touchPanMove(e);
       return;
@@ -578,7 +582,8 @@
     if (transformDragGuard.settle === settleClipDrag) transformDragGuard.settle = null;
   }
 
-  function clipUp() {
+  function clipUp(e: PointerEvent) {
+    if (clipDrag && e.pointerId !== clipDrag.pointerId) return; // not the slide's pointer
     settleClipDrag();
     touchPanUp();
   }
@@ -1766,8 +1771,15 @@
     if (transformDragGuard.settle === settleLoopDrag) transformDragGuard.settle = null;
   }
 
+  /** The pen/mouse pointer that owns the row gesture, or -1. Every other pointer is ignored while
+   *  one does: a finger lifting on ANOTHER row ran `resetRowDrag`, dropping a live hold-span
+   *  resize's undo bracket with its writes still in the document (2026-09-30 review). */
+  let rowPointer = -1;
   function rowDown(e: PointerEvent, layer: DrawingLayer) {
     if ((e.target as HTMLElement).closest("[data-loop-handle]")) return; // the loop arrowhead owns it
+    // An owner that no longer holds capture lost its up somewhere: settle it rather than lock rows.
+    if (rowPointer !== -1 && !dragRowEl?.hasPointerCapture(rowPointer)) settleRowDrag();
+    if (rowPointer !== -1) return; // a pen or mouse gesture is live: a finger or second pen sits out
     dragRowEl = e.currentTarget as HTMLElement;
     edgePointerX = e.clientX;
     edgePointerY = e.clientY;
@@ -1776,6 +1788,7 @@
       touchPanDown(e); // finger/palm: pan only — do not change layer or frame
       return;
     }
+    rowPointer = e.pointerId;
     setActiveLayer(layer.id);
     dragLayerId = layer.id;
     const frame = rowColumn(e);
@@ -1858,6 +1871,7 @@
     pressFrame = frame;
   }
   function rowMove(e: PointerEvent, layer: DrawingLayer) {
+    if (rowPointer !== -1 && e.pointerId !== rowPointer) return;
     if (!isFinePointer(e)) {
       touchPanMove(e);
       return;
@@ -1962,6 +1976,7 @@
     cancelLongPress();
     if (transformDragGuard.settle === settleRowDrag) transformDragGuard.settle = null;
     dragRowEl = null;
+    rowPointer = -1;
     dragMode = "none";
     dragLayerId = -1;
     dragKey = -1;
@@ -1980,6 +1995,7 @@
   /** Palm rejection and other OS cancels. A move-block is only a preview, so cancel drops it.
    *  A resize has already written, so it settles the same way a pointerup does. */
   function rowCancel(e: PointerEvent) {
+    if (rowPointer !== -1 && e.pointerId !== rowPointer) return; // not the gesture's pointer
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -1990,6 +2006,7 @@
   }
 
   function rowUp(e: PointerEvent, layer: DrawingLayer) {
+    if (rowPointer !== -1 && e.pointerId !== rowPointer) return; // not the gesture's pointer
     cancelLongPress();
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);

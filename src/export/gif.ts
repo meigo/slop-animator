@@ -1,5 +1,5 @@
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
-import { renderFrame } from "../anim/render";
+import { newRenderVersion, renderFrame } from "../anim/render";
 import { appendGifDelay, gifFrameDelays } from "./gif-timing";
 import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
@@ -101,6 +101,7 @@ export async function exportGif(
   // this same string, since they must agree on how pixels are binned.
   const format = transparent ? "rgba4444" : "rgb565";
 
+  const version = newRenderVersion(); // this run's cache key — see `newRenderVersion`
   const draw = (frame: number) => {
     // `Math.round(width * dpr * scale)` can make the canvas a fraction wider than the rect
     // `renderFrame` fills, leaving a sub-pixel transparent sliver down the right/bottom edge —
@@ -116,6 +117,7 @@ export async function exportGif(
       includeReference: false,
       boil: project.boil.enabled ? project.boil : undefined,
       outputScale: s,
+      version,
     });
     const data = ctx.getImageData(0, 0, w, h).data;
     if (grayscale) grayscaleInPlace(data);

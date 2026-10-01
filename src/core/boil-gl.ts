@@ -65,8 +65,26 @@ function compile(g: WebGLRenderingContext, type: number, src: string): WebGLShad
   return s;
 }
 
+/** The shaders failed to compile or link on this device. That will not change, so boil stays on
+ *  the 2D path for the session rather than building a new context every frame. */
+let unsupported = false;
+
 function init(): boolean {
   if (gl) return true;
+  if (unsupported) return false;
+  try {
+    return build();
+  } catch {
+    // A shader that fails to compile throws from `compile` — and used to leave `gl` set with no
+    // program, buffer or texture, so the next call returned true and every boil frame (playback
+    // and export) drew no drawing layers at all, with no error (2026-09-30 review).
+    unsupported = true;
+    resetBoilGL();
+    return false;
+  }
+}
+
+function build(): boolean {
   glCanvas = document.createElement("canvas");
   glCanvas.addEventListener(
     "webglcontextlost",
@@ -86,7 +104,8 @@ function init(): boolean {
   g.attachShader(prog, compile(g, g.FRAGMENT_SHADER, FRAG));
   g.linkProgram(prog);
   if (!g.getProgramParameter(prog, g.LINK_STATUS)) {
-    gl = null;
+    unsupported = true;
+    resetBoilGL();
     return false;
   }
   g.useProgram(prog);
@@ -119,6 +138,12 @@ function init(): boolean {
 /** Begin a frame: size/clear the GL accumulation surface. Returns false if WebGL is unavailable. */
 export function boilBegin(w: number, h: number): boolean {
   if (!init()) return false;
+  // Lost but not yet reported: the `webglcontextlost` event arrives later, and frames drawn in
+  // between came out with no drawing layers. Drop it now, so the caller takes the 2D path.
+  if (gl!.isContextLost()) {
+    resetBoilGL();
+    return false;
+  }
   const g = gl!,
     c = glCanvas!;
   if (c.width !== w || c.height !== h) {

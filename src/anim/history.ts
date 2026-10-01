@@ -130,6 +130,53 @@ export function pixelCommand(
   };
 }
 
+/** The parts of a structural snapshot that hold memory: cell canvases and the audio track. */
+export interface SnapshotMemory {
+  layers: readonly {
+    kind: string;
+    cells?: readonly { kind: string; canvas?: { width: number; height: number } }[];
+  }[];
+  audio?: {
+    buffer?: { length: number; numberOfChannels: number };
+    bytes?: { byteLength: number };
+  } | null;
+}
+
+function canvasesOf(s: SnapshotMemory): Set<{ width: number; height: number }> {
+  const out = new Set<{ width: number; height: number }>();
+  for (const l of s.layers) for (const c of l.cells ?? []) if (c.canvas) out.add(c.canvas);
+  return out;
+}
+
+function audioBytes(a: SnapshotMemory["audio"]): number {
+  if (!a) return 0;
+  return (
+    (a.buffer ? a.buffer.length * a.buffer.numberOfChannels * 4 : 0) + (a.bytes?.byteLength ?? 0)
+  );
+}
+
+/**
+ * What a structural step keeps alive that the document does not: the canvases (w·h·4 each) only
+ * one side of it holds, and the audio track when the two sides differ. At any moment only one side
+ * is off the document (before, while the step is on the undo stack; after, once undone), so it
+ * counts the larger. Structural steps used to count 0, so deleting a layer or resizing the canvas
+ * kept every old canvas alive outside the 256 MB budget, limited only by the 50-step count
+ * (2026-09-30 review, roadmap 14c; slop-paint's `detachedLayerBytes`).
+ */
+export function detachedBytes(before: SnapshotMemory, after: SnapshotMemory): number {
+  const a = canvasesOf(before);
+  const b = canvasesOf(after);
+  let onlyBefore = 0;
+  let onlyAfter = 0;
+  for (const c of a) if (!b.has(c)) onlyBefore += c.width * c.height * 4;
+  for (const c of b) if (!a.has(c)) onlyAfter += c.width * c.height * 4;
+  if (before.audio !== after.audio) {
+    onlyBefore += audioBytes(before.audio);
+    onlyAfter += audioBytes(after.audio);
+  }
+  return Math.max(onlyBefore, onlyAfter);
+}
+
 export class History {
   /** Fired after any change to either stack. The UI mirrors `canUndo`/`canRedo` into `$state`
    *  through this: a plain class getter is not a reactive dependency, so a button bound directly

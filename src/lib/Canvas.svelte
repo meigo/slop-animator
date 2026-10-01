@@ -36,6 +36,7 @@
     commitStructuralEdit,
     transformScope,
     selectToolsBlock,
+    type BrushKind,
   } from "../state/appState.svelte";
   import { rowAdmitsTransform, workingTarget } from "../anim/active-row";
   import { pixelCommand } from "../anim/history";
@@ -443,6 +444,11 @@
   // the stroke began on, whatever the active layer is by the time the pointer lifts.
   let strokeLayer: DrawingLayer | null = null;
   let strokeMaterialized: CellTrackChange | null = null;
+  /** The ENGINE the stroke started with. A finger on the brush picker mid-stroke switched engines
+   *  under it: the half-drawn Smooth stroke stayed, and the stamp engine resumed from a stale count
+   *  left by an earlier stroke, drawing nothing for hundreds of points (2026-09-30 review). Size,
+   *  opacity and the rest still follow the controls live. Set at every stroke start. */
+  let strokeBrushType: BrushKind = "smooth";
   // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
   let dropStrokeUntilUp = false;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
@@ -772,11 +778,12 @@
   function paintStroke(pts: InputPoint[], done: boolean, asEraser = appState.tool === "eraser") {
     if (!strokeCtx) return;
     const stroke = asEraser ? appState.eraser : appState.brush;
+    const brushType = strokeBrushType;
     let inPts = pts;
     // Smooth averages the Smooth brush's path here, in DOCUMENT space — before the cell-space
     // mapping below — so its radius is a screen distance even on a scaled layer. Re-smoothed from
     // the raw points on every redraw, so there is no lag; the tip settles as the stroke grows.
-    if (stroke.brushType === "smooth" && viewport) {
+    if (brushType === "smooth" && viewport) {
       inPts = smoothPath(
         inPts,
         pathSmoothRadius(stroke.smoothing, viewport.zoom),
@@ -806,10 +813,11 @@
     // engines' ladder is eraser > alphaLock > drawBehind, so the eraser is untouched by it.
     const settings = {
       ...stroke,
+      brushType,
       isEraser: asEraser,
       alphaLock: strokeLayer?.alphaLock === true,
     };
-    const kind = stroke.brushType; // local so TS narrows it across the branches
+    const kind = brushType; // local so TS narrows it across the branches
     if (kind === "smooth") {
       // Smooth (perfect-freehand): full redraw from the pre-stroke snapshot.
       strokeCtx.putImageData(beforeSnapshot!, 0, 0);
@@ -1250,7 +1258,15 @@
         isLayerLocked(al, appState.project.groups) ||
         !isLayerVisible(al, appState.project.groups) ||
         !isRefVisibleAtFrame(al, appState.playhead, appState.project.fps);
-      if (!refPinned) onTransformDrag(al, points, done);
+      if (!refPinned) {
+        onTransformDrag(al, points, done);
+        return;
+      }
+      // Pinned mid-gesture (lock or hide tapped, or playback left its span): settle the drag now,
+      // as the drawing-layer branch below does. Left open, the next press skipped the grab and
+      // carried on from the OLD press point, jumping the ref, with both gestures in one undo step.
+      finishTransformDragUndo();
+      refDrag = null;
       return;
     }
     if (al.kind === "draw" && appState.tool === "transform") {
@@ -1430,6 +1446,7 @@
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
       strokeSteps = cellComposeSteps(layer);
       const bt = activeStroke().brushType;
+      strokeBrushType = bt;
       // smooth, calligraphy and ink are stateless full-redraw engines; the rest are stamps.
       if (bt !== "smooth" && bt !== "calligraphy" && bt !== "ink") resetStampState();
       bump();
@@ -1745,6 +1762,13 @@
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (sameImageData(before, after)) {
+      // Nothing there to delete: push nothing (a dead ⌘Z that wiped redo) and give back the ◆ that
+      // reaching a hold made — the same guard doFill and Outline's Apply have.
+      if (materialized) restoreTrackById(layerId, materialized.before);
+      appState.statusHint = "Nothing to delete in the selection";
+      return;
+    }
     history.push(
       pixelCommand(
         ctx,
