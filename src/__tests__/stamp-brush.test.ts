@@ -1,9 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { spaceStamps, stampFootprint, MIN_STAMP_PX } from "../core/stamp-brush";
+import {
+  spaceStamps,
+  stampFootprint,
+  MIN_STAMP_PX,
+  PENCIL_GRADES,
+  pencilGrade,
+  mipIndex,
+  discProfile,
+} from "../core/stamp-brush";
 
 /**
  * A 64px tip drawn into a box smaller than MIN_STAMP_PX downsamples to alpha 0 in
- * every browser measured (2026-08-29 analysis) — the stamp draws literally nothing.
+ * every browser measured — the stamp draws literally nothing.
  * The floor trades width for alpha so a thin stroke FADES instead of vanishing.
  */
 describe("stampFootprint", () => {
@@ -62,7 +70,6 @@ describe("spaceStamps", () => {
 
   it("spaces stamps by the step whatever the segment length", () => {
     // Size 80 at spacing 0.15 → a 12 px step: ~17 stamps over 200 px, however the points arrive.
-    // (The old loop gave a slow 0.5-1 px stroke several times the stamps of a fast one.)
     expect(count(200, 1, 12)).toBe(17);
     expect(count(200, 4, 12)).toBe(17);
     expect(count(200, 50, 12)).toBe(17);
@@ -75,5 +82,78 @@ describe("spaceStamps", () => {
 
   it("stamps at the segment start when a step is already due", () => {
     expect(spaceStamps(3, 2, 5).positions).toEqual([0, 2]);
+  });
+});
+
+describe("pencilGrade", () => {
+  it("HB is the Pencil as it was, and the default for anything else", () => {
+    expect(pencilGrade("HB")).toEqual({ strength: 1, floor: 0.5, grain: 1 });
+    expect(pencilGrade(undefined)).toEqual(pencilGrade("HB"));
+    expect(pencilGrade("9Z")).toEqual(pencilGrade("HB"));
+  });
+
+  it("darkens from hard to soft: stronger, darker at a light touch, less paper grain", () => {
+    const g = PENCIL_GRADES.map(pencilGrade);
+    for (let i = 1; i < g.length; i++) {
+      expect(g[i].strength).toBeGreaterThanOrEqual(g[i - 1].strength);
+      expect(g[i].floor).toBeGreaterThan(g[i - 1].floor);
+      expect(g[i].grain).toBeLessThan(g[i - 1].grain);
+    }
+    // Full pressure always reaches the grade's strength; a light touch never above it.
+    for (const { strength, floor } of g) {
+      expect(floor).toBeLessThan(1);
+      expect(strength).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("mipIndex", () => {
+  const sizes = [64, 32, 16, 8, 4];
+
+  it("picks the smallest level still at least the stamp, so nothing shrinks more than 2×", () => {
+    expect(mipIndex(2, sizes)).toBe(4); // 4 px
+    expect(mipIndex(4, sizes)).toBe(4);
+    expect(mipIndex(5, sizes)).toBe(3); // 8 px
+    expect(mipIndex(12, sizes)).toBe(2); // 16 px
+    expect(mipIndex(32, sizes)).toBe(1);
+    expect(mipIndex(33, sizes)).toBe(0);
+    for (const px of [2, 3, 5, 7, 9, 15, 17, 31, 40]) {
+      const level = sizes[mipIndex(px, sizes)];
+      expect(level).toBeGreaterThanOrEqual(Math.min(px, 64));
+      expect(level / px).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("uses the full tip above its own size", () => {
+    expect(mipIndex(200, sizes)).toBe(0);
+  });
+});
+
+describe("discProfile", () => {
+  /** A size×size alpha map from a function of the distance to the centre (0 centre, 1 rim). */
+  const tip = (size: number, f: (d: number) => number) =>
+    Array.from({ length: size * size }, (_, i) => {
+      const x = (i % size) + 0.5 - size / 2;
+      const y = Math.floor(i / size) + 0.5 - size / 2;
+      const d = Math.hypot(x, y) / (size / 2);
+      return d > 1 ? 0 : Math.round(f(d) * 255);
+    });
+
+  it("reads a flat tip as equally dark inside and out", () => {
+    const p = discProfile(
+      tip(64, () => 1),
+      64,
+    );
+    expect(p.inner).toBeCloseTo(1, 2);
+    expect(p.outer).toBeCloseTo(1, 2);
+  });
+
+  it("reads a soft tip as darker inside than in its outer ring", () => {
+    const p = discProfile(
+      tip(64, (d) => 0.8 * (1 - d)),
+      64,
+    );
+    expect(p.inner).toBeGreaterThan(p.outer);
+    expect(p.inner).toBeCloseTo(0.8 * (1 - 0.4), 1); // mean of 1 − d over the inner disc ≈ 0.6
   });
 });
