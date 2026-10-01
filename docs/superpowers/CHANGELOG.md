@@ -7959,7 +7959,7 @@ DOM. Spec: `docs/superpowers/specs/2026-10-01-layer-drag-without-sortable-design
   the bottom line), with `.ui-selected.ui-drop-target` keeping a selected header's left bar. The
   spec's outline-on-the-block text was amended in place.
 - **Escape:** an Escape-cancelled drag swallows the release click (the pointer is still captured by
-  the grip, and Chrome/Edge delivered that click, selecting the grabbed row); a tap that never lifts
+  the grip, and Chromium delivered that click (tested in Playwright's Chromium; Chrome and Edge are Chromium-based), selecting the grabbed row); a tap that never lifts
   still selects, via `gripClick`.
 - **Removed:** the `sortablejs` and `@types/sortablejs` dependencies, `membersSortable`, the root
   Sortable, `rebuild`, the `dropHandled` latch, `evt.item.remove()`, `dragNonce` and its `{#key}`, the
@@ -7979,6 +7979,6 @@ DOM. Spec: `docs/superpowers/specs/2026-10-01-layer-drag-without-sortable-design
   failed in Chromium (WebKit sends no click after a drag, so it was not run unfixed there). Its
   setup needed two fixes (clicks at x=150 hit the lock / eye buttons; the 30 added layers all went into
   the selected group). `npm run test:ipad` gained "a finger drag moves a layer row, with the gap open
-  mid-drag" (21 ok), failing with the commit removed and with the slide broken. That check has two
+  mid-drag" (21 ok), failing with the drop's `reorderLayersWithGroups` call disabled and with the slide broken. That check has two
   top-level rows, so it proves a reorder, not a group drop; it is desktop WebKit, not iPadOS.
 - **Owed on the iPad:** a real finger and Pencil drag, into and out of a group.

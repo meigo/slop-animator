@@ -118,7 +118,7 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
    rune from `$`-subscribing a store named `state`). **Fix: `import { state as appState }`** and use
    `appState.`. `$effect`/`$derived`/`$props` do NOT collide (those files may keep `{ state }`).
 
-   > **SUPERSEDED 2026-10-01** — SortableJS is gone: the layer panel drags with pointer events over the pure `dropTarget` (`src/anim/layer-drop.ts`); see the CHANGELOG entry "Layer drag without SortableJS". Nothing moves a DOM node, so none of the below applies.
+> **SUPERSEDED 2026-10-01** — SortableJS is gone: the layer panel drags with pointer events over the pure `dropTarget` (`src/anim/layer-drop.ts`); see the CHANGELOG entry "Layer drag without SortableJS". Nothing moves a DOM node, so none of the below applies.
 
 2. **SortableJS layer reorder** (`LayerList.svelte`): SortableJS and Svelte both author the DOM. After
    a drop, read the new order from the DOM → update store → bump `dragNonce` wrapped by
