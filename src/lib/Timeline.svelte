@@ -585,7 +585,7 @@
   function clipUp(e: PointerEvent) {
     if (clipDrag && e.pointerId !== clipDrag.pointerId) return; // not the slide's pointer
     settleClipDrag();
-    touchPanUp();
+    touchPanUp(e);
   }
 
   // Video source trim. Separate from the body slide, which only moves offsetFrames — both bracket
@@ -693,7 +693,7 @@
 
   function videoTrimUp(e: PointerEvent) {
     if (e.pointerType === "touch") {
-      touchPanUp();
+      touchPanUp(e);
       return;
     }
     settleVideoTrimDrag();
@@ -803,7 +803,7 @@
 
   function rangeUp(e: PointerEvent) {
     if (e.pointerType === "touch") {
-      touchPanUp();
+      touchPanUp(e);
       return;
     }
     settleRangeDrag();
@@ -854,7 +854,7 @@
   function rulerUp(e: PointerEvent) {
     stopEdgeScroll("scrub");
     scrubbing = false;
-    touchPanUp();
+    touchPanUp(e);
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -1032,7 +1032,7 @@
 
   function lenGripUp(e: PointerEvent) {
     if (e.pointerType === "touch") {
-      touchPanUp();
+      touchPanUp(e);
       return;
     }
     settleLenDrag();
@@ -1084,7 +1084,7 @@
   }
   function rangeHandleUp(e: PointerEvent) {
     if (e.pointerType === "touch") {
-      touchPanUp();
+      touchPanUp(e);
       return;
     }
     const d = playRangeDrag;
@@ -2003,7 +2003,7 @@
     } catch {
       /* already released */
     }
-    touchPanUp();
+    touchPanUp(e);
     settleRowDrag();
   }
 
