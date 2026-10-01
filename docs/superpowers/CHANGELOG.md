@@ -8105,3 +8105,23 @@ that starts the selection (as slop-paint sets it at `startCreate`); its one call
 stub overlay; failed first with `expected 'rect' to be 'lasso'`). 1623 → 1624 tests; build 0/0;
 `test:ipad` all passing. Not seen on the iPad (found by reading the code).
 
+**Dry brush re-copied from slop-paint: hairs are lines again, and it draws faster (2026-10-01, branch
+`fix/dry-brush-recopy`; slop-paint `a5c3d7d`, merged there `7c1b71b`).** As this app's Dry brush entry
+promised: a fix in slop-paint's engine is copied again so the two files stay identical. Requested by the
+slop-paint session.
+- **The bug** (confirmed there by the user on the iPad; it did not reproduce in desktop WebKit): long
+  Dry strokes broke into hollow, blocky boxes — a spiral, after a few turns. The taper had filled each
+  hair run as an outline polygon, one large path per hair rebuilt every frame. Hairs are lines again,
+  with the taper drawn in 8 widths (`taperLevels`, `TAPER_LEVELS`); `taperedRibbon` and its test are gone.
+- **This app's final-review suggestions**, done upstream: only the stroke's bounding box of the
+  scratch canvas is cleared and composited, and `noise1` computes its lattice values inline (same
+  values, no closures). Late in a long spiral the draw work per frame went from 12–19 ms to 6–9 ms on
+  a Mac (slop-paint's measurement). The full-layer restore each frame is this app's, shared with
+  Smooth / Ink / Calligraphy, and unchanged.
+- `src/core/dry-brush.ts` is slop-paint's `main` file byte for byte; its tests again, with the same one
+  edit (`hasPressure: true` on the fixture points). The new taper test failed first against the old
+  engine (`taperLevels is not a function`). 1624 tests; build 0/0; `test:ipad`'s Dry check passes
+  (dry 64%, smooth 3%). No wiring changed: the functions Canvas calls kept their signatures.
+- **Owed on the iPad:** a long Dry spiral (the boxes should be gone) and the lag check from the Dry
+  brush entry.
+

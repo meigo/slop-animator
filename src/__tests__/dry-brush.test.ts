@@ -7,7 +7,8 @@ import {
   noise1,
   resample,
   rng,
-  taperedRibbon,
+  taperLevels,
+  TAPER_LEVELS,
   dryTaperPx,
 } from "../core/dry-brush";
 import type { InputPoint } from "../core/input";
@@ -114,21 +115,24 @@ describe("dry brush", () => {
     }
   });
 
-  it("tapers each hair run to a point at both ends, full width in the middle", () => {
-    // A straight run along x, 0 to 40, 4 px wide, tapering over 10 px.
+  it("draws each hair run thinnest at both ends and full width in the middle", () => {
+    // A straight run along x, 0 to 40 in 2 px steps, tapering over 10 px: 20 segments.
     const run = Array.from({ length: 21 }, (_, i) => [i * 2, 0]).flat();
-    const out = taperedRibbon(run, 4, 10);
-    expect(out.length).toBe(run.length * 2); // down one side, back up the other
-    const n = run.length / 2;
-    const widthAt = (i: number) => Math.abs(out[2 * i + 1] - out[2 * (2 * n - 1 - i) + 1]);
-    expect(widthAt(0)).toBeCloseTo(0, 6);
-    expect(widthAt(n - 1)).toBeCloseTo(0, 6);
-    expect(widthAt(10)).toBeCloseTo(4, 6);
-    expect(widthAt(2)).toBeLessThan(widthAt(4));
-    // A run shorter than two tapers peaks in the middle, below full width.
-    const short = taperedRibbon([0, 0, 4, 0, 8, 0], 4, 10);
-    expect(Math.abs(short[3] - short[(2 * 3 - 1 - 1) * 2 + 1])).toBeLessThan(4);
-    expect(taperedRibbon([0, 0], 4, 10)).toEqual([]);
+    const lv = taperLevels(run, 10, TAPER_LEVELS);
+    expect(lv.length).toBe(20);
+    expect(lv[0]).toBeLessThanOrEqual(2);
+    expect(lv[19]).toBeLessThanOrEqual(2);
+    expect(lv[10]).toBe(TAPER_LEVELS);
+    // Rising to the middle, never skipping below 1.
+    for (let i = 1; i <= 5; i++) expect(lv[i]).toBeGreaterThanOrEqual(lv[i - 1]);
+    expect(Math.min(...lv)).toBeGreaterThanOrEqual(1);
+    // A run shorter than two tapers never reaches full width.
+    expect(Math.max(...taperLevels([0, 0, 2, 0, 4, 0, 6, 0], 10, TAPER_LEVELS))).toBeLessThan(
+      TAPER_LEVELS,
+    );
+    // No taper: all full width.
+    expect(taperLevels(run, 0, TAPER_LEVELS).every((l) => l === TAPER_LEVELS)).toBe(true);
+    expect(taperLevels([0, 0], 10, TAPER_LEVELS)).toEqual([]);
   });
 
   it("sets the taper from the Taper slider as a share of the stroke's width, at least 4 px", () => {

@@ -88,9 +88,19 @@ export function makeBristles(count: number, seed: number): Bristle[] {
 export function noise1(key: number, x: number): number {
   const i = Math.floor(x);
   const f = x - i;
-  const at = (n: number) => rng(Math.imul(key ^ n, 0x27d4eb2d) ^ (n * 0x165667b1))();
   const t = (1 - Math.cos(f * Math.PI)) / 2;
-  return at(i) * (1 - t) + at(i + 1) * t;
+  return lattice(key, i) * (1 - t) + lattice(key, i + 1) * t;
+}
+
+/** The noise's random value at integer `n`: `rng`'s first number for that seed, computed inline —
+ *  the same values, without making two closures per noise sample (slop-animator's review,
+ *  2026-10-01: it was most of the Dry brush's geometry time late in a long stroke). */
+function lattice(key: number, n: number): number {
+  const seed = (Math.imul(key ^ n, 0x27d4eb2d) ^ (n * 0x165667b1)) >>> 0;
+  let t = (seed + 0x6d2b79f5) >>> 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
 /** Whether hair `b` leaves paint at arc length `s` (px) with `pressure` 0–1. `width` is the
@@ -223,14 +233,19 @@ export function bristleRuns(
   });
 }
 
+/** How many widths a hair's taper is drawn in (see `taperLevels`). */
+export const TAPER_LEVELS = 8;
+
 /**
- * One painted run of a hair as a closed outline (x, y pairs: down one side, back up the other)
- * whose width narrows to a point at both ends (2026-10-01): drawn as constant-width round-capped
- * lines, every run was a uniform bar. The taper runs over `taper` px from each end (a run shorter
- * than twice that tapers all the way, so it peaks in the middle), following a sine ease so it
- * fades in rather than starting as a wedge. Pure.
+ * Each segment of one painted run of a hair, as the width level (1 … `levels`) it is drawn at:
+ * full width in the middle, narrowing to the thinnest over `taper` px at both ends (a run shorter
+ * than twice that never reaches full width), on a sine ease so it fades in rather than starting
+ * as a wedge. Pure. 2026-10-01: drawn as constant-width lines every run was a uniform bar; the
+ * first taper filled each run as an outline polygon, one large path per hair rebuilt every frame,
+ * which broke up into hollow boxes on iPad late in a long stroke (not reproducible in software
+ * WebKit) and cost twice the points. So the hair is LINES again, in a few widths.
  */
-export function taperedRibbon(run: readonly number[], width: number, taper: number): number[] {
+export function taperLevels(run: readonly number[], taper: number, levels: number): number[] {
   const n = run.length / 2;
   if (n < 2) return [];
   const along = [0];
@@ -240,24 +255,13 @@ export function taperedRibbon(run: readonly number[], width: number, taper: numb
     );
   }
   const total = along[n - 1];
-  const left: number[] = [];
-  const right: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = 2 * Math.max(0, i - 1);
-    const b = 2 * Math.min(n - 1, i + 1);
-    const dx = run[b] - run[a];
-    const dy = run[b + 1] - run[a + 1];
-    const len = Math.hypot(dx, dy) || 1;
-    const nearEnd = Math.min(along[i], total - along[i]);
-    const k = taper > 0 ? Math.min(1, nearEnd / taper) : 1;
-    const half = (width / 2) * Math.sin((k * Math.PI) / 2);
-    const ox = (-dy / len) * half;
-    const oy = (dx / len) * half;
-    left.push(run[2 * i] + ox, run[2 * i + 1] + oy);
-    right.push(run[2 * i] - ox, run[2 * i + 1] - oy);
+  const out: number[] = [];
+  for (let i = 1; i < n; i++) {
+    const mid = (along[i - 1] + along[i]) / 2;
+    const k = taper > 0 ? Math.min(1, Math.min(mid, total - mid) / taper) : 1;
+    out.push(Math.max(1, Math.ceil(Math.sin((k * Math.PI) / 2) * levels)));
   }
-  for (let i = n - 1; i >= 0; i--) left.push(right[2 * i], right[2 * i + 1]);
-  return left;
+  return out;
 }
 
 /** How long each hair run's taper is, in px: `taper` 0–100 (the Taper slider) as a share of the
@@ -271,6 +275,40 @@ export function dryTaperPx(width: number, taper: number): number {
 /** Scratch for a translucent stroke: the hairs overlap, so they're drawn opaque here and the
  *  whole stroke composited once at the opacity (as Ink does). */
 let scratch: HTMLCanvasElement | null = null;
+/** The part of `scratch` the last frame drew into, so the next one clears it. */
+let scratchBox: Box | null = null;
+
+type Box = { x: number; y: number; w: number; h: number };
+
+/** A document-space box under transform `m` (scale and translate) as whole device pixels,
+ *  clamped to a `w`×`h` canvas; null when it falls outside. */
+function deviceBox(
+  m: DOMMatrix,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  w: number,
+  h: number,
+): Box | null {
+  const ax = m.a * x0 + m.e;
+  const bx = m.a * x1 + m.e;
+  const ay = m.d * y0 + m.f;
+  const by = m.d * y1 + m.f;
+  const left = Math.max(0, Math.floor(Math.min(ax, bx)));
+  const top = Math.max(0, Math.floor(Math.min(ay, by)));
+  const right = Math.min(w, Math.ceil(Math.max(ax, bx)));
+  const bottom = Math.min(h, Math.ceil(Math.max(ay, by)));
+  return right > left && bottom > top
+    ? { x: left, y: top, w: right - left, h: bottom - top }
+    : null;
+}
+
+function unionBox(a: Box, b: Box): Box {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
 
 export function drawDryStroke(
   ctx: CanvasRenderingContext2D,
@@ -290,22 +328,60 @@ export function drawDryStroke(
         ? "destination-over"
         : "source-over";
 
+  // Each hair is lines, in TAPER_LEVELS widths: the run's middle at full width, its ends in steps
+  // down to the thinnest. One path per width, so a hair is a handful of strokes. Butt ends, so
+  // the steps meet edge to edge instead of overlapping (an overlap darkens at a tone below 1).
+  const levelsOf = hairs.map((h) => h.runs.map((r) => taperLevels(r, taperPx, TAPER_LEVELS)));
   const paint = (c: CanvasRenderingContext2D) => {
-    c.fillStyle = settings.color;
-    for (const h of hairs) {
+    c.strokeStyle = settings.color;
+    c.lineCap = "butt";
+    c.lineJoin = "round";
+    hairs.forEach((h, hi) => {
       c.globalAlpha = h.tone;
-      // Each run tapers at either end, as long as the Taper slider says.
-      c.beginPath();
-      for (const r of h.runs) {
-        const outline = taperedRibbon(r, h.width, taperPx);
-        if (outline.length < 6) continue;
-        c.moveTo(outline[0], outline[1]);
-        for (let i = 2; i < outline.length; i += 2) c.lineTo(outline[i], outline[i + 1]);
-        c.closePath();
+      for (let level = 1; level <= TAPER_LEVELS; level++) {
+        c.lineWidth = (h.width * level) / TAPER_LEVELS;
+        c.beginPath();
+        let any = false;
+        h.runs.forEach((r, ri) => {
+          const lv = levelsOf[hi][ri];
+          let open = false;
+          for (let i = 0; i < lv.length; i++) {
+            if (lv[i] !== level) {
+              open = false;
+              continue;
+            }
+            if (!open) c.moveTo(r[2 * i], r[2 * i + 1]);
+            c.lineTo(r[2 * i + 2], r[2 * i + 3]);
+            open = true;
+            any = true;
+          }
+        });
+        if (any) c.stroke();
       }
-      c.fill();
-    }
+    });
   };
+
+  // The stroke's box in device px, padded by the widest hair: only that much of the scratch is
+  // cleared and composited (it was the whole document every frame). The box only grows as the
+  // stroke does, and the last frame's box is cleared too.
+  const m = ctx.getTransform();
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  let pad = 0;
+  for (const h of hairs) {
+    pad = Math.max(pad, h.width);
+    for (const r of h.runs) {
+      for (let i = 0; i < r.length; i += 2) {
+        if (r[i] < x0) x0 = r[i];
+        if (r[i] > x1) x1 = r[i];
+        if (r[i + 1] < y0) y0 = r[i + 1];
+        if (r[i + 1] > y1) y1 = r[i + 1];
+      }
+    }
+  }
+  if (x0 > x1) return; // nothing painted yet
 
   // The hairs overlap one another, and `destination-over` / `source-atop` would treat each hair as
   // its own layer: paint the stroke once onto a scratch canvas, then composite it in one go.
@@ -315,11 +391,16 @@ export function drawDryStroke(
     scratch = document.createElement("canvas");
     scratch.width = w;
     scratch.height = h;
+    scratchBox = null;
   }
+  const box = deviceBox(m, x0 - pad, y0 - pad, x1 + pad, y1 + pad, w, h);
+  if (!box) return;
   const sctx = scratch.getContext("2d")!;
   sctx.setTransform(1, 0, 0, 1, 0, 0);
-  sctx.clearRect(0, 0, w, h);
-  sctx.setTransform(ctx.getTransform());
+  const clear = scratchBox ? unionBox(scratchBox, box) : box;
+  sctx.clearRect(clear.x, clear.y, clear.w, clear.h);
+  scratchBox = box;
+  sctx.setTransform(m);
   paint(sctx);
 
   ctx.save();
@@ -327,7 +408,7 @@ export function drawDryStroke(
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = op;
     ctx.globalAlpha = alpha;
-    ctx.drawImage(scratch, 0, 0);
+    ctx.drawImage(scratch, box.x, box.y, box.w, box.h, box.x, box.y, box.w, box.h);
   } finally {
     ctx.restore();
   }
