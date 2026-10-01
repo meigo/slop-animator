@@ -284,9 +284,12 @@ export class Selection {
     ];
   }
 
-  /** Begin creating a new selection (clears any existing one). */
-  startCreate(x: number, y: number) {
+  /** Begin creating a new selection (clears any existing one), shaped by `mode` — the tool that
+   *  starts it. Taken here, not only on a tool change: a paste (`pasteFloat`) sets "rect" while the
+   *  Lasso tool stays active, and the next Lasso drag drew a rectangle (roadmap 13d). */
+  startCreate(x: number, y: number, mode: SelectionMode) {
     this.cancel();
+    this.mode = mode;
     this.isCreating = true;
     this.createStart = { x, y };
     this.rect = { x, y, w: 0, h: 0 };

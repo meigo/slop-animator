@@ -8095,3 +8095,13 @@ no hint text).
   tools and requires the row to be 40 px for each. It failed first: `Eraser 69`, every other tool 40.
   Screenshots read: portrait `1 3 8 16 60`, landscape all nine.
 
+**A Lasso drag after a paste draws a lasso, not a rectangle (2026-10-01, branch
+`fix/lasso-mode-after-paste`; roadmap 13d, from slop-paint's code review).** The selection's shape
+(`Selection.mode`) was set only when the TOOL changed (`Canvas.svelte`'s tool effect), and
+`pasteFloat` forces `"rect"` — so with the Lasso tool active, a paste left the mode rectangular and
+the next Lasso drag made a rectangle. `startCreate(x, y, mode)` now takes the shape from the tool
+that starts the selection (as slop-paint sets it at `startCreate`); its one caller passes
+`appState.tool === "lasso" ? "lasso" : "rect"`. Test: `selection-mode.test.ts` (a Selection over a
+stub overlay; failed first with `expected 'rect' to be 'lasso'`). 1623 → 1624 tests; build 0/0;
+`test:ipad` all passing. Not seen on the iPad (found by reading the code).
+
