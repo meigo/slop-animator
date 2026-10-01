@@ -1,7 +1,5 @@
 <script lang="ts">
   import { buildSegments } from "../anim/row-layout";
-  import { onMount } from "svelte";
-  import Sortable from "sortablejs";
   import {
     Plus,
     Copy,
@@ -54,10 +52,10 @@
   import { clampPanelWidth } from "../anim/panel-layout";
   import LayerProps from "./LayerProps.svelte";
   import { isDoubleTap, type Tap } from "./double-tap";
+  import { dropTarget, rowKey, type Drag, type Drop, type RowBox } from "../anim/layer-drop";
+  import { autoScrollStep, ghostTop, pastThreshold, shiftedRowIds } from "./layer-drag-visual";
 
   let listEl: HTMLDivElement;
-  let dragNonce = $state(0); // bumped after a drag to force a full {#key} re-render of the list
-  let dropHandled = false; // latch so a single drop's multiple SortableJS onEnd events run rebuild once
 
   let editingId: number | null = $state(null);
   let draft = $state("");
@@ -174,63 +172,179 @@
   // a collapsed group is hiding. Still called from the template with `appState.project.layers`/
   // `.groups` so the reads stay fine-grained (runes mode).
 
-  // Rebuild the data array from the nested DOM order so Svelte and Sortable agree.
-  // Walks top-first display order (root children, descending into group-members),
-  // then reverses to the bottom→top data order.
-  function rebuild(evt: Sortable.SortableEvent) {
-    // SortableJS can fire onEnd twice for one drop (cross-list: source + destination). Act on the
-    // first only — one DOM walk already captures the full final order, and the evt.item removal
-    // below would corrupt a second walk. Reset on a microtask, before any future drag.
-    if (dropHandled) return;
-    dropHandled = true;
-    queueMicrotask(() => {
-      dropHandled = false;
-    });
+  // ── Row drag (2026-10-01, replacing SortableJS — `../SLOP-LAYER-DRAG.md`). `dropTarget` alone
+  // decides where a drop lands; this only draws its answer and commits it once, on release, so
+  // nothing here ever moves a DOM node Svelte owns. ──
+  type Dragging = {
+    drag: Drag;
+    pointerId: number;
+    row: HTMLElement;
+    label: string;
+    count: number;
+    startX: number;
+    startY: number;
+    clientY: number;
+    live: boolean;
+    boxes: RowBox[];
+    grab: number;
+    rowPx: number;
+    contentHeight: number;
+  };
+  let dragging: Dragging | null = null;
+  let drop = $state<Drop | null>(null);
+  let ghost = $state<{ top: number; label: string; count: number; height: number } | null>(null);
+  let shifted = $state(new Set<string>());
+  let dimmed = $state(new Set<string>());
+  let scrollFrame = 0;
+  /** A drag just ended on the grip: swallow the click that follows, so a drag never selects. */
+  let swallowClick = false;
 
-    // Every layer row in document order, each taking its group from whatever encloses it. Flat on
-    // purpose: the previous two-level walk read a group block's members as `data-layer-id`, so any
-    // element that was not a layer row yielded Number(undefined) = NaN, byId.get(NaN) = undefined,
-    // and those layers were dropped from the rebuilt array — SILENT DATA LOSS. The `put` guard on
-    // membersSortable should make that unreachable; this makes it impossible.
-    const order: { id: number; groupId: number | null }[] = [];
-    for (const row of listEl.querySelectorAll<HTMLElement>("[data-layer-id]")) {
-      const gid = row.closest<HTMLElement>("[data-group-id]")?.dataset.groupId;
-      order.push({ id: Number(row.dataset.layerId), groupId: gid == null ? null : Number(gid) });
+  /** Every VISIBLE row, top first, in the list's content coordinates (a collapsed group's members
+   *  are in the DOM under `hidden`, with an empty rect). */
+  function measureRows(): RowBox[] {
+    const off = listEl.scrollTop - listEl.getBoundingClientRect().top;
+    const out: RowBox[] = [];
+    for (const el of listEl.querySelectorAll<HTMLElement>("[data-row-key]")) {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0) continue;
+      out.push({
+        kind: el.dataset.rowKind === "group" ? "group" : "layer",
+        id: Number(el.dataset.rowId),
+        key: el.dataset.rowKey ?? "",
+        top: r.top + off,
+        bottom: r.bottom + off,
+      });
     }
-    reorderLayersWithGroups(order.reverse());
-
-    // SortableJS physically relocated evt.item. Dropped at the bottom it lands AFTER the {#each}
-    // end-anchor, so the {#key} re-render's teardown can't reach it and it survives as a duplicate
-    // row. Remove the relocated node ourselves; the dragNonce re-render then rebuilds a clean list
-    // from state (discarding any node SortableJS moved), robust regardless of drop position.
-    evt.item.remove();
-    dragNonce++;
+    return out;
   }
 
-  // Each .group-members container is its own Sortable sharing the "layers" group,
-  // so rows can drag between groups and the root list. Created/destroyed per render.
-  function membersSortable(node: HTMLElement) {
-    const s = Sortable.create(node, {
-      // Root and members share the "layers" group so rows cross between them — but a GROUP header
-      // is also a root item now, and `layer.groupId` is a single id with no representation for a
-      // group inside a group. Refuse that one drop; everything else is unchanged.
-      group: { name: "layers", put: (_to, _from, el) => el.dataset.groupId == null },
-      handle: ".layer-drag-handle",
-      animation: 150,
-      onEnd: rebuild,
-    });
-    return { destroy: () => s.destroy() };
+  function startDrag(e: PointerEvent, drag: Drag, label: string, count: number) {
+    if (e.button !== 0) return;
+    const row = (e.currentTarget as Element | null)?.closest<HTMLElement>("[data-row-key]");
+    if (!row) return;
+    e.preventDefault();
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is a convenience; moves still arrive while the pointer stays on the grip.
+    }
+    swallowClick = false; // a leftover from a drag whose click landed elsewhere
+    dragging = {
+      drag,
+      pointerId: e.pointerId,
+      row,
+      label,
+      count,
+      startX: e.clientX,
+      startY: e.clientY,
+      clientY: e.clientY,
+      live: false,
+      boxes: [],
+      grab: 0,
+      rowPx: 0,
+      contentHeight: 0,
+    };
+    drop = null;
   }
 
-  onMount(() => {
-    const sortable = Sortable.create(listEl, {
-      group: "layers",
-      handle: ".layer-drag-handle",
-      animation: 150,
-      onEnd: rebuild,
-    });
-    return () => sortable.destroy();
-  });
+  /** The press became a drag: measure the rows ONCE (sliding rows must not move the targets they
+   *  are measured against), dim what moves, lift the copy, start the edge scroll. */
+  function lift(d: Dragging) {
+    d.live = true;
+    d.boxes = measureRows();
+    const rect = d.row.getBoundingClientRect();
+    d.grab = d.startY - rect.top;
+    d.rowPx = rect.height;
+    d.contentHeight = listEl.scrollHeight;
+    const drag = d.drag;
+    dimmed = new Set(
+      drag.kind === "layer"
+        ? [rowKey("layer", drag.id)]
+        : [
+            rowKey("group", drag.id),
+            ...appState.project.layers
+              .filter((l) => l.groupId === drag.id)
+              .map((l) => rowKey("layer", l.id)),
+          ],
+    );
+    ghost = { top: 0, label: d.label, count: d.count, height: d.rowPx };
+    document.documentElement.classList.add("layer-dragging");
+    scrollFrame = requestAnimationFrame(edgeScroll);
+  }
+
+  function update(d: Dragging) {
+    if (!ghost) return;
+    const y = d.clientY - listEl.getBoundingClientRect().top + listEl.scrollTop;
+    drop = dropTarget(appState.project.layers, appState.project.groups, d.boxes, y, d.drag);
+    shifted = shiftedRowIds(d.boxes, drop?.line ?? null);
+    ghost = { ...ghost, top: ghostTop(y, d.grab, d.contentHeight, d.rowPx) };
+    document.documentElement.classList.toggle("layer-drop-refused", drop === null);
+  }
+
+  /** Near the list's top or bottom edge, scroll it — once a frame while the drag lasts. */
+  function edgeScroll() {
+    const d = dragging;
+    if (!d) return;
+    if (!listEl) return finishDrag(); // the panel went away under the drag
+    const view = listEl.getBoundingClientRect();
+    const step = autoScrollStep(d.clientY, view.top, view.bottom);
+    const max = Math.max(d.contentHeight - listEl.clientHeight, 0);
+    const next = Math.min(Math.max(listEl.scrollTop + step, 0), max);
+    if (next !== listEl.scrollTop) {
+      listEl.scrollTop = next;
+      update(d);
+    }
+    scrollFrame = requestAnimationFrame(edgeScroll);
+  }
+
+  // The cursor classes sit on <html>, outside this component: never leave them behind.
+  $effect(() => () => finishDrag());
+
+  /** Puts everything back as it was before the press. */
+  function finishDrag() {
+    cancelAnimationFrame(scrollFrame);
+    dragging = null;
+    drop = null;
+    ghost = null;
+    shifted = new Set();
+    dimmed = new Set();
+    document.documentElement.classList.remove("layer-dragging", "layer-drop-refused");
+  }
+
+  function moveDrag(e: PointerEvent) {
+    const d = dragging;
+    if (!d || e.pointerId !== d.pointerId) return;
+    d.clientY = e.clientY;
+    if (!d.live) {
+      if (!pastThreshold(e.clientX - d.startX, e.clientY - d.startY)) return;
+      lift(d);
+    }
+    update(d);
+  }
+
+  function endDrag(e: PointerEvent, apply: boolean) {
+    const d = dragging;
+    if (!d || e.pointerId !== d.pointerId) return;
+    d.clientY = e.clientY;
+    if (apply && d.live) update(d);
+    const target = apply && d.live ? drop : null;
+    swallowClick = d.live;
+    // Clear the slides AND their transition in the same tick as the commit, or the re-ordered rows
+    // animate back from the gap.
+    finishDrag();
+    if (target) reorderLayersWithGroups(target.order);
+  }
+
+  /** A press on a grip that became a drag is not a tap on its row. */
+  function gripClick(e: MouseEvent) {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+  }
+
+  const slide = (key: string) =>
+    shifted.has(key) && ghost ? `translateY(${ghost.height}px)` : null;
+  const slideTransition = $derived(ghost ? "transform 150ms ease" : null);
 </script>
 
 {#snippet layerRow(layer: Layer)}
@@ -256,6 +370,12 @@
        the chevron. Keep this in step with that `-ml-0.5` or the two drift again. -->
   <div
     data-layer-id={layer.id}
+    data-row-kind="layer"
+    data-row-id={layer.id}
+    data-row-key={rowKey("layer", layer.id)}
+    class:opacity-40={dimmed.has(rowKey("layer", layer.id))}
+    style:transform={slide(rowKey("layer", layer.id))}
+    style:transition={slideTransition}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
     class:group-rail={layer.groupId != null}
     class:pl-[16px]={layer.groupId != null}
@@ -271,8 +391,17 @@
     <!-- `pr-[6px]`: 8.5 − 2.5px of air around the 15px eye in its `size-5` box, so the eye's right
          edge matches the header's bin and the strip's pencil (see the header's note). -->
     <div class="flex items-center gap-1 py-1 pr-[6px] pl-2">
-      <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
-        ><GripVertical size={14} /></span
+      <span
+        class="layer-drag-handle cursor-grab text-text-muted"
+        style="touch-action: none"
+        title="Drag to reorder"
+        role="presentation"
+        onpointerdown={(e) => startDrag(e, { kind: "layer", id: layer.id }, layer.name, 1)}
+        onpointermove={moveDrag}
+        onpointerup={(e) => endDrag(e, true)}
+        onpointercancel={(e) => endDrag(e, false)}
+        onlostpointercapture={(e) => endDrag(e, false)}
+        onclick={gripClick}><GripVertical size={14} /></span
       >
       <!-- Type slot, 15px = the group header's chevron, so a top-level layer's name starts exactly
            where a group's does. Blank for drawing layers; reserved either way.
@@ -401,7 +530,16 @@
   </div>
 {/snippet}
 
-<svelte:window onresize={onWindowResize} />
+<svelte:window
+  onresize={onWindowResize}
+  onkeydowncapture={(e) => {
+    // Escape cancels a drag, and only the drag: captured so the app's own Escape doesn't also run.
+    if (e.key !== "Escape" || !dragging) return;
+    finishDrag();
+    e.preventDefault();
+    e.stopPropagation();
+  }}
+/>
 
 <div
   class="relative border-l border-border bg-surface flex flex-col text-text shrink-0"
@@ -506,107 +644,141 @@
        to open as a second line inside the selected row. -->
   <LayerProps onRenameLayer={renameLayerFromStrip} onRenameGroup={startGroupEdit} />
 
-  <div bind:this={listEl} class="flex-1 overflow-y-auto">
-    {#key dragNonce}
-      {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
-        {#if "layer" in seg}
-          {@render layerRow(seg.layer)}
-        {:else}
-          {@const groupLit = groupHeaderSelected(
-            appState.activeRow,
-            seg.group,
-            appState.project.layers,
-          )}
-          <!-- The rail itself is on the ROWS (`.group-rail`, defined in app.css), not here: a
+  <div bind:this={listEl} data-layer-list class="relative flex-1 overflow-y-auto">
+    {#each buildSegments(appState.project.layers, appState.project.groups) as seg ("layer" in seg ? `l${seg.layer.id}` : `g${seg.group.id}`)}
+      {#if "layer" in seg}
+        {@render layerRow(seg.layer)}
+      {:else}
+        {@const groupLit = groupHeaderSelected(
+          appState.activeRow,
+          seg.group,
+          appState.project.layers,
+        )}
+        <!-- The rail itself is on the ROWS (`.group-rail`, defined in app.css), not here: a
                parent's background is always covered by an opaque child, so with it on the block a
                member row's hover erased the line under it. -->
-          <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
-            <div
-              class="group-rail flex items-center gap-1 py-1 pr-[6px] pl-2 hover:bg-surface-hover"
-              class:ui-selected={groupLit}
+        <div
+          class="group-block border-b border-border-light"
+          class:ui-drop-target={drop?.into === seg.group.id}
+          data-group-id={seg.group.id}
+        >
+          <div
+            class="group-rail flex items-center gap-1 py-1 pr-[6px] pl-2 hover:bg-surface-hover"
+            class:ui-selected={groupLit}
+            role="presentation"
+            data-row-kind="group"
+            data-row-id={seg.group.id}
+            data-row-key={rowKey("group", seg.group.id)}
+            class:opacity-40={dimmed.has(rowKey("group", seg.group.id))}
+            style:transform={slide(rowKey("group", seg.group.id))}
+            style:transition={slideTransition}
+          >
+            <!-- The block's grip: it drags the header and its members as one (a one-row ghost and
+                   gap, the block dimmed in place — SLOP-LAYER-DRAG.md rule 7). -->
+            <span
+              class="layer-drag-handle cursor-grab text-text-muted"
+              style="touch-action: none"
+              title="Drag to reorder"
               role="presentation"
+              onpointerdown={(e) =>
+                startDrag(
+                  e,
+                  { kind: "group", id: seg.group.id },
+                  seg.group.name,
+                  seg.layers.length,
+                )}
+              onpointermove={moveDrag}
+              onpointerup={(e) => endDrag(e, true)}
+              onpointercancel={(e) => endDrag(e, false)}
+              onlostpointercapture={(e) => endDrag(e, false)}
+              onclick={gripClick}><GripVertical size={14} /></span
             >
-              <!-- Same class the layer rows use, so the ROOT Sortable (handle: .layer-drag-handle)
-                   can grab the whole .group-block. It lives on the header, not inside
-                   .group-members, so the inner Sortable never sees it and the two cannot fight over
-                   the gesture. A collapsed group drags as one unit for free — its members stay in
-                   the DOM under `hidden`, so `rebuild` still walks them. -->
-              <span class="layer-drag-handle cursor-grab text-text-muted" title="Drag to reorder"
-                ><GripVertical size={14} /></span
-              >
-              <!-- `-ml-0.5 mr-0.5`: the chevron glyph carries ~3.75px of its own padding on the left, so at
+            <!-- `-ml-0.5 mr-0.5`: the chevron glyph carries ~3.75px of its own padding on the left, so at
                    an even gap it sat ~12px from the grip and only ~8px from the name. Shifting the BOX 2px
                    left and giving the 2px back on its right balances the ink without moving the name, which
                    is what keeps group and layer names on one column. -->
+            <button
+              class="-ml-0.5 mr-0.5 flex w-[15px] shrink-0 justify-center text-text-secondary hover:text-text"
+              title={seg.group.collapsed ? "Expand group" : "Collapse group"}
+              onclick={() => toggleGroupCollapsed(seg.group.id)}
+            >
+              {#if seg.group.collapsed}<ChevronRight size={15} />{:else}<ChevronDown
+                  size={15}
+                />{/if}
+            </button>
+            {#if editingGroupId === seg.group.id}
+              <input
+                class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
+                bind:value={groupDraft}
+                use:focusSelect
+                onkeydown={(e) => {
+                  if (e.key === "Enter") commitGroupEdit(seg.group.id);
+                  else if (e.key === "Escape") editingGroupId = null;
+                }}
+                onblur={() => commitGroupEdit(seg.group.id)}
+              />
+            {:else}
               <button
-                class="-ml-0.5 mr-0.5 flex w-[15px] shrink-0 justify-center text-text-secondary hover:text-text"
-                title={seg.group.collapsed ? "Expand group" : "Collapse group"}
-                onclick={() => toggleGroupCollapsed(seg.group.id)}
+                class="min-w-0 flex-1 truncate text-left text-sm font-semibold"
+                class:text-text={groupLit}
+                class:text-text-secondary={!groupLit}
+                title="Select group · double-tap to rename"
+                onclick={(e) => {
+                  selectGroup(seg.group.id);
+                  nameTap(e, `group:${seg.group.id}`, () => startGroupEdit(seg.group));
+                }}>{seg.group.name}</button
               >
-                {#if seg.group.collapsed}<ChevronRight size={15} />{:else}<ChevronDown
-                    size={15}
-                  />{/if}
-              </button>
-              {#if editingGroupId === seg.group.id}
-                <input
-                  class="flex-1 min-w-0 h-5 text-sm bg-surface border border-border px-1 text-text"
-                  bind:value={groupDraft}
-                  use:focusSelect
-                  onkeydown={(e) => {
-                    if (e.key === "Enter") commitGroupEdit(seg.group.id);
-                    else if (e.key === "Escape") editingGroupId = null;
-                  }}
-                  onblur={() => commitGroupEdit(seg.group.id)}
-                />
-              {:else}
-                <button
-                  class="min-w-0 flex-1 truncate text-left text-sm font-semibold"
-                  class:text-text={groupLit}
-                  class:text-text-secondary={!groupLit}
-                  title="Select group · double-tap to rename"
-                  onclick={(e) => {
-                    selectGroup(seg.group.id);
-                    nameTap(e, `group:${seg.group.id}`, () => startGroupEdit(seg.group));
-                  }}>{seg.group.name}</button
-                >
-              {/if}
-              <!-- The alpha-lock column, empty: groups have no pixels of their own, and the slot keeps
+            {/if}
+            <!-- The alpha-lock column, empty: groups have no pixels of their own, and the slot keeps
                    the group's lock and eye in the same columns as every layer's. -->
-              <span class="size-5 shrink-0" role="presentation"></span>
-              <button
-                class="flex size-5 shrink-0 items-center justify-center {seg.group.locked
-                  ? 'text-warn'
-                  : 'text-text-muted hover:text-text'}"
-                title={seg.group.locked
-                  ? "Group locked — click to unlock (members keep their own locks)"
-                  : "Unlocked — click to lock every layer in this group"}
-                onclick={() => toggleGroupLocked(seg.group.id)}
-              >
-                {#if seg.group.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
-              </button>
-              <button
-                class="flex size-5 shrink-0 items-center justify-center {seg.group.visible
-                  ? 'text-text-muted hover:text-text'
-                  : 'text-warn'}"
-                title={seg.group.visible
-                  ? "Group visible — click to hide"
-                  : "Group hidden — members' edits refused; click to show"}
-                onclick={() => toggleGroupVisible(seg.group.id)}
-              >
-                {#if seg.group.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
-              </button>
-            </div>
-            <!-- No padding here any more: a member's indent lives on the ROW (see `layerRow`), so
+            <span class="size-5 shrink-0" role="presentation"></span>
+            <button
+              class="flex size-5 shrink-0 items-center justify-center {seg.group.locked
+                ? 'text-warn'
+                : 'text-text-muted hover:text-text'}"
+              title={seg.group.locked
+                ? "Group locked — click to unlock (members keep their own locks)"
+                : "Unlocked — click to lock every layer in this group"}
+              onclick={() => toggleGroupLocked(seg.group.id)}
+            >
+              {#if seg.group.locked}<Lock size={15} />{:else}<LockOpen size={15} />{/if}
+            </button>
+            <button
+              class="flex size-5 shrink-0 items-center justify-center {seg.group.visible
+                ? 'text-text-muted hover:text-text'
+                : 'text-warn'}"
+              title={seg.group.visible
+                ? "Group visible — click to hide"
+                : "Group hidden — members' edits refused; click to show"}
+              onclick={() => toggleGroupVisible(seg.group.id)}
+            >
+              {#if seg.group.visible}<Eye size={15} />{:else}<EyeOff size={15} />{/if}
+            </button>
+          </div>
+          <!-- No padding here any more: a member's indent lives on the ROW (see `layerRow`), so
                  the row's border box starts at x=0 and its `.ui-selected` bar lands on the block's
                  rail instead of 13px inboard of it. -->
-            <div class="group-members" class:hidden={seg.group.collapsed} use:membersSortable>
-              {#each seg.layers as layer (layer.id)}
-                {@render layerRow(layer)}
-              {/each}
-            </div>
+          <div class="group-members" class:hidden={seg.group.collapsed}>
+            {#each seg.layers as layer (layer.id)}
+              {@render layerRow(layer)}
+            {/each}
           </div>
+        </div>
+      {/if}
+    {/each}
+    {#if ghost}
+      <!-- The grabbed row, following the pointer; a group carries its member count. -->
+      <div
+        data-drag-ghost
+        class="pointer-events-none absolute inset-x-0 z-10 flex items-center gap-1 border-y border-accent bg-surface-hover pl-2 pr-[6px] text-sm text-text shadow-lg"
+        style="top: {ghost.top}px; height: {ghost.height}px"
+      >
+        <span class="text-text-muted"><GripVertical size={14} /></span>
+        <span class="min-w-0 flex-1 truncate">{ghost.label}</span>
+        {#if ghost.count > 1}
+          <span class="rounded bg-accent px-1.5 text-[10px] text-accent-text">{ghost.count}</span>
         {/if}
-      {/each}
-    {/key}
+      </div>
+    {/if}
   </div>
 </div>

@@ -39,9 +39,6 @@ export default tseslint.config(
       // The Maps in this codebase (glyph cache, temp byId lookups) are intentional NON-reactive
       // caches — SvelteMap is not wanted here.
       "svelte/prefer-svelte-reactivity": "off",
-      // SortableJS and pointer-capture deliberately touch the DOM (the {#key dragNonce} pattern
-      // reconciles Svelte afterward).
-      "svelte/no-dom-manipulating": "off",
     },
   },
   {

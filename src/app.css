@@ -278,8 +278,8 @@ textarea,
    `box-shadow` paints ABOVE both, which is why the accent selection bar still wins where it should.
 
    Applied per ROW (header, group detail strip, and each member) rather than to the block, for the
-   same reason. Not a child element: `.group-members` is a SortableJS container and a stray child
-   would be treated as a draggable row (gotcha #2). */
+   same reason. Not a child element: a stray child of `.group-members` would
+   be measured as a row by the drag (`[data-row-key]` aside, it would still take space). */
 .group-rail {
   --rail: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
   background-image: linear-gradient(var(--rail), var(--rail));
@@ -288,13 +288,23 @@ textarea,
   background-repeat: no-repeat;
 }
 
-/* SortableJS drag states */
-.sortable-ghost {
-  opacity: 0.4;
-  background: var(--color-surface-active) !important;
+/* The group a dragged row would land in (LayerList, 2026-10-01; slop-vector-editor 4e2df20):
+   straight lines above and below, like the dragged row's own borders. Inset shadows, not borders,
+   so nothing changes height. */
+.ui-drop-target {
+  box-shadow:
+    inset 0 1px 0 var(--color-accent),
+    inset 0 -1px 0 var(--color-accent);
 }
-.sortable-chosen {
-  background: var(--color-surface-hover);
+/* Layer panel drag (2026-10-01): the cursor for the whole page while a row is dragged (classes on
+   <html>, cleared by the panel's finishDrag). */
+html.layer-dragging,
+html.layer-dragging * {
+  cursor: grabbing !important;
+}
+html.layer-drop-refused,
+html.layer-drop-refused * {
+  cursor: not-allowed !important;
 }
 
 /* Range inputs — SLOP-TIMELINE-UI.md §6: a 4px track with a 12px round thumb, and the filled

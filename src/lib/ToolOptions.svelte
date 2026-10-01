@@ -91,6 +91,7 @@
   $effect(() => {
     const editor = curveEditors?.[appState.tool === "eraser" ? "eraser" : "brush"];
     if (brushSettingsOpen && curvePopupEl && editor) {
+      // eslint-disable-next-line svelte/no-dom-manipulating -- the host div is empty in the template; Svelte owns none of its children
       curvePopupEl.replaceChildren(editor);
       editor.redraw();
     }
