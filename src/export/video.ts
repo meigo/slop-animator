@@ -156,6 +156,10 @@ export async function exportVideo(
       });
       await source.add((f - range.start) * dt, dt);
     } catch (e) {
+      // Release the encoders before reporting: left open, a failed export kept its VideoEncoder
+      // (and AudioEncoder) until GC, and on iPad, where hardware encoders are few, the retry could
+      // fail at setup (2026-09-30 review). Best effort — the frame error is the one to report.
+      await output.cancel().catch(() => undefined);
       throw new Error(
         `frame ${f - range.start + 1} of ${frameTotal} (timeline frame ${f + 1}) could not be encoded — ${e instanceof Error ? e.message : String(e)}`,
         { cause: e },
@@ -171,7 +175,12 @@ export async function exportVideo(
   }
   // Past this point cancel is refused (the dialog disables the button): finalize is where the
   // container is assembled, and interrupting it can only yield a file we would discard anyway.
-  await output.finalize();
+  try {
+    await output.finalize();
+  } catch (e) {
+    await output.cancel().catch(() => undefined); // same as a failed frame, above
+    throw e;
+  }
   const buffer = output.target.buffer!;
   return {
     blob: new Blob([buffer], { type: format === "mp4" ? "video/mp4" : "video/webm" }),
