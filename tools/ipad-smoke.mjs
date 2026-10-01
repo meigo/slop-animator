@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row (2026-10-01). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -413,6 +413,74 @@ try {
     "the autosave comes back after a reload (drawing and length)",
   );
   check(!(await statusSays("Autosave is failing")), "no autosave failure warning");
+
+  // A finger drag of a layer row (2026-10-01, the drag that replaced SortableJS): the bottom row
+  // to the top. Mid-drag the dragged row's own place has slid to the top and the rows it passed
+  // closed up by its height (as slop-spine / slop-paint: no extra gap). Simulated pointers are not live, so capture fails (the
+  // init script lets it fail quietly) and every event goes to the grip, as a captured stream would.
+  await page.locator('button[title="Add layer"]').click();
+  await page.waitForTimeout(200);
+  const rowOrder = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("[data-layer-list] [data-row-key]")]
+        .filter((el) => el.getBoundingClientRect().height > 0)
+        .map((el) => el.dataset.rowKey),
+    );
+  const rowsBefore = await rowOrder();
+  const fingerDrag = await page.evaluate(async (keys) => {
+    const from = keys[keys.length - 1];
+    const grip = document.querySelector(
+      `[data-layer-list] [data-row-key="${from}"] .layer-drag-handle`,
+    );
+    const to = document
+      .querySelector(`[data-layer-list] [data-row-key="${keys[0]}"]`)
+      .getBoundingClientRect();
+    const g = grip.getBoundingClientRect();
+    const x = g.left + g.width / 2;
+    const rowEl = (k) => document.querySelector(`[data-layer-list] [data-row-key="${k}"]`);
+    const tops = Object.fromEntries(keys.map((k) => [k, rowEl(k).getBoundingClientRect().top]));
+    const draggedH = rowEl(from).getBoundingClientRect().height;
+    /** A row's slide: the translateY it is drawn with mid-drag (0 when it doesn't slide). */
+    const dy = (k) => Number(/translateY\((-?[\d.]+)px\)/.exec(rowEl(k).style.transform)?.[1] ?? 0);
+    const fire = (type, y) =>
+      grip.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 31,
+          pointerType: "touch",
+          isPrimary: true,
+          button: 0,
+          buttons: type === "pointerup" || type === "pointerout" || type === "pointerleave" ? 0 : 1,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    const y = g.top + g.height / 2;
+    for (const t of ["pointerover", "pointerenter", "pointerdown"]) fire(t, y);
+    const target = to.top + to.height * 0.2;
+    for (let i = 1; i <= 8; i++) {
+      fire("pointermove", y + ((target - y) * i) / 8);
+      await frame();
+    }
+    const near = (a, b) => Math.abs(a - b) < 1.5;
+    const slid =
+      near(dy(from), tops[keys[0]] - tops[from]) &&
+      keys.slice(0, -1).every((k) => near(dy(k), draggedH));
+    const slides = keys.map((k) => `${k}:${dy(k)}`).join(" ");
+    for (const t of ["pointerup", "pointerout", "pointerleave"]) fire(t, target);
+    await frame();
+    return { slid, slides };
+  }, rowsBefore);
+  await page.waitForTimeout(300);
+  const rowsAfter = await rowOrder();
+  check(
+    fingerDrag.slid &&
+      rowsAfter[0] === rowsBefore[rowsBefore.length - 1] &&
+      rowsAfter.length === rowsBefore.length,
+    `a finger drag moves a layer row; mid-drag its place slides to the slot, the rest close up (${fingerDrag.slides}; ${rowsBefore} → ${rowsAfter})`,
+  );
 
   // A real finger tap on a toolbar menu.
   const file = await page.getByRole("button", { name: /^File/ }).first().boundingBox();

@@ -235,8 +235,7 @@
    * a slider that goes away mid-drag leaked its bracket, and the next drag inherited it and wrote to
    * the abandoned gesture's layer id and frame. The causes are plural and keep growing: the row's
    * `{#if active}` (a second contact selecting another layer, or the audio lane, which deselects
-   * every layer), the list's `{#key dragNonce}` REBUILD after any SortableJS reorder drop — which
-   * leaves `activeRow` untouched, so watching selection could not see it — and component teardown.
+   * every layer), and component teardown.
    * A `destroy` hook covers all of them and any future one, which an enumeration of causes cannot.
    */
   function settleOnUnmount(_node: HTMLElement, layerId: number) {

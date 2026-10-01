@@ -29,7 +29,6 @@
     "@eslint/js": "^10.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",
-    "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
@@ -59,7 +58,6 @@
     "fflate": "^0.8.3",
     "gifenc": "^1.0.3",
     "mediabunny": "^1.46.0",
-    "perfect-freehand": "^1.2.3",
-    "sortablejs": "^1.15.7"
+    "perfect-freehand": "^1.2.3"
   }
 }
