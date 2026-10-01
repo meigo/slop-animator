@@ -965,6 +965,13 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(track(l2).keys.map((k) => k.frame)).toEqual([0, 43]);
     });
 
+    it("reports whether it wrote anything, so the drag bumps only on a real change", () => {
+      const l = short(10, []);
+      l.cells[5] = { kind: "key", canvas: fakeOps.create() };
+      expect(resizeHoldSpan(l, 0, 5, 40)).toBe(false); // same span
+      expect(resizeHoldSpan(l, 0, 6, 40)).toBe(true);
+    });
+
     it("pressing the edge without moving changes no key", () => {
       const l = short(30, [0, 35]);
       resizeHoldSpan(l, 0, 40, 40); // the drag's first sample, at the grabbed boundary

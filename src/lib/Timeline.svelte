@@ -1913,8 +1913,10 @@
     if (dragMode === "resize") {
       if (!isLayerEditable(layer, appState.project.groups)) return; // locked/hidden row: hold-span is content, not selection
       dragLastBoundary = rowBoundaryAt(clientX);
-      resizeHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey), dragOthersLen);
-      bump();
+      // Bump only on a real change: every Pencil event used to, re-deriving the timeline and
+      // recompositing the document (onion, reference video) for a column that hadn't moved.
+      if (resizeHoldSpan(layer, dragKey, Math.max(1, dragLastBoundary - dragKey), dragOthersLen))
+        bump();
       return;
     }
     // Armed outside the selection: once the pointer really moves, start a marquee from the press cell.
