@@ -7892,3 +7892,24 @@ CLAUDE.md Commands).
   draw (keyboard goes away), Cmd+S with a tool, Enter in the Resize dialog, an fps preset during
   playback with audio, a group transform after moving a member.
 
+**The iPad smoke check covers the code review's browser-side fixes (2026-10-01, branch
+`test/ipad-smoke-review`).** Asked after merging batches A–E: *"Non of these can be tested with
+playwright?"* — most of the owed iPad pass could, and only iPadOS itself (Pencil, keyboard, share
+sheet, gotchas #14/#15) still needs the device.
+- **Ten new checks in `tools/ipad-smoke.mjs`**, each reading its verdict from the page (tool button
+  `.ui-on`, the Undo/Redo titles, display-canvas pixels, `.timeline-grid` scroll, a `confirm`), so
+  they run against a deployed URL too: a two-finger tap mid-stroke, Cmd+S, a focused slider, keys
+  under Project Settings, redo with a moved selection, the eyedropper on transparent, a cancelled
+  ruler pan's fling (beside a released one, which must coast), File ▸ Open asking first (fed a file
+  from File ▸ Save), and the autosave surviving a reload.
+- **Each was run against the pre-review code** (`e060951`, a worktree on port 5174) and fails there;
+  two first passed for the wrong reason and were fixed. Cmd+S: the old code kept a number field
+  focused, so NO key reached the app and the tool stayed Brush by default — the check now presses
+  `e` first and requires it to light. Two-finger tap: every stroke ran along the same diagonal, so an
+  undone stroke changed no pixel, and the open stroke is redrawn from all its points after its
+  rollback — its strokes now sit on their own lines and the ink must grow by about one stroke.
+- **Persistent temp profile.** In Playwright's default (ephemeral) context every autosave failed with
+  `UnknownError: Error preparing Blob/File data to be stored in object store`: ephemeral WebKit
+  refuses Blobs in IndexedDB. A persistent context in a fresh temp folder stores them; not an app
+  bug. Safari Private Browsing may hit the same, where the app's "Autosave is failing" alert shows.
+- 3 of 3 local runs and the deployed site all passing; ~11 s a run.
