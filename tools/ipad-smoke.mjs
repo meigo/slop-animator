@@ -44,6 +44,7 @@ const profile = mkdtempSync(join(tmpdir(), "slop-ipad-smoke-"));
 const context = await webkit.launchPersistentContext(profile, {
   ...devices["iPad Pro 11 landscape"],
 });
+let homeProfile = "";
 try {
   // Simulated pointers aren't live ones, so WebKit refuses to capture them ("The object can not be
   // found here"); a real Pencil or finger is one. Let capture fail quietly for the simulation.
@@ -421,9 +422,76 @@ try {
   check((await page.locator('[role="menu"]').count()) > 0, "a finger tap opens the File menu");
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+
+  // ── The Home Screen app (standalone), where iOS can't download at all: the link does nothing,
+  // so File ▸ Save said "Saved" and wrote nothing. A context of its own, faking standalone mode
+  // and recording what reaches the share sheet. `window.__share` steers the fake: `fail` is the
+  // error name the next share throws, `accepts` is what canShare answers. ──
+  homeProfile = mkdtempSync(join(tmpdir(), "slop-ipad-smoke-home-"));
+  const home = await webkit.launchPersistentContext(homeProfile, {
+    ...devices["iPad Pro 11 landscape"],
+  });
+  await home.addInitScript(() => {
+    const media = window.matchMedia.bind(window);
+    window.matchMedia = (q) =>
+      /display-mode:\s*standalone/.test(q) ? { ...media(q), matches: true, media: q } : media(q);
+    window.__share = { shared: [], fail: "", accepts: true };
+    navigator.canShare = () => window.__share.accepts;
+    navigator.share = async ({ files }) => {
+      if (window.__share.fail) {
+        const name = window.__share.fail;
+        window.__share.fail = "";
+        throw new DOMException("fake", name);
+      }
+      window.__share.shared.push(files[0].name);
+    };
+  });
+  const hp = home.pages()[0] ?? (await home.newPage());
+  let downloads = 0;
+  hp.on("download", () => downloads++);
+  await hp.goto(url);
+  await hp.waitForSelector('[aria-label="Scrub frames"]', { timeout: 20000 });
+  await hp.waitForTimeout(500);
+  const fileMenu = async (title) => {
+    await hp.getByRole("button", { name: /^File/ }).first().click();
+    await hp.locator(`[role="menuitem"][title^="${title}"]`).first().click();
+  };
+  const shared = () => hp.evaluate(() => window.__share.shared.slice());
+
+  await fileMenu("Save the project");
+  await hp.waitForTimeout(1000);
+  check(
+    downloads === 0 && (await shared()).some((n) => n.endsWith(".zip")),
+    "Home Screen app: File ▸ Save goes to the share sheet, not a download",
+  );
+
+  // The tap expired before the sheet could open: the ready dialog takes a fresh one, and offers
+  // no download there.
+  await hp.evaluate(() => (window.__share.fail = "NotAllowedError"));
+  await fileMenu("Save the project");
+  await hp.waitForTimeout(1000);
+  const dialogUp = (await hp.getByText(/is ready$/).count()) > 0;
+  check(
+    dialogUp && (await hp.getByRole("button", { name: "Download instead" }).count()) === 0,
+    "Home Screen app: the ready dialog offers no download",
+  );
+  if (dialogUp) await hp.getByRole("button", { name: "Cancel" }).click();
+
+  // The sheet won't take the file: say so, rather than a download that silently does nothing.
+  await hp.evaluate(() => (window.__share.accepts = false));
+  const downloadsBefore = downloads;
+  await fileMenu("Save the project");
+  await hp.waitForTimeout(1000);
+  check(
+    downloads === downloadsBefore &&
+      (await hp.evaluate(() => document.body.innerText.includes("can't download"))),
+    "Home Screen app: a file the sheet won't take is reported, not downloaded",
+  );
+  await home.close();
 } finally {
   await context.close();
   rmSync(profile, { recursive: true, force: true });
+  if (homeProfile) rmSync(homeProfile, { recursive: true, force: true });
   await server?.close();
 }
 console.log(

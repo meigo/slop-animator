@@ -7913,3 +7913,22 @@ sheet, gotchas #14/#15) still needs the device.
   refuses Blobs in IndexedDB. A persistent context in a fresh temp folder stores them; not an app
   bug. Safari Private Browsing may hit the same, where the app's "Autosave is failing" alert shows.
 - 3 of 3 local runs and the deployed site all passing; ~11 s a run.
+
+**Save in the Home Screen app (2026-10-01, branch `feat/standalone-save`, roadmap item 8, slop-paint
+`af06e1d`).** iOS can't download from a Home Screen (standalone) web app: the link does nothing and
+raises nothing. Found by reading the code (slop-paint was reported), not seen on the iPad.
+- **File ▸ Save** downloaded everywhere, so in the Home Screen app it said "Saved name.zip" and wrote
+  nothing — the user's backup, silently missing. With `saveToFilesAvailable() && isStandalone()` it
+  now takes Save to Files' route (`deliverToFiles`, tap-riding sheet, ready dialog on an expired tap).
+  Both menu items stay, as in slop-paint; there they do the same thing.
+- **`isStandalone()`** (`export/share.ts`): `display-mode: standalone` or `navigator.standalone`.
+- **The ready dialog** hides "Download instead" there.
+- **Beyond slop-paint:** `deliverToFiles`' fallback for a file the sheet won't take downloaded, which
+  fails the same way. In the Home Screen app it now returns `"failed"` and sets a sticky
+  `persistAlert` saying the file was not saved and to save from Safari. Toolbar treats it as not
+  saved; the export dialog stays open, as it does for a download.
+- **Exports** already went to the sheet on iPad; unchanged. The browser and desktop are unchanged.
+- **Test:** three `test:ipad` checks in a second context that fakes standalone (`matchMedia`) and
+  records `navigator.share` / steers `canShare` and the next share error. All three failed before
+  the fix (Save downloaded). Build 0/0, 1580 tests. **Owed on the iPad, in the Home Screen app:**
+  File ▸ Save opens the share sheet and the file lands in Files.

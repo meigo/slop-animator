@@ -54,7 +54,8 @@
   const toFiles = saveToFilesAvailable();
 
   /** Hand the finished file over. Returns whether the export dialog should close (the ready dialog
-   *  replaces it); a type the share sheet won't take downloads as before and the dialog stays. */
+   *  replaces it); a type the share sheet won't take downloads as before (in the Home Screen app,
+   *  which can't download, it is reported instead) and the dialog stays. */
   async function deliver(blob: Blob, filename: string, note = ""): Promise<boolean> {
     if (!toFiles) {
       downloadBlob(blob, filename);

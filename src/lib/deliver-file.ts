@@ -1,5 +1,5 @@
 import { state as appState } from "../state/appState.svelte";
-import { canShareFile, shareFile } from "../export/share";
+import { canShareFile, isStandalone, shareFile } from "../export/share";
 import { downloadBlob } from "../export/download";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -25,8 +25,15 @@ export function markProjectSaved(): void {
 export async function deliverToFiles(
   file: File,
   { isProject, tryDirect, note = "" }: { isProject: boolean; tryDirect: boolean; note?: string },
-): Promise<"shared" | "dismissed" | "ready" | "downloaded"> {
+): Promise<"shared" | "dismissed" | "ready" | "downloaded" | "failed"> {
   if (!canShareFile(file)) {
+    // The Home Screen app can't download either: a download there does nothing and reports
+    // success. Say so instead — sticky, since "no file appeared" is the state in which someone
+    // closes the app believing they are saved.
+    if (isStandalone()) {
+      appState.persistAlert = `Couldn't save ${file.name}: the share sheet won't take this file, and the Home Screen app can't download — open the app in Safari and save there.`;
+      return "failed";
+    }
     downloadBlob(file, file.name);
     if (isProject) markProjectSaved();
     return "downloaded";
