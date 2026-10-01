@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951), plus a finger drag of a layer row (2026-10-01). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -413,6 +413,64 @@ try {
     "the autosave comes back after a reload (drawing and length)",
   );
   check(!(await statusSays("Autosave is failing")), "no autosave failure warning");
+
+  // The Dry brush (2026-10-01, from slop-paint): a pen stroke paints, and its texture is broken —
+  // across the stroke it is mostly partial tones (bare paper between hairs, the lighter outer hairs)
+  // where a Smooth stroke of the same size is solid but for its anti-aliased edges. Measured over
+  // the stroke's whole area, not along one line: each stroke's hair pattern is seeded from its first
+  // point's position AND time, so it differs run to run by design, and a single line of samples
+  // ranged 0-61/61 across identical runs. Each stroke on a line of its own (dy), at size 20.
+  /** Of the inked pixels in vertical cross-sections of the stroke on line `dy`, the share that are
+   *  partial (not solid ink; the colour is #1a1a1a, R 26). */
+  const partialShare = (dy) =>
+    page.evaluate(
+      ({ x, y, w, h, dy }) => {
+        const c = document.querySelector("div.touch-none.overflow-hidden > div canvas");
+        const r = c.getBoundingClientRect();
+        const ctx = c.getContext("2d");
+        let solid = 0;
+        let partial = 0;
+        for (let i = 0; i <= 40; i++) {
+          const t = 0.2 + (0.6 * i) / 40;
+          const cx = x + w * (0.25 + 0.5 * t);
+          const cy = y + h * (0.4 + 0.2 * t + dy);
+          const px = Math.round(((cx - r.left) * c.width) / r.width);
+          const py = Math.round(((cy - r.top) * c.height) / r.height);
+          const col = ctx.getImageData(px, py - 40, 1, 81).data;
+          for (let k = 0; k < col.length; k += 4) {
+            if (col[k + 3] === 0 || col[k] > 230) continue; // paper
+            if (col[k] <= 60) solid++;
+            else partial++;
+          }
+        }
+        return Math.round((100 * partial) / Math.max(1, solid + partial));
+      },
+      { x: stage.x, y: stage.y, w: stage.width, h: stage.height, dy },
+    );
+  const brushSelect = page.locator('select[title="Brush type"]');
+  const sizeSlider = page.locator('label:has-text("Size") input[type="range"]').first();
+  const setSize = (v) =>
+    sizeSlider.evaluate((el, v) => {
+      el.value = String(v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, v);
+  await page.keyboard.press("b");
+  const sizeBefore = await sizeSlider.inputValue();
+  await setSize(20);
+  await brushSelect.selectOption("smooth");
+  await send(line("pen", 41).map((s) => [...s, 0.3]));
+  await brushSelect.selectOption("dry");
+  await send(line("pen", 42).map((s) => [...s, -0.3]));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/5-dry-brush.png` });
+  const smoothPartial = await partialShare(0.3);
+  const dryPartial = await partialShare(-0.3);
+  check(
+    dryPartial >= 35 && smoothPartial <= 15,
+    `the Dry brush paints a broken, dry stroke (partial tones across it: dry ${dryPartial}%, smooth ${smoothPartial}%)`,
+  );
+  await brushSelect.selectOption("smooth");
+  await setSize(sizeBefore);
 
   // A finger drag of a layer row (2026-10-01, the drag that replaced SortableJS): the bottom row
   // to the top. Mid-drag the dragged row's own place has slid to the top and the rows it passed
