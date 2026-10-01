@@ -131,6 +131,18 @@ try {
   await page.waitForTimeout(200);
   check((await viewTransform()) !== before, "a finger drag pans the view");
 
+  // A pen press on the canvas leaves a focused text field (review batch E): the press is
+  // preventDefault'ed, so nothing else took focus — on iPad the keyboard stayed up.
+  await page.locator('input[inputmode="decimal"]').first().focus();
+  const focusedBefore = await page.evaluate(() => document.activeElement?.tagName);
+  await send(line("pen", 4));
+  await page.waitForTimeout(200);
+  const focusedAfter = await page.evaluate(() => document.activeElement?.tagName);
+  check(
+    focusedBefore === "INPUT" && focusedAfter !== "INPUT",
+    "a pen press on the canvas leaves a focused number field",
+  );
+
   // A real finger tap on a toolbar menu.
   const file = await page.getByRole("button", { name: /^File/ }).first().boundingBox();
   await page.touchscreen.tap(file.x + file.width / 2, file.y + file.height / 2);

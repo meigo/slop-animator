@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { Check, X } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
-  import { setupInput, type InputPoint } from "../core/input";
+  import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
+  import { isTextEntry } from "./text-entry";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke } from "../core/brush";
@@ -2485,6 +2486,18 @@
     const overlayRo = new ResizeObserver(() => sizeOverlay());
     overlayRo.observe(stage);
 
+    // A press on the canvas leaves a text field (layer rename, size box, a NumberField): the pen and
+    // finger handlers preventDefault the press, which also stops the browser moving focus, so the
+    // field stayed focused — on iPad the keyboard stayed up and a rename stayed uncommitted, and
+    // on desktop the next tool key went into the field (roadmap 14f, slop-paint 1c8b5fd). Not on
+    // the stage's own panels: the pose bar's Gap field lives there.
+    const blurTextEntry = (e: PointerEvent) => {
+      if (isStageChromeTarget(e.target)) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && isTextEntry(el)) el.blur();
+    };
+    stage.addEventListener("pointerdown", blurTextEntry, true);
+
     // Finger gestures: 1-finger pan, 1-finger double-tap toggle eraser, 2-finger pinch zoom+rotate,
     // 2-finger tap undo, 3-finger tap redo. The Apple Pencil (pointerType "pen") bypasses this and draws.
     const cleanupTouch = setupTouchGestures(stage, viewport, {
@@ -2597,6 +2610,7 @@
       overlayRo.disconnect();
       input.dispose();
       cleanupTouch();
+      stage.removeEventListener("pointerdown", blurTextEntry, true);
       stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
       stage.removeEventListener("pointermove", stagePanMove, { capture: true });
       stage.removeEventListener("pointerup", stagePanUp, { capture: true });
