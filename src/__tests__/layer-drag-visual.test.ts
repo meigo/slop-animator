@@ -6,7 +6,7 @@ import {
   pastThreshold,
   ROW_PX,
   SCROLL_MAX_PX,
-  shiftedRowIds,
+  slideOffsets,
 } from "../lib/layer-drag-visual";
 import type { RowBox } from "../anim/layer-drop";
 
@@ -26,11 +26,43 @@ describe("layer drag visuals", () => {
     expect(pastThreshold(-3, 0)).toBe(true);
   });
 
-  it("slides every row at or below the drop line, and none without a drop", () => {
-    expect([...shiftedRowIds(rows, 64)]).toEqual(["l2", "l3"]);
-    expect([...shiftedRowIds(rows, 0)]).toEqual(["l4", "g3", "l2", "l3"]);
-    expect([...shiftedRowIds(rows, 128)]).toEqual([]);
-    expect(shiftedRowIds(rows, null).size).toBe(0);
+  it("slides each row to its place in the new order, by the rows' own heights", () => {
+    // Top row down two places: it moves 64px down, the two rows it passed close up.
+    expect([...slideOffsets(rows, ["g3", "l2", "l4", "l3"])]).toEqual([
+      ["g3", -32],
+      ["l2", -32],
+      ["l4", 64],
+    ]);
+    // Bottom row to the top: the rest move down one row. (A layer and a group share id 3.)
+    expect([...slideOffsets(rows, ["l3", "l4", "g3", "l2"])]).toEqual([
+      ["l3", -96],
+      ["l4", 32],
+      ["g3", 32],
+      ["l2", 32],
+    ]);
+    // Mixed heights: a 40px row and a 20px row swap.
+    const mixed: RowBox[] = [
+      { kind: "group", id: 1, key: "g1", top: 0, bottom: 40 },
+      { kind: "layer", id: 2, key: "l2", top: 40, bottom: 60 },
+    ];
+    expect([...slideOffsets(mixed, ["l2", "g1"])]).toEqual([
+      ["l2", -40],
+      ["g1", 20],
+    ]);
+  });
+
+  it("closes up over a row the new order leaves out (a group emptied by the drop)", () => {
+    // g3 is gone after the drop: l2 and l3 move up into its place.
+    expect([...slideOffsets(rows, ["l4", "l2", "l3"])]).toEqual([
+      ["l2", -32],
+      ["l3", -32],
+    ]);
+  });
+
+  it("slides nothing for the same order or a refused drop", () => {
+    expect(slideOffsets(rows, ["l4", "g3", "l2", "l3"]).size).toBe(0);
+    expect(slideOffsets(rows, []).size).toBe(0);
+    expect(slideOffsets([], ["l1"]).size).toBe(0);
   });
 
   it("keeps the floating row inside the content", () => {

@@ -415,7 +415,8 @@ try {
   check(!(await statusSays("Autosave is failing")), "no autosave failure warning");
 
   // A finger drag of a layer row (2026-10-01, the drag that replaced SortableJS): the bottom row
-  // to the top, and the gap open mid-drag. Simulated pointers are not live, so capture fails (the
+  // to the top. Mid-drag the dragged row's own place has slid to the top and the rows it passed
+  // closed up by its height (as slop-spine / slop-paint: no extra gap). Simulated pointers are not live, so capture fails (the
   // init script lets it fail quietly) and every event goes to the grip, as a captured stream would.
   await page.locator('button[title="Add layer"]').click();
   await page.waitForTimeout(200);
@@ -436,6 +437,11 @@ try {
       .getBoundingClientRect();
     const g = grip.getBoundingClientRect();
     const x = g.left + g.width / 2;
+    const rowEl = (k) => document.querySelector(`[data-layer-list] [data-row-key="${k}"]`);
+    const tops = Object.fromEntries(keys.map((k) => [k, rowEl(k).getBoundingClientRect().top]));
+    const draggedH = rowEl(from).getBoundingClientRect().height;
+    /** A row's slide: the translateY it is drawn with mid-drag (0 when it doesn't slide). */
+    const dy = (k) => Number(/translateY\((-?[\d.]+)px\)/.exec(rowEl(k).style.transform)?.[1] ?? 0);
     const fire = (type, y) =>
       grip.dispatchEvent(
         new PointerEvent(type, {
@@ -458,12 +464,14 @@ try {
       fire("pointermove", y + ((target - y) * i) / 8);
       await frame();
     }
-    const slid = [...document.querySelectorAll("[data-layer-list] [data-row-key]")].some((el) =>
-      el.style.transform.includes("translateY"),
-    );
+    const near = (a, b) => Math.abs(a - b) < 1.5;
+    const slid =
+      near(dy(from), tops[keys[0]] - tops[from]) &&
+      keys.slice(0, -1).every((k) => near(dy(k), draggedH));
+    const slides = keys.map((k) => `${k}:${dy(k)}`).join(" ");
     for (const t of ["pointerup", "pointerout", "pointerleave"]) fire(t, target);
     await frame();
-    return { slid };
+    return { slid, slides };
   }, rowsBefore);
   await page.waitForTimeout(300);
   const rowsAfter = await rowOrder();
@@ -471,7 +479,7 @@ try {
     fingerDrag.slid &&
       rowsAfter[0] === rowsBefore[rowsBefore.length - 1] &&
       rowsAfter.length === rowsBefore.length,
-    `a finger drag moves a layer row, with the gap open mid-drag (${rowsBefore} → ${rowsAfter})`,
+    `a finger drag moves a layer row; mid-drag its place slides to the slot, the rest close up (${fingerDrag.slides}; ${rowsBefore} → ${rowsAfter})`,
   );
 
   // A real finger tap on a toolbar menu.

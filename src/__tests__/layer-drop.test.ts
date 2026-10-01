@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { applyOrder, dropTarget, rowKey, type Drop, type RowBox } from "../anim/layer-drop";
+import {
+  applyOrder,
+  dropTarget,
+  rowKey,
+  rowOrderAfter,
+  type Drop,
+  type RowBox,
+} from "../anim/layer-drop";
 import type { Layer, LayerGroup } from "../anim/document";
 
 const layer = (id: number, groupId: number | null = null) =>
@@ -67,29 +74,24 @@ describe("applyOrder", () => {
 
 describe("dropTarget — a layer", () => {
   it("reorders at the top level", () => {
-    expect(dropA(4, 5)).toEqual({ order: expect.any(Array), line: 0, into: null });
+    expect(dropA(4, 5)).toEqual({ order: expect.any(Array), into: null });
     expect(show(dropA(4, 5))).toBe("L4 L1 L2@10 L3@10");
     expect(show(dropA(1, 130))).toBe("L2@10 L3@10 L4 L1");
-    expect(dropA(1, 130)?.line).toBe(140);
   });
   it("drops into an expanded group at the top, middle and end", () => {
     const top = dropA(4, 50); // lower half of the header
     expect(show(top)).toBe("L1 L4@10 L2@10 L3@10");
-    expect(top?.line).toBe(56);
     expect(top?.into).toBe(10);
     const middle = dropA(4, 90); // upper half of L3
     expect(show(middle)).toBe("L1 L2@10 L4@10 L3@10");
-    expect(middle?.line).toBe(84);
     expect(middle?.into).toBe(10);
     const end = dropA(1, 105); // lower half of the last member
     expect(show(end)).toBe("L2@10 L3@10 L1@10 L4");
-    expect(end?.line).toBe(112);
     expect(end?.into).toBe(10);
   });
   it("drops out of a group above and below it", () => {
     const above = dropA(2, 30); // upper half of the header
     expect(show(above)).toBe("L1 L2 L3@10 L4");
-    expect(above?.line).toBe(28);
     expect(above?.into).toBe(null);
     const below = dropA(3, 115); // upper half of L4
     expect(show(below)).toBe("L1 L2@10 L3 L4");
@@ -100,7 +102,6 @@ describe("dropTarget — a layer", () => {
     const rows = [R("layer", 1, 0), R("group", 10, 1), R("layer", 4, 2)]; // members hidden
     const lower = dropTarget(layersA(), groups, rows, 50, { kind: "layer", id: 1 });
     expect(show(lower)).toBe("L2@10 L3@10 L1 L4");
-    expect(lower?.line).toBe(56);
     expect(lower?.into).toBe(null);
     const upper = dropTarget(layersA(), groups, rows, 30, { kind: "layer", id: 4 });
     expect(show(upper)).toBe("L1 L4 L2@10 L3@10");
@@ -131,7 +132,6 @@ describe("dropTarget — a layer", () => {
       dropTarget(layers, [group(10)], rows, y, { kind: "layer", id });
     const below = drop(1, 130); // past the last member's bottom (112)
     expect(show(below)).toBe("L2@10 L3@10 L1");
-    expect(below?.line).toBe(112);
     expect(below?.into).toBe(null);
     expect(drop(1, 112)?.into).toBe(null); // exactly at the bottom counts as past it
     const out = drop(2, 130); // a member of that group: out, to the bottom
@@ -140,7 +140,7 @@ describe("dropTarget — a layer", () => {
     const inside = drop(1, 105); // the last member's lower half: still into the group
     expect(show(inside)).toBe("L2@10 L3@10 L1@10");
     expect(inside?.into).toBe(10);
-    expect(drop(3, 130)).toEqual({ order: expect.any(Array), line: 112, into: null });
+    expect(drop(3, 130)).toEqual({ order: expect.any(Array), into: null });
   });
   it("is null past the last row when the layer is already last at the top level", () => {
     expect(dropA(4, 200)).toBeNull();
@@ -165,11 +165,9 @@ describe("dropTarget — a group", () => {
   it("moves the whole block above or below another block", () => {
     const above = dropA(10, 5, "group");
     expect(show(above)).toBe("L2@10 L3@10 L1 L4");
-    expect(above?.line).toBe(0);
     expect(above?.into).toBe(null);
     const below = dropA(10, 130, "group");
     expect(show(below)).toBe("L1 L4 L2@10 L3@10");
-    expect(below?.line).toBe(140);
   });
   it("is null over its own block or next to where it is", () => {
     expect(dropA(10, 70, "group")).toBeNull();
@@ -182,18 +180,15 @@ describe("dropTarget — a group", () => {
     const rows = [R("layer", 1, 0), R("group", 10, 1), R("layer", 4, 2)];
     const above = dropTarget(layersA(), groups, rows, 5, { kind: "group", id: 10 });
     expect(show(above)).toBe("L2@10 L3@10 L1 L4");
-    expect(above?.line).toBe(0);
     expect(dropTarget(layersA(), groups, rows, 40, { kind: "group", id: 10 })).toBeNull();
     const below = dropTarget(layersA(), groups, rows, 80, { kind: "group", id: 10 });
     expect(show(below)).toBe("L1 L4 L2@10 L3@10");
-    expect(below?.line).toBe(84);
     // Another group dragged over the collapsed one: its header is the whole block.
     const layers = [layer(6, 20), ...layersA()]; // G20 [L6] at the bottom
     const rows2 = [...rows, R("group", 20, 3), R("layer", 6, 4)];
     const groups2 = [group(10, true), group(20)];
     const over = dropTarget(layers, groups2, rows2, 50, { kind: "group", id: 20 });
     expect(show(over)).toBe("L1 L2@10 L3@10 L6@20 L4");
-    expect(over?.line).toBe(56);
   });
   it("snaps to another group's edge instead of entering it", () => {
     // Fixture B, top first: G10 [L2, L3], L1, G20 [L5, L6].
@@ -211,10 +206,8 @@ describe("dropTarget — a group", () => {
     // G20's block spans 112-196 (middle 154).
     const upper = dropTarget(layers, groups, rows, 150, { kind: "group", id: 10 });
     expect(show(upper)).toBe("L1 L2@10 L3@10 L5@20 L6@20");
-    expect(upper?.line).toBe(112);
     const lower = dropTarget(layers, groups, rows, 190, { kind: "group", id: 10 });
     expect(show(lower)).toBe("L1 L5@20 L6@20 L2@10 L3@10");
-    expect(lower?.line).toBe(196);
   });
 });
 
@@ -239,5 +232,32 @@ describe("dropTarget — every result", () => {
         const d = dropTarget(layersA(), groupsA, rowsA, y, drag);
         if (d) valid(d.order, [1, 2, 3, 4]);
       }
+  });
+});
+
+describe("rowOrderAfter", () => {
+  // Rows now (fixture A): L1, G10, L2, L3, L4.
+  const after = (d: Drop | null, layers = layersA(), groups = groupsA) =>
+    d && rowOrderAfter(layers, groups, d);
+  it("lists the visible rows as they will be after the drop", () => {
+    expect(after(dropA(4, 5))).toEqual(["l4", "l1", "g10", "l2", "l3"]);
+    expect(after(dropA(4, 50))).toEqual(["l1", "g10", "l4", "l2", "l3"]); // into the group's top
+    expect(after(dropA(1, 500))).toEqual(["g10", "l2", "l3", "l4", "l1"]);
+  });
+  it("moves a group with its members", () => {
+    expect(after(dropA(10, 130, "group"))).toEqual(["l1", "l4", "g10", "l2", "l3"]);
+  });
+  it("leaves a collapsed group's members out", () => {
+    const groups = [group(10, true)];
+    const rows = [R("layer", 1, 0), R("group", 10, 1), R("layer", 4, 2)];
+    const d = dropTarget(layersA(), groups, rows, 50, { kind: "layer", id: 1 });
+    expect(after(d, layersA(), groups)).toEqual(["g10", "l1", "l4"]);
+  });
+  it("leaves out a group the drop empties, and does not touch the layers", () => {
+    const layers = [layer(2, 10), layer(1)];
+    const rows = [R("layer", 1, 0), R("group", 10, 1), R("layer", 2, 2)];
+    const d = dropTarget(layers, [group(10)], rows, 5, { kind: "layer", id: 2 });
+    expect(after(d, layers, [group(10)])).toEqual(["l2", "l1"]);
+    expect(layers.map((l) => l.groupId)).toEqual([10, null]);
   });
 });

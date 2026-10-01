@@ -49,6 +49,13 @@ reads the new order back from the DOM. What that has cost here:
 > outline. (2) Those lines go on the group's HEADER row, not the whole `.group-block` (on the block,
 > the slid last member rendered below the block's bottom line), with a `.ui-selected.ui-drop-target`
 > rule keeping a selected header's left bar. This supersedes the outline-on-the-block text below.
+>
+> **Amended 2026-10-01 (after merge review, as slop-spine `65aa89a` / slop-paint `8d576cf`):** the
+> "one-row gap" and "dims in place" decisions are superseded. The dragged row's own place (a group:
+> header and visible members, as one block) slides to the drop slot and the rows it passes close up;
+> the list keeps its height. `rowOrderAfter` (`layer-drop.ts`) gives the row order after the drop and
+> `slideOffsets` (`layer-drag-visual.ts`) each row's offset; `Drop.line` is gone. A group's header
+> that the drop empties fades out while the rows close up over it. The floating copy stays one row.
 
 ## Design
 

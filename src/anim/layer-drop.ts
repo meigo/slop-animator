@@ -8,6 +8,7 @@
  * one level deep. Every order this returns keeps each group's members one unbroken run.
  */
 import { groupOf, type Layer, type LayerGroup } from "./document";
+import { buildSegments } from "./row-layout";
 
 /** One visible row, top first, in the list's content coordinates. `key` keeps a layer and a group
  *  with the same numeric id apart (older saves may have one). */
@@ -20,9 +21,9 @@ export type RowBox = {
 };
 export type Drag = { kind: "layer"; id: number } | { kind: "group"; id: number };
 export type OrderEntry = { id: number; groupId: number | null };
-/** `order` is bottom-first, what `reorderLayersWithGroups` takes. `line` is where the gap opens.
- *  `into` is the group to outline — the end of a group and just below it share a line. */
-export type Drop = { order: OrderEntry[]; line: number; into: number | null };
+/** `order` is bottom-first, what `reorderLayersWithGroups` takes. `into` is the group whose header
+ *  is marked as the destination — the end of a group and just below it look the same otherwise. */
+export type Drop = { order: OrderEntry[]; into: number | null };
 
 export function rowKey(kind: "layer" | "group", id: number): string {
   return kind === "layer" ? `l${id}` : `g${id}`;
@@ -50,7 +51,7 @@ function under<T extends { bottom: number }>(items: readonly T[], y: number): T 
   return items.find((r) => y < r.bottom) ?? items[items.length - 1];
 }
 
-type Placed = { display: OrderEntry[]; line: number; into: number | null };
+type Placed = { display: OrderEntry[]; into: number | null };
 
 export function dropTarget(
   layers: Layer[],
@@ -73,7 +74,30 @@ export function dropTarget(
     (e, i) => e.id === display[i].id && e.groupId === display[i].groupId,
   );
   if (same) return null;
-  return { order: [...placed.display].reverse(), line: placed.line, into: placed.into };
+  return { order: [...placed.display].reverse(), into: placed.into };
+}
+
+/** The visible rows' keys, top first, as they will be after `drop` (2026-10-01, as slop-paint's
+ *  `rowOrderAfter`): what the panel slides each row to while dragging, so the dragged row's own
+ *  place moves to the slot and the rows it passes close up. Built by the panel's own segment rule
+ *  on copies, so a collapsed group still shows only its header, and a group the drop empties —
+ *  `reorderLayersWithGroups` removes it — has no row. The layers are not touched. */
+export function rowOrderAfter(layers: Layer[], groups: LayerGroup[], drop: Drop): string[] {
+  const byId = new Map(layers.map((l) => [l.id, l]));
+  const moved: Layer[] = [];
+  for (const e of drop.order) {
+    const l = byId.get(e.id);
+    if (l) moved.push({ ...l, groupId: e.groupId } as Layer);
+  }
+  const keys: string[] = [];
+  for (const seg of buildSegments(moved, groups)) {
+    if ("layer" in seg) keys.push(rowKey("layer", seg.layer.id));
+    else {
+      keys.push(rowKey("group", seg.group.id));
+      if (!seg.group.collapsed) for (const l of seg.layers) keys.push(rowKey("layer", l.id));
+    }
+  }
+  return keys;
 }
 
 /** A layer goes by the row under the pointer: above or below a layer row in that row's group;
@@ -94,7 +118,7 @@ function placeLayer(
   if (y >= end) {
     const next = display.filter((e) => e.id !== id);
     next.push({ id, groupId: null });
-    return { display: next, line: end, into: null };
+    return { display: next, into: null };
   }
   const row = under(rows, y);
   const upper = y < mid(row);
@@ -117,7 +141,7 @@ function placeLayer(
   }
   const next = display.filter((e) => e.id !== id);
   next.splice(from < at ? at - 1 : at, 0, { id, groupId });
-  return { display: next, line: upper ? row.top : row.bottom, into: groupId };
+  return { display: next, into: groupId };
 }
 
 type Block = { kind: "layer" | "group"; id: number; top: number; bottom: number };
@@ -156,5 +180,5 @@ function placeGroup(
   let last = first;
   while (last + 1 < rest.length && inBlock(rest[last + 1])) last++;
   rest.splice(upper ? first : last + 1, 0, ...run);
-  return { display: rest, line: upper ? block.top : block.bottom, into: null };
+  return { display: rest, into: null };
 }

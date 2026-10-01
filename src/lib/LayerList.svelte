@@ -52,8 +52,15 @@
   import { clampPanelWidth } from "../anim/panel-layout";
   import LayerProps from "./LayerProps.svelte";
   import { isDoubleTap, type Tap } from "./double-tap";
-  import { dropTarget, rowKey, type Drag, type Drop, type RowBox } from "../anim/layer-drop";
-  import { autoScrollStep, ghostTop, pastThreshold, shiftedRowIds } from "./layer-drag-visual";
+  import {
+    dropTarget,
+    rowKey,
+    rowOrderAfter,
+    type Drag,
+    type Drop,
+    type RowBox,
+  } from "../anim/layer-drop";
+  import { autoScrollStep, ghostTop, pastThreshold, slideOffsets } from "./layer-drag-visual";
   import { isTextEntry } from "./text-entry";
 
   let listEl: HTMLDivElement;
@@ -194,7 +201,13 @@
   let dragging: Dragging | null = null;
   let drop = $state<Drop | null>(null);
   let ghost = $state<{ top: number; label: string; count: number; height: number } | null>(null);
-  let shifted = $state(new Set<string>());
+  /** How far each row slides (2026-10-01, as slop-spine and slop-paint): the dragged row's own
+   *  place — a group with its members — moves to the drop slot, dimmed, and the rows it passes close
+   *  up; no extra gap, so the list keeps its height. */
+  let shifted = $state(new Map<string, number>());
+  /** Rows the drop would remove (a group's header when its last member leaves): faded out, and the
+   *  rows below close up over them, so the preview is what the drop produces. */
+  let vanishing = $state(new Set<string>());
   let dimmed = $state(new Set<string>());
   let scrollFrame = 0;
   /** A drag just ended on the grip: swallow the click that follows, so a drag never selects. */
@@ -220,7 +233,11 @@
   }
 
   function startDrag(e: PointerEvent, drag: Drag, label: string, count: number) {
-    if (dragging) return; // one drag at a time: a second finger or pen never takes over
+    // One drag at a time: a second finger or pen never takes over. But a drag whose row has left the
+    // DOM is a leftover (a press that never lifted, its row removed before the release, its events
+    // possibly never delivered): drop it rather than let it block every grip until a reload.
+    if (dragging?.row.isConnected) return;
+    if (dragging) finishDrag();
     if (e.button !== 0) return;
     const row = (e.currentTarget as Element | null)?.closest<HTMLElement>("[data-row-key]");
     if (!row) return;
@@ -283,7 +300,10 @@
     if (!ghost) return;
     const y = d.clientY - listEl.getBoundingClientRect().top + listEl.scrollTop;
     drop = dropTarget(appState.project.layers, appState.project.groups, d.boxes, y, d.drag);
-    shifted = shiftedRowIds(d.boxes, drop?.line ?? null);
+    const after = drop ? rowOrderAfter(appState.project.layers, appState.project.groups, drop) : [];
+    shifted = slideOffsets(d.boxes, after);
+    const kept = new Set(after);
+    vanishing = new Set(drop ? d.boxes.filter((b) => !kept.has(b.key)).map((b) => b.key) : []);
     ghost = { ...ghost, top: ghostTop(y, d.grab, d.contentHeight, d.rowPx) };
     document.documentElement.classList.toggle("layer-drop-refused", drop === null);
   }
@@ -313,7 +333,8 @@
     dragging = null;
     drop = null;
     ghost = null;
-    shifted = new Set();
+    shifted = new Map();
+    vanishing = new Set();
     dimmed = new Set();
     document.documentElement.classList.remove("layer-dragging", "layer-drop-refused");
   }
@@ -337,7 +358,7 @@
     const target = apply && d.live ? drop : null;
     swallowClick = d.live;
     // Clear the slides AND their transition in the same tick as the commit, or the re-ordered rows
-    // animate back from the gap.
+    // animate back from their slides.
     finishDrag();
     if (target) reorderLayersWithGroups(target.order);
   }
@@ -349,9 +370,11 @@
     e.stopPropagation();
   }
 
-  const slide = (key: string) =>
-    shifted.has(key) && ghost ? `translateY(${ghost.height}px)` : null;
-  const slideTransition = $derived(ghost ? "transform 150ms ease" : null);
+  const slide = (key: string) => {
+    const dy = ghost ? shifted.get(key) : undefined;
+    return dy ? `translateY(${dy}px)` : null;
+  };
+  const slideTransition = $derived(ghost ? "transform 150ms ease, opacity 150ms ease" : null);
 </script>
 
 {#snippet layerRow(layer: Layer)}
@@ -381,6 +404,7 @@
     data-row-id={layer.id}
     data-row-key={rowKey("layer", layer.id)}
     class:opacity-40={dimmed.has(rowKey("layer", layer.id))}
+    class:opacity-0={vanishing.has(rowKey("layer", layer.id))}
     style:transform={slide(rowKey("layer", layer.id))}
     style:transition={slideTransition}
     class="border-b border-border-light cursor-pointer hover:bg-surface-hover"
@@ -683,11 +707,13 @@
             data-row-id={seg.group.id}
             data-row-key={rowKey("group", seg.group.id)}
             class:opacity-40={dimmed.has(rowKey("group", seg.group.id))}
+            class:opacity-0={vanishing.has(rowKey("group", seg.group.id))}
             style:transform={slide(rowKey("group", seg.group.id))}
             style:transition={slideTransition}
           >
-            <!-- The block's grip: it drags the header and its members as one (a one-row ghost and
-                   gap, the block dimmed in place — SLOP-LAYER-DRAG.md rule 7). -->
+            <!-- The block's grip: it drags the header and its members as one. The floating copy is
+                 the header alone; the block's own place (header and members, dimmed) slides to the
+                 drop slot at its true height. -->
             <span
               class="layer-drag-handle cursor-grab text-text-muted"
               style="touch-action: none"

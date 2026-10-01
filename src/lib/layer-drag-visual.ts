@@ -1,5 +1,5 @@
 /** What a row drag in the layers panel looks like (2026-10-01): the dragged row follows the pointer
- *  and the rows below the drop point slide down to open a gap — drawn over `layer-drop.ts`'s
+ *  and its own place moves to the drop slot, the rows it passes closing up — drawn over `layer-drop.ts`'s
  *  `dropTarget`, which alone decides where a drop lands. Copied from slop-vector-editor
  *  (SLOP-LAYER-DRAG.md); here rows are keyed (`l12` / `g3`: layer and group ids can collide) and
  *  the row height is passed in.
@@ -20,11 +20,29 @@ export function pastThreshold(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX;
 }
 
-/** The rows that slide down to open the gap: every row at or below the drop line. Nothing slides
- *  when there is no drop (a refused position), so the gap closes. */
-export function shiftedRowIds(rows: readonly RowBox[], line: number | null): Set<string> {
-  if (line === null) return new Set();
-  return new Set(rows.filter((r) => r.top >= line - 0.5).map((r) => r.key));
+/** How far each row slides while dragging: from where it is to where `order` (the row keys, top
+ *  first, after the drop — `layer-drop.ts` `rowOrderAfter`) puts it, stacking the rows by their
+ *  own heights from the first row's top. So the dragged row's own place (a group with its members)
+ *  moves to the drop slot and the rows it passes close up behind it, as slop-spine, slop-paint and
+ *  SortableJS: no extra gap, the list keeps its height. Only rows that move are listed; an empty
+ *  `order` (a refused position) slides nothing. A key `order` lacks (a group the drop empties) takes
+ *  no space, so the rows after it close up over it. (slop-paint's, keyed: layer and group ids can
+ *  collide here.) */
+export function slideOffsets(
+  rows: readonly RowBox[],
+  order: readonly string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (rows.length === 0 || order.length === 0) return out;
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  let top = rows[0].top;
+  for (const key of order) {
+    const r = byKey.get(key);
+    if (!r) continue;
+    if (Math.abs(top - r.top) > 0.5) out.set(key, top - r.top);
+    top += r.bottom - r.top;
+  }
+  return out;
 }
 
 /** The floating row's top: the pointer less where on its row it was grabbed, kept inside the

@@ -7933,6 +7933,11 @@ raises nothing. Found by reading the code (slop-paint was reported), not seen on
   the fix (Save downloaded). Build 0/0, 1580 tests. **Owed on the iPad, in the Home Screen app:**
   File ▸ Save opens the share sheet and the file lands in Files.
 
+> **Partly SUPERSEDED 2026-10-01** by the two entries after this one: "ghost and gap are one row" and
+> "dims … in place" are replaced by the row's own place sliding to the slot (see "The dragged row's own
+> place slides to the drop slot"); the throwaway check script named below was deleted with the plan's
+> workspace and no longer exists.
+
 **Layer drag without SortableJS (2026-10-01, branch `feat/layer-drag`, ../SLOP-LAYER-DRAG.md).** The
 layer panel dragged with SortableJS, which moves DOM nodes Svelte owns and was read back from the
 DOM. Spec: `docs/superpowers/specs/2026-10-01-layer-drag-without-sortable-design.md`; plan beside it.
@@ -7982,3 +7987,48 @@ DOM. Spec: `docs/superpowers/specs/2026-10-01-layer-drag-without-sortable-design
   mid-drag" (21 ok), failing with the drop's `reorderLayersWithGroups` call disabled and with the slide broken. That check has two
   top-level rows, so it proves a reorder, not a group drop; it is desktop WebKit, not iPadOS.
 - **Owed on the iPad:** a real finger and Pencil drag, into and out of a group.
+
+**Layer drag: final-review fixes (2026-10-01, branch `feat/layer-drag`, `5cd6c87` + a guard in the
+next entry's commit).** The whole-branch review of the entry above found:
+- **No way out below a group that ends the list:** a pointer past the last row was clamped to the
+  last member, whose lower half means "into that group". Now a `y` at or past the last row's bottom
+  drops the layer at the end of the list at the top level (as slop-paint). The spec's Layer-drag rule
+  was amended.
+- **A drag could get stuck** when its row left the DOM mid-drag (Cmd+Z undoing that layer's creation,
+  or a second finger deleting it): `lostpointercapture` then fires at the document, so the grip never
+  heard the end. The panel now also hears `pointermove` / `pointerup` / `pointercancel` on the window,
+  filtered by the drag's pointer id, and ends a drag whose row is gone. Shown failing (the ghost and
+  `layer-dragging` left behind) without it.
+- A second press no longer takes over a live drag; a grip press blurs a focused text field (the
+  press's `preventDefault` kept the focus, so on iPad the keyboard stayed up — same class as roadmap
+  14f). A leftover drag whose row is gone no longer blocks the next press (the guard at the top of
+  `startDrag`; a never-lifted press whose row was removed could otherwise, if WebKit dropped its
+  events, leave every grip dead until a reload — unverified, cheap to rule out).
+- Parked, by ruling: a group collapsed or an undo taken mid-drag leaves the measured rows stale; the
+  drop still commits a valid order, and it is undoable.
+
+**The dragged row's own place slides to the drop slot (2026-10-01, branch `feat/layer-drag`; as
+slop-spine `65aa89a` and slop-paint `8d576cf`).** Asked as *"I updated layer dnd of slop-spine (and
+doing it for other slop apps too), i'd like the similar UX here"*. Before, the dragged row stayed
+dimmed in place and a one-row gap opened at the drop point, which read as an extra slot. Now the
+dragged row's own place moves to the slot and the rows it passes close up, as SortableJS did; the list
+keeps its height.
+- `rowOrderAfter(layers, groups, drop)` (`layer-drop.ts`, pure): the visible rows' keys after the drop,
+  built with the panel's own `buildSegments` on copies — so a collapsed group still shows only its
+  header, and a group the drop empties (which `reorderLayersWithGroups` removes) has no row.
+- `slideOffsets(rows, order)` (`layer-drag-visual.ts`, slop-paint's, keyed) replaces `shiftedRowIds`:
+  each row's offset by the rows' own heights; a key the order lacks takes no space. `Drop.line` is
+  gone (only the old gap used it).
+- A dragged group's floating copy is still its header alone; its place (header and visible members,
+  dimmed) slides as one block at its true height. Unlike paint (whose groups can be empty), dragging a
+  group's LAST member out fades the header out (`opacity-0`, 150ms) while the rows close up over it —
+  the preview is exactly what the drop produces.
+- Tests 1603 → 1609 (`slideOffsets` incl. mixed heights and an emptied group; `rowOrderAfter` incl.
+  a group move, a collapsed group and an emptied one). `test:ipad`'s finger drag now reads each row's
+  slide (the dragged row by the distance to the top row, the passed row by the dragged row's height);
+  it FAILED with the slides cleared and with the old dimmed-in-place behaviour restored. A throwaway
+  real-mouse check (WebKit and Chromium, all ok, not kept): into a group (header marked, the dragged
+  row's place under it, members closed down), a group move (header and members slide by one amount),
+  emptying a group (its header fades, gone after the drop), no page errors; screenshots read.
+- **Owed on the iPad:** a real finger and Pencil drag, into and out of a group, and one emptying a
+  group.
