@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { geodesicDistances, deformMeshGeodesic, poseWeights } from "../core/geodesic";
+import {
+  geodesicDistances,
+  geodesicFrom,
+  meshAdjacency,
+  deformMeshGeodesic,
+  poseWeights,
+  type MeshAdjacency,
+} from "../core/geodesic";
 import { triangulateSilhouette, type Mesh } from "../core/triangulate";
 import { mlsRigid, mlsRigidWeighted } from "../core/mls";
 
@@ -191,5 +198,45 @@ describe("poseWeights reach window", () => {
     const a = poseWeights(mesh, [0, 3]).weights;
     const b = poseWeights(mesh, [0, 3], 1, [undefined, undefined]).weights;
     expect(b).toEqual(a);
+  });
+});
+
+describe("geodesicFrom (heap Dijkstra)", () => {
+  // The O(V²) scan it replaced, kept here as the reference.
+  function slow(adj: MeshAdjacency, src: number): number[] {
+    const V = adj.length;
+    const dist = new Array<number>(V).fill(Infinity);
+    const done = new Array<boolean>(V).fill(false);
+    dist[src] = 0;
+    for (let it = 0; it < V; it++) {
+      let u = -1,
+        best = Infinity;
+      for (let i = 0; i < V; i++) {
+        if (!done[i] && dist[i] < best) {
+          best = dist[i];
+          u = i;
+        }
+      }
+      if (u === -1) break;
+      done[u] = true;
+      for (const e of adj[u]) dist[e.to] = Math.min(dist[e.to], dist[u] + e.w);
+    }
+    return dist;
+  }
+
+  it("gives the same distances as the plain scan, on a concave mesh with an island", () => {
+    const inside = (x: number, y: number) =>
+      (x >= 0 && x < 60 && y >= 0 && y < 60 && !(x >= 20 && x < 40 && y < 45)) ||
+      (x >= 80 && x < 90 && y >= 10 && y < 20); // unreachable from the U
+    const m = triangulateSilhouette(inside, 100, 60, { spacing: 5 });
+    const adj = meshAdjacency(m);
+    for (const s of [0, 7, Math.floor(m.vertices.length / 2), m.vertices.length - 1]) {
+      const a = geodesicFrom(adj, s);
+      const b = slow(adj, s);
+      for (let v = 0; v < a.length; v++) {
+        if (b[v] === Infinity) expect(a[v]).toBe(Infinity);
+        else expect(a[v]).toBeCloseTo(b[v], 9);
+      }
+    }
   });
 });

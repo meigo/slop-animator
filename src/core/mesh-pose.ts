@@ -1,5 +1,5 @@
 import { coverSilhouette, type Mesh } from "./triangulate";
-import { poseWeights } from "./geodesic";
+import { geodesicFrom, meshAdjacency, poseWeights, type MeshAdjacency } from "./geodesic";
 import { mlsRigidWeighted, type Pt } from "./mls";
 import { drawTriangle, type SelectionRect } from "./selection";
 import { fillEnclosed, type FillEnclosedResult } from "./fill-holes";
@@ -94,6 +94,10 @@ export class MeshPose {
   readonly fill: FillEnclosedResult | null;
   private from: Pt[] = [];
   private weights: number[][] = [];
+  /** Distance rows by handle vertex. They depend only on the mesh and the vertex — not on reach or
+   *  targets — so a reach-nub drag reuses them instead of re-running Dijkstra per handle per event. */
+  private distRows = new Map<number, number[]>();
+  private adj: MeshAdjacency | null = null;
 
   private constructor(
     rest: Pt[],
@@ -146,6 +150,15 @@ export class MeshPose {
   private restMesh(): Mesh {
     return { vertices: this.rest, triangles: this.triangles };
   }
+  private distRow(vertex: number): number[] {
+    let row = this.distRows.get(vertex);
+    if (!row) {
+      this.adj ??= meshAdjacency(this.restMesh());
+      row = geodesicFrom(this.adj, vertex);
+      this.distRows.set(vertex, row);
+    }
+    return row;
+  }
   private recompute() {
     const verts = this.handles.map((h) => h.vertex);
     const pw = poseWeights(
@@ -153,6 +166,7 @@ export class MeshPose {
       verts,
       1,
       this.handles.map((h) => h.reach),
+      verts.map((v) => this.distRow(v)),
     );
     this.from = pw.from;
     this.weights = pw.weights;
