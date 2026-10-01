@@ -1753,6 +1753,13 @@
     const before = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
     selection.clearRegion(ctx, DPR);
     const after = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (sameImageData(before, after)) {
+      // Nothing there to delete: push nothing (a dead ⌘Z that wiped redo) and give back the ◆ that
+      // reaching a hold made — the same guard doFill and Outline's Apply have.
+      if (materialized) restoreTrackById(layerId, materialized.before);
+      appState.statusHint = "Nothing to delete in the selection";
+      return;
+    }
     history.push(
       pixelCommand(
         ctx,
