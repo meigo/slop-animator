@@ -14,7 +14,7 @@
  * lets the colourist keep re-tuning it.
  */
 import { resolvedDisplayKeyCell, type DrawingLayer, type Project } from "../anim/document";
-import { drawLayerCell, renderFrame } from "../anim/render";
+import { drawLayerCell, newRenderVersion, renderFrame } from "../anim/render";
 import { boundsOfPixels } from "../lib/cell-ink";
 import { planPsdFrame } from "./psd-plan";
 import { encodePsd, type PsdNode, type PsdRect } from "./psd";
@@ -27,9 +27,9 @@ import { encodePsd, type PsdNode, type PsdRect } from "./psd";
  * The two differences a PSD layer needs are both here rather than there: the surface is cleared
  * first, and `globalAlpha` stays at 1 because the opacity travels as a byte in the layer record.
  *
- * `version` is 0 for the same reason the PNG exporter's `renderFrame` call leaves it at the
- * default: an exporter has no document version to thread, and the caches it feeds are keyed by
- * version, so a wrong one costs a recompute and never a wrong answer.
+ * `version` is the export run's own cache key (`newRenderVersion`). It used to be 0, on the reading
+ * that a wrong version only costs a recompute — but an edit can swap a cell in place, keeping the
+ * array the caches are keyed on, so a shared 0 could hand this export the previous one's boxes.
  */
 function drawLayerAlone(
   ctx: CanvasRenderingContext2D,
@@ -39,13 +39,14 @@ function drawLayerAlone(
   dpr: number,
   wDev: number,
   hDev: number,
+  version: number,
 ): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.clearRect(0, 0, wDev, hDev);
   const resolved = resolvedDisplayKeyCell(layer, frame);
   if (!resolved) return; // no key at or before this frame — nothing to draw, and no ink to find
-  drawLayerCell(ctx, project, layer, resolved.cell, frame, dpr, 0);
+  drawLayerCell(ctx, project, layer, resolved.cell, frame, dpr, version);
 }
 
 /**
@@ -68,9 +69,10 @@ export function exportPsdFrame(project: Project, frame: number, dpr: number): Ui
   // Read-heavy by construction: a getImageData per layer to measure, another to crop, one more for
   // the composite.
   const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
+  const version = newRenderVersion();
 
   const nodes = planPsdFrame(project, frame, (layer, opacity): PsdNode | null => {
-    drawLayerAlone(ctx, project, layer, frame, dpr, wDev, hDev);
+    drawLayerAlone(ctx, project, layer, frame, dpr, wDev, hDev, version);
     // `boundsOfPixels`, never `contentBounds`: that one memoises by CANVAS identity, and every
     // layer here measures the same scratch — so it would hand layer 2 layer 1's rect.
     const b = boundsOfPixels(ctx.getImageData(0, 0, wDev, hDev).data, wDev, hDev);
@@ -82,7 +84,7 @@ export function exportPsdFrame(project: Project, frame: number, dpr: number): Ui
       opacity,
       rect,
       pixels: () => {
-        drawLayerAlone(ctx, project, layer, frame, dpr, wDev, hDev);
+        drawLayerAlone(ctx, project, layer, frame, dpr, wDev, hDev, version);
         return ctx.getImageData(b.x, b.y, b.w, b.h).data;
       },
     };
@@ -110,6 +112,7 @@ export function exportPsdFrame(project: Project, frame: number, dpr: number): Ui
         drawBg: !project.transparentBg,
         includeReference: false,
         boil: undefined,
+        version,
       });
       return ctx.getImageData(0, 0, wDev, hDev).data;
     },

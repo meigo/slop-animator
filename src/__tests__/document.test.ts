@@ -1,3 +1,4 @@
+import { newRenderVersion } from "../anim/render";
 import { describe, it, expect } from "vitest";
 import { boilStateIndex } from "../core/boil-gl";
 import {
@@ -423,6 +424,21 @@ describe("documentLength / refreshLength", () => {
     };
     refreshLength(p);
     expect(p.frameCount).toBe(4);
+  });
+});
+
+describe("boil ordinal cache across exports", () => {
+  it("an export's own version sees a cell swapped in place since the last export", () => {
+    // Export 1 caches; then a hold becomes a key IN PLACE (same array, gotcha #8); export 2.
+    const cells = [makeKey(), makeHold(), makeHold(), makeHold()];
+    const v1 = newRenderVersion();
+    expect(boiledFrameOrdinal(cells, 3, true, v1)).toBe(2);
+    cells[2] = makeKey();
+    const v2 = newRenderVersion();
+    expect(v2).not.toBe(v1);
+    expect(boiledFrameOrdinal(cells, 3, true, v2)).toBe(1);
+    // (With the shared version 0 every export used to pass, this read the stale 2.)
+    expect(boiledFrameOrdinal(cells, 3, true, v1)).toBe(1); // v1 entry replaced, not reused
   });
 });
 

@@ -1,5 +1,5 @@
 import { zipSync, type ZipOptions } from "fflate";
-import { renderFrame } from "../anim/render";
+import { newRenderVersion, renderFrame } from "../anim/render";
 import { frameFileName } from "./frames";
 import { abortError, yieldToEventLoop, type ExportProgress } from "./progress";
 import type { Project } from "../anim/document";
@@ -15,6 +15,7 @@ export async function renderFramePng(
   frame: number,
   dpr: number,
   scale = 1,
+  version = newRenderVersion(), // one per export run — see `newRenderVersion`
 ): Promise<Blob> {
   const ctx = canvas.getContext("2d")!;
   // `exportCanvas` rounds width*dpr*scale with `Math.round` (down for e.g. 1281×0.25, not always
@@ -33,6 +34,7 @@ export async function renderFramePng(
     includeReference: false,
     boil: project.boil.enabled ? project.boil : undefined,
     outputScale: scale,
+    version,
   });
   return new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png"),
@@ -58,6 +60,7 @@ export async function exportPngSequence(
   { signal, onProgress, scale = 1 }: ExportProgress & { scale?: number } = {},
 ): Promise<Blob> {
   const canvas = exportCanvas(project, dpr, scale);
+  const version = newRenderVersion();
 
   const files: Record<string, Uint8Array | [Uint8Array, ZipOptions]> = {};
   // The play In/Out range, inclusive. Filenames number the OUTPUT sequence from 1, not the source
@@ -72,7 +75,7 @@ export async function exportPngSequence(
     // the only pass over every frame, so a one-frame defect can only show up here. Never skip a bad
     // frame: a zip silently missing frame 240 reads as a complete export.
     try {
-      const blob = await renderFramePng(canvas, project, f, dpr, scale);
+      const blob = await renderFramePng(canvas, project, f, dpr, scale, version);
       // PNG is already DEFLATE-compressed internally; store it (level 0) so the zip doesn't burn
       // CPU re-compressing it for ~nothing — same treatment as the key-cell PNGs in project-file.ts.
       files[frameFileName(f - range.start, total)] = [
