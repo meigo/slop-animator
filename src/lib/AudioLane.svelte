@@ -250,11 +250,26 @@
   // Browser canvas dimension cap (Safari/Firefox blank the canvas past ~16384px).
   const MAX_CANVAS_W = 16384;
 
+  /** Everything the waveform draws from — the action redraws when one of these changes. It was
+   *  keyed on `state.version`, so every stroke and every step of a timeline drag redrew it. */
+  type WaveformDeps = {
+    audio: unknown;
+    offset: number;
+    trimIn: number | undefined;
+    trimLen: number | undefined;
+    frameCount: number;
+    fps: number;
+    cellW: number;
+  };
+
   // Draw the waveform onto the canvas; redraws when params change (Svelte action).
   // Took a `theme` param until 2026-09-08 purely to re-run on a theme toggle — the colors come from
   // CSS tokens via getComputedStyle and nothing else invalidated them. The app is dark-only now, so
   // the tokens cannot change under it and `audioVersion` is the only real dependency.
-  function waveform(node: HTMLCanvasElement, _p: { audioVersion: number }) {
+  function waveform(node: HTMLCanvasElement, _p: WaveformDeps) {
+    // The peaks depend only on the samples and the width; the full scan (every sample of the
+    // track) ran on every redraw (2026-09-30 review).
+    let peaksFor: { buffer: AudioBuffer; w: number; peaks: number[] } | null = null;
     const draw = () => {
       const audio = state.project.audio;
       const ctx = node.getContext("2d");
@@ -314,7 +329,13 @@
       ctx.strokeStyle = token("--color-media-clip-border", "#3d4759");
       ctx.lineWidth = 1;
       ctx.strokeRect(0.5, 0.5, w - 1, node.height - 1);
-      const peaks = computePeaks(audio.buffer.getChannelData(0), w);
+      if (!peaksFor || peaksFor.buffer !== audio.buffer || peaksFor.w !== w)
+        peaksFor = {
+          buffer: audio.buffer,
+          w,
+          peaks: computePeaks(audio.buffer.getChannelData(0), w),
+        };
+      const peaks = peaksFor.peaks;
       ctx.fillStyle = token("--color-text-secondary", "#999999");
       const mid = node.height / 2;
       for (let x = 0; x < peaks.length; x++) {
@@ -403,7 +424,15 @@
       <canvas
         class="h-7 cursor-grab"
         style="touch-action: none"
-        use:waveform={{ audioVersion: state.version }}
+        use:waveform={{
+          audio: state.project.audio,
+          offset: state.project.audio.offsetFrames,
+          trimIn: state.project.audio.trimInFrames,
+          trimLen: state.project.audio.trimLenFrames,
+          frameCount: state.project.frameCount,
+          fps: state.project.fps,
+          cellW,
+        }}
         onpointerdown={laneDown}
         onpointermove={laneMove}
         onpointerup={laneUp}
