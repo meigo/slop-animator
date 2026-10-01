@@ -9,6 +9,7 @@ import {
   pasteBlockOverwrite,
   pasteBlockInsert,
   deleteBlock,
+  deleteBlockChanges,
   moveBlockFrames,
   leadingHoldPreviewGlyph,
   anyEditableLayer,
@@ -269,6 +270,24 @@ describe("deleteBlock", () => {
     expect(l.cells.length).toBe(2);
     expect(l.cells[0]).toEqual({ kind: "hold" });
     expect(l.cells[1]).toEqual({ kind: "hold" });
+  });
+});
+
+describe("deleteBlockChanges", () => {
+  it("is false for a range of holds only — Delete there would push an empty undo step", () => {
+    const l = drawLayer(1, [key(), hold(), hold(), key()]);
+    expect(deleteBlockChanges(proj([l], 4), [1], 1, 2)).toBe(false);
+  });
+  it("is true when the range holds a key (or a loop)", () => {
+    const l = drawLayer(1, [key(), hold(), { kind: "loop", back: 1 }, key()]);
+    expect(deleteBlockChanges(proj([l], 4), [1], 1, 2)).toBe(true);
+    expect(deleteBlockChanges(proj([l], 4), [1], 0, 0)).toBe(true);
+  });
+  it("ignores a locked layer's keys, and frames past a layer's end", () => {
+    const l = { ...drawLayer(1, [key(), key()]), locked: true };
+    expect(deleteBlockChanges(proj([l], 2), [1], 0, 1)).toBe(false);
+    const short = drawLayer(2, [key(), hold()]);
+    expect(deleteBlockChanges(proj([short], 9), [2], 1, 8)).toBe(false);
   });
 });
 

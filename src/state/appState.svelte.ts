@@ -79,6 +79,7 @@ import {
   deleteBlock,
   moveBlockFrames,
   anyEditableLayer,
+  deleteBlockChanges,
   anyEditablePasteTarget,
   type CellBlock,
 } from "../anim/timeline-block";
@@ -2812,6 +2813,8 @@ export function deleteTimelineSelection(): void {
   if (!rect) return;
   if (!anyEditableLayer(state.project, rect.layerIds)) return; // all locked/hidden → no empty undo
   liftGuard.bank?.(); // may replace the active cell's canvas → apply any live lift first
+  // Holds only (after the bank, which can cancel a lift's ◆): nothing to delete, push nothing.
+  if (!deleteBlockChanges(state.project, rect.layerIds, rect.startFrame, rect.endFrame)) return;
   commitStructural(() => deleteBlock(state.project, rect.layerIds, rect.startFrame, rect.endFrame));
 }
 

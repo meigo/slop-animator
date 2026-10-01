@@ -202,6 +202,24 @@ export function deleteBlock(
   }
 }
 
+/** True when `deleteBlock` would change anything: an editable layer has a key or loop in the range.
+ *  A range of holds only is already what Delete leaves, and committing it anyway pushed an empty
+ *  undo step that wiped the redo stack (2026-09-30 review, slop-paint's 14b class). */
+export function deleteBlockChanges(
+  project: Project,
+  layerIds: number[],
+  startFrame: number,
+  endFrame: number,
+): boolean {
+  return layerIds.some((id) => {
+    const layer = project.layers.find((l) => l.id === id);
+    if (!layer || layer.kind !== "draw" || !isLayerEditable(layer, project.groups)) return false;
+    for (let f = startFrame; f <= endFrame && f < layer.cells.length; f++)
+      if (layer.cells[f].kind !== "hold") return true;
+    return false;
+  });
+}
+
 /** True when at least one listed layer would actually be written by a block op. Used to skip
  *  empty undo entries (keyboard Cut/Delete on an all-locked/hidden selection). */
 export function anyEditableLayer(project: Project, layerIds: number[]): boolean {
