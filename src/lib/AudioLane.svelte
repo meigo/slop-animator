@@ -69,6 +69,8 @@
     sx: number;
     offset: number;
     undo: ReturnType<typeof beginStructuralEdit>;
+    /** Only this pointer's lift ends the drag (a finger lifting ended a Pencil's drag early). */
+    pointerId: number;
   } | null = null;
   function ignoreTouchClick(e: PointerEvent) {
     if (e.pointerType === "touch") e.preventDefault();
@@ -76,7 +78,7 @@
 
   function laneDown(e: PointerEvent) {
     if (!state.project.audio) return;
-    if (trimDrag) return; // a trim handle already claimed this gesture
+    if (trimDrag || dragStart) return; // a trim handle or another pointer already owns this gesture
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (e.pointerType === "touch") {
       onTouchDown(e);
@@ -88,6 +90,7 @@
       sx: getScrollLeft(),
       offset: state.project.audio.offsetFrames,
       undo: beginStructuralEdit(),
+      pointerId: e.pointerId,
     };
     onEdgePointerX(e.clientX);
     onEdgeScrollStart(laneMoveAt, "audio-offset");
@@ -96,6 +99,7 @@
     transformDragGuard.settle = settleLaneDrag; // undo / Open mid-drag settles the bracket
   }
   function laneMove(e: PointerEvent) {
+    if (dragStart && e.pointerId !== dragStart.pointerId) return;
     if (e.pointerType === "touch") {
       onTouchMove(e);
       return;
@@ -127,7 +131,8 @@
     if (transformDragGuard.settle === settleLaneDrag) transformDragGuard.settle = null;
   }
 
-  function laneUp() {
+  function laneUp(e: PointerEvent) {
+    if (dragStart && e.pointerId !== dragStart.pointerId) return; // not the drag's pointer
     if (dragStart && state.playback.isPlaying)
       audioEngine.syncTo(state.playhead, state.project.fps);
     settleLaneDrag();
