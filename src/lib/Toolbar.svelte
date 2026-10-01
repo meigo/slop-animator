@@ -19,9 +19,10 @@
     selectOutline,
     selectionActions,
     editActions,
+    liftGuard,
   } from "../state/appState.svelte";
   import { editBlockLabel } from "./status-hint";
-  import { loadImageLayer, loadVideoLayer } from "../anim/reference";
+  import { loadImageLayer, loadVideoLayer, releaseReferenceMedia } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
   import {
     saveProjectBlob,
@@ -112,6 +113,19 @@
           () => repaint(),
           () => (appState.statusHint = "Storage full — references won't survive a reload"),
         );
+        // Opening replaces the document as New does: history cleared, the autosave overwritten
+        // seconds later, the old project's stored reference media pruned — nothing to undo it with.
+        // New asked first; Open did not (2026-09-30 review). Asked AFTER the file has loaded, so a
+        // file that fails to open never asks, and before anything is replaced.
+        if (
+          !window.confirm(
+            `Open ${file.name}?\n\nIt replaces the current project and its autosave. Save the current project first if you want to keep it.`,
+          )
+        ) {
+          // Its reference videos are already decoding: let them go.
+          for (const l of project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+          return;
+        }
         // Pre-name-field saves carry no name — adopt the picked file's basename.
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
         replaceProject(project);
@@ -168,6 +182,10 @@
     // This is the user's backup. A failure here (OOM zipping a large project on iPad) used to be an
     // unhandled rejection with no message at all — no file appeared and nothing said why, which is
     // exactly the state in which someone closes the tab believing they are saved.
+    // An open lift has cleared its region from the cell, and an Outline preview is written into
+    // it — saving then would store the hole or the preview as the drawing. Apply first, as Export
+    // does: the file then holds what is on screen, and one undo takes the transform back.
+    liftGuard.bank?.();
     try {
       appState.statusHint = "Saving…";
       const name = `${sanitizeFilename(appState.project.name)}.zip`;

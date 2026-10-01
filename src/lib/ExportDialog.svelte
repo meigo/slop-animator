@@ -117,9 +117,12 @@
   const pngFrameFilename = $derived(
     currentFrameFileName(stem, appState.playhead, appState.project.frameCount, "png"),
   );
+  // Not `${stem}.zip`: that is the name File ▸ Save gives the project itself, and on iPad the Files
+  // sheet offers Replace when the name exists — a frames zip could overwrite the only saved project.
+  const sequenceName = $derived(`${stem}-frames.zip`);
   const outputName = $derived(
     opts.format === "png-sequence"
-      ? `${stem}.zip`
+      ? sequenceName
       : opts.format === "png-frame"
         ? pngFrameFilename
         : opts.format === "psd-frame"
@@ -177,7 +180,7 @@
           onProgress,
           scale,
         });
-        closeAfter = await deliver(blob, `${stem}.zip`);
+        closeAfter = await deliver(blob, sequenceName);
         status = "Done.";
       } else if (format === "png-frame") {
         // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil

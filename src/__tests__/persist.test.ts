@@ -1057,3 +1057,12 @@ describe("marker persistence", () => {
     ]);
   });
 });
+
+describe("opening a zip that is not a project", () => {
+  it("says so, instead of 'Cannot read properties of undefined'", async () => {
+    // What a PNG-sequence export holds: frames, no project.json.
+    const frames = zipSync({ "frame-0001.png": new Uint8Array([1, 2, 3]) });
+    const blob = new Blob([frames as BlobPart]);
+    await expect(loadProjectBlob(blob, 1)).rejects.toThrow(/isn't a slop-animator project/);
+  });
+});

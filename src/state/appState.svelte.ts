@@ -2617,10 +2617,14 @@ export const liftGuard: {
   bank: (() => void) | null;
   /** A live lift that `bank` would APPLY (not cancel): a float, or a dragged Pose/Deform. */
   hasEdits: (() => boolean) | null;
+  /** Anything that has changed the cell's pixels without being applied yet: any lift (its region is
+   *  cleared from the cell) or an Outline preview (written into it). Autosave waits while true. */
+  isOpen: (() => boolean) | null;
 } = {
   discard: null,
   bank: null,
   hasEdits: null,
+  isOpen: null,
 };
 
 /** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`
@@ -2668,6 +2672,14 @@ function resyncAudioAfterHistory(): void {
 }
 export function redo(): void {
   transformDragGuard.settle?.();
+  // A moved selection, a pasted float, a dragged Pose/Deform or an Outline preview is on screen like
+  // an edit already made, and redo cannot take it back later: Cancel pushes no undo step. Discarding
+  // it here (as this did until 2026-09-30) lost the move for good on a stray ⌘⇧Z or three-finger
+  // tap. Applying it would push a step, which clears the redo stack anyway — so redo waits.
+  if (outlineActions.active() || liftGuard.hasEdits?.()) {
+    if (history.canRedo) state.statusHint = "Apply or cancel the transform first, then redo";
+    return;
+  }
   liftGuard.discard?.();
   if (!history.canRedo) return;
   history.redo();

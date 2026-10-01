@@ -7729,6 +7729,8 @@ Stream is there to remove — and kinked where the line, riding inside the curve
   for a live Outline preview. "With edits" = what `bankActiveEdits` would apply: a float, or a
   dragged Pose/Deform (`liftGuard.hasEdits`, `Canvas.svelte` `liftHasEdits`). An untouched Pose/Deform
   grid still cancels silently and the undo goes on. Redo is unchanged.
+  > **SUPERSEDED in part 2026-09-30:** redo no longer discards an edited lift either — it now does
+  > nothing while one (or an Outline preview) is open. See the review batch A entry below.
 - **Export:** `ExportDialog.run()` now `liftGuard.bank`s instead of discarding, reversing the
   2026-08-16 audit's "an export must not silently commit an edit": discarding lost the transform with
   no undo, where applying exports what is on screen and one undo takes it back — the rule every other
@@ -7746,3 +7748,42 @@ thread. `App.svelte`'s timer now calls `autosaveWhenQuiet`: it waits while any p
 for 5 s counts as lifted, so a missed `pointerup` can't hold saving off. The hide / pagehide flush
 still saves at once (`flushAutosave`, shared). Build- and review-verified only: the timing isn't
 observable from the page without instrumenting the save.
+
+**Code review batch A: lost work (2026-09-30, branch `fix/review-batch-a`).** A whole-codebase review
+(8 feature areas, one reviewer each, then an adversarial verifier per area; 43 distinct findings)
+was grouped into batches like slop-paint's; A is everything that loses work. One commit each:
+- **Pose Apply erased pixels outside the mesh** (`51dd21b`). Pose lifts the whole content rect and
+  paints back only what the triangles carry, and `triangulateSilhouette` left the right/bottom outer
+  pixel row bare (vertices on pixel corners), corners and stroke ends cut between decimated boundary
+  points, thin strokes, and small separate details (an eye dot). Measured 900–4500 bare pixels on
+  400 px test shapes. New `coverSilhouette` (`triangulate.ts`): grow the shape 2 px, vertices at
+  pixel centres, then add points around every still-bare ink pixel (alpha > 0, anti-aliasing
+  included) and re-mesh, finer each round; `uncoveredPixels` is the check (a pixel is covered when
+  all four corners are). Vertex counts stay near the old mesh at spacing 8–16 (tested, < 1.2×), since
+  Pose drags are O(V²) per handle. `triangulateSilhouette` is unchanged for its other users.
+- **A failed pose mesh rebuild dropped the pose** (`15e9a5e`): it kept the old mesh but reset handles
+  and `poseDirty`, so the next tool/frame switch cancelled a bent pose. Now kept as is, with a hint.
+- **Redo threw away a moved selection / pasted float** (`f96b3fe`): see the SUPERSEDED note above.
+  Applying instead would push a step and clear the redo stack, so redo waits with a hint.
+- **Fingers during a stroke** (`66dc06e`, roadmap 13e): port of slop-paint `64952cd`. `setupInput`
+  now returns `{ dispose, isDrawing }`; `setupTouchGestures` takes `isDrawing` and ignores a gesture
+  that starts during a pen/mouse press until all its fingers lift. Tests drive it with a fake
+  workspace.
+- **Autosave starvation** (`486c971`): each save bumped the persist generation and dropped the one in
+  flight, so on a project whose encode outlasts the pause between edits nothing was ever written.
+  `saveAutosave` now runs one at a time and queues a single follow-up that encodes the live document
+  when it starts; a document replace still drops in-flight and queued saves. Autosave no longer
+  cancels a media prune (load-time only, a few IDB calls). Tested with a mocked encoder.
+- **Saves stored an open lift's hole or an Outline preview** (`bdf9c65`, roadmap 13 "check"): new
+  `liftGuard.isOpen` (any lift, or an Outline preview). File ▸ Save `bank`s first, as Export does;
+  autosave WAITS while it is open (re-checking every 1.5 s, since Cancel bumps nothing) and the hide
+  flush skips — autosave never applies an edit by itself.
+- **File ▸ Open asked nothing** (`63bd671`): confirms after the file has loaded, before replacing;
+  declining releases the loaded project's reference media.
+- **PNG sequence export was `name.zip`, same as Save** (`51b793b`): on iPad, Replace in Files could
+  overwrite the project. Now `name-frames.zip`; opening a zip without `project.json` says so.
+- Build 0/0, 1550 tests. Nothing here was run in a browser or on the iPad: owed a pass for Pose
+  (Apply keeps dots, thin strokes and the outer rim), the finger gate, Save with a float open, and
+  the Open confirm. Batches B–E (wrong pixels, undo/lifecycle, perf, UI) are still to do; every
+  finding, with scenario, suggested fix and verifier note, is in
+  `docs/superpowers/reviews/2026-09-30-code-review.md`.

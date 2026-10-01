@@ -287,7 +287,7 @@ export function setupInput(
   const onContextMenu = (e: Event) => e.preventDefault();
   canvas.addEventListener("contextmenu", onContextMenu);
 
-  return () => {
+  const dispose = () => {
     cancelAnimationFrame(catchUpFrame); // a stroke open at teardown would otherwise loop forever
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
@@ -296,4 +296,6 @@ export function setupInput(
     canvas.removeEventListener("lostpointercapture", onPointerUp);
     canvas.removeEventListener("contextmenu", onContextMenu);
   };
+  /** A pen or mouse press is down — a stroke, marquee or handle drag is in progress. */
+  return { dispose, isDrawing: () => isDrawing };
 }

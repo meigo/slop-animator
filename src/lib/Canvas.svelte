@@ -1541,6 +1541,7 @@
     liftGuard.discard = discardActiveEdits;
     liftGuard.bank = bankActiveEdits;
     liftGuard.hasEdits = liftHasEdits;
+    liftGuard.isOpen = () => !!meshPose || !!selection?.hasFloating || outlineActive();
     poseActions.active = () => meshPose !== null;
     poseActions.apply = () => applyPose();
     poseActions.cancel = () => cancelPose();
@@ -2385,12 +2386,19 @@
   // mesh has to rebuild from the SAME lifted bitmap and reset handles — vertex indices change.
   function rebuildPoseMesh() {
     if (!meshPose) return;
-    meshPose =
-      MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
-        fillHoles: appState.pose.fillHoles,
-        gap: appState.pose.gap,
-      }) ?? meshPose;
-    appState.poseActive = meshPose !== null;
+    const rebuilt = MeshPose.fromLift(meshPose.img, meshPose.rect, DPR, poseSpacing, {
+      fillHoles: appState.pose.fillHoles,
+      gap: appState.pose.gap,
+    });
+    // No mesh at this setting: keep the current one AS IT IS — its handles and bend included. Going
+    // on to reset them left the bent picture on screen with `poseDirty` false, so the next tool or
+    // frame switch cancelled the pose instead of applying it, with no undo.
+    if (!rebuilt) {
+      appState.statusHint = "Couldn't build a mesh with this setting — kept the current one";
+      return;
+    }
+    meshPose = rebuilt;
+    appState.poseActive = true;
     poseDrag = null;
     poseBarDragging = false;
     activeHandle = null;
@@ -2444,9 +2452,10 @@
         syncOverlayScale();
         repaintPoseOverlay();
       },
+      isDrawing: () => input.isDrawing(),
     });
 
-    const cleanup = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
+    const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
       // Streamline is a brush preference. On select, pose, deform, and transform it made handles
       // trail the Pencil and stop short of the lift.
       streamline: () =>
@@ -2542,7 +2551,7 @@
 
     return () => {
       overlayRo.disconnect();
-      cleanup();
+      input.dispose();
       cleanupTouch();
       stage.removeEventListener("pointerdown", stagePanDown, { capture: true });
       stage.removeEventListener("pointermove", stagePanMove, { capture: true });
@@ -2560,6 +2569,7 @@
       liftGuard.discard = null;
       liftGuard.bank = null;
       liftGuard.hasEdits = null;
+      liftGuard.isOpen = null;
       poseActions.active = () => false;
       selectionActions.enterWarp = null;
       selectionActions.copy = null;

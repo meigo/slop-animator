@@ -27,6 +27,10 @@ export interface TouchGestureCallbacks {
   onRedo: () => void;
   onToggleEraser: () => void;
   onViewportChange: () => void;
+  /** A pen or mouse gesture is open (a stroke, a marquee, a handle drag): fingers landing now are a
+   *  resting hand, not a gesture. They panned the view under the line, so it jumped, and a
+   *  two-finger tap undid the edit before it and dropped the stroke (slop-paint 64952cd). */
+  isDrawing?: () => boolean;
 }
 
 const TAP_MAX_DURATION = 300; // ms
@@ -93,6 +97,9 @@ export function setupTouchGestures(
 
   // Track if gesture moved (to distinguish taps from drags)
   let gestureDidMove = false;
+  // Set when a finger lands while the pen is drawing: the whole gesture is ignored until every
+  // finger has lifted, even if the stroke ends first.
+  let suppressed = false;
 
   // Tap detection
   let maxSimultaneousTouches = 0;
@@ -111,6 +118,7 @@ export function setupTouchGestures(
     workspace.setPointerCapture(e.pointerId);
 
     const starting = touches.size === 0;
+    if (callbacks.isDrawing?.()) suppressed = true;
     touches.set(e.pointerId, {
       id: e.pointerId,
       x: e.clientX,
@@ -152,6 +160,7 @@ export function setupTouchGestures(
 
     t.x = e.clientX;
     t.y = e.clientY;
+    if (suppressed) return; // a hand resting during a stroke: no pan, pinch or tap until it lifts
 
     // Check if this counts as movement
     const dx = t.x - t.startX;
@@ -179,6 +188,15 @@ export function setupTouchGestures(
     touches.delete(e.pointerId);
 
     if (!t) return;
+
+    if (suppressed) {
+      if (touches.size === 0) {
+        suppressed = false;
+        maxSimultaneousTouches = 0;
+        gestureDidMove = false;
+      }
+      return;
+    }
 
     // If all fingers lifted, check for tap gestures
     if (touches.size === 0 && !gestureDidMove) {
@@ -212,6 +230,7 @@ export function setupTouchGestures(
     if (touches.size === 0) {
       maxSimultaneousTouches = 0;
       gestureDidMove = false;
+      suppressed = false;
     }
     restartSinglePan();
   }

@@ -633,6 +633,9 @@ export async function loadProjectBlob(
   onMediaPersistFailed?: () => void,
 ): Promise<Project> {
   const zip = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+  // Any other zip (a PNG-sequence export, say) failed with "Cannot read properties of undefined".
+  if (!zip["project.json"])
+    throw new Error("this zip isn't a slop-animator project (no project.json)");
   const json = JSON.parse(strFromU8(zip["project.json"])) as ProjectJson;
 
   let maxId = 0;

@@ -38,6 +38,7 @@
     addMarkerAtPlayhead,
     jumpToMarker,
     markerActions,
+    liftGuard,
   } from "./state/appState.svelte";
   import { loadAutosave, saveAutosave } from "./persist/autosave";
   import { loadPreferences, savePreferences } from "./persist/preferences";
@@ -432,8 +433,14 @@
   function autosaveWhenQuiet() {
     const now = performance.now();
     for (const [id, at] of pointersDown) if (now - at > POINTER_STALE_MS) pointersDown.delete(id);
+    // …and not while a lift or an Outline preview is open: the cell then holds a hole where the
+    // lifted pixels were, or a preview not yet applied, and the save would store that as the
+    // drawing (2026-09-30 review). Keep checking: Cancel restores the cell without a document
+    // edit, so nothing else would re-arm the timer afterwards.
     const wait =
-      pointersDown.size > 0 ? AUTOSAVE_QUIET_MS : lastPointerUp + AUTOSAVE_QUIET_MS - now;
+      pointersDown.size > 0 || liftGuard.isOpen?.()
+        ? AUTOSAVE_QUIET_MS
+        : lastPointerUp + AUTOSAVE_QUIET_MS - now;
     if (wait > 0) {
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(autosaveWhenQuiet, wait);
@@ -449,6 +456,9 @@
   $effect(() => {
     const flush = () => {
       if (!autosaveReady || !autosaveDirty) return;
+      // Not with a lift or Outline preview open (see `autosaveWhenQuiet`): the last save, from
+      // before it, is the right copy to come back to. The timer keeps checking meanwhile.
+      if (liftGuard.isOpen?.()) return;
       clearTimeout(autosaveTimer);
       flushAutosave();
     };
