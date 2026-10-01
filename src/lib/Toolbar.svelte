@@ -32,7 +32,7 @@
   } from "../persist/project-file";
   import { pruneMedia } from "../persist/media-store";
   import { downloadBlob } from "../export/download";
-  import { saveToFilesAvailable } from "../export/share";
+  import { isStandalone, saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
@@ -191,7 +191,9 @@
       const name = `${sanitizeFilename(appState.project.name)}.zip`;
       let embedFailed = false; // latched, not written straight to the hint: the success line below
       const blob = await saveProjectBlob(appState.project, true, () => (embedFailed = true));
-      if (toFiles) {
+      // The Home Screen app can't download (the link does nothing, yet the line below said
+      // "Saved"), so Save takes Save to Files' route there.
+      if (toFiles || (canSaveToFiles && isStandalone())) {
         const note = embedFailed
           ? "a reference couldn't be embedded, so it's saved without it"
           : "";

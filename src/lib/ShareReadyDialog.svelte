@@ -1,6 +1,6 @@
 <script lang="ts">
   import { state as appState } from "../state/appState.svelte";
-  import { shareFile } from "../export/share";
+  import { isStandalone, shareFile } from "../export/share";
   import { downloadBlob } from "../export/download";
   import { markProjectSaved, reportShared } from "./deliver-file";
 
@@ -13,6 +13,8 @@
   let dismissed = $state(false);
 
   const ready = $derived(appState.shareReady);
+  // The Home Screen app can't download (the link does nothing), so it isn't offered there.
+  const canDownload = !isStandalone();
 
   function close() {
     if (sharing) return;
@@ -70,12 +72,14 @@
         disabled={sharing}
         onclick={share}>Save to Files…</button
       >
-      <button
-        class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
-        disabled={sharing}
-        title="Download to the browser's Downloads, as before"
-        onclick={download}>Download instead</button
-      >
+      {#if canDownload}
+        <button
+          class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
+          disabled={sharing}
+          title="Download to the browser's Downloads, as before"
+          onclick={download}>Download instead</button
+        >
+      {/if}
       <button
         class="border border-border rounded py-1 hover:bg-surface-hover disabled:opacity-40"
         disabled={sharing}

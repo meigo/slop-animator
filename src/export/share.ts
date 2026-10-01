@@ -33,6 +33,17 @@ export function saveToFilesAvailable(): boolean {
   );
 }
 
+/** Running as a Home Screen app (the manifest's `display: standalone`; `navigator.standalone` is the
+ *  older iOS flag). iOS can't download there at all — the link does nothing — so a download is
+ *  never the way to deliver a file in this mode. Same check as slop-paint's `isStandalone`. */
+export function isStandalone(): boolean {
+  return (
+    (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) ||
+    (typeof navigator !== "undefined" &&
+      (navigator as Navigator & { standalone?: boolean }).standalone === true)
+  );
+}
+
 /** Whether the share sheet accepts this particular file (type support varies by browser). */
 export function canShareFile(file: File): boolean {
   try {
