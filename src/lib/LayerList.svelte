@@ -535,6 +535,8 @@
   onkeydowncapture={(e) => {
     // Escape cancels a drag, and only the drag: captured so the app's own Escape doesn't also run.
     if (e.key !== "Escape" || !dragging) return;
+    // The button is still down: the click its release sends must not select the grabbed row.
+    swallowClick = dragging.live;
     finishDrag();
     e.preventDefault();
     e.stopPropagation();
@@ -657,16 +659,13 @@
         <!-- The rail itself is on the ROWS (`.group-rail`, defined in app.css), not here: a
                parent's background is always covered by an opaque child, so with it on the block a
                member row's hover erased the line under it. -->
-        <div
-          class="group-block border-b border-border-light"
-          class:ui-drop-target={drop?.into === seg.group.id}
-          data-group-id={seg.group.id}
-        >
+        <div class="group-block border-b border-border-light" data-group-id={seg.group.id}>
           <div
             class="group-rail flex items-center gap-1 py-1 pr-[6px] pl-2 hover:bg-surface-hover"
             class:ui-selected={groupLit}
             role="presentation"
             data-row-kind="group"
+            class:ui-drop-target={drop?.into === seg.group.id}
             data-row-id={seg.group.id}
             data-row-key={rowKey("group", seg.group.id)}
             class:opacity-40={dimmed.has(rowKey("group", seg.group.id))}
