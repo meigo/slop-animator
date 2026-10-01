@@ -4,6 +4,7 @@ import {
   STILL_PX,
   TRAIL_SPAN,
   catchUpPath,
+  trailPressureAt,
   trailTimeAt,
   ropeLength,
   ropeStep,
@@ -206,12 +207,16 @@ export function setupInput(
       rope = next;
       // Stamped with when the PEN was here (see `trailTimeAt`), not now: the line runs up to a
       // string's length behind, and "now" put the pen's slowdown into it that far early — ink's
-      // Pool swelled a knot before the real end. Never earlier than the point before.
+      // Pool swelled a knot before the real end. Never earlier than the point before. And with how
+      // hard it pressed there (`trailPressureAt`), for the same reason: "now" moved a stroke's light
+      // start and finish along it, drawing them as if pressed harder (slop-paint 0b6f291).
       const pt = getPoint(ce, next.x, next.y);
       if (len > 0) {
-        const when = trailTimeAt(trail, next, 2 * len + 2 * STILL_PX);
+        const back = 2 * len + 2 * STILL_PX;
+        const when = trailTimeAt(trail, next, back);
         const prevT = currentPoints[currentPoints.length - 1]?.timestamp ?? pt.timestamp;
         pt.timestamp = Math.max(prevT, Math.min(pt.timestamp, when ?? pt.timestamp));
+        pt.pressure = trailPressureAt(trail, next, back) ?? pt.pressure;
       }
       addPoint(pt);
     }

@@ -8032,3 +8032,21 @@ keeps its height.
   emptying a group (its header fades, gone after the drop), no page errors; screenshots read.
 - **Owed on the iPad:** a real finger and Pencil drag, into and out of a group, and one emptying a
   group.
+
+**Stream gives the lagging line the pressure the pen had there (2026-10-01, branch
+`fix/stream-pressure`; port of slop-paint `0b6f291`).** Found by reading `src/core/input.ts` (the same
+code as slop-paint's), not seen on screen here; asked for by the slop-paint session as the first half
+of the Dry brush port (port note 16 on the unmerged `docs/port-portrait-options-row`). With Stream
+above 0 the line runs up to a string's length behind the pen; its points were already stamped with
+when the pen was THERE (`trailTimeAt`), but kept `getPoint(ce, …)`'s pressure — the pen's pressure
+NOW. So a stroke's light start and finish moved along it and drew as if pressed harder: every
+brush's width under Stream (most visible on a light-pressure texture like slop-paint's Dry brush).
+- `trailPressureAt` beside `trailTimeAt` in `src/core/stroke-smoothing.ts`, both now one projection
+  (`trailValueAt`); `input.ts` sets `pt.pressure` from it in the same `len > 0` branch. The catch-up
+  already took its pressure from the trail. Stream 0 is unchanged (the line is the pen); a mouse's
+  trail pressure is 0, as before.
+- Test: slop-paint's `trailPressureAt` cases (failed first: not a function). 1609 → 1610 tests; build
+  0/0; `test:ipad` all passing. The wiring in `input.ts` has no unit test (it needs the DOM).
+- **Owed on the iPad:** a light-start, light-finish Pencil stroke at a high Stream — the thin ends
+  should stay where they were drawn.
+
