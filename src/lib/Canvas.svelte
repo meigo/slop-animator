@@ -881,7 +881,11 @@
     const px = Math.round(p.x * DPR * ss),
       py = Math.round(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
-    const [r, g, b] = displayCtx.getImageData(px, py, 1, 1).data;
+    const [r, g, b, a] = displayCtx.getImageData(px, py, 1, 1).data;
+    // Nothing there: with a transparent background an empty pixel has no colour, and reading its
+    // channels picked black (the checkerboard is a DOM element under the canvas). On an opaque
+    // background every pixel is painted, so this only ever refuses a truly empty one.
+    if (a === 0) return null;
     return rgbToHex(r, g, b);
   }
 
@@ -1247,7 +1251,9 @@
       // under the pointer throughout, for mouse and Pencil.
       if (done) {
         const hex = sampleAt(points[points.length - 1]);
-        if (hex) applyEyedropper(hex); // sets colour + switches the tool back
+        if (hex)
+          applyEyedropper(hex); // sets colour + switches the tool back
+        else appState.statusHint = "Nothing to pick there — that spot is empty";
       }
       return;
     }
