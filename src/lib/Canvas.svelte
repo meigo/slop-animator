@@ -56,6 +56,7 @@
   } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStroke } from "../core/ink-brush";
+  import { drawDryStroke } from "../core/dry-brush";
   import { drawCalligraphyStroke } from "../core/calligraphy-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection, type SelectionRect } from "../core/selection";
@@ -862,6 +863,19 @@
       } finally {
         strokeCtx.restore();
       }
+    } else if (kind === "dry") {
+      // Dry brush (slop-paint's engine): full redraw like ink — every hair is resampled from the
+      // stroke's start and seeded from its first point, so a growing stroke never changes what is
+      // already drawn, and the hairs are composited once (its scratch canvas).
+      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+      strokeCtx.save();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawDryStroke(strokeCtx, curved, settings, sr);
+      } finally {
+        strokeCtx.restore();
+      }
     } else {
       // Stamp engine (pencil/charcoal/airbrush): incremental — no snapshot restore.
       strokeCtx.save();
@@ -1457,8 +1471,9 @@
       strokeSteps = cellComposeSteps(layer);
       const bt = activeStroke().brushType;
       strokeBrushType = bt;
-      // smooth, calligraphy and ink are stateless full-redraw engines; the rest are stamps.
-      if (bt !== "smooth" && bt !== "calligraphy" && bt !== "ink") resetStampState();
+      // smooth, calligraphy, ink and dry are stateless full-redraw engines; the rest are stamps.
+      if (bt !== "smooth" && bt !== "calligraphy" && bt !== "ink" && bt !== "dry")
+        resetStampState();
       bump();
     }
 
