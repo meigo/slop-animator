@@ -104,6 +104,7 @@ import {
   type TransformScope,
 } from "../anim/active-row";
 import { refFocusChange } from "../anim/ref-tool";
+import { applyOrder } from "../anim/layer-drop";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
 import { bumpPersistGeneration } from "../persist/generation";
@@ -1771,9 +1772,8 @@ export function renameGroup(groupId: number, name: string) {
 }
 /** Apply a dragged display→data order with per-layer groupId, as one undoable step; prune empty groups. */
 export function reorderLayersWithGroups(order: { id: number; groupId: number | null }[]) {
-  // No-op guard: a cross-list drag fires SortableJS onEnd on both source and destination, so the
-  // rebuild can run twice with the same final order — skip when nothing actually changed (also
-  // avoids a redundant undo step).
+  // No-op guard: an unchanged order pushes no undo step (the panel's `dropTarget` already returns
+  // no drop for one, so this is a backstop).
   const cur = state.project.layers;
   if (
     order.length === cur.length &&
@@ -1781,16 +1781,7 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
   )
     return;
   const before = beginStructuralEdit();
-  const byId = new Map(state.project.layers.map((l) => [l.id, l]));
-  const next: Layer[] = [];
-  for (const e of order) {
-    const l = byId.get(e.id);
-    if (l) {
-      l.groupId = e.groupId;
-      next.push(l);
-    }
-  }
-  state.project.layers = next;
+  state.project.layers = applyOrder(state.project.layers, order);
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
   bump();
   commitStructuralEdit(before);
