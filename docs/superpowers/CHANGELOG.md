@@ -8163,3 +8163,24 @@ the slop-paint session; the user said to go ahead without stops. Spec and plan:
 - **Owed on the iPad:** a long (20 s+) opaque Ink and Calligraphy stroke at a large size — it should
   keep up with the Pencil; and a Calligraphy corner where the Pencil rests a few seconds at Stream 0.
 
+**Pencil, Charcoal and Airbrush: slop-paint's stamp engine — no stepping, grades and textures
+(2026-10-02, branch `feat/stamp-brushes-from-paint`).** Reported by the user: *"pencil, charcoal and
+airbrush seem still be unfixed, steppy as paint had these before fix and not having new options"*.
+slop-paint's 2026-10-01 stamp work had not been ported. `src/core/stamp-brush.ts` and
+`src/core/brush-textures.ts` are now slop-paint's `main` (`fd62f29`) byte for byte — ours differed from
+its pre-change files only in comments and a harmless `?? true` — with its tests (its
+`stamp-brush.test.ts` is a superset of ours; `brush-textures.test.ts` is new):
+- `f943b1c` small strokes no longer alias: the tinted tip keeps mip levels and each stamp uses the
+  smallest still at least its size (`mipIndex`); `6f94df4` stamps of 8 device px or less are soft
+  discs (`discProfile`) — on the iPad's GPU canvas tiny image draws landed on whole pixels and beaded;
+  `11dded1` each textured stamp gets a random turn, so its holes don't line up into rows.
+- `55c718d` **Pencil grade** 4H…8B (HB default, drawing as the Pencil did) and `c631167` **Charcoal
+  texture** Rough / Medium (default, as it was) / Fine / Dense: `BrushSettings.pencilGrade` /
+  `charcoalTexture`, defaults on the brush and the eraser, buttons in the brush gear like slop-paint's;
+  saved with the other brush settings. The engines read them from the settings Canvas already spreads.
+- Tests 1627 → 1635 (failed first: `pencilGrade` / `charcoalHoles` … not a function). Side by side in
+  WebKit, `main` vs the branch: sizes 2–4 lost their beading, size 12 its stamp rings; the grades run
+  light to dark and the textures holed to dense. Build 0/0; `test:ipad` passing.
+- **Owed on the iPad:** small Pencil strokes (the disc fix was for the iPad's GPU canvas and did not
+  reproduce in software WebKit in slop-paint either), the grades and the textures.
+
