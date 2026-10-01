@@ -6,7 +6,7 @@
   import { isTextEntry } from "./text-entry";
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
-  import { drawStroke } from "../core/brush";
+  import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
   import { pathSmoothRadius, smoothPath } from "../core/stroke-smoothing";
   import {
     floodFill,
@@ -442,6 +442,22 @@
   let strokeCanvas: HTMLCanvasElement | null = null;
   let strokeCtx: CanvasRenderingContext2D | null = null;
   let beforeSnapshot: ImageData | null = null;
+  /**
+   * Freezing a long stroke (2026-10-02, port of slop-paint b89284d). Ink and Calligraphy redraw the
+   * whole stroke every frame (a piecewise draw would composite edge pixels many times and harden
+   * them), so a frame cost more the longer the stroke: 14–45 ms at ~20 s of Pencil on a Mac. For an
+   * OPAQUE stroke the settled part — far enough behind the pen that new points can't change it — is
+   * baked every `FREEZE_STEP` points into `frozenCanvas`, which the frame then restores from instead
+   * of `beforeSnapshot`, so only the rest is redrawn. Not into `beforeSnapshot` itself: that is also
+   * the undo step's "before". The engines draw a RANGE from geometry worked out over the whole
+   * stroke, so the frozen part is the same pixels; each draw starts `FREEZE_OVERLAP` points early so
+   * the cut lies inside paint (opaque paint drawn twice looks the same). Translucent strokes keep the
+   * full redraw: drawn twice, the overlap would darken.
+   */
+  let frozenTo = 0;
+  let frozenCanvas: HTMLCanvasElement | null = null;
+  const FREEZE_STEP = 300;
+  const FREEZE_OVERLAP = 8;
   // Compose captured at stroke start — paintStroke must not re-read activeLayer/playhead.
   let strokeSteps: ComposeStep[] | null = null;
   // The layer the stroke started on, and the keyframe it had to materialise (drawing on a hold, or
@@ -780,6 +796,47 @@
 
   // Render the current stroke onto the cell ctx then recomposite. Smooth/calligraphy/ink =
   // full redraw from the pre-stroke snapshot; stamp = incremental. All clip to the selection.
+  /** Bake an opaque Ink / Calligraphy stroke's settled part into `frozenCanvas` once it has grown
+   *  by `FREEZE_STEP` points (see `frozenTo`). Settled = at least 2 × the widest width plus 30 px of
+   *  path, and 40 points, behind the pen: Calligraphy's normals reach half a width back, its
+   *  smoothing 2 points, Ink's Pool 32 ms. */
+  function freezeSettled(
+    pts: InputPoint[],
+    settings: BrushSettings,
+    sr: number,
+    draw: (c: CanvasRenderingContext2D, from: number, to?: number) => void,
+  ) {
+    const off =
+      import.meta.env.DEV && (window as unknown as { slopNoFreeze?: boolean }).slopNoFreeze;
+    if (settings.opacity < 100 || off || !strokeCanvas || !beforeSnapshot) return;
+    const marginPx = 2 * widthRange(settings.size, sr).max + 30;
+    let i = pts.length - 1;
+    let d = 0;
+    while (i > 0 && (d < marginPx || pts.length - 1 - i < 40)) {
+      d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      i--;
+    }
+    if (i - frozenTo < FREEZE_STEP) return;
+    if (!frozenCanvas) {
+      frozenCanvas = document.createElement("canvas");
+      frozenCanvas.width = strokeCanvas.width;
+      frozenCanvas.height = strokeCanvas.height;
+      frozenCanvas
+        .getContext("2d", { willReadFrequently: true })!
+        .putImageData(beforeSnapshot, 0, 0);
+    }
+    const f = frozenCanvas.getContext("2d", { willReadFrequently: true })!;
+    f.save();
+    try {
+      f.setTransform(DPR, 0, 0, DPR, 0, 0);
+      selection?.applyClip(f);
+      draw(f, frozenTo === 0 ? 0 : frozenTo - FREEZE_OVERLAP, i);
+    } finally {
+      f.restore();
+    }
+    frozenTo = i;
+  }
+
   function paintStroke(pts: InputPoint[], done: boolean, asEraser = appState.tool === "eraser") {
     if (!strokeCtx) return;
     const stroke = asEraser ? appState.eraser : appState.brush;
@@ -837,29 +894,32 @@
       } finally {
         strokeCtx.restore();
       }
-    } else if (kind === "calligraphy") {
-      // Calligraphy: full redraw like smooth, NOT incremental — the whole swept ribbon has to
-      // be one path filled once, or every overlap between segments double-composites and a
-      // translucent stroke comes out blotchy at the joins.
-      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+    } else if (kind === "calligraphy" || kind === "ink") {
+      // Ink/marker and Calligraphy: full redraw like smooth, NOT incremental — a per-segment ink
+      // stroke re-composites the antialiased fringe at every overlap and hardens the edge into
+      // jaggies (see the header of ink-brush.ts), and Calligraphy's swept ribbon has to be one path
+      // filled once, or a translucent stroke comes out blotchy at the joins. A long opaque one
+      // redraws only past its frozen part (`frozenTo`).
+      const draw = (c: CanvasRenderingContext2D, from: number, to = Infinity) =>
+        kind === "ink"
+          ? drawInkStroke(c, curved, settings, sr, from, to)
+          : drawCalligraphyStroke(c, curved, settings, sr, from, to);
+      freezeSettled(curved, settings, sr, draw);
+      if (frozenCanvas) {
+        strokeCtx.save();
+        try {
+          strokeCtx.setTransform(1, 0, 0, 1, 0, 0);
+          strokeCtx.globalCompositeOperation = "copy";
+          strokeCtx.drawImage(frozenCanvas, 0, 0);
+        } finally {
+          strokeCtx.restore();
+        }
+      } else strokeCtx.putImageData(beforeSnapshot!, 0, 0);
       strokeCtx.save();
       try {
         strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
         selection?.applyClip(strokeCtx);
-        drawCalligraphyStroke(strokeCtx, curved, settings, sr);
-      } finally {
-        strokeCtx.restore();
-      }
-    } else if (kind === "ink") {
-      // Ink/marker: full redraw like smooth, NOT incremental — a per-segment stroke
-      // re-composites the antialiased fringe at every overlap and hardens the edge into
-      // jaggies (see the header of ink-brush.ts for the measurements).
-      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
-      strokeCtx.save();
-      try {
-        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        selection?.applyClip(strokeCtx);
-        drawInkStroke(strokeCtx, curved, settings, sr);
+        draw(strokeCtx, frozenTo === 0 ? 0 : frozenTo - FREEZE_OVERLAP);
       } finally {
         strokeCtx.restore();
       }
@@ -1189,6 +1249,8 @@
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
+      frozenTo = 0;
+      frozenCanvas = null;
       strokeSteps = null;
       strokeLayer = null;
       strokeMaterialized = null;
@@ -1230,6 +1292,8 @@
     strokeCanvas = null;
     strokeCtx = null;
     beforeSnapshot = null;
+    frozenTo = 0;
+    frozenCanvas = null;
     strokeSteps = null;
     strokeLayer = null;
     strokeMaterialized = null;
@@ -1468,6 +1532,8 @@
       strokeMaterialized = mk.materialized;
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
+      frozenTo = 0;
+      frozenCanvas = null;
       strokeSteps = cellComposeSteps(layer);
       const bt = activeStroke().brushType;
       strokeBrushType = bt;
@@ -2799,6 +2865,8 @@
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
+      frozenTo = 0;
+      frozenCanvas = null;
       strokeSteps = null;
       strokeLayer = null;
       strokeMaterialized = null;
