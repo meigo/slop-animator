@@ -36,13 +36,13 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1580 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1599 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
   profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
   URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger drag pans,
-  a finger tap opens the File menu, no page errors, plus the browser-side fixes of the 2026-09-30
+  a finger drag of a layer row, a finger tap opens the File menu, no page errors, plus the browser-side fixes of the 2026-09-30
   review (added 2026-10-01; each confirmed to FAIL on the pre-review code): a finger or a two-finger
   tap mid-stroke, a canvas press blurring a text field, Cmd chords / focused sliders / open dialogs
   vs the tool keys, redo with a moved selection, the eyedropper on transparent, a cancelled timeline
@@ -100,7 +100,8 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
   `fill.ts`, `input.ts`. `src/lib/cell-ink.ts` — per-cell ink/`contentBounds` caches.
 - `src/state/appState.svelte.ts` — the global `$state` store (`state`), all mutation actions,
   history/undo, preferences gather/apply. **The single source of truth.**
-- `src/lib/*.svelte` — UI: `Canvas`, `Toolbar`, `LayerList` (one-line rows) + `LayerProps` (the selected
+- `src/lib/*.svelte` — UI: `Canvas`, `Toolbar`, `LayerList` (one-line rows, dragged by
+  `anim/layer-drop.ts` + `lib/layer-drag-visual.ts`) + `LayerProps` (the selected
   row's properties strip above it), `Timeline`, `Playbar`, `AudioLane`,
   `RefTransformGizmo`, `BrushCursor`, dialogs.
 - `src/persist/` — `project-file.ts` (zip: project.json + PNG per key cell; autosave + export),
@@ -116,6 +117,9 @@ spec + code-quality review between) → finishing-a-development-branch.** Bug fi
    `import { state } from appState.svelte` — it trips `store_rune_conflict` (compiler can't tell the
    rune from `$`-subscribing a store named `state`). **Fix: `import { state as appState }`** and use
    `appState.`. `$effect`/`$derived`/`$props` do NOT collide (those files may keep `{ state }`).
+
+   > **SUPERSEDED 2026-10-01** — SortableJS is gone: the layer panel drags with pointer events over the pure `dropTarget` (`src/anim/layer-drop.ts`); see the CHANGELOG entry "Layer drag without SortableJS". Nothing moves a DOM node, so none of the below applies.
+
 2. **SortableJS layer reorder** (`LayerList.svelte`): SortableJS and Svelte both author the DOM. After
    a drop, read the new order from the DOM → update store → bump `dragNonce` wrapped by
    `{#key dragNonce}` for a full rebuild, **AND** `evt.item.remove()` the relocated node (a

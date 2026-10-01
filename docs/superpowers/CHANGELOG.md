@@ -7932,3 +7932,53 @@ raises nothing. Found by reading the code (slop-paint was reported), not seen on
   records `navigator.share` / steers `canShare` and the next share error. All three failed before
   the fix (Save downloaded). Build 0/0, 1580 tests. **Owed on the iPad, in the Home Screen app:**
   File ▸ Save opens the share sheet and the file lands in Files.
+
+**Layer drag without SortableJS (2026-10-01, branch `feat/layer-drag`, ../SLOP-LAYER-DRAG.md).** The
+layer panel dragged with SortableJS, which moves DOM nodes Svelte owns and was read back from the
+DOM. Spec: `docs/superpowers/specs/2026-10-01-layer-drag-without-sortable-design.md`; plan beside it.
+- **Why:** a bottom drop landed past the `{#each}` end anchor and survived as a duplicate (worked
+  around with `evt.item.remove()` and a `{#key dragNonce}` remount); `onEnd` fired twice on a
+  cross-list drop (a microtask latch); the DOM read-back once gave `Number(undefined) = NaN` and layers
+  vanished; the remount leaked an open undo bracket from LayerProps' opacity slider
+  (`settleOnUnmount`); the app's rules reached it only through a `put` guard; browser automation could
+  never drive the native HTML5 drag.
+- **The rule** (`src/anim/layer-drop.ts`, pure): a layer drag is decided by the row under the pointer
+  (top-level layer: upper half above, lower half below; group header: upper half above the block,
+  lower half into the group at its top; member: above or below it, in its group); a group drag by the
+  top-level BLOCK under the pointer, so a group is never refused for passing over another group's
+  members; a collapsed group takes no drop (the drop lands beside it); `null` means no change (over
+  itself, or where it already is). The result carries the store's whole bottom-first order, which
+  `reorderLayersWithGroups` takes as one undo step, and `into`, the group whose header is marked.
+  Rows are keyed `l<id>` / `g<id>` (layer and group ids can collide). Ghost and gap are one row at the
+  dragged row's measured height; a dragged group dims its header and visible members in place.
+  `applyOrder` was moved out of `reorderLayersWithGroups` so it is testable.
+- **Styling** (at the user's request, matching slop-vector-editor `c73d5b9`, `4e2df20`): the ghost
+  has straight top and bottom accent borders on `bg-surface-hover`, no rounded corners, no ring; the
+  drop target is inset top and bottom accent lines (box-shadow), not an outline. The lines are on the
+  group's HEADER row, not the whole `.group-block` (on the block, the slid last member rendered below
+  the bottom line), with `.ui-selected.ui-drop-target` keeping a selected header's left bar. The
+  spec's outline-on-the-block text was amended in place.
+- **Escape:** an Escape-cancelled drag swallows the release click (the pointer is still captured by
+  the grip, and Chrome/Edge delivered that click, selecting the grabbed row); a tap that never lifts
+  still selects, via `gripClick`.
+- **Removed:** the `sortablejs` and `@types/sortablejs` dependencies, `membersSortable`, the root
+  Sortable, `rebuild`, the `dropHandled` latch, `evt.item.remove()`, `dragNonce` and its `{#key}`, the
+  `.sortable-*` rules in `app.css`, and the eslint `svelte/no-dom-manipulating` override. That override
+  was also covering `src/lib/ToolOptions.svelte` (`curvePopupEl.replaceChildren(editor)` into a host
+  div empty in the template), which now has its own `eslint-disable-next-line`. The timeline is
+  untouched (it follows the data); `settleOnUnmount` stays (it covers other causes), its comment
+  loses the `dragNonce` cause.
+- **Tests:** `layer-drop.test.ts` (15) and `layer-drag-visual.test.ts` (4, from slop-spine, keyed
+  rows); 1580 to 1599 tests. Build 0/0. A throwaway Playwright script with real `page.mouse` drags
+  (kept at `.superpowers/sdd/2026-10-01-layer-drag-without-sortable/layer-drag-check.mjs`) ran in
+  WebKit and Chromium, 25 checks ok in each: reorder, into and out of a group, a group move, mid-drag
+  ghost / gap / dim / cursor, panel and timeline order agree, one undo reverts, tap, Escape,
+  `pointercancel`, a refused drop, release outside the list, a scrolled list, auto-scroll, no page
+  errors. Broken on purpose: with `slide` returning null the ghost / gap check failed; with the
+  `swallowClick` line removed the new "Escape-cancelled drag does not change the selection" check
+  failed in Chromium (WebKit sends no click after a drag, so it was not run unfixed there). Its
+  setup needed two fixes (clicks at x=150 hit the lock / eye buttons; the 30 added layers all went into
+  the selected group). `npm run test:ipad` gained "a finger drag moves a layer row, with the gap open
+  mid-drag" (21 ok), failing with the commit removed and with the slide broken. That check has two
+  top-level rows, so it proves a reorder, not a group drop; it is desktop WebKit, not iPadOS.
+- **Owed on the iPad:** a real finger and Pencil drag, into and out of a group.

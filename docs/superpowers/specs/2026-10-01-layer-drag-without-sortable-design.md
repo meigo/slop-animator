@@ -43,6 +43,13 @@ reads the new order back from the DOM. What that has cost here:
   here unasked.)
 - **Pressing a grip does not change the selection**, as today.
 
+> **Amended 2026-10-01 (during implementation):** (1) Styling follows slop-vector-editor (`c73d5b9`,
+> `4e2df20`): the ghost has straight top and bottom accent borders on `bg-surface-hover`, no rounded
+> corners, no ring; `.ui-drop-target` is inset top and bottom accent lines (box-shadow), not an
+> outline. (2) Those lines go on the group's HEADER row, not the whole `.group-block` (on the block,
+> the slid last member rendered below the block's bottom line), with a `.ui-selected.ui-drop-target`
+> rule keeping a selected header's left bar. This supersedes the outline-on-the-block text below.
+
 ## Design
 
 ### Pure logic — `src/anim/layer-drop.ts` (new, tested)
