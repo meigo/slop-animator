@@ -57,6 +57,7 @@
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStroke } from "../core/ink-brush";
   import { drawDryStroke } from "../core/dry-brush";
+  import { settledIndex } from "../core/stroke-freeze";
   import { drawCalligraphyStroke } from "../core/calligraphy-brush";
   import { syncReferenceVideos } from "../anim/reference";
   import { Selection, type SelectionRect } from "../core/selection";
@@ -809,13 +810,8 @@
     const off =
       import.meta.env.DEV && (window as unknown as { slopNoFreeze?: boolean }).slopNoFreeze;
     if (settings.opacity < 100 || off || !strokeCanvas || !beforeSnapshot) return;
-    const marginPx = 2 * widthRange(settings.size, sr).max + 30;
-    let i = pts.length - 1;
-    let d = 0;
-    while (i > 0 && (d < marginPx || pts.length - 1 - i < 40)) {
-      d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-      i--;
-    }
+    // Travel only, not a resting pen's jitter (see `settledIndex`).
+    const i = settledIndex(pts, 2 * widthRange(settings.size, sr).max + 30, 40);
     if (i - frozenTo < FREEZE_STEP) return;
     if (!frozenCanvas) {
       frozenCanvas = document.createElement("canvas");

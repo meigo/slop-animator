@@ -8148,6 +8148,18 @@ the slop-paint session; the user said to go ahead without stops. Spec and plan:
   inked; translucent Ink identical (never frozen). Late frames: Ink ~30 ms → 16–17 ms (the display
   cap) in WebKit. Broken on purpose (the frame not restoring from `frozenCanvas`): ~231 000 pixels
   differ, FAIL. Screenshot read: no seam.
+- **Fixed after the final review (beyond slop-paint):** the "settled" margin summed raw path length, so
+  a Pencil resting at Stream 0 — still sending jitter points — "travelled" the margin standing still;
+  the freeze then landed inside the rest, and Calligraphy (which keeps no sample there: its
+  decimation spacing is up to 3 px) baked a piece running to the moving end, never redrawn — a notch
+  at the corner where the artist paused (the reviewer's simulation: up to 288 px² at size 40). The
+  margin walk is now `settledIndex` (`src/core/stroke-freeze.ts`, tested), counting only steps of
+  3 px or more; the test failed first on the old loop (settled at point 758, inside the rest). slop-paint
+  `b89284d` has the same loop; told.
+- **Deferred (review minors):** the engines could be unit-tested with a recording fake context after
+  all; a brush control changed mid-stroke (size, colour, opacity below 100) applies only to the
+  unfrozen tail; `frozenCanvas` is released by dropping the reference only (on iOS, `width = 0` first,
+  or one reused canvas, would free it sooner).
 - **Owed on the iPad:** a long (20 s+) opaque Ink and Calligraphy stroke at a large size — it should
-  keep up with the Pencil.
+  keep up with the Pencil; and a Calligraphy corner where the Pencil rests a few seconds at Stream 0.
 
