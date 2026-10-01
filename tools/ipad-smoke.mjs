@@ -45,6 +45,7 @@ const context = await webkit.launchPersistentContext(profile, {
   ...devices["iPad Pro 11 landscape"],
 });
 let homeProfile = "";
+let portraitProfile = "";
 try {
   // Simulated pointers aren't live ones, so WebKit refuses to capture them ("The object can not be
   // found here"); a real Pencil or finger is one. Let capture fail quietly for the simulation.
@@ -614,10 +615,50 @@ try {
     "Home Screen app: a file the sheet won't take is reported, not downloaded",
   );
   await home.close();
+
+  // ── iPad portrait (834 px wide): the tool-options row stays ONE line (40 px) for every tool. A
+  // wrapped row is taller, so switching tools moved the canvas; the Eraser's row needed ~835 px and
+  // the Brush's fit by 7 (measured 2026-10-01; slop-paint cd14268 / slop-spine 9a7ba65 fixed the
+  // same row). A context of its own, so the landscape checks above are untouched. ──
+  portraitProfile = mkdtempSync(join(tmpdir(), "slop-ipad-smoke-portrait-"));
+  const portrait = await webkit.launchPersistentContext(portraitProfile, {
+    ...devices["iPad Pro 11"],
+  });
+  const pp = portrait.pages()[0] ?? (await portrait.newPage());
+  await pp.goto(url);
+  await pp.waitForSelector('[aria-label="Scrub frames"]', { timeout: 20000 });
+  await pp.waitForTimeout(500);
+  const heights = [];
+  for (const t of [
+    "Brush",
+    "Eraser",
+    "Fill",
+    "Eyedropper",
+    "Select",
+    "Lasso",
+    "Transform",
+    "Deform",
+    "Pose",
+    "Outline",
+  ]) {
+    await pp.locator(`button[title^="${t}"]`).first().tap();
+    await pp.waitForTimeout(200);
+    const h = await pp.evaluate(
+      () => document.querySelector("div.min-h-10.flex-wrap").getBoundingClientRect().height,
+    );
+    heights.push(`${t} ${Math.round(h)}`);
+    if (t === "Brush") await pp.screenshot({ path: `${OUT}/6-portrait-brush-row.png` });
+  }
+  check(
+    heights.every((h) => / 40$/.test(h)),
+    `portrait: the tool-options row is one line for every tool (${heights.join(", ")} px)`,
+  );
+  await portrait.close();
 } finally {
   await context.close();
   rmSync(profile, { recursive: true, force: true });
   if (homeProfile) rmSync(homeProfile, { recursive: true, force: true });
+  if (portraitProfile) rmSync(portraitProfile, { recursive: true, force: true });
   await server?.close();
 }
 console.log(
