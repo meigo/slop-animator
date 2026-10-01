@@ -698,8 +698,24 @@ export function beginStructuralEdit(): StructSnapshot {
 }
 
 /** Finish a structural edit started with beginStructuralEdit: push one undo command. */
+/** Reference media that one side of an undo step holds and the other does not — a removed (or
+ *  added-then-undone) reference. It can't be released while history might bring the layer back,
+ *  and history only ever holds it inside closures, so nothing freed it: a deleted 300 MB video
+ *  kept its blob URL and decoder for the session (2026-09-30 review). `replaceProject`, which
+ *  clears history, releases them. */
+const retiredRefMedia = new Set<ReferenceMedia>();
+function noteRetiredRefMedia(a: StructSnapshot, b: StructSnapshot): void {
+  const media = (s: StructSnapshot) =>
+    new Set(s.layers.flatMap((l) => (l.kind === "ref" ? [l.media] : [])));
+  const ma = media(a);
+  const mb = media(b);
+  for (const m of ma) if (!mb.has(m)) retiredRefMedia.add(m);
+  for (const m of mb) if (!ma.has(m)) retiredRefMedia.add(m);
+}
+
 export function commitStructuralEdit(before: StructSnapshot): void {
   const after = snapshotStructure();
+  noteRetiredRefMedia(before, after);
   history.push({
     undo: () => restoreStructure(before),
     redo: () => restoreStructure(after),
@@ -2506,7 +2522,10 @@ export function replaceProject(project: Project) {
   transformDragGuard.settle?.();
   playbackController.pause();
   history.clear(); // undo history from the old document can't apply to the new one
-  for (const l of state.project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+  for (const l of state.project.layers) if (l.kind === "ref") retiredRefMedia.add(l.media);
+  // History is gone, so no snapshot can bring any of these back.
+  for (const m of retiredRefMedia) releaseReferenceMedia(m);
+  retiredRefMedia.clear();
   state.project = project;
   audioEngine.setTrack(state.project.audio); // the PROXY, not raw project.audio — see setAudioTrack
   state.playhead = 0;
