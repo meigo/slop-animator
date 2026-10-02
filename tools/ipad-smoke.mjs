@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), a soft bucket fill (2026-10-02), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -484,6 +484,76 @@ try {
   );
   await brushSelect.selectOption("smooth");
   await setSize(sizeBefore);
+
+  // Soft fill (2026-10-02, from slop-paint): a bucket fill against an anti-aliased stroke. At Soft 0
+  // the flood stops where the stroke's faint edge passes the tolerance, leaving PALE pixels (faint
+  // ink over paper) between the fill and the line — the staircase; at Soft 1 the fill runs behind
+  // that faint edge, so they take the fill. Expand 0, or its ring hides the edge at any Soft. The
+  // fill colour is the default near-black, so after a fill almost everything near the stroke is
+  // dark and a pale pixel (R > 200: under ~25% cover) is a gap; a partly covered edge pixel is the
+  // antialiasing itself, so it is not counted. Each fill is undone.
+  /** Pale pixels within 12 px of the stroke on line `dy`, over vertical cross-sections. */
+  const palePixels = (dy) =>
+    page.evaluate(
+      ({ x, y, w, h, dy }) => {
+        const c = document.querySelector("div.touch-none.overflow-hidden > div canvas");
+        const r = c.getBoundingClientRect();
+        const ctx = c.getContext("2d");
+        let pale = 0;
+        for (let i = 0; i <= 240; i++) {
+          const t = 0.2 + (0.6 * i) / 240;
+          const px = Math.round(((x + w * (0.25 + 0.5 * t) - r.left) * c.width) / r.width);
+          const py = Math.round(((y + h * (0.4 + 0.2 * t + dy) - r.top) * c.height) / r.height);
+          const col = ctx.getImageData(px, py - 12, 1, 25).data;
+          for (let k = 0; k < col.length; k += 4) if (col[k] > 200) pale++;
+        }
+        return pale;
+      },
+      { x: stage.x, y: stage.y, w: stage.width, h: stage.height, dy },
+    );
+  const setRange = (name, v) =>
+    page
+      .locator(`label:has-text("${name}") input[type="range"]`)
+      .first()
+      .evaluate((el, v) => {
+        el.value = String(v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, v);
+  await setSize(6);
+  await send(line("pen", 43).map((s) => [...s, 0.15]));
+  await page.keyboard.press("g");
+  await page.waitForTimeout(100);
+  const expandBefore = await page
+    .locator('label:has-text("Expand") input[type="range"]')
+    .first()
+    .inputValue();
+  const softBefore = await page
+    .locator('label:has-text("Soft") input[type="range"]')
+    .first()
+    .inputValue();
+  await setRange("Expand", 0);
+  /** Fill at a Soft slider position (an index into SOFT_STEPS: 0 → 0, 4 → 1), measure, undo. */
+  const fillPale = async (softIndex) => {
+    await setRange("Soft", softIndex);
+    await send([
+      ["pointerdown", "pen", 44, 0.5, 0.07],
+      ["pointerup", "pen", 44, 0.5, 0.07],
+    ]);
+    await page.waitForTimeout(400);
+    const pale = await palePixels(0.15);
+    await page.locator('button[title^="Undo"]').first().click();
+    await page.waitForTimeout(200);
+    return pale;
+  };
+  const paleHard = await fillPale(0);
+  const paleSoft = await fillPale(4);
+  check(
+    paleHard >= 10 && paleSoft * 4 <= paleHard,
+    `a soft fill leaves no pale gaps against an anti-aliased stroke (pale pixels: Soft 0 ${paleHard}, Soft 1 ${paleSoft})`,
+  );
+  await setRange("Expand", expandBefore);
+  await setRange("Soft", softBefore);
+  await page.keyboard.press("b");
 
   // A finger drag of a layer row (2026-10-01, the drag that replaced SortableJS): the bottom row
   // to the top. Mid-drag the dragged row's own place has slid to the top and the rows it passed
