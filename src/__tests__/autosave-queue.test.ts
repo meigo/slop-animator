@@ -7,17 +7,26 @@ vi.mock("../persist/project-file", () => ({
   saveProjectBlob: (project: { rev: number }) =>
     new Promise<Blob>((resolve) => encodes.push({ project, resolve })),
   loadProjectBlob: () => null,
+  referencedMediaIds: () => new Set<string>(),
 }));
+// Only the latest slot's blob writes are recorded; meta and checkpoint keys are read back as empty.
 vi.mock("../persist/db", () => ({
   KV_STORE: "kv",
-  idbDo: (_s: string, _m: string, f: (s: { put: (b: Blob) => void }) => void) => {
-    f({ put: (b: Blob) => writes.push(Number(b.type)) });
-    return Promise.resolve();
-  },
+  idbDo: (_s: string, _m: string, f: (s: unknown) => { result?: unknown }) =>
+    Promise.resolve(
+      f({
+        put: (v: unknown, key: string) => {
+          if (key === "autosave") writes.push(Number((v as Blob).type));
+          return {};
+        },
+        get: () => ({ result: undefined }),
+      }).result,
+    ),
 }));
 
 const { saveAutosave } = await import("../persist/autosave");
 const { bumpPersistGeneration } = await import("../persist/generation");
+const META = { savedAt: 0, projectName: "p", layerCount: 1, inkedCount: 1 };
 const flush = () => new Promise((r) => setTimeout(r, 0));
 /** Finish the oldest pending encode, as a blob tagged with the document's revision AT THAT TIME. */
 const finishEncode = async () => {
@@ -34,11 +43,11 @@ describe("autosave runs one save at a time", () => {
 
   it("an edit during a slow save queues a follow-up instead of dropping the save", async () => {
     const doc = { rev: 1 } as never as { rev: number };
-    void saveAutosave(doc as never);
+    void saveAutosave(doc as never, META);
     doc.rev = 2;
-    void saveAutosave(doc as never); // arrives mid-encode — used to supersede the first
+    void saveAutosave(doc as never, META); // arrives mid-encode — used to supersede the first
     doc.rev = 3;
-    void saveAutosave(doc as never); // coalesces with the queued follow-up
+    void saveAutosave(doc as never, META); // coalesces with the queued follow-up
     expect(encodes.length).toBe(1); // nothing encodes in parallel
     await finishEncode();
     expect(writes).toEqual([3]); // the first save reached the store (the doc was at rev 3 by then)
@@ -50,10 +59,10 @@ describe("autosave runs one save at a time", () => {
 
   it("keeps writing while edits keep arriving faster than an encode", async () => {
     const doc = { rev: 0 };
-    void saveAutosave(doc as never);
+    void saveAutosave(doc as never, META);
     for (let i = 1; i <= 5; i++) {
       doc.rev = i;
-      void saveAutosave(doc as never);
+      void saveAutosave(doc as never, META);
       await finishEncode();
     }
     expect(writes.length).toBe(5); // every round stored something; nothing was starved
@@ -61,7 +70,7 @@ describe("autosave runs one save at a time", () => {
 
   it("a document replace drops the in-flight save of the old one", async () => {
     const old = { rev: 1 };
-    void saveAutosave(old as never);
+    void saveAutosave(old as never, META);
     bumpPersistGeneration(); // what replaceProject / New do
     await finishEncode();
     expect(writes).toEqual([]);
@@ -70,10 +79,10 @@ describe("autosave runs one save at a time", () => {
   it("a follow-up queued for the old document does not run for it after a replace", async () => {
     const old = { rev: 1 };
     const fresh = { rev: 100 };
-    void saveAutosave(old as never);
-    void saveAutosave(old as never); // queued
+    void saveAutosave(old as never, META);
+    void saveAutosave(old as never, META); // queued
     bumpPersistGeneration();
-    void saveAutosave(fresh as never); // queued separately, for the new document
+    void saveAutosave(fresh as never, META); // queued separately, for the new document
     await finishEncode(); // the first (old) save: dropped
     // The old follow-up returns before encoding; only the new document's save encodes.
     expect(encodes.map((e) => e.project.rev)).toEqual([100]);

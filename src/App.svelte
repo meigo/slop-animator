@@ -42,10 +42,10 @@
     modalOpen,
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
-  import { loadAutosave, saveAutosave } from "./persist/autosave";
+  import { loadAutosave, pruneUnusedMedia, saveAutosave } from "./persist/autosave";
+  import { probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
-  import { hydrateFromStore, pruneMedia } from "./persist/media-store";
-  import { referencedMediaIds } from "./persist/project-file";
+  import { hydrateFromStore } from "./persist/media-store";
   import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
   import { innerWidth } from "svelte/reactivity/window";
   import { panelBesideToolOptions } from "./anim/panel-layout";
@@ -368,7 +368,7 @@
       }
       if (await hydrateFromStore(state.project, () => repaint())) repaint();
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
-      void pruneMedia(referencedMediaIds(state.project.layers));
+      void pruneUnusedMedia(state.project.layers);
     } catch (e) {
       // The restore failed (a truncated blob, a decode OOM on a large project, an IndexedDB open
       // that never settled). `state.project` is still the BLANK startup document while the single
@@ -401,9 +401,33 @@
 
   function flushAutosave() {
     autosaveDirty = false;
+    const inked = inkedLayers();
+    const meta = {
+      savedAt: Date.now(),
+      projectName: state.project.name,
+      layerCount: state.project.layers.filter((l) => l.kind === "draw").length,
+      inkedCount: inked.size,
+    };
     // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
     // next hide-event can retry rather than skipping the save on a stale "clean" status.
-    void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
+    void saveAutosave(state.project, meta).then(onAutosaveOk, onAutosaveFailed);
+  }
+
+  /** The drawing layers that have any pixels, each with the first key-cell canvas found inked.
+   *  Read from the pixels (`probeEmpty`, uncached): the iPad empties canvases behind the ink
+   *  caches' back. Stops at the first inked cell, so an inked layer costs one small probe. */
+  function inkedLayers(): Map<number, HTMLCanvasElement> {
+    const out = new Map<number, HTMLCanvasElement>();
+    for (const l of state.project.layers) {
+      if (l.kind !== "draw") continue;
+      for (const c of l.cells) {
+        if (c.kind === "key" && !probeEmpty(c.canvas)) {
+          out.set(l.id, c.canvas);
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   // The timed save waits while anyone is drawing (port of slop-paint 4064b59, where a blocking

@@ -24,13 +24,8 @@
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer, releaseReferenceMedia } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
-  import {
-    saveProjectBlob,
-    loadProjectBlob,
-    referencedMediaIds,
-    sanitizeFilename,
-  } from "../persist/project-file";
-  import { pruneMedia } from "../persist/media-store";
+  import { saveProjectBlob, loadProjectBlob, sanitizeFilename } from "../persist/project-file";
+  import { pruneUnusedMedia } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
   import { isStandalone, saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
@@ -129,7 +124,7 @@
         // Pre-name-field saves carry no name — adopt the picked file's basename.
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
         replaceProject(project);
-        void pruneMedia(referencedMediaIds(appState.project.layers));
+        void pruneUnusedMedia(appState.project.layers); // keeps what stored autosaves point at
         // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.
         if (appState.project.audioUndecoded)
           appState.persistAlert =

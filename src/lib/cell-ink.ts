@@ -62,7 +62,7 @@ let quick: HTMLCanvasElement | null = null;
  *  2. Only when pass 1 sees nothing: the halving probe (`probeSteps`), which cannot skip a row. It
  *     confirms a genuinely blank key, or finds the thin stroke pass 1 fell between.
  */
-function probeEmpty(canvas: HTMLCanvasElement): boolean {
+export function probeEmpty(canvas: HTMLCanvasElement): boolean {
   if (canvas.width === 0 || canvas.height === 0) return true;
 
   // Pass 1 — exactly the pre-2026-09-11 probe (same size, same single draw), so an inked key costs

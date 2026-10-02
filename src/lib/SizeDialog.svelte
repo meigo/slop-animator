@@ -2,8 +2,7 @@
   import { state as appState, replaceProject, resizeProject } from "../state/appState.svelte";
   import NumberField from "./NumberField.svelte";
   import { createProject } from "../anim/document";
-  import { clearAutosave } from "../persist/autosave";
-  import { clearAllMedia } from "../persist/media-store";
+  import { clearAutosave, pruneUnusedMedia } from "../persist/autosave";
   import type { ResizeMode, Anchor } from "../anim/resize";
 
   const PRESETS = [
@@ -48,20 +47,22 @@
     const ch = Math.max(16, Math.min(8192, Math.round(h)));
     if (appState.sizeDialog.mode === "new") {
       // The one remaining irreversible action reachable in a single tap: `replaceProject` clears
-      // history, `clearAutosave` drops the only restorable copy, and `clearAllMedia` discards the
-      // stored reference bytes — so there is nothing to undo it WITH afterwards. Until now this
+      // history and `clearAutosave` drops the latest autosave — so there is nothing to undo it WITH
+      // afterwards but File ▸ Restore autosave…, whose older copies (and the reference media they
+      // point at: `pruneUnusedMedia`, no longer a clear-all) New leaves in place. Until now this
       // dialog read as a size picker, and Create looked as harmless as Resize's. Native `confirm`
       // matches the existing destructive gate on shortening the animation (Playbar/Timeline), rather
       // than inventing a second pattern.
       if (
         !window.confirm(
-          "Start a new project?\n\nThe current project, its autosave and any stored reference media are discarded. This can't be undone.",
+          "Start a new project?\n\nThe current project is discarded and its latest autosave cleared. Undo can't bring it back — only an older copy in File ▸ Restore autosave… might.",
         )
       )
         return; // dialog stays open — cancelling the guard must not also cancel the intent
       replaceProject(createProject({ width: cw, height: ch }));
-      clearAutosave();
-      void clearAllMedia();
+      clearAutosave()
+        .then(() => pruneUnusedMedia(appState.project.layers))
+        .catch((e) => console.error("clearing the autosave failed", e));
     } else {
       resizeProject(cw, ch, mode, anchor);
     }
