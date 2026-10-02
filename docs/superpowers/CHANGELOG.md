@@ -8259,3 +8259,13 @@ found paths that could still lose work; each persist-layer fix has a store test 
 - iPad memory: the status warning is a transient hint once per DEVICE (localStorage
   `slop-animator-memory-warned`); 600 MB is slop-paint's layer guess, uncalibrated for cells
   (~75 cells at 1920×1080).
+- **Deferred after the fix pass's re-review (all Minor; all addressed: yes):** restoring the oldest
+  checkpoint with all three slots full leaves that copy only in memory until the first autosave (3 s+);
+  restoring while a save of the current document is in flight can pair an old blob with a new meta
+  (one-line fix: `bumpPersistGeneration()` before the shelve); Keep and shelve can each push a copy
+  that is already in the rotation, evicting an older checkpoint; after a failed New / Open the next
+  save's "paused" message replaces the reason; a restore whose media hydration throws reports
+  "Couldn't restore" over a replaced document and leaves autosave paused (older than this branch).
+  Parked by ruling: nothing drawn while paused is saved anywhere (as the spec and slop-paint), and
+  partial blanking (only some cells dropped) isn't detected per cell — not known to happen.
+
