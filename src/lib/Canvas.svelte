@@ -634,6 +634,7 @@
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
+        gap: appState.fill.gap,
         // `expand` > 0 adds a ring painted BEHIND existing content (it exists to tuck a fill under
         // anti-aliased line edges) — and alpha lock refuses every empty pixel, so under the lock
         // the ring could only ever be dropped. 0 = write the colour into the region, which the
@@ -658,6 +659,7 @@
     } else {
       floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
+        gap: appState.fill.gap,
         expand: appState.fill.expand,
       });
     }

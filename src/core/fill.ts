@@ -1,16 +1,16 @@
 /**
- * Flood fill (paint bucket) using a scanline algorithm.
+ * Flood fill (paint bucket): the region (`fillMask`), then its coverage (Soft / Expand).
  * Operates on raw ImageData for performance.
  */
 
 import { dilateMask, distanceToMask } from "./mask-ops";
-import { enclosedRegion } from "./fill-holes";
+import { clampGap, enclosedRegion } from "./fill-holes";
 
 export interface FillOptions {
   /** Color tolerance for matching the clicked pixel's color (0-255) */
   tolerance?: number;
-  /** Alpha threshold (0-255): pixels with alpha >= this are treated as walls */
-  alphaThreshold?: number;
+  /** Close breaks in the lines of up to about 2× this many pixels (0 = none; see `fillMask`). */
+  gap?: number;
   /** Expand fill by this many pixels to cover antialiased edges. Fill draws behind existing content. */
   expand?: number;
   /** Soft edge: how far the fill fades into the surrounding lines' soft edges, behind them
@@ -149,6 +149,113 @@ export function expandedCoverage(
   return out;
 }
 
+/**
+ * The pixels a bucket tap at (sx, sy) fills: 1 = fill. Pixels within `tolerance` of the tapped
+ * one (all four channels) are fillable; the rest are walls. `null` for a tap off the canvas.
+ *
+ * `gap` (clamped to MAX_GAP, as Fill enclosed's Bridge) closes breaks in the walls of up to about
+ * 2×gap px: the walls are thickened by `gap`, the flood runs in what's left, and the region is
+ * grown back `gap` steps over fillable pixels only (`growWithin`) — so it still reaches the lines,
+ * into sharp inside corners too, and pokes only about `gap` px out through a bridged break. A region too narrow to survive the thickening (the tap lands
+ * inside it) is filled without bridging instead, so a small pocket still fills.
+ */
+export function fillMask(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  sx: number,
+  sy: number,
+  tolerance: number,
+  gap = 0,
+): Uint8Array | null {
+  if (sx < 0 || sx >= w || sy < 0 || sy >= h) return null;
+  const s = (sy * w + sx) * 4;
+  const fillable = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const p = i * 4;
+    fillable[i] =
+      Math.abs(data[p] - data[s]) <= tolerance &&
+      Math.abs(data[p + 1] - data[s + 1]) <= tolerance &&
+      Math.abs(data[p + 2] - data[s + 2]) <= tolerance &&
+      Math.abs(data[p + 3] - data[s + 3]) <= tolerance
+        ? 1
+        : 0;
+  }
+  const r = clampGap(gap);
+  if (r > 0) {
+    const walls = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) walls[i] = fillable[i] ? 0 : 1;
+    const thick = dilateMask(walls, w, h, r);
+    const start = sy * w + sx;
+    if (!thick[start]) {
+      const open = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) open[i] = thick[i] ? 0 : 1;
+      return growWithin(flood(open, w, h, start), fillable, w, h, r);
+    }
+  }
+  return flood(fillable, w, h, sy * w + sx);
+}
+
+/** Grow `region` by `steps` 8-connected steps, only into `allowed` pixels. Square steps reach a
+ *  corner a round dilation of the same radius misses (it left the inside corners of a box unfilled
+ *  by ~0.4×gap), and staying on `allowed` pixels at each step — never squeezing diagonally between
+ *  two wall pixels — means it never crosses a line. */
+function growWithin(
+  region: Uint8Array,
+  allowed: Uint8Array,
+  w: number,
+  h: number,
+  steps: number,
+): Uint8Array {
+  let edge: number[] = [];
+  for (let i = 0; i < w * h; i++) if (region[i]) edge.push(i);
+  for (let s = 0; s < steps && edge.length; s++) {
+    const next: number[] = [];
+    for (const i of edge) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+          const n = ny * w + nx;
+          if (region[n] || !allowed[n]) continue;
+          // A diagonal step between two wall pixels would slip through a 1px diagonal line.
+          if (dx && dy && !allowed[y * w + nx] && !allowed[ny * w + x]) continue;
+          region[n] = 1;
+          next.push(n);
+        }
+      }
+    }
+    edge = next;
+  }
+  return region;
+}
+
+/** The 4-connected region of `open` pixels around `start` (1 = in it). */
+function flood(open: Uint8Array, w: number, h: number, start: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  if (!open[start]) return out;
+  out[start] = 1;
+  const stack = [start];
+  const visit = (n: number) => {
+    if (out[n] || !open[n]) return;
+    out[n] = 1;
+    stack.push(n);
+  };
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % w;
+    if (x > 0) visit(i - 1);
+    if (x < w - 1) visit(i + 1);
+    if (i >= w) visit(i - w);
+    if (i + w < w * h) visit(i + w);
+  }
+  return out;
+}
+
 export function floodFill(
   ctx: CanvasRenderingContext2D,
   startX: number,
@@ -157,7 +264,6 @@ export function floodFill(
   options: FillOptions = {},
 ) {
   const tolerance = options.tolerance ?? 32;
-  const alphaThreshold = options.alphaThreshold ?? 0;
   const expand = options.expand ?? 0;
 
   const w = ctx.canvas.width;
@@ -175,9 +281,6 @@ export function floodFill(
   const targetB = data[startIdx + 2];
   const targetA = data[startIdx + 3];
 
-  // Don't fill if clicking on a wall pixel
-  if (alphaThreshold > 0 && targetA >= alphaThreshold) return;
-
   // Don't fill if clicking on the same color — exactly the same. Within the region tolerance (as
   // it was) refused real recolours: #000000 could not be filled with the default #1a1a1a.
   if (
@@ -189,80 +292,8 @@ export function floodFill(
     return;
   }
 
-  // --- Pass 1: Scanline flood fill to build a fill mask ---
-  const mask = new Uint8Array(w * h); // 1 = fill, 0 = no fill
-
-  function isWall(pixelIdx: number): boolean {
-    if (alphaThreshold > 0) {
-      return data[pixelIdx + 3] >= alphaThreshold;
-    }
-    return false;
-  }
-
-  function matches(pixelIdx: number): boolean {
-    const pi = pixelIdx >> 2;
-    if (mask[pi]) return false;
-    if (isWall(pixelIdx)) return false;
-    return (
-      Math.abs(data[pixelIdx] - targetR) <= tolerance &&
-      Math.abs(data[pixelIdx + 1] - targetG) <= tolerance &&
-      Math.abs(data[pixelIdx + 2] - targetB) <= tolerance &&
-      Math.abs(data[pixelIdx + 3] - targetA) <= tolerance
-    );
-  }
-
-  const stack: [number, number][] = [[sx, sy]];
-
-  while (stack.length > 0) {
-    const [x, y] = stack.pop()!;
-    let idx = (y * w + x) * 4;
-
-    if (!matches(idx)) continue;
-
-    // Find left edge
-    let lx = x;
-    while (lx > 0 && matches((y * w + lx - 1) * 4)) {
-      lx--;
-    }
-
-    // Scan right, filling mask
-    let rx = lx;
-    let aboveAdded = false;
-    let belowAdded = false;
-
-    while (rx < w) {
-      idx = (y * w + rx) * 4;
-      if (!matches(idx)) break;
-
-      mask[y * w + rx] = 1;
-
-      if (y > 0) {
-        const aboveIdx = ((y - 1) * w + rx) * 4;
-        if (matches(aboveIdx)) {
-          if (!aboveAdded) {
-            stack.push([rx, y - 1]);
-            aboveAdded = true;
-          }
-        } else {
-          aboveAdded = false;
-        }
-      }
-
-      if (y < h - 1) {
-        const belowIdx = ((y + 1) * w + rx) * 4;
-        if (matches(belowIdx)) {
-          if (!belowAdded) {
-            stack.push([rx, y + 1]);
-            belowAdded = true;
-          }
-        } else {
-          belowAdded = false;
-        }
-      }
-
-      rx++;
-    }
-  }
+  // --- Pass 1: the region to fill (with Gap, breaks in the lines bridged: `fillMask`) ---
+  const mask = fillMask(data, w, h, sx, sy, tolerance, options.gap ?? 0)!;
 
   // --- Pass 2: coverage per pixel, 0–255 (2026-10-02, from slop-paint) ---
   // Expand grows the fill under the lines (all of it drawn behind them), its edge feathered by
