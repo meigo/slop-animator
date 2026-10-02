@@ -2762,8 +2762,9 @@ export const autosaveActions: {
   /** Keep the blank layers: set the last good copy aside, then resume autosave. */
   keep: (() => void) | null;
   /** Before New / Open replaces a document whose autosave is paused: set the protected copy aside
-   *  and resume. Never rejects; on a failure autosave stays paused. */
-  setAsideIfPaused: (() => Promise<void>) | null;
+   *  and resume. Never rejects; false when it failed (autosave stays paused, a sticky message
+   *  says so) — the caller must then leave the document alone. */
+  setAsideIfPaused: (() => Promise<boolean>) | null;
   /** The guard's baseline is the document as it is now (a document replace). */
   rebaseline: (() => void) | null;
 } = { openRestore: null, restore: null, keep: null, setAsideIfPaused: null, rebaseline: null };

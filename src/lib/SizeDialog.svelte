@@ -64,7 +64,12 @@
         )
       )
         return; // dialog stays open — cancelling the guard must not also cancel the intent
-      await autosaveActions.setAsideIfPaused?.(); // before the latest copy is cleared below
+      // Before the latest copy is cleared below. If it can't be set aside, New stops here (the
+      // message is up): clearing it would delete the only good copy.
+      if (!((await autosaveActions.setAsideIfPaused?.()) ?? true)) {
+        close();
+        return;
+      }
       replaceProject(createProject({ width: cw, height: ch }));
       clearAutosave()
         .then(() => pruneUnusedMedia(appState.project.layers))

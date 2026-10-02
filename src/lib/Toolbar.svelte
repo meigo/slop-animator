@@ -129,7 +129,12 @@
         }
         // Pre-name-field saves carry no name — adopt the picked file's basename.
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
-        await autosaveActions.setAsideIfPaused?.(); // a paused autosave's copy must outlive it
+        // A paused autosave's copy must outlive it; if it can't be set aside, don't open (the
+        // message is up), or the opened project's autosave would replace it.
+        if (!((await autosaveActions.setAsideIfPaused?.()) ?? true)) {
+          for (const l of project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+          return;
+        }
         replaceProject(project);
         void pruneUnusedMedia(appState.project.layers); // keeps what stored autosaves point at
         // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.

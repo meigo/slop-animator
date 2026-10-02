@@ -50,6 +50,18 @@ try {
   // Simulated pointers aren't live ones, so WebKit refuses to capture them ("The object can not be
   // found here"); a real Pencil or finger is one. Let capture fail quietly for the simulation.
   await context.addInitScript(() => {
+    // The blank-layers check below sets `__blankOnEncode`: the next canvas encode first empties
+    // every key cell (needs the dev-only `slopBlankLayers`), as an iPad reclaiming the canvases in
+    // the middle of an autosave would.
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    window.__blankOnEncode = false;
+    HTMLCanvasElement.prototype.toBlob = function (...a) {
+      if (window.__blankOnEncode) {
+        window.__blankOnEncode = false;
+        window.slopBlankLayers?.();
+      }
+      return toBlob.apply(this, a);
+    };
     const capture = Element.prototype.setPointerCapture;
     Element.prototype.setPointerCapture = function (id) {
       try {
@@ -578,6 +590,48 @@ try {
       inkBack === inkKept && !(await statusSays("autosave is paused")),
       `restoring the latest autosave brings the drawing back (ink ${inkBack}, was ${inkKept})`,
     );
+
+    // …and when the canvases empty in the MIDDLE of an autosave's encode (the hide flush on a big
+    // project), that save is dropped rather than stored as the latest (fix pass, C1: it used to
+    // land, listed as "N of N layers with drawings").
+    const latestMeta = () =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const open = indexedDB.open("slop-animator");
+            open.onsuccess = () => {
+              const db = open.result;
+              const get = db.transaction("kv").objectStore("kv").get("autosave-meta");
+              get.onsuccess = () => (db.close(), resolve(get.result ?? null));
+            };
+          }),
+      );
+    await page.waitForTimeout(5000); // the restored copy's own autosave lands
+    const metaBefore = await latestMeta();
+    await page.evaluate(() => (window.__blankOnEncode = true));
+    await menuItem("Document", "Transparent background");
+    let pausedMid = false;
+    for (let i = 0; i < 40 && !pausedMid; i++) {
+      await page.waitForTimeout(250);
+      pausedMid = await statusSays("autosave is paused");
+    }
+    const metaAfter = await latestMeta();
+    check(
+      pausedMid &&
+        metaAfter?.savedAt === metaBefore?.savedAt &&
+        metaAfter?.inkedCount === metaBefore?.inkedCount &&
+        metaBefore?.inkedCount > 0,
+      `drawings emptied mid-encode pause the autosave and leave the latest alone (inked ${metaBefore?.inkedCount} → ${metaAfter?.inkedCount})`,
+    );
+    if ((await page.locator(".restore-dialog li").count()) > 0) {
+      page.once("dialog", (d) => void d.accept());
+      await page
+        .locator(".restore-dialog li")
+        .first()
+        .getByRole("button", { name: "Restore" })
+        .click();
+      await page.waitForTimeout(1000);
+    }
   } else {
     console.log("skip blank-layers guard: no window.slopBlankLayers (not a dev build)");
   }
