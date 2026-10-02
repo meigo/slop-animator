@@ -36,13 +36,13 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1659 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1668 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
   profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
   URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger drag pans,
-  a finger drag of a layer row, a Dry brush stroke (its partial tones vs a Smooth stroke's), the tool-options row one line for every tool in iPad portrait (its own context), a finger tap opens the File menu, the blank-layers guard (dev server only: it needs `window.slopBlankLayers`; blank → the next save pauses and the restore dialog opens → Restore brings the drawing back, 2026-10-02), no page errors, plus the browser-side fixes of the 2026-09-30
+  a finger drag of a layer row, a Dry brush stroke (its partial tones vs a Smooth stroke's), the tool-options row one line for every tool in iPad portrait (its own context), a finger tap opens the File menu, the blank-layers guard (dev server only: it needs `window.slopBlankLayers`; blank → the next save pauses and the restore dialog opens → Restore brings the drawing back; drawings emptied mid-encode leave the latest alone, 2026-10-02), no page errors, plus the browser-side fixes of the 2026-09-30
   review (added 2026-10-01; each confirmed to FAIL on the pre-review code): a finger or a two-finger
   tap mid-stroke, a canvas press blurring a text field, Cmd chords / focused sliders / open dialogs
   vs the tool keys, redo with a moved selection, the eyedropper on transparent, a cancelled timeline

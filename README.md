@@ -91,7 +91,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 **Files & export**
 
 - Project files as zip (JSON + PNG per key cell, plus embedded reference media), autosave to IndexedDB (it waits while you're drawing, so a save never lands mid-stroke), global preferences
-- **Restore autosave** — besides the latest autosave, up to three older copies at least 5 minutes apart; File → Restore autosave… lists them and brings one back. If the drawings go blank behind your back (an iPad can drop a backgrounded app's image memory), autosave pauses instead of saving the blanks over your work, and the list opens. The Document menu shows how much memory the drawings take, and warns on iPad past 600 MB
+- **Restore autosave** — besides the latest autosave, up to three older copies at least 5 minutes apart; File → Restore autosave… lists them and brings one back. If the drawings go blank behind your back (an iPad can drop a backgrounded app's image memory), autosave pauses instead of saving the blanks over your work, and the list opens. Restoring an older copy keeps the newer one in the list. The Document menu shows how much memory the drawings take (amber on iPad past 600 MB, with a one-time hint)
 - A project name drives the save and export filenames
 - **Export dialog** — pick a format (PNG sequence, PNG frame, PSD frame, MP4, WebM via [mediabunny](https://github.com/Vanilagy/mediabunny), animated GIF via [gifenc](https://github.com/mattdesl/gifenc)), then set what applies to it: size (100% / 50% / 25% — PSD always exports at full size), frame range (all frames, the play In-Out range, or a typed custom span), video quality (MP4/WebM), and colour count (GIF: 64/128/256)
 - **Save to Files on iPad/iPhone** — File → Save to Files… and every export open the share sheet, so a file goes to a folder you pick instead of piling up as numbered copies in Downloads (Download stays one tap away). In the Home Screen app, which can't download at all, Save opens the share sheet too
@@ -122,7 +122,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1659); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1668); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)

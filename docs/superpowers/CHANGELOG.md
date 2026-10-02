@@ -8234,3 +8234,28 @@ layer listed and empty, and the next autosave would have replaced the only store
 - **Owed on the iPad:** a real background blanking (a big project, other apps opened, back) — that the
   dialog appears on return and Restore brings the drawings back with their references; the memory line
   and warning on a large project.
+
+**Autosave checkpoints — review fix pass (2026-10-02, same branch, `5052abc`).** The final review
+found paths that could still lose work; each persist-layer fix has a store test that failed first
+(`src/__tests__/autosave-store.test.ts`, 1659 → 1668), the browser paths a WebKit check:
+- **C1** a save already encoding when the canvases go blank (the hide flush on a big project) stored
+  them as the latest, listed "N of N layers with drawings". `saveAutosave(project, hooks)` now asks
+  `hooks.describe()` AFTER the encode, right before the write: App re-runs the guard there and returns
+  the meta from that moment, or null (nothing written). A pause also bumps the persist generation, so a
+  running or queued save drops. `test:ipad` checks it (`__blankOnEncode` empties the cells at the first
+  `toBlob`); with the write-time guard removed the throwaway check stored inked 0.
+- **C2** New/Open while paused went on after setting the copy aside FAILED (New then cleared it).
+  `setAsideIfPaused` returns false; New and Open stop, a sticky message says so.
+- **C3** restoring an older copy let its autosave replace the newer latest 3 s later. The latest is now
+  shelved into the checkpoint rotation first (`shelveLatestAutosave`, forced: only the oldest drops;
+  skipped when it already is a checkpoint) — after the chosen copy is LOADED, since the shelve can take
+  its slot. The confirm says the newer copy stays.
+- **C4** a latest from before metas wasn't kept or shelved; now it is, with a placeholder meta (time 0,
+  media ids from the live project). **I1** a second set-aside moves the previous kept copy into the
+  rotation. **I2** the dialog offers Keep whenever autosave is paused, however it was opened.
+- **I5** a blob and its meta, and a checkpoint and its list, are ONE IndexedDB transaction (`write`);
+  checkpoint-list edits run one at a time (`withList`). A failed checkpoint is a one-time hint, not
+  "Autosave is failing".
+- iPad memory: the status warning is a transient hint once per DEVICE (localStorage
+  `slop-animator-memory-warned`); 600 MB is slop-paint's layer guess, uncalibrated for cells
+  (~75 cells at 1920×1080).
