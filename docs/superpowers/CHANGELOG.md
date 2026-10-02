@@ -8287,3 +8287,67 @@ anchor grid; slop-paint's renaming is not taken.
   continuous on the branch (screenshots read). Build 0/0; `test:ipad` passing.
 - **Owed on the iPad:** a 4× Scale shrink of a drawing with fine lines; the Keep ratio toggle.
 
+
+**Soft fill edges, a smooth Expand, and Gap for the bucket (2026-10-02, branch `feat/soft-fill`; port of
+slop-paint `d1e3187`…`7103ac2` end state and `ccd6bd1`'s `fillMask`).** Spec/plan:
+`docs/superpowers/specs/2026-10-02-soft-fill-design.md`, `docs/superpowers/plans/2026-10-02-soft-fill.md`.
+- **Problem:** the bucket and Fill enclosed stopped where a soft line's edge passed the tolerance: a
+  whole-pixel staircase with pale gaps inside the line's antialiased edge, worst at this app's 1×.
+- **Soft** (`appState.fill.soft`, the VALUE; the 96 px slider's value is an index into `SOFT_STEPS`:
+  quarters to 2, then 2.5, 3, 4, 5, 6, 8; default 1; saved in preferences, `fillSoftPref` snaps a saved
+  value to a stop, absent = 1). `softCoverage` gives each pixel of the line's edge beside the region
+  coverage 1 − (dist − tol) / (Soft × 64) from how faint the line is there, stepping uphill only (never
+  past the darkest pixel, never through an empty one, ≤ 8 px), drawn BEHIND the line. Fill enclosed:
+  tol 10 (its wall threshold), distance = alpha.
+- **Expand with Soft > 0:** `expandedCoverage` — true distance from the region (`distanceToMask`, an exact
+  linear-time Euclidean transform added to `mask-ops.ts`), solid to Expand px, fading over
+  max(1, 2 × Soft) px, all behind. Fill enclosed then asks `enclosedFillRegion` for the region UNGROWN and
+  `fillRegionBehind(ctx, region, color, soft, expand)` grows it. Soft 0 keeps the whole-pixel `dilateMask`.
+- **Kept from this app's `floodFill`** (merged, not adopted): the exact same-colour refusal, and the
+  recolour of a tapped PAINTED area with Expand (region written, only the — now feathered — ring behind).
+  At Soft 0 with no Expand no coverage buffers are allocated.
+- **Gap bridges the bucket** (roadmap 9): `floodFill`'s region is slop-paint's `fillMask` (walls thickened
+  by the gap, flood, grow back over fillable pixels only, no diagonal squeeze; a pocket the thickening
+  swallows fills unbridged). It replaces the scanline; the dead `alphaThreshold` option went with it.
+- **Don't retry** slop-paint's failed versions: a feather painted OVER the line (dark halo); filling behind
+  to the line's darkest middle (a see-through grey line goes dark); Soft as whole pixels behind the line
+  (the staircase moves in); Expand in whole pixels before Soft (staircase under the line).
+- **UI:** the 96 px Soft slider pushed the fill row past portrait iPad width (834; `test:ipad` caught it);
+  Gap and Expand sliders went 64 → 48 px (8 whole steps, 6 px a step).
+- **Verified:** tests 1674 → 1699 (`fill-soft.test.ts`: 15, 13 failing first — the 2 Soft 0 ones pass on the old code; `fillMask` tests, 7
+  failing first; `fillSoftPref`, 3). Soft 0 byte-identical to `main`: 400 random antialiased fills in node
+  (bucket and `fillRegionBehind`), and whole-cell hashes in WebKit at 1× for bucket Expand 0 / 2 and Fill
+  enclosed Expand 2. WebKit crops (×10, nearest) of a black ellipse and a 50 % grey triangle: pale gaps
+  and staircase on `main`, gone from Soft 0.5; no change on the outer side of the line at Expand 0; the
+  grey line is not tinted to its middle at Soft ≤ 1 (at Soft 2 it is partly, by design). 3840×2160 with
+  60 thin circles, tap on the open background (WebKit, Mac, median of 3): `main` 62 ms / 133 ms (Expand
+  0 / 2); branch Soft 0 ~93 ms (`fillMask` is ~30 ms slower than the scanline), Soft 1 ~110 ms,
+  Soft 1 + Expand 2 ~170–217 ms, + Gap 2 ~220–243 ms. `test:ipad` gained "a soft fill leaves no pale
+  gaps" (pale pixels Soft 0: 32, Soft 1: 0; fails 32 / 32 with Soft forced off).
+- **Known, by spec:** at this app's default **Expand 2** (slop-paint's default is 0) the new default Soft 1
+  feathers the fill 2–4 px out, so past a thin (≈2 px) line a faint pink/tinted fringe shows OUTSIDE it
+  where `main`'s whole-pixel ring stayed under the line (≈30–38 touched exterior pixels per 40 px crop
+  of the 2 px grey triangle; 2 on the 2.5 px black ellipse). Options if it bothers: Expand 0 (Soft alone
+  antialiases now), or a feather centred on Expand.
+- **Owed on the iPad:** bucket at Soft 0 / 0.5 / 1 / 2 on thin soft and see-through Pencil lines, with and
+  without Expand; Fill enclosed with Soft; Gap on the bucket against a broken outline; the slider row in
+  portrait; the fill's speed on a big document.
+- **Ruling (controller, after the implementer's report):** the default Expand is now **0** (was 2), as
+  slop-paint's. Expand 2 existed to cover the pale halo along a line's antialiased edge, which Soft now
+  does from the line's own alpha; at 2 with Soft 1 the fill's feather reached 2–4 px out and showed as a
+  faint fringe outside thin (~2 px) lines where `main` showed none. slop-paint's Soft / Expand math is
+  kept identical (confirmed there on the iPad). Saved settings keep their own Expand — set it to 0 if a
+  fringe shows. Cost if wrong: a fill against a hard (non-antialiased) line has no overlap under it by
+  default.
+- **Fixed after the final review:** (1) existing users kept a saved Expand 2 — every preference
+  change saves the whole fill object — so the new default reached only fresh installs; a fill setting
+  saved before Soft existed and still at the OLD default 2 now loads as 0 (`fillExpandPref`, tested;
+  any other value, or one saved with Soft, is the user's own). (2) The bucket's Gap thickened the
+  walls with `dilateMask` — on a recolour every other pixel of the canvas: 83 / 230 / 771 ms at Gap
+  2 / 4 / 8 on 1080p (Mac); `thickenMask` (one exact distance transform, tested equal to `dilateMask`
+  for sparse and dense masks at radius 1–8) makes it ~45 ms at any Gap. Note: a Gap saved for Fill
+  enclosed now ALSO bridges the bucket.
+- **Deferred (review minors):** the Soft readout (`w-7`) may be too narrow for "1.25px"; at Expand 0,
+  faint edge pixels of a line within tolerance are filled over (Soft hides it; more visible below
+  100% fill opacity); `softCoverage` allocates several cell-sized buffers per tap (freed after).
+

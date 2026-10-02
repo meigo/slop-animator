@@ -634,6 +634,8 @@
       tctx.drawImage(canvas, 0, 0);
       floodFill(tctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
+        gap: appState.fill.gap,
+        softEdge: appState.fill.soft,
         // `expand` > 0 adds a ring painted BEHIND existing content (it exists to tuck a fill under
         // anti-aliased line edges) — and alpha lock refuses every empty pixel, so under the lock
         // the ring could only ever be dropped. 0 = write the colour into the region, which the
@@ -658,6 +660,8 @@
     } else {
       floodFill(ctx, pt.x * DPR, pt.y * DPR, color, {
         tolerance: appState.fill.tolerance,
+        gap: appState.fill.gap,
+        softEdge: appState.fill.soft,
         expand: appState.fill.expand,
       });
     }
@@ -731,9 +735,13 @@
       appState.statusHint = "Nothing enclosed — the outline isn't closed, or is already filled";
     };
     if (!rk) return nothing();
+    // With Soft, Expand is applied when painting (`fillRegionBehind`), so its edge is feathered;
+    // at Soft 0 the region comes back grown in whole pixels, as before.
+    const soft = appState.fill.soft;
+    const expand = appState.fill.expand;
     const { region, area } = enclosedFillRegion(rk.cell.canvas, {
       gap: appState.fill.gap,
-      expand: appState.fill.expand,
+      expand: soft > 0 ? 0 : expand,
     });
     if (area === 0) return nothing();
 
@@ -752,7 +760,7 @@
       tmp.height = canvas.height;
       const tctx = tmp.getContext("2d", { willReadFrequently: true })!;
       tctx.drawImage(canvas, 0, 0);
-      fillRegionBehind(tctx, region, color);
+      fillRegionBehind(tctx, region, color, soft, soft > 0 ? expand : 0);
       ctx.save();
       try {
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -762,7 +770,7 @@
         ctx.restore();
       }
     } else {
-      fillRegionBehind(ctx, region, color);
+      fillRegionBehind(ctx, region, color, soft, soft > 0 ? expand : 0);
     }
 
     const after = ctx.getImageData(0, 0, canvas.width, canvas.height);

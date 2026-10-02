@@ -168,7 +168,14 @@ import {
   withRangeOut,
 } from "../anim/playback";
 import type { CurvePrefs, Preferences } from "../persist/preferences";
-import { curvePointsPref, eraserCurvePref, keepProportionsPref } from "../persist/preferences";
+import {
+  curvePointsPref,
+  eraserCurvePref,
+  fillSoftPref,
+  fillExpandPref,
+  keepProportionsPref,
+} from "../persist/preferences";
+import { DEFAULT_SOFT } from "../core/fill";
 import { clampTimelineHeight, DEFAULT_TIMELINE_HEIGHT } from "../anim/timeline-layout";
 import {
   clampPanelWidth,
@@ -273,7 +280,15 @@ interface AnimState {
    *  model outlines and flats are different colours by definition, so sharing one swatch meant
    *  re-picking on every crossing between brush and bucket. Opacity separates with it: a brush
    *  dropped to 30% for roughing would otherwise silently hand that 30% to every flat. */
-  fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
+  /** `soft`: the fill's antialiased edge, a `SOFT_STEPS` value (2026-10-02, `softCoverage`). */
+  fill: {
+    tolerance: number;
+    expand: number;
+    gap: number;
+    soft: number;
+    color: string;
+    opacity: number;
+  };
   /** Bumped whenever the display must recomposite (document edits AND view-only ticks). */
   version: number;
   /** Bumped only when the saved project would change. Autosave keys off this, not version. */
@@ -415,7 +430,10 @@ export const state: AnimState = $state({
     pencilGrade: "HB",
     charcoalTexture: "medium",
   },
-  fill: { tolerance: 32, expand: 2, gap: 0, color: "#1a1a1a", opacity: 100 },
+  // Expand 0 by default (2026-10-02): it was 2 to cover the pale halo along a line's antialiased edge,
+  // which Soft now does from the line's own alpha; at 2 with Soft on, the fill's feather showed as a faint
+  // fringe outside thin lines. As slop-paint. Saved settings keep their own Expand.
+  fill: { tolerance: 32, expand: 0, gap: 0, soft: DEFAULT_SOFT, color: "#1a1a1a", opacity: 100 },
   version: 0,
   persistTick: 0,
   curveVersion: 0,
@@ -2533,7 +2551,13 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (p.brushType) state.brush.brushType = p.brushType;
   if (typeof p.sizeRange === "number") state.brush.sizeRange = p.sizeRange;
   if (typeof p.streamline === "number") state.brush.streamline = p.streamline;
-  if (p.fill && typeof p.fill === "object") state.fill = { ...state.fill, ...p.fill };
+  if (p.fill && typeof p.fill === "object")
+    state.fill = {
+      ...state.fill,
+      ...p.fill,
+      soft: fillSoftPref(p),
+      expand: fillExpandPref(p) ?? state.fill.expand,
+    };
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
   if (typeof p.timelineHeight === "number")
     state.timelineHeight = clampTimelineHeight(p.timelineHeight, window.innerHeight);

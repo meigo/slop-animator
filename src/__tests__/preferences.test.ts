@@ -86,3 +86,43 @@ describe("pressure curve prefs", () => {
     expect(eraserCurvePref({})).toEqual({});
   });
 });
+
+import { fillSoftPref, fillExpandPref } from "../persist/preferences";
+
+describe("fillSoftPref (2026-10-02)", () => {
+  it("defaults to 1 when absent (older prefs) or not a number", () => {
+    expect(fillSoftPref({})).toBe(1);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { tolerance: 32 } })))).toBe(1);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: "x" } })))).toBe(1);
+  });
+  it("keeps a saved stop, 0 included", () => {
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 0 } })))).toBe(0);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 0.5 } })))).toBe(0.5);
+  });
+  it("snaps a value between stops, and clamps one past the top", () => {
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 2.2 } })))).toBe(2);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 99 } })))).toBe(8);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: -3 } })))).toBe(0);
+  });
+});
+
+describe("fillExpandPref", () => {
+  // Expand's default went 2 → 0 with Soft (2026-10-02). A fill setting saved before Soft existed and
+  // still at the OLD default loads as 0 — otherwise every existing user kept 2 and the fringe the
+  // change removed. A value the user chose (anything else, or any setting saved with Soft) stays.
+  it("migrates the old default saved before Soft existed", () => {
+    expect(
+      fillExpandPref({
+        fill: { tolerance: 32, expand: 2, gap: 0, color: "#000", opacity: 100 } as never,
+      }),
+    ).toBe(0);
+  });
+  it("keeps a chosen Expand, and anything saved with Soft", () => {
+    expect(fillExpandPref({ fill: { expand: 3 } as never })).toBe(3);
+    expect(fillExpandPref({ fill: { expand: 2, soft: 1 } as never })).toBe(2);
+    expect(fillExpandPref({ fill: { expand: 0 } as never })).toBe(0);
+  });
+  it("is undefined when nothing was saved (the default applies)", () => {
+    expect(fillExpandPref({})).toBeUndefined();
+  });
+});
