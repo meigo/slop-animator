@@ -22,6 +22,8 @@ export interface FillOptions {
  *  line, then coarser for wide feathers (with Expand, 8 fades over 16 px). Uneven so 0.5 is still
  *  easy to hit on a 96 px slider (an even 0–8 in quarters would be ~3 px a step). */
 export const SOFT_STEPS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 8];
+/** Soft's default: antialiased (2026-10-02). 0 is the old hard edge. */
+export const DEFAULT_SOFT = 1;
 /** The most Soft goes to. */
 export const MAX_SOFT_EDGE = SOFT_STEPS[SOFT_STEPS.length - 1];
 

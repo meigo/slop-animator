@@ -86,3 +86,22 @@ describe("pressure curve prefs", () => {
     expect(eraserCurvePref({})).toEqual({});
   });
 });
+
+import { fillSoftPref } from "../persist/preferences";
+
+describe("fillSoftPref (2026-10-02)", () => {
+  it("defaults to 1 when absent (older prefs) or not a number", () => {
+    expect(fillSoftPref({})).toBe(1);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { tolerance: 32 } })))).toBe(1);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: "x" } })))).toBe(1);
+  });
+  it("keeps a saved stop, 0 included", () => {
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 0 } })))).toBe(0);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 0.5 } })))).toBe(0.5);
+  });
+  it("snaps a value between stops, and clamps one past the top", () => {
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 2.2 } })))).toBe(2);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: 99 } })))).toBe(8);
+    expect(fillSoftPref(parsePreferences(JSON.stringify({ fill: { soft: -3 } })))).toBe(0);
+  });
+});

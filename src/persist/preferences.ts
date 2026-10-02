@@ -1,5 +1,6 @@
 import type { Tool, BrushKind, ToolSettings } from "../state/appState.svelte";
 import type { CurvePoint } from "../core/pressure-curve";
+import { DEFAULT_SOFT, SOFT_STEPS, softStepIndex } from "../core/fill";
 
 export type CurvePrefs = { cp1: CurvePoint; cp2: CurvePoint };
 
@@ -9,7 +10,15 @@ export interface Preferences {
   toolBeforeRef?: Tool | null;
   brush: ToolSettings;
   eraser: ToolSettings;
-  fill: { tolerance: number; expand: number; gap: number; color: string; opacity: number };
+  /** `soft` (2026-10-02) is absent in older prefs: `fillSoftPref`. */
+  fill: {
+    tolerance: number;
+    expand: number;
+    gap: number;
+    soft?: number;
+    color: string;
+    opacity: number;
+  };
   loop: boolean;
   timelineHeight?: number; // px height of the resizable timeline panel
   layerPanelWidth?: number; // px width of the resizable layer panel
@@ -55,6 +64,13 @@ export function loadPreferences(): Partial<Preferences> {
 /** The stored Keep proportions setting; anything but an explicit boolean means the default, on. */
 export function keepProportionsPref(p: Partial<Preferences>): boolean {
   return typeof p.keepProportions === "boolean" ? p.keepProportions : true;
+}
+
+/** The stored fill Soft, snapped to a slider stop (`SOFT_STEPS`); absent or not a number means the
+ *  default. */
+export function fillSoftPref(p: Partial<Preferences>): number {
+  const v = p.fill && typeof p.fill === "object" ? p.fill.soft : undefined;
+  return typeof v === "number" && Number.isFinite(v) ? SOFT_STEPS[softStepIndex(v)] : DEFAULT_SOFT;
 }
 
 export function savePreferences(p: Preferences): void {
