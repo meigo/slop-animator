@@ -67,7 +67,7 @@ describe("floodFill (expand:0)", () => {
   });
 });
 
-describe("floodFill with expand (the default is 2)", () => {
+describe("floodFill with expand (2: the default until 2026-10-02, now 0 with Soft)", () => {
   // The ring is drawn from a temp canvas with destination-over. Fake just enough of it: the temp
   // records its pixels, and drawImage composites them BEHIND the target's, as the browser would.
   function withRing(w: number, h: number, init: (i: number) => [number, number, number, number]) {

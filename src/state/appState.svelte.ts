@@ -429,7 +429,10 @@ export const state: AnimState = $state({
     pencilGrade: "HB",
     charcoalTexture: "medium",
   },
-  fill: { tolerance: 32, expand: 2, gap: 0, soft: DEFAULT_SOFT, color: "#1a1a1a", opacity: 100 },
+  // Expand 0 by default (2026-10-02): it was 2 to cover the pale halo along a line's antialiased edge,
+  // which Soft now does from the line's own alpha; at 2 with Soft on, the fill's feather showed as a faint
+  // fringe outside thin lines. As slop-paint. Saved settings keep their own Expand.
+  fill: { tolerance: 32, expand: 0, gap: 0, soft: DEFAULT_SOFT, color: "#1a1a1a", opacity: 100 },
   version: 0,
   persistTick: 0,
   curveVersion: 0,

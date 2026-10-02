@@ -8332,3 +8332,11 @@ slop-paint `d1e3187`…`7103ac2` end state and `ccd6bd1`'s `fillMask`).** Spec/p
 - **Owed on the iPad:** bucket at Soft 0 / 0.5 / 1 / 2 on thin soft and see-through Pencil lines, with and
   without Expand; Fill enclosed with Soft; Gap on the bucket against a broken outline; the slider row in
   portrait; the fill's speed on a big document.
+- **Ruling (controller, after the implementer's report):** the default Expand is now **0** (was 2), as
+  slop-paint's. Expand 2 existed to cover the pale halo along a line's antialiased edge, which Soft now
+  does from the line's own alpha; at 2 with Soft 1 the fill's feather reached 2–4 px out and showed as a
+  faint fringe outside thin (~2 px) lines where `main` showed none. slop-paint's Soft / Expand math is
+  kept identical (confirmed there on the iPad). Saved settings keep their own Expand — set it to 0 if a
+  fringe shows. Cost if wrong: a fill against a hard (non-antialiased) line has no overlap under it by
+  default.
+
