@@ -8202,3 +8202,35 @@ a fill in every narrow wedge between open lines, grown further by Expand.
 - **Owed on the iPad:** Fill enclosed at Gap 3 on a drawing with a closed loop, a sharp V and a narrow
   wedge — only the loop should fill.
 
+
+**Autosave checkpoints, a blank-layers guard, drawing memory (2026-10-02, branch
+`feat/autosave-checkpoints`; roadmap 12, port of slop-paint `2c53625` and its later guard fixes).**
+An iPad reclaims a backgrounded page's image memory: in slop-paint a document came back with every
+layer listed and empty, and the next autosave would have replaced the only stored copy. Spec and plan:
+`docs/superpowers/specs/2026-10-02-autosave-checkpoints-design.md`, `.../plans/2026-10-02-autosave-checkpoints.md`.
+- **Storage** (`src/persist/autosave.ts`, pure `autosave-plan.ts`): the latest carries a meta (time,
+  name, drawing layers, inked layers, `mediaIds`); a save ≥ 5 min after the newest checkpoint also
+  becomes one (`autosave-cp-0…2`, the oldest slot reused); `autosave-kept` holds a copy set aside by
+  "Keep the blank layers" (or a New/Open while paused). `clearAutosave` (New) drops only the latest.
+  The one-save-at-a-time queue and generation checks are unchanged; a queued follow-up takes the newest
+  caller's meta, and `mediaIds` are read from the project as it encodes.
+- **Media:** `pruneUnusedMedia` (startup, Open, New — New used to `clearAllMedia`, now removed) keeps
+  the live project's media plus every stored copy's `mediaIds`, so a restored copy has its references.
+- **Guard** (`App.svelte`): before each autosave and on `pageshow` / visible, the drawing layers with
+  ink (each key cell probed with `cell-ink`'s uncached `probeEmpty`, first inked cell per layer) are
+  compared with the last save; more layers emptied than `History.changes` (new: counts push / undo /
+  redo / clear) moved since → autosave pauses (sticky `persistAlert`, re-said at each skipped save) and
+  the restore dialog opens. A layer is compared only while it still holds the canvas found inked
+  (`comparableLayers`): a timeline delete or cut across rows empties several layers in ONE step by
+  removing cells, which the iPad never does. `replaceProject` re-baselines (`autosaveActions.rebaseline`).
+- **UI:** `RestoreDialog.svelte` (state in `state.restoreDialog`, in `modalOpen`), File ▸ Restore
+  autosave…; Restore asks first, then `loadAutosave(DPR, key)` → `replaceProject` → `hydrateFromStore`.
+  Document menu: "Drawing memory ~N MB" (unique key-cell canvases × document size); on iPad above
+  600 MB it turns amber and the status bar warns once a session (kept through autosaves, retired by a
+  manual save).
+- Dev builds: `window.slopBlankLayers()` empties every key cell canvas (ink caches untouched, as on the
+  iPad). `test:ipad` checks blank → paused + dialog → Restore brings the ink back; it FAILED both checks
+  with `looksBlanked` forced false. Tests 1636 → 1659.
+- **Owed on the iPad:** a real background blanking (a big project, other apps opened, back) — that the
+  dialog appears on return and Restore brings the drawings back with their references; the memory line
+  and warning on a large project.
