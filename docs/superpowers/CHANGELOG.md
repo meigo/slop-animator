@@ -8269,3 +8269,21 @@ found paths that could still lose work; each persist-layer fix has a store test 
   Parked by ruling: nothing drawn while paused is saved anywhere (as the spec and slop-paint), and
   partial blanking (only some cells dropped) isn't detected per cell — not known to happen.
 
+**Resize: Keep ratio, and a large shrink no longer aliases (2026-10-02, branch
+`feat/resize-keep-ratio-halving`; the parts of slop-paint `bb3ef4e` this app lacked).** Requested by the
+slop-paint session. This app already had Scale (a uniform fit, unlike slop-paint's stretch), Crop and the
+anchor grid; slop-paint's renaming is not taken.
+- **Keep ratio** (Document ▸ Resize canvas): a Link / Unlink toggle under W / H, off at first and kept for
+  the session (`<script module>`). While on, typing one side sets the other from the DOCUMENT's current
+  ratio (`linkedSize`, so it never drifts as you type); turning it on brings the height in line with the
+  width. Resize only — New has no current ratio to keep.
+- **Halving steps:** `resizeProject` drew each cell into its new size with one `drawImage`, so a Scale
+  shrink of more than 2× read only a few source pixels per output pixel — thin lines broke into dashes.
+  `shrinkInSteps` now halves through `halvingSteps` (high smoothing quality at each step), then lands at
+  the exact placement rect. A shrink under 2× or a grow is unchanged (one draw).
+- `linkedSize`, `halvingSteps`, `MAX_DOC_PX` added to `src/anim/resize.ts` (slop-paint's code); its tests
+  as `resize-steps.test.ts` (failed first: not a function). 1668 → 1674. In WebKit: Keep ratio set 270
+  for a typed 480 on a 1920×1080 document; a fan of 1 px lines shrunk 4× came out dashed on `main` and
+  continuous on the branch (screenshots read). Build 0/0; `test:ipad` passing.
+- **Owed on the iPad:** a 4× Scale shrink of a drawing with fine lines; the Keep ratio toggle.
+

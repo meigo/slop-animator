@@ -148,6 +148,7 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import {
+  halvingSteps,
   placeContent,
   resizeBox,
   resizeContentPivotTransform,
@@ -2271,6 +2272,31 @@ export function revertStructural(snap: StructSnapshot): void {
  * Resize the document to `newW×newH`. Re-creates every keyframe canvas: `scale` fits the old art
  * (aspect-preserving), `crop` keeps its pixel size; the anchor positions it. One undo step.
  */
+/** A cell's pixels shrunk toward `w`×`h` through `halvingSteps` (2026-10-02, slop-paint bb3ef4e):
+ *  one `drawImage` from far larger reads only a few source pixels per destination pixel and aliases.
+ *  Returns the source itself when the shrink is under 2× (or a grow): the caller's draw is then the
+ *  only step, as before. The last step is the rounded target; the caller draws it at the exact rect. */
+function shrinkInSteps(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
+  const steps = halvingSteps(
+    src.width,
+    src.height,
+    Math.max(1, Math.round(w)),
+    Math.max(1, Math.round(h)),
+  );
+  if (steps.length < 2) return src;
+  let cur = src;
+  for (const step of steps) {
+    const next = document.createElement("canvas");
+    next.width = step.w;
+    next.height = step.h;
+    const ctx = next.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(cur, 0, 0, step.w, step.h);
+    cur = next;
+  }
+  return cur;
+}
+
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
@@ -2299,10 +2325,11 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
         if (c.kind !== "key") return c;
         // Bake any per-cell transform into pixels first (at the current dims) so resize preserves the
         // transformed look instead of silently dropping it. bakeCell returns c unchanged if identity.
-        const src = bakeCell(c, IDENTITY_TRANSFORM).canvas;
+        const src = shrinkInSteps(bakeCell(c, IDENTITY_TRANSFORM).canvas, rect.w, rect.h);
         const nc = createCellCanvas(w, h, DPR);
         const ctx = nc.getContext("2d")!;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(src, rect.x, rect.y, rect.w, rect.h);
         return { kind: "key", canvas: nc };
       });
