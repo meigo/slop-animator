@@ -272,3 +272,33 @@ describe("enclosedRegion", () => {
     expect(a.area).toBe(b.area);
   });
 });
+
+describe("enclosedRegion — Gap paints only what is enclosed (slop-paint c410d71)", () => {
+  it("paints an enclosed area but not an open channel or corner beside it", () => {
+    // A closed ring on the left and an open channel on the right of one 40×21 bitmap: the ring makes
+    // something genuinely enclosed, and the old global gate then painted the channel's closing too
+    // — the specks in every sharp corner and narrow wedge of a drawing (2026-10-02).
+    const W = 40;
+    const H = 21;
+    const rgba = new Uint8ClampedArray(W * H * 4);
+    const put = (x: number, y: number) => (rgba[(y * W + x) * 4 + 3] = 255);
+    for (let i = 2; i <= 12; i++) {
+      put(i, 2);
+      put(i, 12);
+      put(2, i);
+      put(12, i);
+    }
+    for (let x = 22; x < 36; x++) {
+      put(x, 8);
+      put(x, 11);
+    }
+    for (const gap of [2, 3]) {
+      const r = enclosedRegion(rgba, W, H, { gap });
+      expect(r.region[7 * W + 7]).toBe(1); // inside the ring
+      for (let x = 22; x < 36; x++) {
+        expect(r.region[9 * W + x]).toBe(0); // inside the open channel
+        expect(r.region[10 * W + x]).toBe(0);
+      }
+    }
+  });
+});

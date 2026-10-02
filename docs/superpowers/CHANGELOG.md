@@ -8184,3 +8184,21 @@ its pre-change files only in comments and a harmless `?? true` — with its test
 - **Owed on the iPad:** small Pencil strokes (the disc fix was for the iPad's GPU canvas and did not
   reproduce in software WebKit in slop-paint either), the grades and the textures.
 
+**Fill enclosed with Gap no longer paints specks in sharp corners and narrow wedges (2026-10-02, branch
+`fix/fill-enclosed-open-corners`; port of slop-paint `c410d71`, found there by the user on the iPad).**
+Requested by the slop-paint session. With Gap above 0, `enclosedRegion` painted the morphological
+closing of the lines, gated ALL-OR-NOTHING on something being genuinely enclosed — so one enclosed
+area anywhere let the closing's bloat through everywhere: a speck in the tip of every sharp corner and
+a fill in every narrow wedge between open lines, grown further by Expand.
+- `fillEnclosed` returns `core` (w×h): pixels genuinely enclosed — in the shape beyond the dilation's
+  reach, or enclosed by the raw ink (Gap > 0 only); `rawOutside` is computed once, before the mask loop,
+  and reused for `rawEnclosedArea`. `enclosedRegion`, when Gap > 0, keeps only the 8-connected areas of
+  the region that contain a core pixel (`keepAreasWith`), before Expand — per area, so a kept area keeps
+  its pixels near the ink.
+- Applied by hand (our `fill-holes.ts` also carries Pose's `outlineFillFailed`, so slop-paint's patch did
+  not apply as is). Callers: the Fill enclosed tool (`fill.ts`) gets the fix; Pose's "fill outlines"
+  (`mesh-pose.ts`) reads `fillEnclosed`'s mask, which is unchanged.
+- Test: slop-paint's ring-beside-an-open-channel bitmap (failed first: the channel painted). 1635 → 1636.
+- **Owed on the iPad:** Fill enclosed at Gap 3 on a drawing with a closed loop, a sharp V and a narrow
+  wedge — only the loop should fill.
+

@@ -3,6 +3,10 @@ import { dilateMask, erodeMask } from "./mask-ops";
 export interface FillEnclosedResult {
   /** w*h, 1 = part of the shape: ink, or a region the ink encloses. */
   mask: Uint8Array;
+  /** w*h, 1 = GENUINELY enclosed: in the shape beyond the dilation's reach, or enclosed by the raw
+   *  ink with no bridging at all. The closing's bloat — a narrow channel, the tip of a sharp
+   *  corner — has none, so `enclosedRegion` keeps only the areas that contain some. */
+  core: Uint8Array;
   inkArea: number;
   /** Area of the ink after dilation. Diagnostic only — see `outlineFillFailed` for why it is NOT a
    *  usable baseline for the report. */
@@ -146,7 +150,13 @@ export function fillEnclosed(
   const eroded = erodeMask(filled, W, H, gap); // undo the dilation's bloat, on a solid mask
   filled = new Uint8Array(eroded); // ensure consistent buffer type
 
+  // The same question asked of the UNDILATED ink. At gap 0 it is the dilated answer itself (`grown`
+  // IS `ink` there), so only a bridging fill pays for the second flood — and a flood is
+  // O(pixels), nothing beside the O(pixels × r²) morphology above.
+  const rawOutside = gap > 0 ? floodOutside(ink) : null;
+
   const mask = new Uint8Array(w * h);
+  const core = new Uint8Array(w * h);
   let insideArea = 0;
   let enclosedArea = 0;
   for (let y = 0; y < h; y++) {
@@ -156,21 +166,71 @@ export function fillEnclosed(
       if (filled[pi] || ink[pi]) {
         mask[y * w + x] = 1;
         insideArea++;
-        if (!grown[pi]) enclosedArea++; // gained beyond ink+bridging = genuinely enclosed
+        if (!grown[pi]) {
+          enclosedArea++; // gained beyond ink+bridging = genuinely enclosed
+          core[y * w + x] = 1;
+        }
       }
+      if (rawOutside && !rawOutside[pi] && !ink[pi]) core[y * w + x] = 1;
     }
   }
-  // The same question asked of the UNDILATED ink. At gap 0 the answer is `enclosedArea` itself
-  // (`grown` IS `ink` there), so only a bridging fill pays for the second flood — and a flood is
-  // O(pixels), nothing beside the O(pixels × r²) morphology above.
   let rawEnclosedArea = enclosedArea;
-  if (gap > 0) {
-    const rawOutside = floodOutside(ink);
+  if (rawOutside) {
     rawEnclosedArea = 0;
     for (let i = 0; i < W * H; i++) if (!rawOutside[i] && !ink[i]) rawEnclosedArea++;
   }
 
-  return { mask, inkArea, grownArea, insideArea, inkBBoxArea, enclosedArea, rawEnclosedArea };
+  return {
+    mask,
+    core,
+    inkArea,
+    grownArea,
+    insideArea,
+    inkBBoxArea,
+    enclosedArea,
+    rawEnclosedArea,
+  };
+}
+
+/** The 8-connected areas of `region` that contain at least one `core` pixel. */
+function keepAreasWith(
+  region: Uint8Array,
+  core: Uint8Array,
+  w: number,
+  h: number,
+): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(w * h);
+  const seen = new Uint8Array(w * h);
+  const area: number[] = [];
+  for (let start = 0; start < w * h; start++) {
+    if (!region[start] || seen[start]) continue;
+    area.length = 0;
+    let keep = false;
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const i = stack.pop()!;
+      area.push(i);
+      if (core[i]) keep = true;
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+          const n = ny * w + nx;
+          if (region[n] && !seen[n]) {
+            seen[n] = 1;
+            stack.push(n);
+          }
+        }
+      }
+    }
+    if (keep) for (const i of area) out[i] = 1;
+  }
+  return out;
 }
 
 /**
@@ -218,6 +278,12 @@ export function enclosedRegion(
     // In the shape, but not ink: exactly the space the ink encloses.
     if (filled.mask[i] && alpha[i * 4 + 3] <= threshold) region[i] = 1;
   }
+  // And only the areas that hold some genuinely enclosed space (2026-10-02, slop-paint c410d71). The
+  // gate above is all-or-nothing, so as soon as ONE area was enclosed, the closing's bloat everywhere
+  // else was painted too: a speck in the tip of every sharp corner and a fill in every narrow wedge
+  // between open lines, at any Gap above 0. Per AREA, not per pixel, so a kept area keeps its pixels
+  // near the ink (the halo `expand` exists to cover).
+  if ((opts.gap ?? 0) > 0) region = keepAreasWith(region, filled.core, w, h);
 
   const expand = Math.max(0, Math.floor(opts.expand ?? 0));
   if (expand > 0) region = new Uint8Array(dilateMask(region, w, h, expand));
