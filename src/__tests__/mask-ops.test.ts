@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dilateMask, erodeMask } from "../core/mask-ops";
+import { dilateMask, erodeMask, thickenMask } from "../core/mask-ops";
 
 /** Build a mask from ASCII art: '#' set, anything else clear. */
 function grid(rows: string[]): { m: Uint8Array; w: number; h: number } {
@@ -55,5 +55,26 @@ describe("erodeMask", () => {
     const { m, w, h } = grid([".....", ".....", "..#..", ".....", "....."]);
     const round = erodeMask(dilateMask(m, w, h, 1), w, h, 1);
     expect([...round]).toEqual([...m]);
+  });
+});
+
+describe("thickenMask", () => {
+  // The same mask as the circular dilateMask, at any radius, from one distance transform: the bucket
+  // Gap thickened every other pixel of the canvas with dilateMask when recolouring a painted area,
+  // which cost 0.8 s at Gap 8 on 1080p (2026-10-02 review).
+  const W = 64;
+  const H = 48;
+  const masks = [0.02, 0.5].map((density) => {
+    let seed = density === 0.02 ? 7 : 11;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    return Uint8Array.from({ length: W * H }, () => (rnd() < density ? 1 : 0));
+  });
+  it("equals dilateMask for sparse and dense masks at several radii", () => {
+    for (const m of masks)
+      for (const r of [1, 2, 3, 5, 8])
+        expect(thickenMask(m, W, H, r)).toEqual(dilateMask(m, W, H, r));
+  });
+  it("returns the mask itself at radius 0", () => {
+    expect(thickenMask(masks[0], W, H, 0)).toBe(masks[0]);
   });
 });

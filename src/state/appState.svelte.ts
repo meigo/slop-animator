@@ -172,6 +172,7 @@ import {
   curvePointsPref,
   eraserCurvePref,
   fillSoftPref,
+  fillExpandPref,
   keepProportionsPref,
 } from "../persist/preferences";
 import { DEFAULT_SOFT } from "../core/fill";
@@ -2551,7 +2552,12 @@ export function applyPreferences(p: Partial<Preferences>): void {
   if (typeof p.sizeRange === "number") state.brush.sizeRange = p.sizeRange;
   if (typeof p.streamline === "number") state.brush.streamline = p.streamline;
   if (p.fill && typeof p.fill === "object")
-    state.fill = { ...state.fill, ...p.fill, soft: fillSoftPref(p) };
+    state.fill = {
+      ...state.fill,
+      ...p.fill,
+      soft: fillSoftPref(p),
+      expand: fillExpandPref(p) ?? state.fill.expand,
+    };
   if (typeof p.loop === "boolean") state.playback.loop = p.loop;
   if (typeof p.timelineHeight === "number")
     state.timelineHeight = clampTimelineHeight(p.timelineHeight, window.innerHeight);

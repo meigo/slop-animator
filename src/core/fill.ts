@@ -3,7 +3,7 @@
  * Operates on raw ImageData for performance.
  */
 
-import { dilateMask, distanceToMask } from "./mask-ops";
+import { dilateMask, distanceToMask, thickenMask } from "./mask-ops";
 import { clampGap, enclosedRegion } from "./fill-holes";
 
 export interface FillOptions {
@@ -187,7 +187,7 @@ export function fillMask(
   if (r > 0) {
     const walls = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) walls[i] = fillable[i] ? 0 : 1;
-    const thick = dilateMask(walls, w, h, r);
+    const thick = thickenMask(walls, w, h, r); // dilateMask's mask at any radius, in constant time
     const start = sy * w + sx;
     if (!thick[start]) {
       const open = new Uint8Array(w * h);

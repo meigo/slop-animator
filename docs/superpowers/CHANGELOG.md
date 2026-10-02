@@ -8339,4 +8339,15 @@ slop-paint `d1e3187`…`7103ac2` end state and `ccd6bd1`'s `fillMask`).** Spec/p
   kept identical (confirmed there on the iPad). Saved settings keep their own Expand — set it to 0 if a
   fringe shows. Cost if wrong: a fill against a hard (non-antialiased) line has no overlap under it by
   default.
+- **Fixed after the final review:** (1) existing users kept a saved Expand 2 — every preference
+  change saves the whole fill object — so the new default reached only fresh installs; a fill setting
+  saved before Soft existed and still at the OLD default 2 now loads as 0 (`fillExpandPref`, tested;
+  any other value, or one saved with Soft, is the user's own). (2) The bucket's Gap thickened the
+  walls with `dilateMask` — on a recolour every other pixel of the canvas: 83 / 230 / 771 ms at Gap
+  2 / 4 / 8 on 1080p (Mac); `thickenMask` (one exact distance transform, tested equal to `dilateMask`
+  for sparse and dense masks at radius 1–8) makes it ~45 ms at any Gap. Note: a Gap saved for Fill
+  enclosed now ALSO bridges the bucket.
+- **Deferred (review minors):** the Soft readout (`w-7`) may be too narrow for "1.25px"; at Expand 0,
+  faint edge pixels of a line within tolerance are filled over (Soft hides it; more visible below
+  100% fill opacity); `softCoverage` allocates several cell-sized buffers per tap (freed after).
 

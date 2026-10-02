@@ -117,3 +117,15 @@ export function distanceToMask(mask: Uint8Array, w: number, h: number): Float32A
   }
   return out;
 }
+
+/** The same mask as the circular `dilateMask` at `radius`, from one exact distance transform
+ *  (`distanceToMask`): its cost doesn't grow with the radius or the mask's density. The bucket Gap
+ *  thickened every non-fillable pixel — on a recolour, nearly the whole canvas — with `dilateMask`,
+ *  0.8 s at Gap 8 on 1080p (2026-10-02 review); this is ~40 ms at any radius. Radius 0 returns `mask`. */
+export function thickenMask(mask: Uint8Array, w: number, h: number, radius: number): Uint8Array {
+  if (radius <= 0) return mask;
+  const d = distanceToMask(mask, w, h);
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) out[i] = d[i] <= radius ? 1 : 0;
+  return out;
+}

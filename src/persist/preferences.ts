@@ -73,6 +73,17 @@ export function fillSoftPref(p: Partial<Preferences>): number {
   return typeof v === "number" && Number.isFinite(v) ? SOFT_STEPS[softStepIndex(v)] : DEFAULT_SOFT;
 }
 
+/** The stored fill Expand, with one migration: Expand's default went 2 → 0 with Soft (2026-10-02),
+ *  so a fill setting saved BEFORE Soft existed (no `soft` key) and still at the old default 2 loads
+ *  as 0 — otherwise every existing user kept 2, and with Soft that showed as a fringe outside thin
+ *  lines. Any other stored value, or one saved with Soft, is the user's own and stays. Undefined when
+ *  nothing was stored (the default applies). */
+export function fillExpandPref(p: Partial<Preferences>): number | undefined {
+  const f = p.fill && typeof p.fill === "object" ? p.fill : undefined;
+  if (!f || typeof f.expand !== "number") return undefined;
+  return f.expand === 2 && !("soft" in f) ? 0 : f.expand;
+}
+
 export function savePreferences(p: Preferences): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(p));
