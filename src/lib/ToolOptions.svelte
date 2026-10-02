@@ -419,7 +419,7 @@
         type="range"
         min="0"
         max={MAX_GAP}
-        class="w-16"
+        class="w-12"
         bind:value={appState.fill.gap}
         style={sliderFill(appState.fill.gap, 0, MAX_GAP)}
       />
@@ -433,7 +433,7 @@
         type="range"
         min="0"
         max="8"
-        class="w-16"
+        class="w-12"
         bind:value={appState.fill.expand}
         style={sliderFill(appState.fill.expand, 0, 8)}
       />
@@ -455,7 +455,7 @@
         style={sliderFill(softStepIndex(appState.fill.soft), 0, SOFT_STEPS.length - 1)}
         oninput={(e) => (appState.fill.soft = SOFT_STEPS[Number(e.currentTarget.value)])}
       />
-      <span class="text-xs w-8 tabular-nums">{appState.fill.soft}px</span>
+      <span class="text-xs w-7 tabular-nums">{appState.fill.soft}px</span>
     </label>
     <label class="flex items-center gap-1 text-xs text-text-secondary" title="Fill opacity"
       >Opacity
