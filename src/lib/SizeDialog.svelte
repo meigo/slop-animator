@@ -1,4 +1,10 @@
+<script module lang="ts">
+  /** Keep ratio, remembered for the session (as slop-paint's): off at first. */
+  let keepRatioSession = false;
+</script>
+
 <script lang="ts">
+  import { Link, Unlink } from "@lucide/svelte";
   import {
     state as appState,
     replaceProject,
@@ -8,7 +14,7 @@
   import NumberField from "./NumberField.svelte";
   import { createProject } from "../anim/document";
   import { clearAutosave, pruneUnusedMedia } from "../persist/autosave";
-  import type { ResizeMode, Anchor } from "../anim/resize";
+  import { linkedSize, type ResizeMode, type Anchor } from "../anim/resize";
 
   const PRESETS = [
     { label: "1920×1080", w: 1920, h: 1080 },
@@ -17,6 +23,27 @@
     { label: "1080×1920", w: 1080, h: 1920 },
     { label: "1024×768", w: 1024, h: 768 },
   ];
+  /** Keep the document's width : height while typing one side (2026-10-02, slop-paint bb3ef4e):
+   *  the other side follows from the DOCUMENT's current ratio, so it never drifts as you type. */
+  let locked = $state(keepRatioSession);
+  const linking = () => locked && appState.sizeDialog.mode === "resize";
+  function setW(v: number) {
+    w = v;
+    if (linking() && Number.isFinite(v))
+      h = linkedSize(v, appState.project.width, appState.project.height);
+  }
+  function setH(v: number) {
+    h = v;
+    if (linking() && Number.isFinite(v))
+      w = linkedSize(v, appState.project.height, appState.project.width);
+  }
+  function toggleLocked() {
+    locked = !locked;
+    keepRatioSession = locked;
+    // Locking takes the ratio from the document: bring the height in line with the width.
+    if (locked) h = linkedSize(w, appState.project.width, appState.project.height);
+  }
+
   const ANCHORS: Anchor[] = [
     { ax: 0, ay: 0 },
     { ax: 0.5, ay: 0 },
@@ -121,8 +148,8 @@
             pxPerStep={4}
             title="Canvas width in pixels"
             ariaLabel="Canvas width"
-            onInput={(v) => (w = v)}
-            onCommit={(v) => (w = v)}
+            onInput={setW}
+            onCommit={setW}
           /></label
         >
         <label class="flex items-center gap-1 text-text-secondary"
@@ -136,13 +163,25 @@
             pxPerStep={4}
             title="Canvas height in pixels"
             ariaLabel="Canvas height"
-            onInput={(v) => (h = v)}
-            onCommit={(v) => (h = v)}
+            onInput={setH}
+            onCommit={setH}
           /></label
         >
       </div>
 
       {#if appState.sizeDialog.mode === "resize"}
+        <button
+          class="flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-secondary hover:bg-surface-hover"
+          class:ui-on={locked}
+          aria-pressed={locked}
+          title={locked
+            ? "Ratio locked — typing one side sets the other; tap to unlock"
+            : "Lock the ratio: keep the document's width to height while typing one side"}
+          onclick={toggleLocked}
+        >
+          {#if locked}<Link size={14} />{:else}<Unlink size={14} />{/if}
+          Keep ratio
+        </button>
         <div class="flex items-center gap-2">
           <span class="text-text-secondary w-14">Mode</span>
           <button
