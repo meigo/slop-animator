@@ -10,6 +10,7 @@
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
+  import RestoreDialog from "./lib/RestoreDialog.svelte";
   import { onMount, untrack } from "svelte";
   import {
     seekPlayhead,
@@ -40,12 +41,33 @@
     markerActions,
     liftGuard,
     modalOpen,
+    history,
+    autosaveActions,
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
-  import { loadAutosave, saveAutosave } from "./persist/autosave";
+  import {
+    keepLatestAutosave,
+    LATEST_KEY,
+    listAutosaves,
+    shelveLatestAutosave,
+    loadAutosave,
+    pruneUnusedMedia,
+    saveAutosave,
+    type AutosaveEntry,
+  } from "./persist/autosave";
+  import {
+    comparableLayers,
+    formatBytes,
+    IPAD_MEMORY_WARN_BYTES,
+    keyCellMemoryBytes,
+    looksBlanked,
+  } from "./persist/autosave-plan";
+  import { isAppleTouch } from "./export/share";
+  import { bumpPersistGeneration } from "./persist/generation";
+  import { releaseReferenceMedia } from "./anim/reference";
+  import { probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
-  import { hydrateFromStore, pruneMedia } from "./persist/media-store";
-  import { referencedMediaIds } from "./persist/project-file";
+  import { hydrateFromStore } from "./persist/media-store";
   import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
   import { innerWidth } from "svelte/reactivity/window";
   import { panelBesideToolOptions } from "./anim/panel-layout";
@@ -316,7 +338,8 @@
   // A write that succeeds retires the warning — otherwise one transient quota blip would nag for
   // the rest of the session.
   function onAutosaveOk() {
-    if (state.persistAlert) state.persistAlert = "";
+    // Not the pause (a save already in flight when the guard paused lands after it).
+    if (state.persistAlert && !autosaveHalted) state.persistAlert = "";
   }
 
   // Autosave failures used to be swallowed entirely (`.catch(() => (autosaveDirty = true))`), so a
@@ -367,8 +390,9 @@
         replaceProject(restored);
       }
       if (await hydrateFromStore(state.project, () => repaint())) repaint();
+      markSaved(); // the guard's baseline: the restored drawings (or the blank startup document)
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
-      void pruneMedia(referencedMediaIds(state.project.layers));
+      void pruneUnusedMedia(state.project.layers);
     } catch (e) {
       // The restore failed (a truncated blob, a decode OOM on a large project, an IndexedDB open
       // that never settled). `state.project` is still the BLANK startup document while the single
@@ -400,10 +424,67 @@
   });
 
   function flushAutosave() {
+    // Paused over blank layers (the dialog closed without a choice): say so again at each save it
+    // skips, since a manual save or a later alert may have replaced the first notice.
+    if (autosaveHalted) {
+      state.persistAlert = AUTOSAVE_PAUSED;
+      return;
+    }
+    if (blankedSince(inkedLayers())) return haltForBlankLayers(); // don't even encode
     autosaveDirty = false;
     // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
     // next hide-event can retry rather than skipping the save on a stale "clean" status.
-    void saveAutosave(state.project).then(onAutosaveOk, onAutosaveFailed);
+    void saveAutosave(state.project, {
+      describe: describeForSave,
+      onCheckpointError: onCheckpointFailed,
+    }).then(onAutosaveOk, onAutosaveFailed);
+  }
+
+  /** Asked by the save after its encode, right before it writes: the encode reads the canvases
+   *  over many awaits, and an iPad can empty them meanwhile (the hide flush is exactly then). The
+   *  guard runs again on the drawings as they are NOW; the meta and the baseline come from the
+   *  same moment, so the copy is listed with what it holds. */
+  function describeForSave() {
+    if (autosaveHalted) return null;
+    const inked = inkedLayers();
+    if (blankedSince(inked)) {
+      haltForBlankLayers();
+      return null;
+    }
+    inkedAtSave = inked;
+    historyAtSave = history.changes;
+    return {
+      savedAt: Date.now(),
+      projectName: state.project.name,
+      layerCount: state.project.layers.filter((l) => l.kind === "draw").length,
+      inkedCount: inked.size,
+    };
+  }
+
+  // An older copy failed to store after the latest did: the work is saved, so a hint, once.
+  let checkpointWarned = false;
+  function onCheckpointFailed(e: unknown) {
+    console.error("autosave checkpoint failed", e);
+    if (checkpointWarned) return;
+    checkpointWarned = true;
+    state.statusHint = `Couldn't keep an older autosave copy (${errText(e)}) — the latest is saved`;
+  }
+
+  /** The drawing layers that have any pixels, each with the first key-cell canvas found inked.
+   *  Read from the pixels (`probeEmpty`, uncached): the iPad empties canvases behind the ink
+   *  caches' back. Stops at the first inked cell, so an inked layer costs one small probe. */
+  function inkedLayers(): Map<number, HTMLCanvasElement> {
+    const out = new Map<number, HTMLCanvasElement>();
+    for (const l of state.project.layers) {
+      if (l.kind !== "draw") continue;
+      for (const c of l.cells) {
+        if (c.kind === "key" && !probeEmpty(c.canvas)) {
+          out.set(l.id, c.canvas);
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   // The timed save waits while anyone is drawing (port of slop-paint 4064b59, where a blocking
@@ -475,13 +556,220 @@
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
+      else checkBlankOnReturn();
     };
     window.addEventListener("pagehide", flush);
+    window.addEventListener("pageshow", checkBlankOnReturn);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pagehide", flush);
+      window.removeEventListener("pageshow", checkBlankOnReturn);
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  });
+
+  // --- Blank-layers guard (port of slop-paint 2c53625) ---
+  // An iPad reclaims a backgrounded page's image memory: a slop-paint document came back with every
+  // layer still listed and every one EMPTY, and the next autosave would have replaced the only
+  // stored copy with that. So each autosave, and each return from the background, first checks
+  // whether drawing layers lost all their pixels with no undo step to explain it (`looksBlanked`);
+  // if so, autosave pauses and the restore dialog opens. A layer counts as inked if any key cell
+  // has a pixel; it is compared only while it still holds the canvas found inked at the last save
+  // (`comparableLayers`: a timeline delete removes cells from several layers in one step).
+  let inkedAtSave = new Map<number, HTMLCanvasElement>(); // at the last save (or restore)
+  let historyAtSave = 0; // history.changes then: how many undo steps have happened since
+  let autosaveHalted = false;
+  const AUTOSAVE_PAUSED =
+    "Your drawings went blank — autosave is paused so the saved copy is kept. File ▸ Restore autosave… brings it back, or keep the blank layers there.";
+
+  /** The document now counts as saved in this state: the guard compares against it. */
+  function markSaved() {
+    inkedAtSave = inkedLayers();
+    historyAtSave = history.changes;
+  }
+  autosaveActions.rebaseline = markSaved;
+
+  function blankedSince(inked: Map<number, HTMLCanvasElement>): boolean {
+    return looksBlanked(
+      new Set(inkedAtSave.keys()),
+      new Set(inked.keys()),
+      comparableLayers(state.project.layers, inkedAtSave),
+      history.changes - historyAtSave,
+    );
+  }
+
+  function haltForBlankLayers() {
+    autosaveHalted = true;
+    // Drop any save already encoding or queued: it may hold canvases emptied mid-encode.
+    bumpPersistGeneration();
+    autosaveDirty = true; // what it would have saved is still unsaved (resuming re-arms it)
+    clearTimeout(autosaveTimer);
+    state.persistAlert = AUTOSAVE_PAUSED;
+    void openRestoreDialog(true);
+  }
+
+  /** Autosave runs again (a copy restored, the blank layers kept, or the copy set aside). */
+  function resumeAutosave() {
+    autosaveHalted = false;
+    if (state.persistAlert === AUTOSAVE_PAUSED) state.persistAlert = "";
+    if (autosaveDirty) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(autosaveWhenQuiet, 3000);
+    }
+  }
+
+  /** Back from the background: were the drawings blanked while away? Not with a lift or Outline
+   *  preview open: a lift leaves a hole with no undo step yet, which is not a blanking. */
+  function checkBlankOnReturn() {
+    if (!autosaveReady || autosaveHalted || liftGuard.isOpen?.()) return;
+    if (blankedSince(inkedLayers())) haltForBlankLayers();
+  }
+
+  async function openRestoreDialog(blanked: boolean) {
+    try {
+      // Paused, the dialog must offer "Keep the blank layers" however it was opened: closed once,
+      // File ▸ Restore autosave… was the only way back to it.
+      state.restoreDialog = { blanked: blanked || autosaveHalted, entries: await listAutosaves() };
+    } catch (e) {
+      state.statusHint = `Couldn't list the autosaves — ${errText(e)}`;
+    }
+  }
+  autosaveActions.openRestore = (blanked) => void openRestoreDialog(blanked);
+
+  async function restoreAutosaveEntry(entry: AutosaveEntry) {
+    const saved = entry.savedAt ? ` saved ${new Date(entry.savedAt).toLocaleString()}` : "";
+    const older = entry.key !== LATEST_KEY;
+    if (
+      !window.confirm(
+        `Restore the copy${saved}?\n\nIt replaces the current project. Save the current project first if you want to keep it.${older ? " The newer autosave stays in Restore autosave…." : ""}`,
+      )
+    )
+      return;
+    try {
+      // Loaded BEFORE the latest is shelved: shelving can take the oldest checkpoint's slot, which
+      // may be this very copy.
+      const project = await loadAutosave(DPR, entry.key);
+      if (!project) throw new Error("that copy is gone");
+      // The restored copy autosaves over the latest seconds from now: keep the latest as a
+      // checkpoint first. If that fails, don't restore — the newer copy would be lost.
+      if (older) {
+        try {
+          await shelveLatestAutosave(state.project.layers);
+        } catch (e) {
+          for (const l of project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+          throw new Error(
+            `the newer autosave couldn't be kept (${errText(e)}), so nothing changed`,
+            {
+              cause: e,
+            },
+          );
+        }
+      }
+      if (!project.name) project.name = "untitled"; // pre-name-field autosave
+      replaceProject(project); // clears undo, re-baselines the guard, arms an autosave of it
+      if (await hydrateFromStore(state.project, () => repaint())) repaint();
+      state.restoreDialog = null;
+      resumeAutosave();
+      state.statusHint = `Restored the copy${saved}`;
+      if (state.project.audioUndecoded)
+        state.persistAlert =
+          "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+    } catch (e) {
+      console.error("restoring an autosave failed", e);
+      state.statusHint = `Couldn't restore — ${errText(e)}`;
+    }
+  }
+  autosaveActions.restore = (entry) => void restoreAutosaveEntry(entry);
+
+  /** The user keeps the blank layers: set the last good copy aside, where autosave can't reach it,
+   *  and resume. */
+  async function keepBlankLayers() {
+    try {
+      await keepLatestAutosave(state.project.layers);
+    } catch (e) {
+      console.error("setting the autosave aside failed", e);
+      state.statusHint = `Couldn't set the saved copy aside — ${errText(e)}. Autosave stays paused.`;
+      return; // stay paused: resuming now could overwrite the only good copy
+    }
+    markSaved();
+    state.restoreDialog = null;
+    resumeAutosave();
+    state.statusHint = "Autosave is back on — the earlier copy stays in File ▸ Restore autosave…";
+  }
+  autosaveActions.keep = () => void keepBlankLayers();
+
+  /** New / Open replaces a document whose autosave is paused over blank layers: set the protected
+   *  latest copy aside (it stays in File ▸ Restore autosave…) and let autosave run again for the
+   *  new document. False when that failed: the caller must then NOT replace the document (New
+   *  would clear the very copy), and autosave stays paused. */
+  autosaveActions.setAsideIfPaused = async () => {
+    if (!autosaveHalted) return true;
+    try {
+      await keepLatestAutosave(state.project.layers);
+    } catch (e) {
+      console.error("setting the autosave aside failed", e);
+      state.persistAlert = `Couldn't set the paused autosave aside (${errText(e)}), so the project was not replaced — the saved copy is untouched. Try again, or restore it from File ▸ Restore autosave….`;
+      return false;
+    }
+    resumeAutosave();
+    return true;
+  };
+
+  // Dev builds only: blank every key cell's pixels, as the iPad does, to try the guard on a desktop.
+  // The ink caches are left alone on purpose — the iPad does not tell them either.
+  if (import.meta.env.DEV) {
+    (window as unknown as { slopBlankLayers: () => void }).slopBlankLayers = () => {
+      for (const l of state.project.layers) {
+        if (l.kind !== "draw") continue;
+        for (const c of l.cells) {
+          if (c.kind !== "key") continue;
+          const ctx = c.canvas.getContext("2d")!;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, c.canvas.width, c.canvas.height);
+          ctx.restore();
+        }
+      }
+      repaint();
+    };
+  }
+
+  // Image memory the drawings take (the Document menu shows it, amber past the limit). On iPad a
+  // project over the limit gets a transient hint once per DEVICE (a localStorage flag): at DPR 1 a
+  // 1920×1080 cell is 8.3 MB, so 600 MB is ~75 cells and an ordinary 10-second piece would warn every
+  // session. NOTE: 600 MB is slop-paint's guess for layers; it is uncalibrated for cells.
+  const onAppleTouch = isAppleTouch(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints,
+  );
+  const MEMORY_WARNED_KEY = "slop-animator-memory-warned";
+  let memoryWarned = (() => {
+    try {
+      return localStorage.getItem(MEMORY_WARNED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  })();
+  $effect(() => {
+    if (!onAppleTouch || memoryWarned) return;
+    void state.version; // re-measure after edits that add or drop key cells
+    const bytes = keyCellMemoryBytes(
+      state.project.layers,
+      state.project.width,
+      state.project.height,
+      DPR,
+    );
+    if (bytes <= IPAD_MEMORY_WARN_BYTES) return;
+    memoryWarned = true;
+    try {
+      localStorage.setItem(MEMORY_WARNED_KEY, "1");
+    } catch {
+      /* private mode: it may show again next session */
+    }
+    untrack(() => {
+      state.statusHint = `This project's drawings take ~${formatBytes(bytes)} — an iPad may blank them while the app is in the background. Save to Files often.`;
+    });
   });
 
   // Selecting a reference layer switches to Transform; selecting away hands the tool back. Every way
@@ -544,5 +832,6 @@
 </div>
 <ExportDialog />
 <ShareReadyDialog />
+<RestoreDialog />
 <SizeDialog />
 <ProjectSettingsDialog />

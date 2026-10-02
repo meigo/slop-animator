@@ -20,19 +20,20 @@
     selectionActions,
     editActions,
     liftGuard,
+    autosaveActions,
   } from "../state/appState.svelte";
+  import {
+    formatBytes,
+    IPAD_MEMORY_WARN_BYTES,
+    keyCellMemoryBytes,
+  } from "../persist/autosave-plan";
   import { editBlockLabel } from "./status-hint";
   import { loadImageLayer, loadVideoLayer, releaseReferenceMedia } from "../anim/reference";
   import { loadAudioTrack } from "../audio/decode";
-  import {
-    saveProjectBlob,
-    loadProjectBlob,
-    referencedMediaIds,
-    sanitizeFilename,
-  } from "../persist/project-file";
-  import { pruneMedia } from "../persist/media-store";
+  import { saveProjectBlob, loadProjectBlob, sanitizeFilename } from "../persist/project-file";
+  import { pruneUnusedMedia } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
-  import { isStandalone, saveToFilesAvailable } from "../export/share";
+  import { isAppleTouch, isStandalone, saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
@@ -128,8 +129,14 @@
         }
         // Pre-name-field saves carry no name — adopt the picked file's basename.
         if (!project.name) project.name = file.name.replace(/\.zip$/i, "");
+        // A paused autosave's copy must outlive it; if it can't be set aside, don't open (the
+        // message is up), or the opened project's autosave would replace it.
+        if (!((await autosaveActions.setAsideIfPaused?.()) ?? true)) {
+          for (const l of project.layers) if (l.kind === "ref") releaseReferenceMedia(l.media);
+          return;
+        }
         replaceProject(project);
-        void pruneMedia(referencedMediaIds(appState.project.layers));
+        void pruneUnusedMedia(appState.project.layers); // keeps what stored autosaves point at
         // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.
         if (appState.project.audioUndecoded)
           appState.persistAlert =
@@ -177,6 +184,24 @@
   }
 
   const canSaveToFiles = saveToFilesAvailable();
+
+  // Document menu: the key cells' image memory. On iPad, past the limit, it shows amber (App.svelte
+  // also warns once a session in the status bar).
+  const onAppleTouch = isAppleTouch(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints,
+  );
+  const memoryUse = $derived.by(() => {
+    void appState.version; // key cells come and go with edits
+    const bytes = keyCellMemoryBytes(
+      appState.project.layers,
+      appState.project.width,
+      appState.project.height,
+      DPR,
+    );
+    return { text: formatBytes(bytes), warn: onAppleTouch && bytes > IPAD_MEMORY_WARN_BYTES };
+  });
 
   async function saveProject(toFiles = false) {
     // This is the user's backup. A failure here (OOM zipping a large project on iPad) used to be an
@@ -338,6 +363,15 @@
             pick("project");
             close();
           }}>Open…</button
+        >
+        <button
+          class={menuItem}
+          role="menuitem"
+          title="Bring back an autosaved copy: the latest, or one from a few minutes earlier"
+          onclick={() => {
+            autosaveActions.openRestore?.(false);
+            close();
+          }}>Restore autosave…</button
         >
         <button
           class={menuItem}
@@ -538,6 +572,15 @@
             class={appState.project.transparentBg ? "text-accent" : "invisible"}
           /></button
         >
+        <div class={menuDivider}></div>
+        <div
+          class="px-3 py-1.5 text-xs {memoryUse.warn ? 'text-warn' : 'text-text-muted'}"
+          title={memoryUse.warn
+            ? "More than an iPad reliably keeps for a page in the background: it may blank the drawings. Save to Files often"
+            : "Image memory the drawings take (every key cell is a full-size canvas)"}
+        >
+          Drawing memory ~{memoryUse.text}
+        </div>
       {/snippet}
     </ToolbarMenu>
     <ToolbarMenu label="View">

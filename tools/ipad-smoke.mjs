@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -50,6 +50,18 @@ try {
   // Simulated pointers aren't live ones, so WebKit refuses to capture them ("The object can not be
   // found here"); a real Pencil or finger is one. Let capture fail quietly for the simulation.
   await context.addInitScript(() => {
+    // The blank-layers check below sets `__blankOnEncode`: the next canvas encode first empties
+    // every key cell (needs the dev-only `slopBlankLayers`), as an iPad reclaiming the canvases in
+    // the middle of an autosave would.
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    window.__blankOnEncode = false;
+    HTMLCanvasElement.prototype.toBlob = function (...a) {
+      if (window.__blankOnEncode) {
+        window.__blankOnEncode = false;
+        window.slopBlankLayers?.();
+      }
+      return toBlob.apply(this, a);
+    };
     const capture = Element.prototype.setPointerCapture;
     Element.prototype.setPointerCapture = function (id) {
       try {
@@ -540,6 +552,89 @@ try {
       rowsAfter.length === rowsBefore.length,
     `a finger drag moves a layer row; mid-drag its place slides to the slot, the rest close up (${fingerDrag.slides}; ${rowsBefore} → ${rowsAfter})`,
   );
+
+  // The blank-layers guard (2026-10-02, from slop-paint 2c53625): an iPad empties a backgrounded
+  // page's canvases, and the next autosave would have replaced the only stored copy with blanks.
+  // `slopBlankLayers` (dev builds only) empties every key cell as the iPad does; a non-pixel edit
+  // (Transparent background) then arms a save, which must pause and open File ▸ Restore autosave…,
+  // and restoring the latest copy must bring the drawing back. A deployed URL has no hook: skipped.
+  if (await page.evaluate(() => typeof window.slopBlankLayers === "function")) {
+    await page.waitForTimeout(6000); // the row drag's autosave lands: the latest holds this drawing
+    const inkKept = await ink();
+    await page.evaluate(() => window.slopBlankLayers());
+    await page.waitForTimeout(200);
+    const blanked = (await ink()) === 0;
+    await menuItem("Document", "Transparent background");
+    let paused = false;
+    for (let i = 0; i < 32 && !paused; i++) {
+      await page.waitForTimeout(250);
+      paused = await statusSays("autosave is paused");
+    }
+    const copies = await page.locator(".restore-dialog li").count();
+    await page.screenshot({ path: `${OUT}/7-blank-guard.png` });
+    check(
+      inkKept > 0 && blanked && paused && copies > 0,
+      `blank drawings pause the autosave and open the restore dialog (${copies} copies listed)`,
+    );
+    if (copies > 0) {
+      page.once("dialog", (d) => void d.accept());
+      await page
+        .locator(".restore-dialog li")
+        .first()
+        .getByRole("button", { name: "Restore" })
+        .click();
+      await page.waitForTimeout(1000);
+    }
+    const inkBack = await ink();
+    check(
+      inkBack === inkKept && !(await statusSays("autosave is paused")),
+      `restoring the latest autosave brings the drawing back (ink ${inkBack}, was ${inkKept})`,
+    );
+
+    // …and when the canvases empty in the MIDDLE of an autosave's encode (the hide flush on a big
+    // project), that save is dropped rather than stored as the latest (fix pass, C1: it used to
+    // land, listed as "N of N layers with drawings").
+    const latestMeta = () =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const open = indexedDB.open("slop-animator");
+            open.onsuccess = () => {
+              const db = open.result;
+              const get = db.transaction("kv").objectStore("kv").get("autosave-meta");
+              get.onsuccess = () => (db.close(), resolve(get.result ?? null));
+            };
+          }),
+      );
+    await page.waitForTimeout(5000); // the restored copy's own autosave lands
+    const metaBefore = await latestMeta();
+    await page.evaluate(() => (window.__blankOnEncode = true));
+    await menuItem("Document", "Transparent background");
+    let pausedMid = false;
+    for (let i = 0; i < 40 && !pausedMid; i++) {
+      await page.waitForTimeout(250);
+      pausedMid = await statusSays("autosave is paused");
+    }
+    const metaAfter = await latestMeta();
+    check(
+      pausedMid &&
+        metaAfter?.savedAt === metaBefore?.savedAt &&
+        metaAfter?.inkedCount === metaBefore?.inkedCount &&
+        metaBefore?.inkedCount > 0,
+      `drawings emptied mid-encode pause the autosave and leave the latest alone (inked ${metaBefore?.inkedCount} → ${metaAfter?.inkedCount})`,
+    );
+    if ((await page.locator(".restore-dialog li").count()) > 0) {
+      page.once("dialog", (d) => void d.accept());
+      await page
+        .locator(".restore-dialog li")
+        .first()
+        .getByRole("button", { name: "Restore" })
+        .click();
+      await page.waitForTimeout(1000);
+    }
+  } else {
+    console.log("skip blank-layers guard: no window.slopBlankLayers (not a dev build)");
+  }
 
   // A real finger tap on a toolbar menu.
   const file = await page.getByRole("button", { name: /^File/ }).first().boundingBox();

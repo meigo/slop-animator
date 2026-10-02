@@ -127,6 +127,35 @@ describe("History.onChange", () => {
   });
 });
 
+describe("History.changes", () => {
+  it("counts every push, undo, redo and clear — the guard's undo steps since a save", () => {
+    const s = { n: 0 };
+    const h = new History();
+    expect(h.changes).toBe(0);
+    h.push(counterCmd(s, 1));
+    h.push(counterCmd(s, 1));
+    h.undo();
+    h.redo();
+    expect(h.changes).toBe(4);
+    h.clear();
+    expect(h.changes).toBe(5);
+  });
+
+  it("does not count an undo or redo with nothing to do", () => {
+    const h = new History();
+    h.undo();
+    h.redo();
+    expect(h.changes).toBe(0);
+  });
+
+  it("keeps counting when the stack is trimmed (it is not the stack depth)", () => {
+    const s = { n: 0 };
+    const h = new History(2);
+    for (let i = 0; i < 5; i++) h.push(counterCmd(s, 1));
+    expect(h.changes).toBe(5);
+  });
+});
+
 describe("pixelCommand marks its canvas's ink as changed", () => {
   it("on creation (the write it records just happened), on undo and on redo", async () => {
     const { pixelCommand } = await import("../anim/history");
