@@ -10,6 +10,7 @@
   import SizeDialog from "./lib/SizeDialog.svelte";
   import ProjectSettingsDialog from "./lib/ProjectSettingsDialog.svelte";
   import MarkerEditor from "./lib/MarkerEditor.svelte";
+  import RestoreDialog from "./lib/RestoreDialog.svelte";
   import { onMount, untrack } from "svelte";
   import {
     seekPlayhead,
@@ -40,9 +41,26 @@
     markerActions,
     liftGuard,
     modalOpen,
+    history,
+    autosaveActions,
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
-  import { loadAutosave, pruneUnusedMedia, saveAutosave } from "./persist/autosave";
+  import {
+    keepLatestAutosave,
+    listAutosaves,
+    loadAutosave,
+    pruneUnusedMedia,
+    saveAutosave,
+    type AutosaveEntry,
+  } from "./persist/autosave";
+  import {
+    comparableLayers,
+    formatBytes,
+    IPAD_MEMORY_WARN_BYTES,
+    keyCellMemoryBytes,
+    looksBlanked,
+  } from "./persist/autosave-plan";
+  import { isAppleTouch } from "./export/share";
   import { probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore } from "./persist/media-store";
@@ -316,7 +334,10 @@
   // A write that succeeds retires the warning — otherwise one transient quota blip would nag for
   // the rest of the session.
   function onAutosaveOk() {
-    if (state.persistAlert) state.persistAlert = "";
+    // Not the pause (a save already in flight when the guard paused lands after it), nor the iPad
+    // memory warning (it would last only until the save its own edit armed).
+    if (state.persistAlert && !autosaveHalted && state.persistAlert !== memoryWarning)
+      state.persistAlert = "";
   }
 
   // Autosave failures used to be swallowed entirely (`.catch(() => (autosaveDirty = true))`), so a
@@ -367,6 +388,7 @@
         replaceProject(restored);
       }
       if (await hydrateFromStore(state.project, () => repaint())) repaint();
+      markSaved(); // the guard's baseline: the restored drawings (or the blank startup document)
       // Prune INSIDE the try: if restore threw, we don't know what's referenced — keep everything.
       void pruneUnusedMedia(state.project.layers);
     } catch (e) {
@@ -400,8 +422,17 @@
   });
 
   function flushAutosave() {
-    autosaveDirty = false;
+    // Paused over blank layers (the dialog closed without a choice): say so again at each save it
+    // skips, since a manual save or a later alert may have replaced the first notice.
+    if (autosaveHalted) {
+      state.persistAlert = AUTOSAVE_PAUSED;
+      return;
+    }
     const inked = inkedLayers();
+    if (blankedSince(inked)) return haltForBlankLayers();
+    autosaveDirty = false;
+    inkedAtSave = inked;
+    historyAtSave = history.changes;
     const meta = {
       savedAt: Date.now(),
       projectName: state.project.name,
@@ -499,13 +530,179 @@
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
+      else checkBlankOnReturn();
     };
     window.addEventListener("pagehide", flush);
+    window.addEventListener("pageshow", checkBlankOnReturn);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pagehide", flush);
+      window.removeEventListener("pageshow", checkBlankOnReturn);
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  });
+
+  // --- Blank-layers guard (port of slop-paint 2c53625) ---
+  // An iPad reclaims a backgrounded page's image memory: a slop-paint document came back with every
+  // layer still listed and every one EMPTY, and the next autosave would have replaced the only
+  // stored copy with that. So each autosave, and each return from the background, first checks
+  // whether drawing layers lost all their pixels with no undo step to explain it (`looksBlanked`);
+  // if so, autosave pauses and the restore dialog opens. A layer counts as inked if any key cell
+  // has a pixel; it is compared only while it still holds the canvas found inked at the last save
+  // (`comparableLayers`: a timeline delete removes cells from several layers in one step).
+  let inkedAtSave = new Map<number, HTMLCanvasElement>(); // at the last save (or restore)
+  let historyAtSave = 0; // history.changes then: how many undo steps have happened since
+  let autosaveHalted = false;
+  const AUTOSAVE_PAUSED =
+    "Your drawings went blank — autosave is paused so the saved copy is kept. File ▸ Restore autosave… brings it back, or keep the blank layers there.";
+
+  /** The document now counts as saved in this state: the guard compares against it. */
+  function markSaved() {
+    inkedAtSave = inkedLayers();
+    historyAtSave = history.changes;
+  }
+  autosaveActions.rebaseline = markSaved;
+
+  function blankedSince(inked: Map<number, HTMLCanvasElement>): boolean {
+    return looksBlanked(
+      new Set(inkedAtSave.keys()),
+      new Set(inked.keys()),
+      comparableLayers(state.project.layers, inkedAtSave),
+      history.changes - historyAtSave,
+    );
+  }
+
+  function haltForBlankLayers() {
+    autosaveHalted = true;
+    clearTimeout(autosaveTimer);
+    state.persistAlert = AUTOSAVE_PAUSED;
+    void openRestoreDialog(true);
+  }
+
+  /** Autosave runs again (a copy restored, the blank layers kept, or the copy set aside). */
+  function resumeAutosave() {
+    autosaveHalted = false;
+    if (state.persistAlert === AUTOSAVE_PAUSED) state.persistAlert = "";
+    if (autosaveDirty) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(autosaveWhenQuiet, 3000);
+    }
+  }
+
+  /** Back from the background: were the drawings blanked while away? Not with a lift or Outline
+   *  preview open: a lift leaves a hole with no undo step yet, which is not a blanking. */
+  function checkBlankOnReturn() {
+    if (!autosaveReady || autosaveHalted || liftGuard.isOpen?.()) return;
+    if (blankedSince(inkedLayers())) haltForBlankLayers();
+  }
+
+  async function openRestoreDialog(blanked: boolean) {
+    try {
+      state.restoreDialog = { blanked, entries: await listAutosaves() };
+    } catch (e) {
+      state.statusHint = `Couldn't list the autosaves — ${errText(e)}`;
+    }
+  }
+  autosaveActions.openRestore = (blanked) => void openRestoreDialog(blanked);
+
+  async function restoreAutosaveEntry(entry: AutosaveEntry) {
+    const saved = entry.savedAt ? ` saved ${new Date(entry.savedAt).toLocaleString()}` : "";
+    if (
+      !window.confirm(
+        `Restore the copy${saved}?\n\nIt replaces the current project. Save the current project first if you want to keep it.`,
+      )
+    )
+      return;
+    try {
+      const project = await loadAutosave(DPR, entry.key);
+      if (!project) throw new Error("that copy is gone");
+      if (!project.name) project.name = "untitled"; // pre-name-field autosave
+      replaceProject(project); // clears undo, re-baselines the guard, arms an autosave of it
+      if (await hydrateFromStore(state.project, () => repaint())) repaint();
+      state.restoreDialog = null;
+      resumeAutosave();
+      state.statusHint = `Restored the copy${saved}`;
+      if (state.project.audioUndecoded)
+        state.persistAlert =
+          "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+    } catch (e) {
+      console.error("restoring an autosave failed", e);
+      state.statusHint = `Couldn't restore — ${errText(e)}`;
+    }
+  }
+  autosaveActions.restore = (entry) => void restoreAutosaveEntry(entry);
+
+  /** The user keeps the blank layers: set the last good copy aside, where autosave can't reach it,
+   *  and resume. */
+  async function keepBlankLayers() {
+    try {
+      await keepLatestAutosave();
+    } catch (e) {
+      console.error("setting the autosave aside failed", e);
+      state.statusHint = `Couldn't set the saved copy aside — ${errText(e)}. Autosave stays paused.`;
+      return; // stay paused: resuming now could overwrite the only good copy
+    }
+    markSaved();
+    state.restoreDialog = null;
+    resumeAutosave();
+    state.statusHint = "Autosave is back on — the earlier copy stays in File ▸ Restore autosave…";
+  }
+  autosaveActions.keep = () => void keepBlankLayers();
+
+  /** New / Open replaces a document whose autosave is paused over blank layers: set the protected
+   *  latest copy aside (it stays in File ▸ Restore autosave…) and let autosave run again for the
+   *  new document. On a failure it stays paused, as resuming could overwrite that copy. */
+  autosaveActions.setAsideIfPaused = async () => {
+    if (!autosaveHalted) return;
+    try {
+      await keepLatestAutosave();
+      resumeAutosave();
+    } catch (e) {
+      console.error("setting the autosave aside failed", e);
+    }
+  };
+
+  // Dev builds only: blank every key cell's pixels, as the iPad does, to try the guard on a desktop.
+  // The ink caches are left alone on purpose — the iPad does not tell them either.
+  if (import.meta.env.DEV) {
+    (window as unknown as { slopBlankLayers: () => void }).slopBlankLayers = () => {
+      for (const l of state.project.layers) {
+        if (l.kind !== "draw") continue;
+        for (const c of l.cells) {
+          if (c.kind !== "key") continue;
+          const ctx = c.canvas.getContext("2d")!;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, c.canvas.width, c.canvas.height);
+          ctx.restore();
+        }
+      }
+      repaint();
+    };
+  }
+
+  // Image memory the drawings take (shown in the Document menu too). On iPad a project over the
+  // limit gets a warning once a session: it is what a backgrounded app loses first.
+  const onAppleTouch = isAppleTouch(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints,
+  );
+  let memoryWarning = "";
+  $effect(() => {
+    if (!onAppleTouch || memoryWarning) return;
+    void state.version; // re-measure after edits that add or drop key cells
+    const bytes = keyCellMemoryBytes(
+      state.project.layers,
+      state.project.width,
+      state.project.height,
+      DPR,
+    );
+    if (bytes <= IPAD_MEMORY_WARN_BYTES) return;
+    memoryWarning = `This project's drawings take ~${formatBytes(bytes)} — an iPad may blank them while the app is in the background. Save to Files often.`;
+    untrack(() => {
+      if (!state.persistAlert) state.persistAlert = memoryWarning;
+    });
   });
 
   // Selecting a reference layer switches to Transform; selecting away hands the tool back. Every way
@@ -568,5 +765,6 @@
 </div>
 <ExportDialog />
 <ShareReadyDialog />
+<RestoreDialog />
 <SizeDialog />
 <ProjectSettingsDialog />

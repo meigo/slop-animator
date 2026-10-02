@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -540,6 +540,47 @@ try {
       rowsAfter.length === rowsBefore.length,
     `a finger drag moves a layer row; mid-drag its place slides to the slot, the rest close up (${fingerDrag.slides}; ${rowsBefore} → ${rowsAfter})`,
   );
+
+  // The blank-layers guard (2026-10-02, from slop-paint 2c53625): an iPad empties a backgrounded
+  // page's canvases, and the next autosave would have replaced the only stored copy with blanks.
+  // `slopBlankLayers` (dev builds only) empties every key cell as the iPad does; a non-pixel edit
+  // (Transparent background) then arms a save, which must pause and open File ▸ Restore autosave…,
+  // and restoring the latest copy must bring the drawing back. A deployed URL has no hook: skipped.
+  if (await page.evaluate(() => typeof window.slopBlankLayers === "function")) {
+    await page.waitForTimeout(6000); // the row drag's autosave lands: the latest holds this drawing
+    const inkKept = await ink();
+    await page.evaluate(() => window.slopBlankLayers());
+    await page.waitForTimeout(200);
+    const blanked = (await ink()) === 0;
+    await menuItem("Document", "Transparent background");
+    let paused = false;
+    for (let i = 0; i < 32 && !paused; i++) {
+      await page.waitForTimeout(250);
+      paused = await statusSays("autosave is paused");
+    }
+    const copies = await page.locator(".restore-dialog li").count();
+    await page.screenshot({ path: `${OUT}/7-blank-guard.png` });
+    check(
+      inkKept > 0 && blanked && paused && copies > 0,
+      `blank drawings pause the autosave and open the restore dialog (${copies} copies listed)`,
+    );
+    if (copies > 0) {
+      page.once("dialog", (d) => void d.accept());
+      await page
+        .locator(".restore-dialog li")
+        .first()
+        .getByRole("button", { name: "Restore" })
+        .click();
+      await page.waitForTimeout(1000);
+    }
+    const inkBack = await ink();
+    check(
+      inkBack === inkKept && !(await statusSays("autosave is paused")),
+      `restoring the latest autosave brings the drawing back (ink ${inkBack}, was ${inkKept})`,
+    );
+  } else {
+    console.log("skip blank-layers guard: no window.slopBlankLayers (not a dev build)");
+  }
 
   // A real finger tap on a toolbar menu.
   const file = await page.getByRole("button", { name: /^File/ }).first().boundingBox();

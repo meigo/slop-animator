@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { state as appState, replaceProject, resizeProject } from "../state/appState.svelte";
+  import {
+    state as appState,
+    replaceProject,
+    resizeProject,
+    autosaveActions,
+  } from "../state/appState.svelte";
   import NumberField from "./NumberField.svelte";
   import { createProject } from "../anim/document";
   import { clearAutosave, pruneUnusedMedia } from "../persist/autosave";
@@ -42,7 +47,7 @@
   function close() {
     appState.sizeDialog.open = false;
   }
-  function confirm() {
+  async function confirm() {
     const cw = Math.max(16, Math.min(8192, Math.round(w)));
     const ch = Math.max(16, Math.min(8192, Math.round(h)));
     if (appState.sizeDialog.mode === "new") {
@@ -59,6 +64,7 @@
         )
       )
         return; // dialog stays open — cancelling the guard must not also cancel the intent
+      await autosaveActions.setAsideIfPaused?.(); // before the latest copy is cleared below
       replaceProject(createProject({ width: cw, height: ch }));
       clearAutosave()
         .then(() => pruneUnusedMedia(appState.project.layers))

@@ -92,6 +92,22 @@ export function layerMemoryBytes(count: number, w: number, h: number, dpr: numbe
   return count * Math.round(w * dpr) * Math.round(h * dpr) * 4;
 }
 
+/** Image memory the drawings take: every drawing layer's key-cell canvases (each document-sized,
+ *  `w`×`h` at `dpr`), each canvas counted once. What an iPad empties in the background. */
+export function keyCellMemoryBytes<C>(
+  layers: readonly InkLayerShape<C>[],
+  w: number,
+  h: number,
+  dpr: number,
+): number {
+  const canvases = new Set<C>();
+  for (const l of layers) {
+    if (l.kind !== "draw") continue;
+    for (const c of l.cells ?? []) if (c.kind === "key" && c.canvas) canvases.add(c.canvas);
+  }
+  return layerMemoryBytes(canvases.size, w, h, dpr);
+}
+
 /** Above this, an iPad may drop the canvases' pixels while the app is in the background (a
  *  40-layer 1920×1080 slop-paint document at dpr 2 — 1.2 GB — lost them all). A guess on the safe
  *  side: the real limit depends on the device and what else is running. */

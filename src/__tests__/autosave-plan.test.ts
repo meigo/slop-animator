@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   comparableLayers,
   formatBytes,
+  keyCellMemoryBytes,
   layerMemoryBytes,
   looksBlanked,
   planCheckpoint,
@@ -121,5 +122,26 @@ describe("layer memory", () => {
     expect(layerMemoryBytes(40, 1920, 1080, 2)).toBe(40 * 3840 * 2160 * 4);
     expect(formatBytes(layerMemoryBytes(40, 1920, 1080, 2))).toBe("1.2 GB");
     expect(formatBytes(300 * 1024 * 1024)).toBe("300 MB");
+  });
+});
+
+describe("keyCellMemoryBytes", () => {
+  it("counts each drawing layer's key-cell canvas once, at the document's size", () => {
+    const a = {};
+    const b = {};
+    const layers = [
+      { id: 1, kind: "draw", cells: [{ kind: "key", canvas: a }, { kind: "hold" }] },
+      // A canvas two cells share (none do today) is one canvas's memory.
+      {
+        id: 2,
+        kind: "draw",
+        cells: [
+          { kind: "key", canvas: b },
+          { kind: "key", canvas: b },
+        ],
+      },
+      { id: 3, kind: "ref" },
+    ];
+    expect(keyCellMemoryBytes(layers, 1920, 1080, 1)).toBe(2 * 1920 * 1080 * 4);
   });
 });

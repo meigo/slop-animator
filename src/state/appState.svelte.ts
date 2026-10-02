@@ -108,6 +108,7 @@ import { applyOrder } from "../anim/layer-drop";
 import { loadImageMedia, releaseReferenceMedia } from "../anim/reference";
 import { putMedia } from "../persist/media-store";
 import { bumpPersistGeneration } from "../persist/generation";
+import type { AutosaveEntry } from "../persist/autosave-plan";
 import { drawReferenceMedia, drawCellComposed } from "../anim/render";
 // A state→lib import, which nothing else here does — but the group's base rect lives with the
 // content-bounds caches it is built from, and appState is browser-only by construction anyway
@@ -292,6 +293,9 @@ interface AnimState {
    *  `error` the last share attempt's failure. Null when the dialog is closed. */
   shareReady: { file: File; isProject: boolean; note: string; error: string } | null;
   sizeDialog: { open: boolean; mode: "new" | "resize" };
+  /** File ▸ Restore autosave… (`lib/RestoreDialog.svelte`): the stored copies, newest first. `blanked`
+   *  when the blank-layers guard opened it (autosave is paused). Null when closed. */
+  restoreDialog: { blanked: boolean; entries: AutosaveEntry[] } | null;
   onion: OnionConfig;
   /** Pose-mesh construction. Session-only, like `onion` — a working preference, not document data. */
   pose: { fillHoles: boolean; gap: number };
@@ -420,6 +424,7 @@ export const state: AnimState = $state({
   settingsOpen: false,
   shareReady: null,
   sizeDialog: { open: false, mode: "new" },
+  restoreDialog: null,
   onion: {
     enabled: false,
     prev: 1,
@@ -2369,13 +2374,18 @@ export function setProjectFps(v: number): void {
   resyncAudio();
 }
 
-/** A modal dialog is open (New/Resize, Project Settings, Export, the iPad share-ready sheet). Their
+/** A modal dialog is open (New/Resize, Project Settings, Export, the iPad share-ready sheet, Restore
+ *  autosave). Their
  *  backdrops stop pointers, not keys: app shortcuts must stand aside, or Enter on a dialog button
  *  started playback behind it and Backspace deleted a timeline selection unseen (2026-09-30
  *  review). */
 export function modalOpen(): boolean {
   return (
-    state.sizeDialog.open || state.settingsOpen || state.exportOpen || state.shareReady !== null
+    state.sizeDialog.open ||
+    state.settingsOpen ||
+    state.exportOpen ||
+    state.shareReady !== null ||
+    state.restoreDialog !== null
   );
 }
 
@@ -2553,6 +2563,7 @@ export function replaceProject(project: Project) {
   const firstDrawing = project.layers.find(isDrawingLayer) ?? project.layers[0];
   setActiveLayer(firstDrawing.id);
   bump();
+  autosaveActions.rebaseline?.(); // its drawings are the blank-layers guard's new baseline
 }
 
 /** View-only recomposite (play/stop, onion, layer switch). Does not mark the project dirty. */
@@ -2740,6 +2751,22 @@ export const liftGuard: {
   hasEdits: null,
   isOpen: null,
 };
+
+/** App.svelte owns the autosave and its blank-layers guard, and registers these for the menus,
+ *  dialogs and document replaces that reach it from elsewhere. */
+export const autosaveActions: {
+  /** Open File ▸ Restore autosave…; `blanked` when the guard paused autosave. */
+  openRestore: ((blanked: boolean) => void) | null;
+  /** Make a stored copy the document (asks first). */
+  restore: ((entry: AutosaveEntry) => void) | null;
+  /** Keep the blank layers: set the last good copy aside, then resume autosave. */
+  keep: (() => void) | null;
+  /** Before New / Open replaces a document whose autosave is paused: set the protected copy aside
+   *  and resume. Never rejects; on a failure autosave stays paused. */
+  setAsideIfPaused: (() => Promise<void>) | null;
+  /** The guard's baseline is the document as it is now (a document replace). */
+  rebaseline: (() => void) | null;
+} = { openRestore: null, restore: null, keep: null, setAsideIfPaused: null, rebaseline: null };
 
 /** MarkerEditor (app level, top of the window) registers here, so the timeline-bar button, App's `n`
  *  key and a tap on a marker in the strip can all open it. */
