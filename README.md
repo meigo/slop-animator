@@ -21,6 +21,10 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   custom picker
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
   so outlines and flats stay separate; eyedropper, lasso selection with float/transform
+- Soft fill edges: the bucket and Fill enclosed antialias the fill against a soft line, behind it,
+  instead of stopping in a staircase with pale gaps (Soft, 0–8 px, default 1); with Expand the fill
+  grows by a smooth round offset with a feathered edge. Gap closes small breaks in an outline for the
+  bucket as well as for Fill enclosed
 - Fill every area an outline encloses in one press, behind the strokes — the animator's
   white-under-black-outline, without redrawing each region by hand
 - Transparent background support with checkerboard view and a paint-behind toggle
@@ -122,7 +126,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1674); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1699); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
