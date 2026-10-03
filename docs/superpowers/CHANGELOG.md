@@ -8351,3 +8351,19 @@ slop-paint `d1e3187`…`7103ac2` end state and `ccd6bd1`'s `fillMask`).** Spec/p
   faint edge pixels of a line within tolerance are filled over (Soft hides it; more visible below
   100% fill opacity); `softCoverage` allocates several cell-sized buffers per tap (freed after).
 
+**A resting Pencil's Smooth tip no longer pulses (2026-10-03, branch `fix/resting-pen-tip`; port of
+slop-paint `4d24cde`).** Passed on by the slop-paint session; the user agreed. With Press above 1,
+holding the Pencil still made a Smooth stroke's tip grow and shrink: the whole stroke is redrawn each
+frame with the tip at the pen's CURRENT pressure, and a resting Pencil's pressure wanders. Measured here
+first (perfect-freehand with this brush's settings, a rest with ±0.02 pressure jitter): the tip's
+outline area changed by up to 141 px² a frame at Press 3, 4 at Press 1. `holdRestPressure` (in
+`stroke-smoothing.ts`, slop-paint's code) lets the pressure rise but never fall while the pen stays within
+`REST_PX` (2 SCREEN px) of where it came to rest, applied in `paintStroke` before the Smooth path
+averaging; forward-only, so a growing stroke's start never changes. Not for Ink (its Pool swells on a rest
+on purpose) or Calligraphy. Tests: slop-paint's three (failed first: not a function). 1704 → 1707.
+- Also: `test:ipad`'s blank-drawings check was flaky (0 copies listed now and then): it waited a fixed
+  6 s for an autosave and counted the restore dialog's list before the dialog had read the copies from
+  IndexedDB. It now polls for the save and waits for the list (6 / 6 clean); its message names each part.
+- **Owed on the iPad:** hold the Pencil still at the end of a Smooth stroke at Press 3 — the tip should
+  stay put.
+
