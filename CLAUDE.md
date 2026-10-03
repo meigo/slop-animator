@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1707 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1718 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
@@ -312,6 +312,16 @@ meta incl. `mediaIds` (`src/persist/autosave.ts`, pure `autosave-plan.ts`); File
 pageshow/visible, drawing layers that lost all ink with fewer undo steps (`History.changes`) than layers
 pause autosave. Media pruning keeps every stored copy's media (New no longer clears all media). See the
 2026-10-02 changelog entry.
+
+Shipped 2026-10-03: **Wobble and the Watercolour brush** (port of slop-paint `f9fb670` + `4d24cde`).
+`src/core/wobble.ts` (slop-paint's, with `strokeSeed`; `dry-brush.ts` is slop-paint's byte for byte):
+outline points / ribbon corners move by noise of their PAGE (cell) position — `smoothWobble`,
+`nibWobble` (0 by default), `washWobble` (30) — so a frozen Calligraphy range still matches a full
+redraw. `src/core/watercolor-brush.ts` (slop-paint's but for one line: `paintStroke` does the rest hold
+and Smooth's path averaging in document space first, as for Smooth): one filled outline, alpha =
+coverage × rim × grain, `multiply` with Mix colours; full redraw, NEVER frozen (translucent); keeps its
+own scratch between frames and recomputes the rim only in a window (`window.slopWashFull` in dev to
+compare). The eraser gets Wobble only. See the 2026-10-03 changelog entry.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

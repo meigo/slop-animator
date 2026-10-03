@@ -8367,3 +8367,50 @@ on purpose) or Calligraphy. Tests: slop-paint's three (failed first: not a funct
 - **Owed on the iPad:** hold the Pencil still at the end of a Smooth stroke at Press 3 — the tip should
   stay put.
 
+
+**Wobble and the Watercolour brush (2026-10-03, branch `feat/wobble-watercolour`; port of slop-paint
+`f9fb670` + `4d24cde`).** Spec and plan: `docs/superpowers/{specs,plans}/2026-10-03-wobble-watercolour*.md`.
+- **Wobble** (`src/core/wobble.ts`, slop-paint's file unchanged): every Smooth outline point and every
+  Calligraphy ribbon corner moves by 2D value noise of its page position (here: the CELL's pixels; DPR 1),
+  seeded by `strokeSeed` (moved there from `dry-brush.ts`, which is now slop-paint's byte for byte).
+  `smoothWobble` / `nibWobble`, 0 by default, in the gear for brush and eraser alike. By position, so a
+  drawn part never moves as the stroke grows and Calligraphy's pieces stay joined. **The freeze still
+  holds:** a new unit test checks that a frozen range plus the rest emits exactly the full redraw's rings
+  with Wobble on; in WebKit a 1600-point scribble, freeze on vs `slopNoFreeze`, differs in 100 alpha px
+  by > 16 levels with Wobble 50 against 104 with Wobble 0 (max 63, all antialiased edge) — Wobble adds
+  nothing to the freeze's known edge difference.
+- **Watercolour** (`src/core/watercolor-brush.ts`, BrushKind `"watercolor"`, menu "Watercolour"): one
+  filled perfect-freehand outline (`outlineOfPath` in `brush.ts`, now shared with Smooth, with
+  `steadySpacing`), alpha = coverage × `washAlpha` (darker rim) × paper grain, composited `multiply`
+  with Mix colours (default on); alpha lock / paint behind / eraser keep their own ops; the eraser has
+  no rim or grain, so its gear shows Wobble only. The one line that differs from slop-paint: the rest
+  hold (`holdRestPressure`) and Smooth's path averaging run in `paintStroke`, in document space before
+  the cell mapping (as for Smooth); Sharp corners stays Smooth's. Full redraw, not frozen (translucent).
+  Settings `washEdge` 50, `washGrain` 40, `washWobble` 30, `washMultiply` true on brush and eraser;
+  preferences merge by spread, so older prefs get the defaults.
+- Tests: slop-paint's wobble and watercolour tests (RED first: module missing), less its
+  `holdRestPressure` block (already in `stroke-smoothing.test.ts`), plus two of ours: the frozen-range
+  rings test above, and a steady-spacing test where the stroke gets THINNER later — slop-paint's own
+  steady-spacing test passes with the fix removed (its wave is thinnest at the start); ours fails then.
+  1707 → 1718.
+- Browser (Playwright WebKit, throwaway script, crops looked at): light / heavy strokes show the rim and
+  grain; a figure-eight crossing itself stays even (alpha 168 at the crossing vs 171 alone); yellow over
+  blue with Mix on makes a dark green (crossing 78,98,68), off the yellow lies over (176,164,72); Wobble
+  0 / 50 / 100 on Smooth and Calligraphy (Calligraphy rougher, as in slop-paint). Windowed rim vs
+  `slopWashFull` on a 900-point scribble: no alpha difference above 1 level. Per-frame time (rAF
+  callback: paintStroke + recomposite, Mac, WebKit, 1280×720, 1600 points at 4 a frame): size 30 Press 3
+  median 3 ms (p90 4, max 8); size 80 median 5 ms (p90 7, max 10); size 80 with `slopWashFull` median
+  10 ms (max 19).
+- `test:ipad`: Watercolour paints a see-through wash, and a crossing mixes only with Mix colours on (read
+  from the screen). Seen to fail with `multiply` swapped for `source-over`, and with the wash drawn opaque.
+- **Owed on the iPad:** Watercolour feel and frame time on a long wide stroke; Wobble on Smooth and
+  Calligraphy with the Pencil; a long opaque Calligraphy stroke with Wobble (the freeze).
+- **Final review: ready to merge; deferred minors.** (1) A brush setting changed mid-stroke (a finger on
+  the toolbar: size, Press, colour, Edge, Grain, Wobble, curve) leaves the Watercolour scratch's old
+  pixels outside the redraw window — fix: a settings signature that forces a whole-stroke redraw when it
+  changes; slop-paint has the same. (2) The two document-sized Watercolour scratch canvases (~16.6 MB at
+  1080p) stay alive for the session and are counted nowhere (undo budget, memory readout). (3)
+  `test:ipad`'s Watercolour check dispatches the stroke in one go, so it exercises the first and final
+  paint, not the incremental rim window (that was checked in the browser vs `slopWashFull`). (4) The
+  eraser's `washWobble` defaults to 30 like the brush's (as slop-paint).
+

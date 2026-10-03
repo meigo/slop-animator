@@ -62,6 +62,7 @@
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
   import { drawInkStroke } from "../core/ink-brush";
   import { drawDryStroke } from "../core/dry-brush";
+  import { drawWatercolorStroke } from "../core/watercolor-brush";
   import { settledIndex } from "../core/stroke-freeze";
   import { drawCalligraphyStroke } from "../core/calligraphy-brush";
   import { syncReferenceVideos } from "../anim/reference";
@@ -854,14 +855,15 @@
     // Smooth averages the Smooth brush's path here, in DOCUMENT space — before the cell-space
     // mapping below — so its radius is a screen distance even on a scaled layer. Re-smoothed from
     // the raw points on every redraw, so there is no lag; the tip settles as the stroke grows.
-    if (brushType === "smooth" && viewport) {
+    // Watercolour takes both too (as slop-paint), but not Sharp corners, which is Smooth's alone.
+    if ((brushType === "smooth" || brushType === "watercolor") && viewport) {
       // A resting Pencil's pressure wanders; the tip is redrawn at the current one, so above
       // Press 1 it pulsed. Hold it while the pen rests (2 SCREEN px), before the path smoothing.
       inPts = holdRestPressure(inPts, REST_PX / viewport.zoom);
       inPts = smoothPath(
         inPts,
         pathSmoothRadius(stroke.smoothing, viewport.zoom),
-        stroke.sharpCorners ?? false,
+        brushType === "smooth" && (stroke.sharpCorners ?? false),
       );
     }
     const steps = strokeSteps;
@@ -945,6 +947,19 @@
         strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
         selection?.applyClip(strokeCtx);
         drawDryStroke(strokeCtx, curved, settings, sr);
+      } finally {
+        strokeCtx.restore();
+      }
+    } else if (kind === "watercolor") {
+      // Watercolour (slop-paint's engine): full redraw like Dry, never frozen — it is translucent
+      // by nature, and drawn twice the overlap would darken. It keeps its own scratch between
+      // frames and works the rim out again only where the outline changed (see its header).
+      strokeCtx.putImageData(beforeSnapshot!, 0, 0);
+      strokeCtx.save();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawWatercolorStroke(strokeCtx, curved, settings, sr, done);
       } finally {
         strokeCtx.restore();
       }
@@ -1549,8 +1564,15 @@
       strokeSteps = cellComposeSteps(layer);
       const bt = activeStroke().brushType;
       strokeBrushType = bt;
-      // smooth, calligraphy, ink and dry are stateless full-redraw engines; the rest are stamps.
-      if (bt !== "smooth" && bt !== "calligraphy" && bt !== "ink" && bt !== "dry")
+      // smooth, calligraphy, ink, dry and watercolor are full-redraw engines (watercolor keeps a
+      // scratch, but knows a new stroke by its first point); the rest are stamps.
+      if (
+        bt !== "smooth" &&
+        bt !== "calligraphy" &&
+        bt !== "ink" &&
+        bt !== "dry" &&
+        bt !== "watercolor"
+      )
         resetStampState();
       bump();
     }

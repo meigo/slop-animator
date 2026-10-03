@@ -134,9 +134,9 @@ import type { BrushType } from "../core/brush-textures";
 import { PressureCurve } from "../core/pressure-curve";
 
 /** Brush selection: smooth (perfect-freehand), ink (incremental marker), calligraphy (swept
- *  broad-edge nib), dry (bristles running short of paint, slop-paint's engine), or a textured
- *  stamp type. */
-export type BrushKind = "smooth" | "ink" | "calligraphy" | "dry" | BrushType;
+ *  broad-edge nib), dry (bristles running short of paint, slop-paint's engine), watercolor (a wash
+ *  with a darker rim, slop-paint's engine), or a textured stamp type. */
+export type BrushKind = "smooth" | "ink" | "calligraphy" | "dry" | "watercolor" | BrushType;
 
 /** Per-tool stroke settings (brush and eraser each hold one). `isEraser` is NOT stored — it's
  *  derived from the active tool at draw time. */
@@ -407,6 +407,12 @@ export const state: AnimState = $state({
     dwellPool: 0,
     dryness: 50,
     dryTaper: 10,
+    smoothWobble: 0,
+    nibWobble: 0,
+    washEdge: 50,
+    washGrain: 40,
+    washWobble: 30,
+    washMultiply: true,
     pencilGrade: "HB",
     charcoalTexture: "medium",
   },
@@ -427,6 +433,12 @@ export const state: AnimState = $state({
     dwellPool: 0,
     dryness: 50,
     dryTaper: 10,
+    smoothWobble: 0,
+    nibWobble: 0,
+    washEdge: 50,
+    washGrain: 40,
+    washWobble: 30,
+    washMultiply: true,
     pencilGrade: "HB",
     charcoalTexture: "medium",
   },

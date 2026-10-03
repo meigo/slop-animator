@@ -1,5 +1,6 @@
 import getStroke from "perfect-freehand";
 import type { InputPoint } from "./input";
+import { strokeSeed, wobbleAmp, wobbleOutline, wobbleScale } from "./wobble";
 
 /**
  * Model 2 pressure→width range. `size` is the nominal (medium) width:
@@ -53,6 +54,10 @@ export interface BrushSettings {
   smoothing: number;
   /** Smooth brush: keep a corner sharp where the pen paused, instead of smoothing it round. */
   sharpCorners?: boolean;
+  /** Smooth only, 0–100: how uneven the outline is (`wobble.ts`); 0 by default. */
+  smoothWobble?: number;
+  /** Calligraphy only, 0–100: how uneven the nib's edge is; 0 by default. */
+  nibWobble?: number;
   isEraser: boolean;
   drawBehind: boolean;
   alphaLock: boolean;
@@ -74,6 +79,14 @@ export interface BrushSettings {
   pencilGrade?: string;
   /** Charcoal only: "rough" (big holes) … "dense"; "medium" by default (`charcoalHoles`). */
   charcoalTexture?: string;
+  /** Watercolour only, 0–100: how dark the rim is against the wash (`washAlpha`). */
+  washEdge?: number;
+  /** Watercolour only, 0–100: how strongly the paper's grain shows in the wash. */
+  washGrain?: number;
+  /** Watercolour only, 0–100: how uneven the stroke's outline is. */
+  washWobble?: number;
+  /** Watercolour only: mix with the paint already on the layer, as glazes do (canvas multiply). */
+  washMultiply?: boolean;
 }
 
 /** perfect-freehand's outline point spacing (its `smoothing`), before the thin-stroke cap. It was
@@ -93,39 +106,22 @@ export function drawStroke(
 ) {
   if (points.length === 0) return;
 
-  // Model 2: size is the nominal width; pressure opens the range both ways
-  // (light → size/sizeRange clamped at 0.5px, full → size*sizeRange). We map
-  // size→pressure ourselves and tell pf thinning=1 so it uses our mapped pressure directly.
-  const { min: minSize, max: maxSize } = widthRange(settings.size, sizeRange);
-  // Track the thinnest width this stroke actually reaches — decimationSmoothing caps the
-  // outline spacing against it so a thin section cannot be bridged by a chord (see there).
-  let minStrokeWidth = Infinity;
-  const inputPoints = points.map((p) => {
-    const desiredSize = minSize + p.pressure * (maxSize - minSize);
-    if (desiredSize < minStrokeWidth) minStrokeWidth = desiredSize;
-    const mappedPressure = maxSize > 0 ? desiredSize / maxSize : 1;
-    return [p.x, p.y, mappedPressure];
-  });
-  const pfSize = maxSize / 2;
-
-  const strokePoints = getStroke(inputPoints, {
-    // perfect-freehand's `size` is a radius basis: with thinning=1 the stroke RADIUS = size*pressure,
-    // so diameter = 2*size*pressure. Pass maxSize/2 so the rendered DIAMETER = desiredSize — matching
-    // the stamp/ink engines (which treat size as diameter) and the on-canvas size cursor.
-    size: pfSize,
-    thinning: 1,
-    smoothing: decimationSmoothing(OUTLINE_SPACING, minStrokeWidth, pfSize),
-    streamline: 0.3,
-    start: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
-    end: { taper: settings.taper ?? false, cap: !(settings.taper ?? false) },
-    last: done,
-    // Always use our supplied (mapped) pressure. perfect-freehand's simulatePressure
-    // is velocity-based and would override our size mapping, leaving the cursor
-    // (which reflects the envelope) out of sync with the rendered stroke.
-    simulatePressure: false,
-  });
+  const maxSize = widthRange(settings.size, sizeRange).max;
+  const strokePoints = outlineOfPath(
+    points,
+    settings.size,
+    sizeRange,
+    done,
+    settings.taper ?? false,
+  );
 
   if (strokePoints.length < 2) return;
+  const outline = wobbleOutline(
+    strokePoints,
+    strokeSeed(points[0]),
+    wobbleAmp(maxSize, settings.smoothWobble ?? 0),
+    wobbleScale(maxSize),
+  );
 
   ctx.save();
 
@@ -147,11 +143,63 @@ export function drawStroke(
   ctx.fillStyle = settings.color;
   ctx.beginPath();
 
-  const path = getSvgPathFromStroke(strokePoints);
+  const path = getSvgPathFromStroke(outline);
   const path2d = new Path2D(path);
   ctx.fill(path2d);
 
   ctx.restore();
+}
+
+/**
+ * The Smooth brush's outline (perfect-freehand) for an already-smoothed `path` (pure). Also the
+ * Watercolour brush's, which compares each frame's path with the last one's. `steadySpacing` spaces
+ * the outline for the thinnest width the SETTINGS allow, not the thinnest the stroke has reached so
+ * far: that one changes as the stroke grows and moves the whole outline a little each time
+ * (slop-paint f9fb670). The Smooth brush keeps the stroke's own (see `decimationSmoothing`).
+ */
+export function outlineOfPath(
+  path: InputPoint[],
+  size: number,
+  sizeRange: number,
+  done: boolean,
+  taper: boolean = false,
+  steadySpacing: boolean = false,
+): number[][] {
+  // Model 2: size is the nominal width; pressure opens the range both ways
+  // (light → size/sizeRange clamped at 0.5px, full → size*sizeRange). We map
+  // size→pressure ourselves and tell pf thinning=1 so it uses our mapped pressure directly.
+  const { min: minSize, max: maxSize } = widthRange(size, sizeRange);
+  // Track the thinnest width this stroke actually reaches — decimationSmoothing caps the
+  // outline spacing against it so a thin section cannot be bridged by a chord (see there).
+  let minStrokeWidth = Infinity;
+  const inputPoints = path.map((p) => {
+    const desiredSize = minSize + p.pressure * (maxSize - minSize);
+    if (desiredSize < minStrokeWidth) minStrokeWidth = desiredSize;
+    const mappedPressure = maxSize > 0 ? desiredSize / maxSize : 1;
+    return [p.x, p.y, mappedPressure];
+  });
+  const pfSize = maxSize / 2;
+
+  return getStroke(inputPoints, {
+    // perfect-freehand's `size` is a radius basis: with thinning=1 the stroke RADIUS = size*pressure,
+    // so diameter = 2*size*pressure. Pass maxSize/2 so the rendered DIAMETER = desiredSize — matching
+    // the stamp/ink engines (which treat size as diameter) and the on-canvas size cursor.
+    size: pfSize,
+    thinning: 1,
+    smoothing: decimationSmoothing(
+      OUTLINE_SPACING,
+      steadySpacing ? minSize : minStrokeWidth,
+      pfSize,
+    ),
+    streamline: 0.3,
+    start: { taper, cap: !taper },
+    end: { taper, cap: !taper },
+    last: done,
+    // Always use our supplied (mapped) pressure. perfect-freehand's simulatePressure
+    // is velocity-based and would override our size mapping, leaving the cursor
+    // (which reflects the envelope) out of sync with the rendered stroke.
+    simulatePressure: false,
+  });
 }
 
 /**

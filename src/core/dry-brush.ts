@@ -1,6 +1,7 @@
 import type { InputPoint } from "./input";
 import type { BrushSettings } from "./brush";
 import { widthRange } from "./brush";
+import { strokeSeed } from "./wobble";
 
 /**
  * Dry brush (2026-10-01): a bristle brush running short of paint — parallel hair stripes along
@@ -53,12 +54,6 @@ export function rng(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-/** The stroke's seed: from its first point, which stays put while the stroke grows. */
-export function strokeSeed(first: InputPoint): number {
-  const h = Math.imul(Math.round(first.x * 16) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.round(first.y * 16);
-  return Math.imul(h ^ Math.round(first.timestamp), 0xc2b2ae35) >>> 0 || 1;
 }
 
 /** `count` hairs, evenly spread across the width with a little jitter, outer ones drier. */

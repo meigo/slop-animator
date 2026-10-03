@@ -20,6 +20,7 @@
 import type { InputPoint } from "./input";
 import type { BrushSettings } from "./brush";
 import { widthRange } from "./brush";
+import { strokeSeed, wobbleAmp, wobbleOutline, wobbleScale } from "./wobble";
 
 /** 1.0 would collapse the nib's short axis to zero — a stroke with no thickness at all when
  *  travelling along the nib's edge. The sweep itself stays continuous right up to the limit
@@ -429,6 +430,12 @@ export function drawCalligraphyStroke(
   const sinA = Math.sin(angle);
   // Once per sample: each one is the end of one segment and the start of the next.
   const off = pts.map((_, i) => supportPoint(nib[i].a, nib[i].b, cosA, sinA, nrm[i].nx, nrm[i].ny));
+  // Wobble moves every corner by noise of its page position: two pieces sharing a corner move it
+  // alike, so the ribbon stays joined, and a range draws what the whole stroke would.
+  const seed = strokeSeed(points[0]);
+  const amp = wobbleAmp(maxW, settings.nibWobble ?? 0);
+  const scale = wobbleScale(maxW);
+  const wob = (ring: number[][]) => wobbleOutline(ring, seed, amp, scale);
 
   ctx.save();
   if (settings.isEraser) {
@@ -450,7 +457,7 @@ export function drawCalligraphyStroke(
   // quads of essentially zero area, i.e. NOTHING for a deliberate tap. Caught by testing a jittery
   // dab specifically; an exact-coincidence check looks correct and fails on every real tap.
   if (from === 0 && (pts.length < 2 || strokeExtent(pts) < DAB_TRAVEL_PX)) {
-    addRing(ctx, nibRing(pts[0].x, pts[0].y, nib[0].a, nib[0].b, angle));
+    addRing(ctx, wob(nibRing(pts[0].x, pts[0].y, nib[0].a, nib[0].b, angle)));
   }
   // NOTE: no footprint at the ends of a stroke that travelled. The true swept region does include
   // it — a real broad-edge pen set down and lifted leaves the nib's full shape — but at any real
@@ -495,7 +502,8 @@ export function drawCalligraphyStroke(
     // Hulled, not emitted raw, wherever it could cross itself: at a sharp turn the raw quad is a
     // bowtie (see `convexHull`). An already-convex quad — nearly every segment — is its own hull
     // and goes straight in, sparing the sort and arrays on every live redraw.
-    addRing(ctx, join || !isConvex(piece) ? convexHull(piece) : piece);
+    const shaped = wob(piece);
+    addRing(ctx, join || !isConvex(shaped) ? convexHull(shaped) : shaped);
   }
 
   ctx.fill();
