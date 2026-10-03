@@ -629,22 +629,58 @@ try {
   // (Transparent background) then arms a save, which must pause and open File ▸ Restore autosave…,
   // and restoring the latest copy must bring the drawing back. A deployed URL has no hook: skipped.
   if (await page.evaluate(() => typeof window.slopBlankLayers === "function")) {
-    await page.waitForTimeout(6000); // the row drag's autosave lands: the latest holds this drawing
+    const latestMeta = () =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const open = indexedDB.open("slop-animator");
+            open.onsuccess = () => {
+              const db = open.result;
+              const get = db.transaction("kv").objectStore("kv").get("autosave-meta");
+              get.onsuccess = () => (db.close(), resolve(get.result ?? null));
+            };
+          }),
+      );
+    /** Wait until an autosave newer than `after` lands (an autosave waits 3 s after the last edit,
+     *  then 1.5 s of a still pen, then encodes): a FIXED wait made this check fail on slow runs. */
+    const savedAfter = async (after, ms = 20000) => {
+      for (let t = 0; t < ms; t += 250) {
+        const m = await latestMeta();
+        if (m && m.savedAt > after) return m;
+        await page.waitForTimeout(250);
+      }
+      return null;
+    };
+    await savedAfter((await latestMeta())?.savedAt ?? 0); // the row drag's autosave: the latest holds this drawing
     const inkKept = await ink();
     await page.evaluate(() => window.slopBlankLayers());
     await page.waitForTimeout(200);
     const blanked = (await ink()) === 0;
     await menuItem("Document", "Transparent background");
     let paused = false;
-    for (let i = 0; i < 32 && !paused; i++) {
+    for (let i = 0; i < 80 && !paused; i++) {
       await page.waitForTimeout(250);
       paused = await statusSays("autosave is paused");
     }
+    // The dialog lists the copies after reading them from IndexedDB, a moment AFTER the pause shows:
+    // counting at once read 0 now and then.
+    await page
+      .locator(".restore-dialog li")
+      .first()
+      .waitFor({ timeout: 5000 })
+      .catch(() => {});
     const copies = await page.locator(".restore-dialog li").count();
     await page.screenshot({ path: `${OUT}/7-blank-guard.png` });
     check(
       inkKept > 0 && blanked && paused && copies > 0,
-      `blank drawings pause the autosave and open the restore dialog (${copies} copies listed)`,
+      `blank drawings pause the autosave and open the restore dialog (${copies} copies listed; kept ${inkKept}, blanked ${blanked}, paused ${paused}; alert: ${await page.evaluate(
+        () =>
+          [...document.querySelectorAll(".text-warn")]
+            .map((e) => e.textContent?.trim())
+            .filter(Boolean)
+            .join(" | ")
+            .slice(0, 160),
+      )})`,
     );
     if (copies > 0) {
       page.once("dialog", (d) => void d.accept());
@@ -664,18 +700,6 @@ try {
     // …and when the canvases empty in the MIDDLE of an autosave's encode (the hide flush on a big
     // project), that save is dropped rather than stored as the latest (fix pass, C1: it used to
     // land, listed as "N of N layers with drawings").
-    const latestMeta = () =>
-      page.evaluate(
-        () =>
-          new Promise((resolve) => {
-            const open = indexedDB.open("slop-animator");
-            open.onsuccess = () => {
-              const db = open.result;
-              const get = db.transaction("kv").objectStore("kv").get("autosave-meta");
-              get.onsuccess = () => (db.close(), resolve(get.result ?? null));
-            };
-          }),
-      );
     await page.waitForTimeout(5000); // the restored copy's own autosave lands
     const metaBefore = await latestMeta();
     await page.evaluate(() => (window.__blankOnEncode = true));
