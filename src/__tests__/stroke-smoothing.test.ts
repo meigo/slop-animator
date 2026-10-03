@@ -8,6 +8,7 @@ import {
   pauseBreaks,
   catchUpPath,
   trailPressureAt,
+  holdRestPressure,
   trailTimeAt,
   ropeLength,
   ropeStep,
@@ -375,5 +376,43 @@ describe("trailPressureAt", () => {
     expect(trailPressureAt(trail, { x: 15, y: -2 }, 100)).toBeCloseTo(0.8, 9);
     expect(trailPressureAt(trail, { x: 0, y: 0 }, 100)).toBeCloseTo(0.2, 9);
     expect(trailPressureAt([], { x: 0, y: 0 }, 100)).toBeNull();
+  });
+});
+
+// slop-paint 4d24cde: a resting Pencil's tip pulsed above Press 1.
+const pt = (x: number, pressure: number, i: number): InputPoint => ({
+  x,
+  y: 0,
+  pressure,
+  hasPressure: true,
+  timestamp: 1000 + i * 8,
+});
+
+describe("holdRestPressure", () => {
+  it("keeps a resting pen's highest pressure, so the tip never shrinks back", () => {
+    const pts = [
+      pt(0, 0.3, 0),
+      pt(10, 0.5, 1),
+      pt(10.4, 0.6, 2),
+      pt(10.2, 0.55, 3),
+      pt(9.9, 0.4, 4),
+    ];
+    expect(holdRestPressure(pts, 2).map((p) => p.pressure)).toEqual([0.3, 0.5, 0.6, 0.6, 0.6]);
+  });
+
+  it("lets the pressure fall again once the pen moves on, and leaves a moving stroke alone", () => {
+    const pts = [pt(0, 0.8, 0), pt(1, 0.7, 1), pt(5, 0.6, 2), pt(9, 0.5, 3), pt(13, 0.4, 4)];
+    const held = holdRestPressure(pts, 2).map((p) => p.pressure);
+    // only the point within 2 px of where the pen was keeps the higher value
+    expect(held).toEqual([0.8, 0.8, 0.6, 0.5, 0.4]);
+    expect(holdRestPressure(pts, 0)).toBe(pts);
+  });
+
+  it("depends only on the points before, so a growing stroke's start never changes", () => {
+    const pts = Array.from({ length: 40 }, (_, i) =>
+      pt(Math.floor(i / 5) * 3 + (i % 2) * 0.3, 0.5 + 0.1 * Math.sin(i), i),
+    );
+    const whole = holdRestPressure(pts, 2);
+    expect(holdRestPressure(pts.slice(0, 23), 2)).toEqual(whole.slice(0, 23));
   });
 });

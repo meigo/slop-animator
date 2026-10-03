@@ -7,7 +7,12 @@
   import { Viewport } from "../core/viewport";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
-  import { pathSmoothRadius, smoothPath } from "../core/stroke-smoothing";
+  import {
+    holdRestPressure,
+    pathSmoothRadius,
+    REST_PX,
+    smoothPath,
+  } from "../core/stroke-smoothing";
   import {
     floodFill,
     enclosedFillRegion,
@@ -850,6 +855,9 @@
     // mapping below — so its radius is a screen distance even on a scaled layer. Re-smoothed from
     // the raw points on every redraw, so there is no lag; the tip settles as the stroke grows.
     if (brushType === "smooth" && viewport) {
+      // A resting Pencil's pressure wanders; the tip is redrawn at the current one, so above
+      // Press 1 it pulsed. Hold it while the pen rests (2 SCREEN px), before the path smoothing.
+      inPts = holdRestPressure(inPts, REST_PX / viewport.zoom);
       inPts = smoothPath(
         inPts,
         pathSmoothRadius(stroke.smoothing, viewport.zoom),
