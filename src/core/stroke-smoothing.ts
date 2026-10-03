@@ -237,6 +237,40 @@ export function pathSmoothRadius(smoothing: number, zoom: number): number {
   return zoom > 0 ? (SMOOTH_MAX_PX * s) / zoom : 0;
 }
 
+/** How far (SCREEN px) a resting pen may wander and still count as resting (`holdRestPressure`). */
+export const REST_PX = 2;
+
+/**
+ * While the pen rests — every point within `radius` (document px) of where it came to rest — the
+ * pressure may rise but never fall: a resting Pencil's pressure is never quite steady, and the
+ * Smooth brush redraws the tip at the CURRENT pressure, so above Press 1 the tip pulsed (measured
+ * here: the tip's outline area changed by up to 141 px² a frame at Press 3, 4 at Press 1). Paint
+ * pressed out stays, as on paper. Moving on, the pressure follows the pen again. Each point's value
+ * depends only on the points before it, so the part already drawn never changes (pure).
+ * slop-paint 4d24cde.
+ */
+export function holdRestPressure(points: InputPoint[], radius: number): InputPoint[] {
+  if (!(radius > 0) || points.length < 2) return points;
+  let out: InputPoint[] | null = null;
+  let ax = points[0].x;
+  let ay = points[0].y;
+  let held = points[0].pressure;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (Math.hypot(p.x - ax, p.y - ay) > radius) {
+      ax = p.x;
+      ay = p.y;
+      held = p.pressure;
+    } else if (p.pressure >= held) {
+      held = p.pressure;
+    } else {
+      out ??= points.slice();
+      out[i] = { ...p, pressure: held };
+    }
+  }
+  return out ?? points;
+}
+
 /**
  * Where the pen paused: the index of the last point of every run of points that stays within
  * `stillDist` of the run's first point for at least `pauseMs` (timestamps in ms). A still pen
