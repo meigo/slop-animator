@@ -8405,3 +8405,12 @@ on purpose) or Calligraphy. Tests: slop-paint's three (failed first: not a funct
   from the screen). Seen to fail with `multiply` swapped for `source-over`, and with the wash drawn opaque.
 - **Owed on the iPad:** Watercolour feel and frame time on a long wide stroke; Wobble on Smooth and
   Calligraphy with the Pencil; a long opaque Calligraphy stroke with Wobble (the freeze).
+- **Final review: ready to merge; deferred minors.** (1) A brush setting changed mid-stroke (a finger on
+  the toolbar: size, Press, colour, Edge, Grain, Wobble, curve) leaves the Watercolour scratch's old
+  pixels outside the redraw window — fix: a settings signature that forces a whole-stroke redraw when it
+  changes; slop-paint has the same. (2) The two document-sized Watercolour scratch canvases (~16.6 MB at
+  1080p) stay alive for the session and are counted nowhere (undo budget, memory readout). (3)
+  `test:ipad`'s Watercolour check dispatches the stroke in one go, so it exercises the first and final
+  paint, not the incremental rim window (that was checked in the browser vs `slopWashFull`). (4) The
+  eraser's `washWobble` defaults to 30 like the brush's (as slop-paint).
+
