@@ -9,7 +9,7 @@
 // This is DESKTOP WebKit in an iPad-sized touch window, not iPadOS: it catches Safari-engine
 // breakage and regressions in the pen and finger paths, and guards the browser-side fixes of the
 // 2026-09-30 code review (each of those checks was confirmed to FAIL on the pre-review code,
-// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), a soft bucket fill (2026-10-02), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
+// e060951), plus a finger drag of a layer row, a Dry brush stroke (2026-10-01), a Watercolour wash and glaze (2026-10-03), a soft bucket fill (2026-10-02), the blank-layers guard (2026-10-02, dev server only). Every check reads its verdict from the page, so a deployed URL runs them too. Not covered — test these on the iPad: the
 // real Pencil (strokes here are simulated pen events), how iPadOS orders a Pencil and a finger,
 // iOS-only rendering (CLAUDE.md gotcha #14 drew correctly in desktop WebKit), the share sheet, the
 // on-screen keyboard (gotcha #15), iPadOS memory limits.
@@ -484,6 +484,105 @@ try {
   );
   await brushSelect.selectOption("smooth");
   await setSize(sizeBefore);
+
+  // Watercolour (2026-10-03, from slop-paint): a pen stroke paints a see-through wash, and where a
+  // yellow stroke crosses a blue one with Mix colours on (the default) the two multiply into a dark
+  // green; with it off the yellow lies over the blue. Each sample is a 5×5 mean of the screen's
+  // pixels (the grain varies pixel to pixel). Left of the doc, clear of the other checks' lines;
+  // the strokes are undone after.
+  /** A pen stroke through `pts` ([x, y] as fractions of the document on screen), 0.6 pressure. */
+  const penPath = (pts, id) =>
+    page.evaluate(
+      ({ pts, id }) => {
+        const stage = document.querySelector("div.touch-none.overflow-hidden");
+        const r = stage.querySelector(":scope > div canvas").getBoundingClientRect();
+        pts.forEach(([fx, fy], i) => {
+          const type = i === 0 ? "pointerdown" : i === pts.length - 1 ? "pointerup" : "pointermove";
+          stage.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              pointerId: id,
+              pointerType: "pen",
+              isPrimary: true,
+              button: 0,
+              buttons: type === "pointerup" ? 0 : 1,
+              clientX: r.left + fx * r.width,
+              clientY: r.top + fy * r.height,
+              pressure: 0.6,
+            }),
+          );
+        });
+      },
+      { pts, id },
+    );
+  /** The mean [r, g, b] of the screen's pixels around (fx, fy), fractions of the document. */
+  const screenRgb = (fx, fy) =>
+    page.evaluate(
+      ({ fx, fy }) => {
+        const c = document.querySelector("div.touch-none.overflow-hidden > div canvas");
+        const px = Math.round(fx * c.width);
+        const py = Math.round(fy * c.height);
+        const d = c.getContext("2d").getImageData(px - 2, py - 2, 5, 5).data;
+        const m = [0, 0, 0];
+        for (let k = 0; k < d.length; k += 4) for (let j = 0; j < 3; j++) m[j] += d[k + j] / 25;
+        return m.map(Math.round);
+      },
+      { fx, fy },
+    );
+  const pickColour = async (name) => {
+    await page.locator('button[title^="Brush colour"]').click();
+    await page.locator(`button[title="${name}"]`).click();
+    await page.locator('button[title^="Brush colour"]').click();
+  };
+  /** A blue stroke across, a yellow one down through it; the samples; both undone. */
+  const glaze = async () => {
+    await pickColour("Blue");
+    const across = Array.from({ length: 31 }, (_, i) => [0.04 + (0.16 * i) / 30, 0.45]);
+    await penPath(across, 51);
+    await pickColour("Yellow");
+    const down = Array.from({ length: 31 }, (_, i) => [0.12, 0.33 + (0.24 * i) / 30]);
+    await penPath(down, 52);
+    await page.waitForTimeout(300);
+    const s = {
+      blue: await screenRgb(0.06, 0.45),
+      yellow: await screenRgb(0.12, 0.36),
+      crossing: await screenRgb(0.12, 0.45),
+    };
+    for (let i = 0; i < 2; i++) await page.locator('button[title^="Undo"]').first().click();
+    await page.waitForTimeout(200);
+    return s;
+  };
+  await brushSelect.selectOption("watercolor");
+  await setSize(20);
+  const bare = await screenRgb(0.06, 0.45);
+  const mixOn = await glaze();
+  await page.locator('button[title^="Brush settings"]').click();
+  const mixBox = page.locator('label:has-text("Mix colours") input[type="checkbox"]');
+  await mixBox.uncheck();
+  const mixOff = await glaze(); // its colour picks close the gear
+  await page.locator('button[title^="Brush settings"]').click();
+  await mixBox.check();
+  await page.locator('button[title^="Brush settings"]').click();
+  await penPath(
+    Array.from({ length: 31 }, (_, i) => [0.04 + (0.16 * i) / 30, 0.45]),
+    53,
+  );
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/5b-watercolour.png` });
+  await page.locator('button[title^="Undo"]').first().click();
+  // The blue (#1e88e5, R 30) painted, but paper shows through: R well above the paint's own.
+  check(
+    mixOn.blue[0] >= 60 && mixOn.blue[0] < bare[0] - 40,
+    `Watercolour paints a see-through wash (paper R ${bare[0]}, blue wash R ${mixOn.blue[0]}; the blue paint is R 30)`,
+  );
+  check(
+    mixOn.crossing[0] < mixOn.yellow[0] - 60 && mixOff.crossing[0] > mixOn.crossing[0] + 40,
+    `a Watercolour crossing mixes with Mix colours on (crossing R ${mixOn.crossing[0]}, yellow alone R ${mixOn.yellow[0]}; Mix off crossing R ${mixOff.crossing[0]})`,
+  );
+  await brushSelect.selectOption("smooth");
+  await setSize(sizeBefore);
+  await pickColour("Ink"); // the default the later checks expect
 
   // Soft fill (2026-10-02, from slop-paint): a bucket fill against an anti-aliased stroke. At Soft 0
   // the flood stops where the stroke's faint edge passes the tolerance, leaving PALE pixels (faint
