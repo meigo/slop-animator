@@ -69,6 +69,7 @@
   const isCalligraphy = $derived(stroke.brushType === "calligraphy");
   const isInk = $derived(stroke.brushType === "ink");
   const isDry = $derived(stroke.brushType === "dry");
+  const isWatercolor = $derived(stroke.brushType === "watercolor");
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -129,6 +130,7 @@
       <option value="airbrush">Airbrush</option>
       <option value="calligraphy">Calligraphy</option>
       <option value="dry">Dry brush</option>
+      <option value="watercolor">Watercolour</option>
     </select>
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Size
@@ -202,7 +204,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, smoothing, wobble, pooling, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, smoothing, wobble, pooling, watercolour edge and grain, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -211,7 +213,7 @@
         <div
           class="absolute right-0 top-full z-30 mt-2 flex w-72 flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-xs shadow-md"
         >
-          {#if smoothOnly}
+          {#if smoothOnly || isWatercolor}
             <!-- Moved off the bar 2026-09-08 when the size presets became 24px squares: Smooth was
                  the only control that pushed the row past a 12.9" iPad's portrait width. It belongs
                  here anyway by the gear's own rule — you calibrate it once, like Stream, rather
@@ -373,6 +375,59 @@
               />
               <span class={valueCls}>{stroke.dryTaper ?? 10}</span>
             </label>
+          {/if}
+          {#if isWatercolor}
+            <!-- The eraser's wash takes paint out evenly (no rim, no grain, nothing to mix), so it
+                 gets Wobble only. -->
+            {#if appState.tool !== "eraser"}
+              <label
+                class={rowCls}
+                title="How much darker the rim is, where the pigment gathers as it dries — 0 is an even wash"
+              >
+                <span class={labelCls}>Edge</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  class="min-w-0 flex-1"
+                  bind:value={stroke.washEdge}
+                  style={sliderFill(stroke.washEdge ?? 50, 0, 100)}
+                />
+                <span class={valueCls}>{stroke.washEdge ?? 50}</span>
+              </label>
+              <label class={rowCls} title="How strongly the paper's grain shows in the wash">
+                <span class={labelCls}>Grain</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  class="min-w-0 flex-1"
+                  bind:value={stroke.washGrain}
+                  style={sliderFill(stroke.washGrain ?? 40, 0, 100)}
+                />
+                <span class={valueCls}>{stroke.washGrain ?? 40}</span>
+              </label>
+            {/if}
+            <label class={rowCls} title="How uneven the stroke's outline is">
+              <span class={labelCls}>Wobble</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.washWobble}
+                style={sliderFill(stroke.washWobble ?? 30, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.washWobble ?? 30}</span>
+            </label>
+            {#if appState.tool !== "eraser"}
+              <label
+                class={rowCls}
+                title="Mix with the paint already on the cell, as glazes do: yellow over blue makes green. Off, a stroke covers what's under it. Paint behind and alpha lock don't mix"
+              >
+                <input type="checkbox" bind:checked={stroke.washMultiply} /> Mix colours
+              </label>
+            {/if}
           {/if}
           {#if smoothOnly}
             <label class={rowCls} title="How uneven the stroke's outline is — 0 is a clean edge">
