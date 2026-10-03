@@ -202,7 +202,7 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, smoothing, pooling, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
+        title="Brush settings — streamline, smoothing, wobble, pooling, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -277,6 +277,18 @@
                 style={sliderFill(stroke.nibFlatness ?? 0, 0, MAX_NIB_FLATNESS)}
               />
               <span class={valueCls}>{Math.round((stroke.nibFlatness ?? 0) * 100)}%</span>
+            </label>
+            <label class={rowCls} title="How uneven the stroke's outline is — 0 is a clean edge">
+              <span class={labelCls}>Wobble</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.nibWobble}
+                style={sliderFill(stroke.nibWobble ?? 0, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.nibWobble ?? 0}</span>
             </label>
           {/if}
           {#if isInk}
@@ -363,6 +375,18 @@
             </label>
           {/if}
           {#if smoothOnly}
+            <label class={rowCls} title="How uneven the stroke's outline is — 0 is a clean edge">
+              <span class={labelCls}>Wobble</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                class="min-w-0 flex-1"
+                bind:value={stroke.smoothWobble}
+                style={sliderFill(stroke.smoothWobble ?? 0, 0, 100)}
+              />
+              <span class={valueCls}>{stroke.smoothWobble ?? 0}</span>
+            </label>
             <label
               class={rowCls}
               title="Taper the stroke's ends to a point instead of capping them"

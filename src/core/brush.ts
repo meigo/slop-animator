@@ -1,5 +1,6 @@
 import getStroke from "perfect-freehand";
 import type { InputPoint } from "./input";
+import { strokeSeed, wobbleAmp, wobbleOutline, wobbleScale } from "./wobble";
 
 /**
  * Model 2 pressure→width range. `size` is the nominal (medium) width:
@@ -53,6 +54,10 @@ export interface BrushSettings {
   smoothing: number;
   /** Smooth brush: keep a corner sharp where the pen paused, instead of smoothing it round. */
   sharpCorners?: boolean;
+  /** Smooth only, 0–100: how uneven the outline is (`wobble.ts`); 0 by default. */
+  smoothWobble?: number;
+  /** Calligraphy only, 0–100: how uneven the nib's edge is; 0 by default. */
+  nibWobble?: number;
   isEraser: boolean;
   drawBehind: boolean;
   alphaLock: boolean;
@@ -126,6 +131,12 @@ export function drawStroke(
   });
 
   if (strokePoints.length < 2) return;
+  const outline = wobbleOutline(
+    strokePoints,
+    strokeSeed(points[0]),
+    wobbleAmp(maxSize, settings.smoothWobble ?? 0),
+    wobbleScale(maxSize),
+  );
 
   ctx.save();
 
@@ -147,7 +158,7 @@ export function drawStroke(
   ctx.fillStyle = settings.color;
   ctx.beginPath();
 
-  const path = getSvgPathFromStroke(strokePoints);
+  const path = getSvgPathFromStroke(outline);
   const path2d = new Path2D(path);
   ctx.fill(path2d);
 
