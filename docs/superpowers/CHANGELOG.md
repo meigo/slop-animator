@@ -8288,6 +8288,10 @@ anchor grid; slop-paint's renaming is not taken.
 - **Owed on the iPad:** a 4× Scale shrink of a drawing with fine lines; the Keep ratio toggle.
 
 
+> **SUPERSEDED in part 2026-10-04:** `softCoverage` (the uphill climb) below is replaced by
+> `ridgeCoverage` — see **Soft fills under the line to its middle (2026-10-04)**. Expand, Gap and the
+> slider are unchanged.
+
 **Soft fill edges, a smooth Expand, and Gap for the bucket (2026-10-02, branch `feat/soft-fill`; port of
 slop-paint `d1e3187`…`7103ac2` end state and `ccd6bd1`'s `fillMask`).** Spec/plan:
 `docs/superpowers/specs/2026-10-02-soft-fill-design.md`, `docs/superpowers/plans/2026-10-02-soft-fill.md`.
@@ -8414,3 +8418,45 @@ on purpose) or Calligraphy. Tests: slop-paint's three (failed first: not a funct
   paint, not the incremental rim window (that was checked in the browser vs `slopWashFull`). (4) The
   eraser's `washWobble` defaults to 30 like the brush's (as slop-paint).
 
+
+**Soft fills under the line to its middle (2026-10-04, branch `feat/ridge-fill`; port of slop-paint
+`c672ad3` + the tooltip of `7173927`).** The user agreed to the port.
+- **Problem (slop-paint's):** `softCoverage` climbed the line pixel by pixel, uphill only, so a grainy
+  Pencil or Charcoal line's grain peaks stopped it 1–3 px in and a light line's inner half stayed
+  blotchy with paper.
+- **`ridgeCoverage`** (slop-paint's code; helpers `smoothDistance`, `maxFilter`, `atLeast`,
+  `UNDER_LINE_MAX_PX` = 32): the line's middle by geometry — halfway between the region and the
+  empty space beyond (`distanceToMask` both ways; "empty" read on the strength smoothed over 2 px, never
+  lowered, so grain holes aren't "beyond"); the inner half fades from full to 1 − the line's strongest
+  value nearby (7×7 max), ending at the middle over max(1, 2 × Soft) px; nothing beyond; ≤ 32 px from
+  the region; only in a window (region box + 64 px). With Expand, per pixel the larger of
+  `expandedCoverage` and this. Fill enclosed (`fillRegionBehind`): the same, tol 10, strength = alpha.
+- **Kept from this app:** the exact same-colour refusal; the recolour of a painted area with Expand;
+  `cover = null` at Soft 0 with no Expand (and Expand alone at Soft 0 skips `ridgeCoverage`: the region
+  is inside the dilation, so the result is the same). Soft 0 byte-identical to `main`: 400 random
+  bucket + `fillRegionBehind` fills in node (Expand 0–3, Gap 0–3, empty and painted taps).
+- **Not in slop-paint — `bucketStrength`** (the bucket's line strength, tested): (1) the colour
+  distance is capped at the pixel's alpha. Without it a tap on a PAINTED area reads the transparent
+  space around it as a 255-strong line and fills it 32 px deep (probed on slop-paint's own
+  `ridgeCoverage`: every pixel beyond came out 255). (2) An inked pixel `fillMask` walls off counts at
+  least the tolerance: WebKit reads a faint grey back as (46, 46, 46, 11) — colour drifted with the
+  premultiplied storage — a wall to the flood (all four channels) but, by alpha alone, empty space
+  right at the region's edge, which cut the fill off there: white blotches along a Pencil line, seen
+  in the first WebKit crops and gone after.
+- **Browser (WebKit, Playwright, throwaway script; main worktree vs branch, ×12 nearest crops):**
+  light Pencil (pressure 0.06 and 0.22), Charcoal, Smooth closed shapes, bucket Soft 0 / Soft 1 Expand 0
+  / Soft 1 Expand 2 and Fill enclosed Soft 1. Branch: the inner half tinted under the line, no pale
+  pixels at the edge, no dark halo, the outer side untouched; Smooth looks as on `main`.
+- **Time** (WebKit on the Mac, the module on 60 thin circles, median of 3, main → branch):
+  1920×1080 big fill Soft 1 14 → 22 ms, + Expand 2 29 → 38; small 18 → 11, 28 → 32.
+  3840×2160 big Soft 1 55 → 132 ms, + Expand 2 124 → 230; small 36 → 42, 113 → 133. Soft 0 unchanged
+  (12–58 ms both). Not measured on the iPad.
+- Tests: slop-paint's five `ridgeCoverage` tests (failed first: not a function) replace the four
+  `softCoverage` ones; ours: grainy line through `floodFill` (Expand 0 and 1) and `fillRegionBehind`,
+  recolour leaves the space around empty, `bucketStrength` (2) and the drifted-pixel wiring test (failed
+  first). 1718 → 1726. Build 0/0. `test:ipad` 3/3 passing; its soft-fill check still fails with Soft
+  forced off (pale 32 / 32).
+- Tooltip: the Soft slider's title now says what Soft does (slop-paint `7173927`).
+- **Accepted (the user, in slop-paint):** a LIGHT line goes two-tone, its inner half tinted by the fill.
+- **Owed on the iPad:** bucket Soft 1 on a light Pencil and a Charcoal outline (Expand 0 and 2), Fill
+  enclosed, a recolour tap on a painted shape with Soft 1, and the time of a big fill.
