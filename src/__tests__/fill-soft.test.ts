@@ -2,47 +2,65 @@ import { describe, it, expect } from "vitest";
 import {
   colourDistance,
   expandedCoverage,
-  softCoverage,
+  ridgeCoverage,
   softStepIndex,
-  SOFT_RANGE_PER_PX,
   SOFT_STEPS,
+  UNDER_LINE_MAX_PX,
   floodFill,
   fillRegionBehind,
 } from "../core/fill";
 import { distanceToMask } from "../core/mask-ops";
 
 const row = (bits: number[]) => Uint8Array.from(bits);
-const cover = (dist: number[], region: number[], tol: number, soft: number) => [
-  ...softCoverage(row(dist), dist.length, 1, row(region), tol, soft),
-];
+/** One row: `region` 1s, then the line's strengths, then empty space beyond. */
+const across = (line: number[], soft = 1, inside = 6, beyond = 10) => {
+  const dist = [...Array(inside).fill(0), ...line, ...Array(beyond).fill(0)];
+  const region = [...Array(inside).fill(1), ...Array(line.length + beyond).fill(0)];
+  const c = [...ridgeCoverage(row(dist), dist.length, 1, row(region), 32, soft)];
+  return c.slice(inside, inside + line.length + beyond);
+};
 
-describe("softCoverage", () => {
-  it("fades into a line's soft edge by how faint it is there", () => {
-    // region | line edge getting darker | ridge | far side | empty
-    const c = cover([0, 0, 40, 96, 200, 120, 0], [1, 1, 0, 0, 0, 0, 0], 32, 1);
-    expect(c.slice(0, 2)).toEqual([255, 255]);
-    expect(c[2]).toBe(Math.round(255 * (1 - 8 / SOFT_RANGE_PER_PX))); // faint: mostly filled
-    expect(c[3]).toBe(0); // at tol + range: none
-    expect(c.slice(4)).toEqual([0, 0, 0]);
+// slop-paint c672ad3's tests, unchanged.
+describe("ridgeCoverage", () => {
+  it("runs under the line to its middle and stops there", () => {
+    const c = across([60, 140, 230, 255, 255, 255, 230, 140, 60]);
+    expect(c[0]).toBeGreaterThan(0); // the inner edge gets fill
+    expect(c[2]).toBeGreaterThan(0);
+    expect(c.slice(6)).toEqual(Array(c.length - 6).fill(0)); // the outer side: none
   });
 
-  it("follows sub-pixel position: a fainter edge pixel gets more fill", () => {
-    const a = cover([0, 40], [1, 0], 32, 1)[1];
-    const b = cover([0, 70], [1, 0], 32, 1)[1];
-    expect(a).toBeGreaterThan(b);
-    expect(b).toBeGreaterThan(0);
+  it("isn't stopped by grain: every pixel of the inner half gets some", () => {
+    // A light pencil line whose strength goes up and down from pixel to pixel.
+    const c = across([50, 110, 40, 130, 60, 140, 120, 140, 60, 130, 40, 110, 50]);
+    for (let i = 0; i < 5; i++) expect(c[i]).toBeGreaterThan(0);
+    expect(c.slice(9)).toEqual(Array(c.length - 9).fill(0));
   });
 
-  it("never passes the line's darkest pixel nor crosses a break", () => {
-    // Falling side past the ridge is out, even when faint.
-    expect(cover([0, 60, 50, 40], [1, 0, 0, 0], 32, 2).slice(2)).toEqual([0, 0]);
-    expect(cover([0, 0, 0], [1, 0, 0], 32, 2)).toEqual([255, 0, 0]);
+  it("fades toward 1 − the line's strongest value: a light line keeps more fill than a solid one", () => {
+    const light = across([40, 70, 100, 100, 100, 70, 40]);
+    const solid = across([100, 200, 255, 255, 255, 200, 100]);
+    expect(light[2]).toBeGreaterThan(solid[2]);
+    expect(light[0]).toBeGreaterThanOrEqual(light[2]); // fading from the region outward
   });
 
-  it("is the region alone at Soft 0, and reaches further at a higher Soft", () => {
-    expect(cover([0, 40, 60], [1, 0, 0], 32, 0)).toEqual([255, 0, 0]);
-    expect(cover([0, 40, 120], [1, 0, 0], 32, 1)[2]).toBe(0);
-    expect(cover([0, 40, 120], [1, 0, 0], 32, 2)[2]).toBeGreaterThan(0);
+  it("is the region alone at Soft 0, and a softer cut at a higher Soft", () => {
+    expect(across([60, 140, 230, 140, 60], 0)).toEqual(Array(15).fill(0));
+    const hard = across([60, 140, 230, 255, 230, 140, 60], 0.25);
+    const soft = across([60, 140, 230, 255, 230, 140, 60], 4);
+    const last = (c: number[]) => c.findLastIndex((v) => v > 0);
+    expect(last(soft)).toBeGreaterThanOrEqual(last(hard));
+    // the soft cut steps down more gently at its end
+    const step = (c: number[]) => c[last(c) - 1] - c[last(c)];
+    expect(step(soft)).toBeLessThan(step(hard));
+  });
+
+  it("fills all of a line with no empty space beyond it within reach, and nothing out of reach", () => {
+    // The region, then a solid band wider than the reach: fill under it up to the reach only.
+    const band = Array(UNDER_LINE_MAX_PX + 8).fill(255);
+    const c = across(band, 1, 4, 0);
+    expect(c[0]).toBeGreaterThan(0);
+    expect(c[UNDER_LINE_MAX_PX - 1]).toBeGreaterThan(0);
+    expect(c[UNDER_LINE_MAX_PX + 2]).toBe(0);
   });
 });
 
@@ -175,6 +193,44 @@ describe("floodFill with Soft", () => {
   });
 });
 
+// 2026-10-04 (ridgeCoverage port): a light grainy line — alpha up and down pixel to pixel, some
+// grain holes fully empty — between an empty area and empty space beyond.
+const GRAIN = [50, 110, 0, 130, 60, 140, 120, 140, 60, 130, 0, 110, 50];
+const grainy = (i: number): Px =>
+  i >= 6 && i < 6 + GRAIN.length ? [0, 0, 0, GRAIN[i - 6]] : [0, 0, 0, 0];
+const GW = 6 + GRAIN.length + 10;
+
+describe("floodFill with Soft, under a grainy line (ridgeCoverage)", () => {
+  it("fills behind every pixel of the line's inner half, grain holes too, and nothing beyond", () => {
+    const { ctx, data } = fakeCtx(GW, 1, grainy);
+    floodFill(ctx, 0, 0, RED, { tolerance: 32, expand: 0, softEdge: 1 });
+    for (let i = 6; i < 11; i++) expect(at(data, i)[0]).toBeGreaterThan(0);
+    expect(at(data, 8)[3]).toBeGreaterThan(0); // the grain hole is not a white blotch
+    for (let i = 6 + 9; i < GW; i++) expect(at(data, i)).toEqual(grainy(i));
+  });
+
+  it("recolouring a painted area leaves the empty space around it empty", () => {
+    // A red shape, a black line, then empty layer: tap the red with blue at Soft 1.
+    const blue = { r: 0, g: 0, b: 255, a: 255 };
+    const init = (i: number): Px =>
+      i < 4 ? [255, 0, 0, 255] : i === 4 ? [0, 0, 0, 255] : [0, 0, 0, 0];
+    for (const expand of [0, 2]) {
+      const { ctx, data } = fakeCtx(12, 1, init);
+      floodFill(ctx, 0, 0, blue, { tolerance: 32, expand, softEdge: 1 });
+      expect(at(data, 0)).toEqual([0, 0, 255, 255]);
+      expect(at(data, 4)).toEqual([0, 0, 0, 255]);
+      for (let i = expand ? 7 : 5; i < 12; i++) expect(at(data, i)).toEqual([0, 0, 0, 0]);
+    }
+  });
+
+  it("with Expand, takes whichever reaches further: under the grainy line's inner half too", () => {
+    const { ctx, data } = fakeCtx(GW, 1, grainy);
+    floodFill(ctx, 0, 0, RED, { tolerance: 32, expand: 1, softEdge: 1 });
+    for (let i = 6; i < 11; i++) expect(at(data, i)[0]).toBeGreaterThan(0);
+    for (let i = 6 + 9; i < GW; i++) expect(at(data, i)).toEqual(grainy(i));
+  });
+});
+
 describe("fillRegionBehind with Soft and Expand", () => {
   it("Soft 0, no Expand: the region alone, behind", () => {
     const { ctx, data } = fakeCtx(4, 1, edge);
@@ -188,6 +244,14 @@ describe("fillRegionBehind with Soft and Expand", () => {
     fillRegionBehind(ctx, row([1, 1, 0, 0]), RED, 1, 0);
     expect(at(data, 2)[3]).toBeGreaterThan(60);
     expect(at(data, 3)).toEqual([0, 0, 0, 255]);
+  });
+
+  it("runs under a grainy line to its middle, as the bucket", () => {
+    const { ctx, data } = fakeCtx(GW, 1, grainy);
+    const region = Uint8Array.from({ length: GW }, (_, i) => (i < 6 ? 1 : 0));
+    fillRegionBehind(ctx, region, RED, 1, 0);
+    for (let i = 6; i < 11; i++) expect(at(data, i)[0]).toBeGreaterThan(0);
+    for (let i = 6 + 9; i < GW; i++) expect(at(data, i)).toEqual(grainy(i));
   });
 
   it("grows the region by Expand with a feathered edge", () => {
