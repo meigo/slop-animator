@@ -3,6 +3,7 @@ import {
   colourDistance,
   expandedCoverage,
   ridgeCoverage,
+  bucketStrength,
   softStepIndex,
   SOFT_STEPS,
   UNDER_LINE_MAX_PX,
@@ -228,6 +229,48 @@ describe("floodFill with Soft, under a grainy line (ridgeCoverage)", () => {
     floodFill(ctx, 0, 0, RED, { tolerance: 32, expand: 1, softEdge: 1 });
     for (let i = 6; i < 11; i++) expect(at(data, i)[0]).toBeGreaterThan(0);
     for (let i = 6 + 9; i < GW; i++) expect(at(data, i)).toEqual(grainy(i));
+  });
+});
+
+describe("bucketStrength", () => {
+  const px = (...p: Px[]) => Uint8ClampedArray.from(p.flat());
+  it("is the alpha from an empty tap, the colour distance capped at the alpha from a painted one", () => {
+    const d = px([0, 0, 0, 0], [0, 0, 0, 100], [0, 0, 0, 255], [255, 0, 0, 255]);
+    expect([...bucketStrength(d, 4, 1, { r: 0, g: 0, b: 0, a: 0 }, 32)]).toEqual([
+      0, 100, 255, 255,
+    ]);
+    // From red: empty space is empty (not a 255 line), the black line is, red itself is not.
+    expect([...bucketStrength(d, 4, 1, { r: 255, g: 0, b: 0, a: 255 }, 32)]).toEqual([
+      0, 100, 255, 0,
+    ]);
+  });
+
+  it("calls a faint pixel the flood stopped at a line, never empty space", () => {
+    // WebKit reads a faint grey ink pixel back as (46, 46, 46, 11): its colour drifted with the
+    // premultiplied storage, so `fillMask` walls it off from an empty tap, while its alpha alone
+    // would call it empty — a pocket of "beyond" right at the region's edge (white blotches).
+    const d = px([46, 46, 46, 11], [20, 20, 20, 11]);
+    expect([...bucketStrength(d, 2, 1, { r: 0, g: 0, b: 0, a: 0 }, 32)]).toEqual([32, 11]);
+  });
+});
+
+describe("floodFill with Soft, against faint pixels the flood stopped at", () => {
+  it("fills behind them and the line's inner half, not leaving them paper", () => {
+    // Five rows: empty area | a light line rising slowly | empty beyond; on the middle row the
+    // last pixel before the line is a faint drifted one.
+    const LINE = [34, 60, 110, 120, 110, 60, 34];
+    const W = 7 + LINE.length + 8;
+    const init = (i: number): Px => {
+      const x = i % W;
+      if (x === 6 && Math.floor(i / W) === 2) return [46, 46, 46, 11];
+      return x >= 7 && x < 7 + LINE.length ? [40, 40, 40, LINE[x - 7]] : [0, 0, 0, 0];
+    };
+    const { ctx, data } = fakeCtx(W, 5, init);
+    floodFill(ctx, 0, 0, RED, { tolerance: 32, expand: 0, softEdge: 1 });
+    const mid = 2 * W;
+    expect(at(data, mid + 6)[0]).toBeGreaterThan(150); // the faint pixel takes the fill behind it
+    for (let x = 7; x < 10; x++) expect(at(data, mid + x)[0]).toBeGreaterThan(0);
+    for (let x = 7 + LINE.length; x < W; x++) expect(at(data, mid + x)).toEqual([0, 0, 0, 0]);
   });
 });
 

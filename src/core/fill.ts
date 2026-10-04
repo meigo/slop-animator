@@ -64,6 +64,40 @@ export function colourDistance(
 }
 
 /**
+ * The bucket's line strength per pixel, 0–255, for `ridgeCoverage` (2026-10-04): the colour
+ * distance from the tapped pixel (`colourDistance`), but (1) at most the pixel's alpha — a line is
+ * INK that differs from the tapped colour, so the empty space around a tapped painted area reads
+ * as empty, not as a line to fill under 32 px deep; and (2) at least `tol` for an inked pixel the
+ * flood walls off (`fillMask` compares all four channels) — a faint pixel whose colour drifted with
+ * the canvas's premultiplied storage (WebKit reads a faint grey back as (46, 46, 46, 11)) is a wall
+ * to the flood but, by alpha alone, empty: a pocket of "beyond" at the region's very edge, which
+ * cut the fill off there and left white blotches. Pure.
+ */
+export function bucketStrength(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  seed: { r: number; g: number; b: number; a: number },
+  tol: number,
+): Uint8Array {
+  const out = colourDistance(data, w, h, seed);
+  for (let i = 0; i < w * h; i++) {
+    const p = i * 4;
+    const a = data[p + 3];
+    if (a < out[i]) out[i] = a;
+    if (a > 0 && out[i] < tol) {
+      const wall =
+        Math.abs(data[p] - seed.r) > tol ||
+        Math.abs(data[p + 1] - seed.g) > tol ||
+        Math.abs(data[p + 2] - seed.b) > tol ||
+        Math.abs(a - seed.a) > tol;
+      if (wall) out[i] = tol;
+    }
+  }
+  return out;
+}
+
+/**
  * `dist` averaged over a (2r+1)² box (separable), never below a pixel's own value: smoothing only
  * fills a line's faint grain pixels in from their neighbours, so a grain hole inside a line doesn't
  * read as the empty space beyond it (`ridgeCoverage`). Pure.
@@ -140,7 +174,7 @@ export const UNDER_LINE_MAX_PX = 32;
  * 1 − the line's strongest value nearby (so a light line isn't darkened much, and a solid one hides
  * it), and ends at the middle over max(1, 2 × Soft) px, antialiased. Nothing beyond the middle.
  * Drawn BEHIND the line. Soft 0: the region alone, the hard edge. `dist` is each pixel's line
- * strength (`colourDistance`; the bucket caps it at the alpha); a pixel is empty below `tol`.
+ * strength (`colourDistance`; the bucket's `bucketStrength`); a pixel is empty below `tol`.
  * Worked out only around the region, so a small fill on a big layer stays fast. Pure.
  *
  * History (2026-10-02 → 04): Soft first climbed the line pixel by pixel, uphill only, coverage
@@ -402,13 +436,15 @@ export function floodFill(
   const soft = options.softEdge ?? 0;
   let toMiddle: Uint8ClampedArray | null = null;
   if (soft > 0) {
-    // A line is ink that differs from the tapped colour: at most its alpha, so the EMPTY space
-    // around a tapped painted area (its colour means nothing) reads as empty, not as a line to
-    // fill under 32 px deep. From an empty tap the distance is the alpha already.
-    const strength = colourDistance(data, w, h, { r: targetR, g: targetG, b: targetB, a: targetA });
-    for (let i = 0; i < w * h; i++)
-      if (data[i * 4 + 3] < strength[i]) strength[i] = data[i * 4 + 3];
-    toMiddle = ridgeCoverage(strength, w, h, mask, tolerance, soft);
+    const seed = { r: targetR, g: targetG, b: targetB, a: targetA };
+    toMiddle = ridgeCoverage(
+      bucketStrength(data, w, h, seed, tolerance),
+      w,
+      h,
+      mask,
+      tolerance,
+      soft,
+    );
   }
   const cover =
     expand > 0
