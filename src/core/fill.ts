@@ -256,7 +256,7 @@ export function ridgeCoverage(
  * old whole-pixel round dilation (`dilateMask`). Above 0 the grown edge is a smooth round offset
  * measured by true distance (`distanceToMask`), solid up to `expand` px and fading to nothing over
  * the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
- * under the line, showing through a see-through one, and Soft's fade (`softCoverage`) starts from
+ * under the line, showing through a see-through one, and Soft's fade (`ridgeCoverage`) starts from
  * that edge, already in the line's dark middle where it has nothing left to fade: with Expand on,
  * Soft seemed to do nothing. Pure.
  */
