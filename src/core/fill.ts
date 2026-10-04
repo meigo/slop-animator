@@ -13,8 +13,8 @@ export interface FillOptions {
   gap?: number;
   /** Expand fill by this many pixels to cover antialiased edges. Fill draws behind existing content. */
   expand?: number;
-  /** Soft edge: how far the fill fades into the surrounding lines' soft edges, behind them
-   *  (0 = the hard pixel edge; `softCoverage`). */
+  /** Soft edge: the fill runs under the surrounding lines to their middle, behind them, and ends
+   *  there this soft (0 = the hard pixel edge; `ridgeCoverage`). */
   softEdge?: number;
 }
 
@@ -37,8 +37,8 @@ export function softStepIndex(soft: number): number {
 
 /**
  * Each pixel's distance from the tapped colour, 0–255: the largest channel difference, or the
- * alpha alone when the tap was on an empty pixel (an empty pixel's colour means nothing). What
- * `softCoverage` climbs. Pure.
+ * alpha alone when the tap was on an empty pixel (an empty pixel's colour means nothing). The
+ * line strength `ridgeCoverage` reads. Pure.
  */
 export function colourDistance(
   data: Uint8ClampedArray,
@@ -63,24 +63,126 @@ export function colourDistance(
   return out;
 }
 
-/** Distance units (0–255) of fade per 1 of Soft (`softCoverage`). */
-export const SOFT_RANGE_PER_PX = 64;
-/** How far, in px, the soft edge may reach into a line at most. */
-const SOFT_MAX_STEPS = 8;
+/**
+ * The bucket's line strength per pixel, 0–255, for `ridgeCoverage` (2026-10-04): the colour
+ * distance from the tapped pixel (`colourDistance`), but (1) at most the pixel's alpha — a line is
+ * INK that differs from the tapped colour, so the empty space around a tapped painted area reads
+ * as empty, not as a line to fill under 32 px deep; and (2) at least `tol` for an inked pixel the
+ * flood walls off (`fillMask` compares all four channels) — a faint pixel whose colour drifted with
+ * the canvas's premultiplied storage (WebKit reads a faint grey back as (46, 46, 46, 11)) is a wall
+ * to the flood but, by alpha alone, empty: a pocket of "beyond" at the region's very edge, which
+ * cut the fill off there and left white blotches. Pure.
+ */
+export function bucketStrength(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  seed: { r: number; g: number; b: number; a: number },
+  tol: number,
+): Uint8Array {
+  const out = colourDistance(data, w, h, seed);
+  for (let i = 0; i < w * h; i++) {
+    const p = i * 4;
+    const a = data[p + 3];
+    if (a < out[i]) out[i] = a;
+    if (a > 0 && out[i] < tol) {
+      const wall =
+        Math.abs(data[p] - seed.r) > tol ||
+        Math.abs(data[p + 1] - seed.g) > tol ||
+        Math.abs(data[p + 2] - seed.b) > tol ||
+        Math.abs(a - seed.a) > tol;
+      if (wall) out[i] = tol;
+    }
+  }
+  return out;
+}
 
 /**
- * The fill's coverage, 0–255, antialiased against the lines around it (2026-10-02). The flood
- * (`region`) stops where a line's soft edge passes the colour tolerance, a whole-pixel STAIRCASE;
- * no per-pixel rule fixes that — filling a whole pixel more just moves the staircase. Instead each
- * pixel of the line's edge beside the region gets coverage from how FAINT the line is there:
- * 1 − (dist − tol) / range, `dist` its distance from the tapped colour (`colourDistance`) and
- * range = Soft × `SOFT_RANGE_PER_PX`. The line's own antialiasing carries where the edge really
- * falls between pixels, so the coverage follows it smoothly. Drawn BEHIND the line. Reached from
- * the region stepping uphill only (never past the line's darkest pixel, never through an empty
- * pixel — a break — and at most 8 px), so nothing spills into the space beyond. Soft 0: the region
- * alone, the old hard edge. Pure.
+ * `dist` averaged over a (2r+1)² box (separable), never below a pixel's own value: smoothing only
+ * fills a line's faint grain pixels in from their neighbours, so a grain hole inside a line doesn't
+ * read as the empty space beyond it (`ridgeCoverage`). Pure.
  */
-export function softCoverage(
+function smoothDistance(dist: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      let n = 0;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) {
+        sum += dist[y * w + k];
+        n++;
+      }
+      tmp[y * w + x] = sum / n;
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      let n = 0;
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) {
+        sum += tmp[k * w + x];
+        n++;
+      }
+      out[y * w + x] = Math.max(dist[y * w + x], Math.round(sum / n));
+    }
+  }
+  return out;
+}
+
+/** Each pixel's largest value within a (2r+1)² box (separable). Pure. */
+function maxFilter(a: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const tmp = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++)
+        m = Math.max(m, a[y * w + k]);
+      tmp[y * w + x] = m;
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) {
+        m = Math.max(m, tmp[k * w + x]);
+      }
+      out[y * w + x] = m;
+    }
+  }
+  return out;
+}
+
+/** The larger of two coverages, per pixel (into `a`). Expand and Soft together: whichever reaches
+ *  further under the line. */
+function atLeast(a: Uint8ClampedArray, b: Uint8ClampedArray): Uint8ClampedArray {
+  for (let i = 0; i < a.length; i++) if (b[i] > a[i]) a[i] = b[i];
+  return a;
+}
+
+/** How far under a line the fill may reach, px from its region (half of the widest line it fills
+ *  to the middle of). */
+export const UNDER_LINE_MAX_PX = 32;
+
+/**
+ * The fill's coverage, 0–255, run under the surrounding lines to their MIDDLE (2026-10-04, port of
+ * slop-paint c672ad3, the user's rule there). For each line pixel the middle is found by geometry —
+ * halfway between the filled `region` and the empty space beyond the line (`distanceToMask` both
+ * ways) — not by climbing the line's strength, which a grainy Pencil or Charcoal line stopped 1–3 px
+ * in, leaving its inner half blotchy with paper. On the inner half the fill fades from full to
+ * 1 − the line's strongest value nearby (so a light line isn't darkened much, and a solid one hides
+ * it), and ends at the middle over max(1, 2 × Soft) px, antialiased. Nothing beyond the middle.
+ * Drawn BEHIND the line. Soft 0: the region alone, the hard edge. `dist` is each pixel's line
+ * strength (`colourDistance`; the bucket's `bucketStrength`); a pixel is empty below `tol`.
+ * Worked out only around the region, so a small fill on a big layer stays fast. Pure.
+ *
+ * History (2026-10-02 → 04): Soft first climbed the line pixel by pixel, uphill only, coverage
+ * from how faint each pixel was (`softCoverage`); fine on a smooth ink line, but grain peaks
+ * stopped it short. Smoothing the grain first (1–2 px) barely helped: pencil grain also varies on
+ * a larger scale.
+ */
+export function ridgeCoverage(
   dist: Uint8Array,
   w: number,
   h: number,
@@ -89,33 +191,62 @@ export function softCoverage(
   soft: number,
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(w * h);
-  const steps = new Uint8Array(w * h);
-  const queue = new Int32Array(w * h);
-  let tail = 0;
-  for (let i = 0; i < w * h; i++) {
-    if (!region[i]) continue;
-    out[i] = 255;
-    steps[i] = 1;
-    queue[tail++] = i;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!region[y * w + x]) continue;
+      out[y * w + x] = 255;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
   }
-  const range = soft * SOFT_RANGE_PER_PX;
-  if (range <= 0) return out;
-  const ceiling = tol + range;
-  for (let head = 0; head < tail; head++) {
-    const p = queue[head];
-    if (steps[p] > SOFT_MAX_STEPS) continue;
-    const x = p % w;
-    const floor = Math.max(dist[p], 1);
-    const visit = (q: number) => {
-      if (steps[q] || dist[q] < floor || dist[q] >= ceiling) return;
-      steps[q] = steps[p] + 1;
-      out[q] = Math.round(255 * Math.min(1, 1 - (dist[q] - tol) / range));
-      queue[tail++] = q;
-    };
-    if (x > 0) visit(p - 1);
-    if (x < w - 1) visit(p + 1);
-    if (p >= w) visit(p - w);
-    if (p < w * (h - 1)) visit(p + w);
+  if (!(soft > 0) || x1 < 0) return out;
+
+  // The window: the region and as far as the fill may reach, plus as far again, so the empty space
+  // beyond a line that wide is inside it too.
+  const pad = 2 * UNDER_LINE_MAX_PX;
+  const wx = Math.max(0, x0 - pad);
+  const wy = Math.max(0, y0 - pad);
+  const ww = Math.min(w - 1, x1 + pad) - wx + 1;
+  const wh = Math.min(h - 1, y1 + pad) - wy + 1;
+  const n = ww * wh;
+  const d = new Uint8Array(n);
+  const reg = new Uint8Array(n);
+  for (let y = 0; y < wh; y++) {
+    for (let x = 0; x < ww; x++) {
+      d[y * ww + x] = dist[(y + wy) * w + x + wx];
+      reg[y * ww + x] = region[(y + wy) * w + x + wx];
+    }
+  }
+  const smooth = smoothDistance(d, ww, wh, 2);
+  // The empty space beyond the lines: not filled, and empty even with the grain smoothed over.
+  const outside = new Uint8Array(n);
+  for (let i = 0; i < n; i++) outside[i] = !reg[i] && smooth[i] < tol ? 1 : 0;
+  const dIn = distanceToMask(reg, ww, wh);
+  const dOut = distanceToMask(outside, ww, wh);
+  const peak = maxFilter(smooth, ww, wh, 3);
+  const feather = Math.max(1, 2 * soft);
+  for (let y = 0; y < wh; y++) {
+    for (let x = 0; x < ww; x++) {
+      const i = y * ww + x;
+      if (reg[i] || outside[i] || dIn[i] > UNDER_LINE_MAX_PX) continue;
+      // No empty space beyond within reach (a line inside the region, or a wide solid one): fill
+      // all of it within reach — it's behind the line.
+      const span = Number.isFinite(dOut[i]) ? dIn[i] + dOut[i] : Infinity;
+      const t = Number.isFinite(span) ? dIn[i] / span : 0; // 0 at the region, ½ at the middle
+      const edge = Number.isFinite(span)
+        ? Math.max(0, Math.min(1, ((0.5 - t) * span) / feather + 0.5))
+        : 1;
+      if (edge <= 0) continue;
+      const end = 1 - peak[i] / 255;
+      const along = Math.min(1, t / 0.5);
+      out[(y + wy) * w + x + wx] = Math.round(255 * edge * (1 + (end - 1) * along));
+    }
   }
   return out;
 }
@@ -125,7 +256,7 @@ export function softCoverage(
  * old whole-pixel round dilation (`dilateMask`). Above 0 the grown edge is a smooth round offset
  * measured by true distance (`distanceToMask`), solid up to `expand` px and fading to nothing over
  * the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
- * under the line, showing through a see-through one, and Soft's fade (`softCoverage`) starts from
+ * under the line, showing through a see-through one, and Soft's fade (`ridgeCoverage`) starts from
  * that edge, already in the line's dark middle where it has nothing left to fade: with Expand on,
  * Soft seemed to do nothing. Pure.
  */
@@ -297,24 +428,30 @@ export function floodFill(
   // --- Pass 1: the region to fill (with Gap, breaks in the lines bridged: `fillMask`) ---
   const mask = fillMask(data, w, h, sx, sy, tolerance, options.gap ?? 0)!;
 
-  // --- Pass 2: coverage per pixel, 0–255 (2026-10-02, from slop-paint) ---
-  // Expand grows the fill under the lines (all of it drawn behind them), its edge feathered by
-  // Soft. Without Expand, Soft fades the fill into the lines' soft edges, behind them; the tapped
-  // region itself stays solid. Soft 0 and no Expand: the region alone (`null`, no allocation).
+  // --- Pass 2: coverage per pixel, 0–255 (2026-10-02, from slop-paint; 2026-10-04 `ridgeCoverage`) ---
+  // Soft runs the fill under the lines to their middle, behind them; Expand grows it under them
+  // with an edge feathered by Soft; with both, whichever reaches further. The tapped region itself
+  // stays solid. Soft 0 and no Expand: the region alone (`null`, no allocation); Soft 0 with
+  // Expand: the expand alone (the region is inside it anyway).
   const soft = options.softEdge ?? 0;
+  let toMiddle: Uint8ClampedArray | null = null;
+  if (soft > 0) {
+    const seed = { r: targetR, g: targetG, b: targetB, a: targetA };
+    toMiddle = ridgeCoverage(
+      bucketStrength(data, w, h, seed, tolerance),
+      w,
+      h,
+      mask,
+      tolerance,
+      soft,
+    );
+  }
   const cover =
     expand > 0
-      ? expandedCoverage(mask, w, h, expand, soft)
-      : soft > 0
-        ? softCoverage(
-            colourDistance(data, w, h, { r: targetR, g: targetG, b: targetB, a: targetA }),
-            w,
-            h,
-            mask,
-            tolerance,
-            soft,
-          )
-        : null;
+      ? toMiddle
+        ? atLeast(expandedCoverage(mask, w, h, expand, soft), toMiddle)
+        : expandedCoverage(mask, w, h, expand, soft)
+      : toMiddle;
 
   // --- Pass 3: Apply fill behind existing content ---
   // Tapping a PAINTED area recolours it: the region itself is written (as with expand 0) and only
@@ -455,20 +592,23 @@ export function fillRegionBehind(
   const tctx = temp.getContext("2d")!;
   const img = tctx.createImageData(w, h);
   const td = img.data;
-  // Expand (when the caller left it to us: Soft above 0) grows the region under the lines with a
-  // feathered edge, as the bucket's; else Soft fades it into the lines' soft edges. The enclosed
-  // areas are empty, so the distance is the alpha, and walls start at alpha 10 (`enclosedRegion`'s
-  // threshold). Soft 0 and no Expand: the region alone.
+  // Soft, as the bucket's: under the lines to their middle (`ridgeCoverage`). Expand (when the
+  // caller left it to us: Soft above 0) grows it at least that far under them, with a feathered
+  // edge, as the bucket's. The enclosed areas are empty, so the strength is the alpha, and walls
+  // start at alpha 10 (`enclosedRegion`'s threshold). Soft 0 and no Expand: the region alone.
   let cover: Uint8ClampedArray | null = null;
-  if (expand > 0) cover = expandedCoverage(region, w, h, expand, softEdge);
-  else if (softEdge > 0) {
+  if (softEdge > 0) {
     const dist = colourDistance(ctx.getImageData(0, 0, w, h).data, w, h, {
       r: 0,
       g: 0,
       b: 0,
       a: 0,
     });
-    cover = softCoverage(dist, w, h, region, 10, softEdge);
+    cover = ridgeCoverage(dist, w, h, region, 10, softEdge);
+  }
+  if (expand > 0) {
+    const grown = expandedCoverage(region, w, h, expand, softEdge);
+    cover = cover ? atLeast(grown, cover) : grown;
   }
   for (let i = 0; i < w * h; i++) {
     const c = cover ? cover[i] : region[i] ? 255 : 0;

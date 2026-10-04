@@ -522,7 +522,7 @@
          SOFT_STEPS (quarters to 2, then coarser to 8), so 0.5 is easy to hit by finger on 96 px. -->
     <label
       class="flex items-center gap-1 text-xs text-text-secondary"
-      title="Soft edge: antialias the fill against the lines, behind them (px; 0 = hard pixel edge). With Expand, how far the grown edge fades"
+      title="Soft edge: the fill runs behind the line to its middle, so no pixel steps show; this sets how softly it ends there — and, with Expand, how softly the grown edge ends (up to 16 px at 8); 0 = hard pixel edge"
       >Soft
       <input
         type="range"

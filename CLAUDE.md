@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1718 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1726 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
@@ -297,7 +297,11 @@ is an index): `softCoverage` antialiases the bucket / Fill enclosed edge from th
 BEHIND it; with Expand, `expandedCoverage` grows by true distance (`distanceToMask`) feathered over
 max(1, 2 × Soft) px. Soft 0 is byte-identical to the old fill. Gap now bridges the bucket too
 (`fillMask`). Don't retry slop-paint's four failed versions (halo over the line, fill to the line's
-middle, Soft or Expand in whole pixels) — see the 2026-10-02 changelog entry.
+middle, Soft or Expand in whole pixels) — see the 2026-10-02 changelog entry. **Superseded in part 2026-10-04:** `softCoverage` is gone;
+`ridgeCoverage` (slop-paint c672ad3) runs the fill behind the line to its MIDDLE found by geometry
+(not the line's darkest pixel, so the "fill to the middle" failure above was a fill FULLY dark to
+the middle; this one fades to 1 − the line's strength), and the bucket's line strength is
+`bucketStrength` — see the 2026-10-04 changelog entry.
 
 Shipped 2026-09-24: **Outline tool** — turn a solid drawing into an outline by a signed distance field
 built from alpha, seeded sub-pixel to carry anti-aliasing, with a noise-modulated band: **Thickness**

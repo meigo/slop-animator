@@ -280,7 +280,7 @@ interface AnimState {
    *  model outlines and flats are different colours by definition, so sharing one swatch meant
    *  re-picking on every crossing between brush and bucket. Opacity separates with it: a brush
    *  dropped to 30% for roughing would otherwise silently hand that 30% to every flat. */
-  /** `soft`: the fill's antialiased edge, a `SOFT_STEPS` value (2026-10-02, `softCoverage`). */
+  /** `soft`: the fill's antialiased edge, a `SOFT_STEPS` value (2026-10-02, `ridgeCoverage`). */
   fill: {
     tolerance: number;
     expand: number;
