@@ -8460,3 +8460,16 @@ on purpose) or Calligraphy. Tests: slop-paint's three (failed first: not a funct
 - **Accepted (the user, in slop-paint):** a LIGHT line goes two-tone, its inner half tinted by the fill.
 - **Owed on the iPad:** bucket Soft 1 on a light Pencil and a Charcoal outline (Expand 0 and 2), Fill
   enclosed, a recolour tap on a painted shape with Soft 1, and the time of a big fill.
+
+**Calligraphy's Wobble is as soft as Smooth's (2026-10-06, branch `fix/calligraphy-wobble`; port of
+slop-paint `57c6b0d`).** Found by checking slop-paint's recent commits against this app at the user's
+request: every slop-paint change since 2026-10-03 was ported except this one, which came after the
+`4d24cde` the Wobble port copied. Calligraphy's pieces have straight edges with corners at most 3 px
+apart, so they kept every bump of the fine noise octave that Smooth's curved outline smooths away — a
+ragged edge — and at Wobble 100 the noise's slope passed 1, so corners overtook their neighbours and the
+edge folded into steps. It now takes the coarse octave only (`wobbleOutline`'s new `fine` flag) at
+twice the scale; Smooth and Watercolour are unchanged. slop-paint's patch applied cleanly; its new test
+failed first. `wobble.ts` is now slop-paint's `main` byte for byte, `calligraphy-brush.ts` but for one
+comment's capital. 1726 → 1727; Calligraphy's freeze still matches a full redraw (its test passes).
+- **Owed on the iPad:** a Calligraphy stroke at Wobble 50 and 100 — a soft, even waver, no steps.
+

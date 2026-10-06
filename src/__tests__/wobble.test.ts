@@ -37,6 +37,32 @@ describe("wobble", () => {
     expect(wobbleAmp(100, 100)).toBeCloseTo(20);
   });
 
+  it("without the fine octave it moves as far at most, and differs from with it", () => {
+    const pts = Array.from({ length: 60 }, (_, i) => [i * 1.7, 40 + i * 0.9]);
+    const soft = wobbleOutline(pts, 5, 4, 10, false);
+    const both = wobbleOutline(pts, 5, 4, 10);
+    let moved = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.hypot(soft[i][0] - pts[i][0], soft[i][1] - pts[i][1]);
+      expect(d).toBeLessThanOrEqual(4 * Math.SQRT2);
+      moved = Math.max(moved, d);
+    }
+    expect(moved).toBeGreaterThan(1);
+    expect(soft).not.toEqual(both);
+    // less jagged: the second differences of the displacement are smaller
+    const jag = (out: number[][]) => {
+      let sum = 0;
+      for (let i = 1; i < pts.length - 1; i++) {
+        for (const k of [0, 1]) {
+          const d = (j: number) => out[j][k] - pts[j][k];
+          sum += Math.abs(d(i - 1) - 2 * d(i) + d(i + 1));
+        }
+      }
+      return sum;
+    };
+    expect(jag(soft)).toBeLessThan(jag(both) * 0.7);
+  });
+
   it("bumps are a third of the width across, at least 3 px", () => {
     expect(wobbleScale(30)).toBeCloseTo(10.5);
     expect(wobbleScale(2)).toBe(3);
