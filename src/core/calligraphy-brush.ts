@@ -431,11 +431,15 @@ export function drawCalligraphyStroke(
   // Once per sample: each one is the end of one segment and the start of the next.
   const off = pts.map((_, i) => supportPoint(nib[i].a, nib[i].b, cosA, sinA, nrm[i].nx, nrm[i].ny));
   // Wobble moves every corner by noise of its page position: two pieces sharing a corner move it
-  // alike, so the ribbon stays joined, and a range draws what the whole stroke would.
+  // alike, so the ribbon stays joined, and a range draws what the whole stroke would. Softer than
+  // Smooth's would be from the same settings, as the user asked (2026-10-03): the pieces' straight
+  // edges, corners ≤ 3 px apart, keep every bump that Smooth's curved outline smooths away. So no
+  // fine octave (ragged), and bumps twice as wide: at Wobble 100 the noise's slope passed 1, corners
+  // overtook their neighbours and the edge folded into steps.
   const seed = strokeSeed(points[0]);
   const amp = wobbleAmp(maxW, settings.nibWobble ?? 0);
-  const scale = wobbleScale(maxW);
-  const wob = (ring: number[][]) => wobbleOutline(ring, seed, amp, scale);
+  const scale = wobbleScale(maxW) * 2;
+  const wob = (ring: number[][]) => wobbleOutline(ring, seed, amp, scale, false);
 
   ctx.save();
   if (settings.isEraser) {

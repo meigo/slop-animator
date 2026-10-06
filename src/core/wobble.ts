@@ -36,22 +36,31 @@ export function lattice2(key: number, x: number, y: number): number {
 /**
  * The outline moved in or out by noise of its PAGE position, so a point drawn once lands in the
  * same place every frame however the stroke grows. `amp` (document px) is the most it moves;
- * `scale` (document px) the size of the bumps; a second, finer octave at half the amplitude.
+ * `scale` (document px) the size of the bumps. `fine` adds a second octave, 2.5× finer at half the
+ * amplitude: Smooth's and Watercolour's sparse, curved outlines smooth it away, but Calligraphy's
+ * straight-edged pieces, corners ≤ 3 px apart, kept every bump and came out ragged — it passes
+ * `fine = false` (2026-10-03, the user's call: "softer like Smooth").
  */
 export function wobbleOutline(
   outline: number[][],
   seed: number,
   amp: number,
   scale: number,
+  fine: boolean = true,
 ): number[][] {
   if (!(amp > 0) || !(scale > 0)) return outline;
   const s1 = 1 / scale;
   const s2 = 2.5 / scale;
+  // Both ways the most a point moves is `amp`.
+  const k = fine ? amp / 1.5 : amp;
   return outline.map(([x, y, ...rest]) => {
-    const dx = (noise2(seed, x * s1, y * s1) - 0.5) * 2 + (noise2(seed + 2, x * s2, y * s2) - 0.5);
-    const dy =
-      (noise2(seed + 1, x * s1, y * s1) - 0.5) * 2 + (noise2(seed + 3, x * s2, y * s2) - 0.5);
-    return [x + (dx * amp) / 1.5, y + (dy * amp) / 1.5, ...rest];
+    let dx = (noise2(seed, x * s1, y * s1) - 0.5) * 2;
+    let dy = (noise2(seed + 1, x * s1, y * s1) - 0.5) * 2;
+    if (fine) {
+      dx += noise2(seed + 2, x * s2, y * s2) - 0.5;
+      dy += noise2(seed + 3, x * s2, y * s2) - 0.5;
+    }
+    return [x + dx * k, y + dy * k, ...rest];
   });
 }
 
