@@ -1145,11 +1145,23 @@ function ptsAabb(pts: Pt[]): SelectionRect {
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
+/** Where the warp's triangles are drawn before being put down in one go (`drawWarpedMesh`). */
+let meshScratch: HTMLCanvasElement | null = null;
+
 /**
  * Draw a bitmap warped through an N×M control-point grid by splitting each cell
  * into two triangles (along the cell's TL→BR diagonal) and rendering each with
- * a per-triangle affine. A faint crease may show along cell diagonals; cells
- * scale with grid density. 2×2 = 4-corner distort.
+ * a per-triangle affine. 2×2 = 4-corner distort.
+ *
+ * Seams (fixed 2026-10-06, port of slop-paint 5f708ce; measured here before: Distort / Mesh 3×3
+ * applied without moving a handle changed ~585 / ~1300 px, faint light lines along every triangle
+ * edge): each triangle is clipped to its own shape, and the canvas antialiases a clip's edge, so
+ * along a shared edge both triangles are drawn part-transparent — two part coverages laid OVER each
+ * other never add up to opaque. So the triangles are drawn onto an empty scratch with `lighter`
+ * (added): there two coverages that share an edge add up to exactly one pixel, and inside a triangle
+ * nothing changes (each pixel is covered once). The scratch is then put down in one draw, with the
+ * caller's clip, alpha and compositing. A folded mesh (dragged over itself) adds where it overlaps,
+ * a little brighter.
  */
 function drawWarpedMesh(
   ctx: CanvasRenderingContext2D,
@@ -1159,6 +1171,42 @@ function drawWarpedMesh(
   rows: number,
   cols: number,
 ) {
+  // The mesh's box in device px, where the scratch is cleared and drawn from.
+  const m = ctx.getTransform();
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const row of grid) {
+    for (const p of row) {
+      const x = m.a * p.x + m.c * p.y + m.e;
+      const y = m.b * p.x + m.d * p.y + m.f;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+  }
+  const bx = Math.max(0, Math.floor(x0) - 2);
+  const by = Math.max(0, Math.floor(y0) - 2);
+  const bw = Math.min(w, Math.ceil(x1) + 2) - bx;
+  const bh = Math.min(h, Math.ceil(y1) + 2) - by;
+  if (!(bw > 0 && bh > 0)) return;
+  if (!meshScratch || meshScratch.width !== w || meshScratch.height !== h) {
+    meshScratch = document.createElement("canvas");
+    meshScratch.width = w;
+    meshScratch.height = h;
+  }
+  const s = meshScratch.getContext("2d")!;
+  s.setTransform(1, 0, 0, 1, 0, 0);
+  s.globalCompositeOperation = "source-over";
+  s.clearRect(bx, by, bw, bh);
+  s.setTransform(m);
+  s.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+  s.imageSmoothingQuality = ctx.imageSmoothingQuality;
+  s.globalCompositeOperation = "lighter";
   for (let r = 0; r < rows - 1; r++) {
     for (let c = 0; c < cols - 1; c++) {
       const u0 = c / (cols - 1);
@@ -1173,10 +1221,15 @@ function drawWarpedMesh(
       const tr = grid[r][c + 1];
       const br = grid[r + 1][c + 1];
       const bl = grid[r + 1][c];
-      drawTriangle(ctx, img, rect, [tlSrc, trSrc, brSrc], [tl, tr, br]);
-      drawTriangle(ctx, img, rect, [tlSrc, brSrc, blSrc], [tl, br, bl]);
+      drawTriangle(s, img, rect, [tlSrc, trSrc, brSrc], [tl, tr, br]);
+      drawTriangle(s, img, rect, [tlSrc, brSrc, blSrc], [tl, br, bl]);
     }
   }
+  s.globalCompositeOperation = "source-over";
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(meshScratch, bx, by, bw, bh, bx, by, bw, bh);
+  ctx.restore();
 }
 
 /** Build a fresh rows×cols grid by uniformly sampling the matrix-transformed rect. */
