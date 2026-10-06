@@ -8473,3 +8473,22 @@ failed first. `wobble.ts` is now slop-paint's `main` byte for byte, `calligraphy
 comment's capital. 1726 → 1727; Calligraphy's freeze still matches a full redraw (its test passes).
 - **Owed on the iPad:** a Calligraphy stroke at Wobble 50 and 100 — a soft, even waver, no steps.
 
+**Distort and Mesh leave no seams along their triangles (2026-10-06, branch `fix/warp-seams`; port of
+slop-paint `5f708ce`, reported there from the iPad: "select - distort or warp (without moving handles)
+- deselect, leaves visible seams to the drawing").** Passed on by the slop-paint session; the user agreed.
+`drawWarpedMesh` clipped each triangle to its shape, and a canvas antialiases a clip's edge, so along a
+shared edge both triangles were drawn part-transparent over each other (source-over) and never added up
+to opaque: faint light lines along every triangle edge, even untouched. This app's exact restore of an
+untouched lift (`untouchedLift`) covers a plain transform, not a warp, so it had the bug too. Now the
+triangles are drawn onto a reused document-sized scratch with `lighter` (shared-edge coverages add up to
+one pixel; inside a triangle each pixel is covered once), only the mesh's device box cleared and
+copied, then put down in ONE `drawImage` at the identity transform — the caller's clip, alpha and
+compositing still apply; the caller's smoothing is copied to the scratch. Side effect: a folded mesh
+(dragged over itself) is a little brighter where it overlaps.
+- Patch applied by hand (context differed). Checked with a throwaway script (a marquee over a solid
+  scribble → Distort 2×2 / Mesh 3×3 → Apply, no handle moved, pixel diff): before 585 / ~1300 px
+  changed (WebKit and Chromium alike); after 0 / 0 in WebKit, 27 / 59 in Chromium at ≤ 4 levels
+  (resampling rounding, not seams). No unit test (canvas). 1727 tests; build 0/0; `test:ipad` passing.
+- **Owed on the iPad:** select → Distort or Mesh → Apply without moving a handle: no lines; and a real
+  warp.
+
