@@ -824,6 +824,13 @@ try {
         metaBefore?.inkedCount > 0,
       `drawings emptied mid-encode pause the autosave and leave the latest alone (inked ${metaBefore?.inkedCount} → ${metaAfter?.inkedCount})`,
     );
+    // The pause shows before the dialog has read its list (as above): wait for it, or the dialog
+    // opens after this skips Restore and is still up for the menu tap below.
+    await page
+      .locator(".restore-dialog li")
+      .first()
+      .waitFor({ timeout: 5000 })
+      .catch(() => {});
     if ((await page.locator(".restore-dialog li").count()) > 0) {
       page.once("dialog", (d) => void d.accept());
       await page
