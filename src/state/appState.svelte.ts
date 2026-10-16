@@ -2931,6 +2931,7 @@ function currentSelectionRect() {
 export function copyTimelineSelection(): void {
   const rect = currentSelectionRect();
   if (!rect) return;
+  liftGuard.bank?.(); // a live lift has punched the cell (or an Outline preview is in it) → apply first
   state.cellClipboard = copyBlock(
     state.project,
     rect.layerIds,
