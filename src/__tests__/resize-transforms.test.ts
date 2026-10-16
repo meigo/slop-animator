@@ -16,7 +16,7 @@ import {
   type Placement,
   type ResizeMode,
 } from "../anim/resize";
-import { forwardTransformPoint } from "../core/ref-transform";
+import { forwardTransformPoint, MIN_SCALE } from "../core/ref-transform";
 import { containRect } from "../anim/document";
 
 // After a resize every transformed thing must show where the resize moved its pixels: the new
@@ -349,5 +349,21 @@ describe("an animated, turning layer stays exact between keys (resizeCentredTran
     expect(turnsOrScales([K0, { ...K0, dx: 50, dy: 9 }])).toBe(false);
     expect(turnsOrScales([K0, { ...K0, rotation: 0.1 }])).toBe(true);
     expect(turnsOrScales([K0, { ...K0, scaleY: -1 }])).toBe(true);
+  });
+});
+
+// Review 2026-10-17 #17: every other path floors a scale's magnitude at MIN_SCALE (in-betweens,
+// load, the next drag), so a resize that left one below it showed right until any of those ran.
+describe("resizeFitTransform keeps a reference's scale at or above the floor", () => {
+  it("the review's scenario: 480×270 → 1920×1080 Crop, scale 0.15 → floored at 0.05", () => {
+    const pl: Placement = { f: 1, ox: 720, oy: 405, oldW: 480, oldH: 270, newW: 1920, newH: 1080 };
+    const t = resizeFitTransform({ dx: 0, dy: 0, scaleX: 0.15, scaleY: -0.15, rotation: 0 }, pl, 4);
+    expect(t.scaleX).toBe(MIN_SCALE);
+    expect(t.scaleY).toBe(-MIN_SCALE); // a mirror stays mirrored
+  });
+  it("a scale that stays above the floor is exact", () => {
+    const pl: Placement = { f: 1, ox: 0, oy: 0, oldW: 480, oldH: 270, newW: 1920, newH: 1080 };
+    const t = resizeFitTransform({ dx: 0, dy: 0, scaleX: 0.8, scaleY: 0.8, rotation: 0 }, pl, 4);
+    expect(t.scaleX).toBeCloseTo(0.2, 12);
   });
 });

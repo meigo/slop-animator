@@ -1,3 +1,5 @@
+import { floorScale } from "../core/ref-transform";
+
 export type ResizeMode = "scale" | "crop";
 
 /** 3×3 anchor: 0 = left/top, 0.5 = center, 1 = right/bottom. */
@@ -150,6 +152,13 @@ export function keepsCentre(pl: Placement): boolean {
  * centred, so it is re-fitted to the new document on its own (by `k`, new fit ÷ old fit): the
  * scale makes up the difference to the placement's `f`, and the translation makes up for the new
  * centre not being where the placement put the old one.
+ *
+ * The scale is FLOORED (`floorScale`) like every other path that sets one (review 2026-10-17 #17):
+ * a Crop that enlarges the document (r < 1) could take a small reference below MIN_SCALE, and the
+ * in-betweens, a reload and the next drag all floor it, so it popped bigger later — between keys,
+ * after a reopen, at the first touch. Floored here, a reference that small comes out a little
+ * bigger at the resize itself and stays that size. Lowering MIN_SCALE instead would change every
+ * scale drag and keyed flip of every layer kind, and still not cover every resize (r can be 1/512).
  */
 export function resizeFitTransform<T extends Transform>(t: T, pl: Placement, k: number): T {
   const r = k > 0 ? pl.f / k : 1;
@@ -159,8 +168,8 @@ export function resizeFitTransform<T extends Transform>(t: T, pl: Placement, k: 
     ...t,
     dx: pl.f * t.dx + ex,
     dy: pl.f * t.dy + ey,
-    scaleX: t.scaleX * r,
-    scaleY: t.scaleY * r,
+    scaleX: floorScale(t.scaleX * r),
+    scaleY: floorScale(t.scaleY * r),
   };
 }
 
