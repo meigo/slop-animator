@@ -984,8 +984,9 @@
 
   function sampleAt(p: { x: number; y: number }): string | null {
     const ss = display.width / Math.max(1, appState.project.width * DPR);
-    const px = Math.round(p.x * DPR * ss),
-      py = Math.round(p.y * DPR * ss);
+    // Floor, as the bucket's seed: pixel i covers [i, i+1) (review 2026-10-17 #16).
+    const px = Math.floor(p.x * DPR * ss),
+      py = Math.floor(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
     const [r, g, b, a] = displayCtx.getImageData(px, py, 1, 1).data;
     // Nothing there: with a transparent background an empty pixel has no colour, and reading its

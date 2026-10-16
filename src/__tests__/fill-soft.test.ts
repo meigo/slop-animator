@@ -303,3 +303,21 @@ describe("fillRegionBehind with Soft and Expand", () => {
     expect([...data].filter((_, k) => k % 4 === 3)).toEqual([255, 255, 255, 128, 0, 0, 0]);
   });
 });
+
+// Review 2026-10-17 #16: pixel i covers [i, i+1), but the seed was Math.round, so a tap on the
+// right half of a pixel filled its neighbour, and on the last column it fell off the canvas.
+describe("floodFill seeds the pixel under the tap", () => {
+  // empty | solid line | empty | empty
+  const gap = (i: number): Px => (i === 1 ? [0, 0, 0, 255] : [0, 0, 0, 0]);
+  it("a tap on the right half of an empty pixel fills it, not the line beside it", () => {
+    const { ctx, data } = fakeCtx(4, 1, gap);
+    floodFill(ctx, 0.7, 0.2, RED, { tolerance: 32, expand: 0, softEdge: 0 });
+    expect(at(data, 0)).toEqual([255, 0, 0, 255]);
+    expect(at(data, 1)).toEqual([0, 0, 0, 255]); // the line stays black
+  });
+  it("a tap on the right half of the last column still fills", () => {
+    const { ctx, data } = fakeCtx(4, 1, gap);
+    floodFill(ctx, 3.8, 0.6, RED, { tolerance: 32, expand: 0, softEdge: 0 });
+    expect(at(data, 3)).toEqual([255, 0, 0, 255]);
+  });
+});

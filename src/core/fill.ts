@@ -404,8 +404,10 @@ export function floodFill(
   const imageData = ctx.getImageData(0, 0, w, h);
   const data = imageData.data;
 
-  const sx = Math.round(startX);
-  const sy = Math.round(startY);
+  // Pixel i covers [i, i+1): floor, not round, or a tap on its right or bottom half seeds the next
+  // one (and on the last column falls off the canvas) — review 2026-10-17 #16.
+  const sx = Math.floor(startX);
+  const sy = Math.floor(startY);
   if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
 
   const startIdx = (sy * w + sx) * 4;
