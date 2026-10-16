@@ -196,10 +196,43 @@ describe("detachedBytes (structural steps count toward the budget)", () => {
     expect(detachedBytes({ layers: [lay(a), lay(b)] }, { layers: [lay(a)] })).toBe(400);
   });
 
-  it("counts a resize once (old canvases or new ones — only one side is off the document)", () => {
-    const old = [cv(), cv()];
-    const fresh = [cv(20, 20), cv(20, 20)];
-    expect(detachedBytes({ layers: [lay(...old)] }, { layers: [lay(...fresh)] })).toBe(3200);
+  it("counts a resize's old canvases (what the undo step keeps off the document), up or down", () => {
+    const small = [cv(), cv()];
+    const big = [cv(20, 20), cv(20, 20)];
+    expect(detachedBytes({ layers: [lay(...small)] }, { layers: [lay(...big)] })).toBe(800);
+    expect(detachedBytes({ layers: [lay(...big)] }, { layers: [lay(...small)] })).toBe(3200);
+  });
+
+  it("counts nothing for canvases a step ADDS: they are in the document (Duplicate, paste)", () => {
+    const a = cv(),
+      copy1 = cv(),
+      copy2 = cv();
+    expect(detachedBytes({ layers: [lay(a)] }, { layers: [lay(a), lay(copy1, copy2)] })).toBe(0);
+  });
+
+  it("counts nothing for an added audio track, but a replaced one's old samples", () => {
+    const old = { buffer: { length: 1000, numberOfChannels: 2 }, bytes: { byteLength: 500 } };
+    const fresh = { buffer: { length: 9000, numberOfChannels: 2 }, bytes: { byteLength: 900 } };
+    expect(detachedBytes({ layers: [], audio: null }, { layers: [], audio: fresh })).toBe(0);
+    expect(detachedBytes({ layers: [], audio: old }, { layers: [], audio: fresh })).toBe(8500);
+  });
+
+  it("a Duplicate of a heavy layer no longer evicts the strokes before it", () => {
+    const h = new History(50, 1000);
+    for (let i = 0; i < 5; i++) h.push({ undo() {}, redo() {}, bytes: 100 });
+    const a = cv(),
+      clones = [cv(20, 20), cv(20, 20)]; // 3200 bytes, over the 1000 budget by itself
+    h.push({
+      undo() {},
+      redo() {},
+      bytes: detachedBytes({ layers: [lay(a)] }, { layers: [lay(a), lay(...clones)] }),
+    });
+    let undos = 0;
+    while (h.canUndo) {
+      h.undo();
+      undos++;
+    }
+    expect(undos).toBe(6);
   });
 
   it("counts nothing for a step that keeps every canvas (reorder, rename, length)", () => {
