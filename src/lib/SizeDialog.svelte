@@ -66,9 +66,20 @@
    *  away shown pixels of animated ones or layers in a transformed group (`loses`). */
   const cropEffects = $derived(
     appState.sizeDialog.mode === "resize"
-      ? resizeTransformEffects(Math.round(w), Math.round(h), mode)
-      : { bakes: 0, loses: false },
+      ? resizeTransformEffects(Math.round(w), Math.round(h), mode, anchor)
+      : { bakes: 0, loses: false, drifts: false, centred: 0, bands: [] },
   );
+
+  /** Exact motion for a turning animated layer costs drawable paper (review 2026-10-17 #11). */
+  const centredNote = $derived.by(() => {
+    const n = cropEffects.centred;
+    const where = cropEffects.bands.map((b) => `the ${b.px} px along the ${b.edge}`).join(" and ");
+    const who =
+      n === 1
+        ? "1 animated layer that turns or scales keeps its"
+        : `${n} animated layers that turn or scale keep their`;
+    return `${who} motion exact, but can't be drawn on in ${where} of the new canvas (strokes there are clipped) until moved back. Anchor the centre to avoid it.`;
+  });
 
   // Prefill from the current document each time the dialog opens.
   $effect(() => {
@@ -239,6 +250,15 @@
         <p class="text-xs/snug text-warn">
           Crop can cut away parts of animated layers or layers in a moved group that show inside the
           new size. Scale keeps them all.
+        </p>
+      {/if}
+      {#if cropEffects.bands.length > 0}
+        <p class="text-xs/snug text-warn">{centredNote}</p>
+      {/if}
+      {#if cropEffects.drifts}
+        <p class="text-xs/snug text-warn">
+          An animated layer that turns or scales will show its frames between keys off where they
+          were. Anchor the centre, or Scale, to keep them.
         </p>
       {/if}
       {#if tooBig}

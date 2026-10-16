@@ -67,6 +67,85 @@ export function resizeDocPivotTransform<T extends Transform>(t: T, pl: Placement
 }
 
 /**
+ * Where a resize puts the old cell's pixels for an ANIMATED drawing layer that turns or scales
+ * between keys (`turnsOrScales`): centred, `C' − f·C`, whatever the anchor. Then the whole anchor
+ * shift goes into the translation (`resizeCentredTransform`). Review 2026-10-17 #11: with the
+ * anchor's placement each key needs `d' = f·d + e − A·e` (`resizeDocPivotTransform`), and `A·e` is
+ * not linear in the rotation, while the frames between keys lerp `dx/dy` linearly — so every key was
+ * exact and the in-betweens swung off (134 px at the midpoint of a 0°→90° pair after a middle-left
+ * Crop of 1920 → 1000). Only where nothing is cut: Scale and a growing Crop fit the whole old cell
+ * either way.
+ *
+ * In a Crop (`f` = 1) the offset is ROUNDED to whole device px (`dpr`), so the cells are copied,
+ * not resampled half a pixel (an odd margin made it x.5); `resizeCentredTransform` takes the
+ * remainder. A Scale resamples anyway, so it keeps the exact offset. Logical px.
+ */
+export function centredCellOffset(pl: Placement, dpr: number): { x: number; y: number } {
+  const x = pl.newW / 2 - (pl.f * pl.oldW) / 2;
+  const y = pl.newH / 2 - (pl.f * pl.oldH) / 2;
+  if (pl.f !== 1) return { x, y };
+  return { x: Math.round(x * dpr) / dpr, y: Math.round(y * dpr) / dpr };
+}
+
+/**
+ * A drawing layer's transform after a resize whose cells were placed at `offset`
+ * (`centredCellOffset`): `d' = f·d + e − A·r`, e = M(C) − C', r = offset − (C' − f·C) the rounding
+ * remainder. With no remainder it is linear in the key values, so interpolation is exact; with one
+ * (|r| ≤ 0.5 device px a side), every key is still exact and a frame between keys is off by at most
+ * |r| (≤ 0.71 px), the chord-vs-arc gap of the remainder alone.
+ */
+export function resizeCentredTransform<T extends Transform>(
+  t: T,
+  pl: Placement,
+  offset: { x: number; y: number },
+): T {
+  const ex = pl.f * (pl.oldW / 2) + pl.ox - pl.newW / 2;
+  const ey = pl.f * (pl.oldH / 2) + pl.oy - pl.newH / 2;
+  const a = linear(
+    t,
+    offset.x - (pl.newW / 2 - (pl.f * pl.oldW) / 2),
+    offset.y - (pl.newH / 2 - (pl.f * pl.oldH) / 2),
+  );
+  return { ...t, dx: pl.f * t.dx + ex - a.x, dy: pl.f * t.dy + ey - a.y };
+}
+
+/**
+ * The bands of the NEW paper a centred layer's cell no longer reaches (`centredCellOffset`): its
+ * cell sits `e` = M(C) − C' away from the paper (before its own transform), so strokes in a band
+ * |e| wide on that side fall outside its canvas and are clipped, until the layer is moved back.
+ * Whole logical px, bands under 1 px left out. For the Size dialog.
+ */
+export function centredBands(
+  pl: Placement,
+): { edge: "left" | "right" | "top" | "bottom"; px: number }[] {
+  const ex = pl.f * (pl.oldW / 2) + pl.ox - pl.newW / 2;
+  const ey = pl.f * (pl.oldH / 2) + pl.oy - pl.newH / 2;
+  const out: { edge: "left" | "right" | "top" | "bottom"; px: number }[] = [];
+  if (Math.abs(ex) >= 1)
+    out.push({ edge: ex > 0 ? "left" : "right", px: Math.round(Math.abs(ex)) });
+  if (Math.abs(ey) >= 1)
+    out.push({ edge: ey > 0 ? "top" : "bottom", px: Math.round(Math.abs(ey)) });
+  return out;
+}
+
+/** Whether a transform track's keys differ in turn or scale — the only case where the anchor's
+ *  correction (`resizeDocPivotTransform`) differs between keys and so can't be interpolated. */
+export function turnsOrScales(keys: Transform[]): boolean {
+  const k0 = keys[0];
+  return keys.some(
+    (k) => k.rotation !== k0.rotation || k.scaleX !== k0.scaleX || k.scaleY !== k0.scaleY,
+  );
+}
+
+/** Whether the placement keeps the document centre where it was (the centre anchor, or a Scale
+ *  that fits exactly): then the anchor's correction is zero and nothing drifts. */
+export function keepsCentre(pl: Placement): boolean {
+  const ex = pl.f * (pl.oldW / 2) + pl.ox - pl.newW / 2;
+  const ey = pl.f * (pl.oldH / 2) + pl.oy - pl.newH / 2;
+  return Math.abs(ex) < 1e-9 && Math.abs(ey) < 1e-9;
+}
+
+/**
  * A REFERENCE layer's transform after a resize. Its media is contain-fitted to the document and
  * centred, so it is re-fitted to the new document on its own (by `k`, new fit ÷ old fit): the
  * scale makes up the difference to the placement's `f`, and the translation makes up for the new

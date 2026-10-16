@@ -149,15 +149,20 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import {
+  centredBands,
+  centredCellOffset,
   cropBakeMatrix,
   cropShift,
   cropTransformPlan,
   halvingSteps,
+  keepsCentre,
   placeContent,
   resizeBox,
+  resizeCentredTransform,
   resizeContentPivotTransform,
   resizeDocPivotTransform,
   resizeFitTransform,
+  turnsOrScales,
   type ResizeMode,
   type Anchor,
   type Placement,
@@ -2345,23 +2350,63 @@ function cropPlanFor(layer: DrawingLayer, w: number, h: number, mode: ResizeMode
   );
 }
 
+/** Whether a layer's transform track turns or scales between keys (`turnsOrScales`). */
+function layerTurnsOrScales(layer: DrawingLayer): boolean {
+  const tr = layerTransformTrack(layer);
+  return !!tr && turnsOrScales(tr.keys.map((k) => k.v));
+}
+
+/** How a resize to `w`×`h` moves the old document's content, in logical px. */
+function resizePlacement(w: number, h: number, mode: ResizeMode, anchor: Anchor): Placement {
+  const oldW = state.project.width;
+  const oldH = state.project.height;
+  const rect = placeContent(oldW * DPR, oldH * DPR, w * DPR, h * DPR, mode, anchor);
+  return {
+    f: rect.w / (oldW * DPR),
+    ox: rect.x / DPR,
+    oy: rect.y / DPR,
+    oldW,
+    oldH,
+    newW: w,
+    newH: h,
+  };
+}
+
 /** What a resize to `w`×`h` will do to transformed layers with drawings, for the Size dialog:
- *  how many a Crop flattens (`bake`: resampled, transform reset), and whether it cuts away pixels
- *  that show inside the new size (`loses`: animated, or in a transformed group). */
+ *  how many a Crop flattens (`bake`: resampled, transform reset), whether it cuts away pixels
+ *  that show inside the new size (`loses`: animated, or in a transformed group), and whether such
+ *  a cut layer turns or scales between keys with an off-centre anchor, so its in-between frames
+ *  move (`drifts`, review 2026-10-17 #11). Where nothing is cut, `resizeProject` keeps such a
+ *  layer's motion exact by placing its cells centred — and then its cell no longer reaches a band
+ *  of the new paper (`centred`: how many layers, `bands`: which edges, how wide). */
 export function resizeTransformEffects(
   w: number,
   h: number,
   mode: ResizeMode,
-): { bakes: number; loses: boolean } {
+  anchor: Anchor,
+): {
+  bakes: number;
+  loses: boolean;
+  drifts: boolean;
+  centred: number;
+  bands: ReturnType<typeof centredBands>;
+} {
   let bakes = 0;
   let loses = false;
+  let drifts = false;
+  let centred = 0;
+  const pl = resizePlacement(w, h, mode, anchor);
+  const offCentre = !keepsCentre(pl);
   for (const l of state.project.layers) {
     if (l.kind !== "draw" || !l.cells.some((c) => c.kind === "key")) continue;
     const plan = cropPlanFor(l, w, h, mode);
     if (plan === "bake") bakes++;
-    else if (plan === "loses") loses = true;
+    else if (plan === "loses") {
+      loses = true;
+      if (offCentre && layerTurnsOrScales(l)) drifts = true;
+    } else if (plan === "keep" && offCentre && layerTurnsOrScales(l)) centred++;
   }
-  return { bakes, loses };
+  return { bakes, loses, drifts, centred, bands: centred > 0 ? centredBands(pl) : [] };
 }
 
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
@@ -2387,15 +2432,13 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   commitStructural(() => {
     const oldW = state.project.width;
     const oldH = state.project.height;
-    const pl: Placement = {
-      f: rect.w / (oldW * DPR),
-      ox: rect.x / DPR,
-      oy: rect.y / DPR,
-      oldW,
-      oldH,
-      newW: w,
-      newH: h,
-    };
+    const pl = resizePlacement(w, h, mode, anchor);
+    // An animated layer that turns or scales between keys, where nothing is cut: its cells go in
+    // CENTRED and the anchor shift into the translation (`resizeCentredTransform`), linear in the
+    // keys — the anchor's own correction isn't, so its in-between frames drifted (review
+    // 2026-10-17 #11). A centre-keeping placement needs no correction at all.
+    const centred = new Set<DrawingLayer>();
+    const centredOffset = centredCellOffset(pl, DPR);
     // A Crop cuts CELL pixels, so a transformed layer cuts the part of its cells it SHOWED in the
     // new size (`cropTransformPlan`): a move or flip cuts its own window, a scale or turn is drawn
     // through itself into the new canvas. Decided before any transform below changes.
@@ -2404,7 +2447,13 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
       if (layer.kind !== "draw") continue;
       const plan = cropPlanFor(layer, w, h, mode);
       plans.set(layer, plan);
-      const shift = plan === "shift" ? cropShift(layer.transform, pl).offset : null;
+      if (plan === "keep" && !keepsCentre(pl) && layerTurnsOrScales(layer)) centred.add(layer);
+      const shift =
+        plan === "shift"
+          ? cropShift(layer.transform, pl).offset
+          : centred.has(layer)
+            ? centredOffset
+            : null;
       const bake = plan === "bake" ? cropBakeMatrix(layer.transform, pl) : null;
       // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
       // One cell at a time, so each intermediate canvas is garbage before the next is made.
@@ -2442,7 +2491,9 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
         layer.transform = { ...IDENTITY_TRANSFORM }; // drawn into the cells above
         continue;
       }
-      if (layer.kind === "draw") {
+      if (layer.kind === "draw" && centred.has(layer)) {
+        map = (t) => resizeCentredTransform(t, pl, centredOffset);
+      } else if (layer.kind === "draw") {
         map = (t) => resizeDocPivotTransform(t, pl);
       } else {
         // A reference is re-fitted to the new document on its own; `k` is by how much.
