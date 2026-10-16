@@ -45,6 +45,7 @@
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
   import {
+    isQuotaError,
     keepLatestAutosave,
     LATEST_KEY,
     listAutosaves,
@@ -351,7 +352,9 @@
   function onAutosaveFailed(e: unknown) {
     autosaveDirty = true;
     console.error("autosave failed", e);
-    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save) so this work isn't lost.`;
+    const full = isQuotaError(e);
+    if (full) storageFull = true;
+    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save) so this work isn't lost.${full ? " Storage is full: older autosave copies are no longer made." : ""}`;
   }
 
   // The PAGE must never scroll — `app.css` pins `#app` so it cannot be dragged. iOS can still shift it
@@ -439,6 +442,7 @@
     void saveAutosave(state.project, {
       describe: describeForSave,
       onCheckpointError: onCheckpointFailed,
+      checkpoints: !storageFull,
     }).then(onAutosaveOk, onAutosaveFailed);
   }
 
@@ -463,8 +467,16 @@
 
   // An older copy failed to store after the latest did: the work is saved, so a hint, once.
   let checkpointWarned = false;
+  /** A write failed on a full store: no more checkpoints this session, so the space that is left
+   *  goes to the latest. Older copies already stored stay (2026-10-17 review #5). */
+  let storageFull = false;
   function onCheckpointFailed(e: unknown) {
     console.error("autosave checkpoint failed", e);
+    if (isQuotaError(e)) {
+      storageFull = true;
+      state.statusHint = `Storage is full — older autosave copies are no longer made; the latest is saved`;
+      return;
+    }
     if (checkpointWarned) return;
     checkpointWarned = true;
     state.statusHint = `Couldn't keep an older autosave copy (${errText(e)}) — the latest is saved`;

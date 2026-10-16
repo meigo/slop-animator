@@ -33,6 +33,15 @@ export interface SaveHooks {
   describe: () => SaveMeta | null;
   /** A checkpoint write failed after the latest was stored (the save itself succeeded). */
   onCheckpointError?: (e: unknown) => void;
+  /** false: store the latest only. The caller turns checkpoints off once storage is full
+   *  (`isQuotaError`), so the space goes to the latest. Older copies are never deleted to make room:
+   *  the latest may be the very copy they exist to undo (a blank or broken one). */
+  checkpoints?: boolean;
+}
+
+/** The store refused a write because the device's storage (or this site's share of it) is full. */
+export function isQuotaError(e: unknown): boolean {
+  return (e as { name?: unknown } | null)?.name === "QuotaExceededError";
 }
 
 const get = <T>(key: string) => idbDo<T | undefined>(KV_STORE, "readonly", (s) => s.get(key));
@@ -129,6 +138,7 @@ async function save(project: Project, gen: number, hooks: SaveHooks): Promise<vo
     [META_KEY, meta],
   ]);
   if (gen !== persistGeneration()) return; // …or while it wrote: no checkpoint of the old one
+  if (hooks.checkpoints === false) return;
   // The latest is stored: a checkpoint that fails is its own, smaller problem, reported apart
   // (as "Autosave is failing" it re-encoded and failed again at every save).
   try {
