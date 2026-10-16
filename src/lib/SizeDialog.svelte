@@ -16,6 +16,7 @@
   import { createProject } from "../anim/document";
   import { clearAutosave, pruneUnusedMedia } from "../persist/autosave";
   import { linkedSize, type ResizeMode, type Anchor } from "../anim/resize";
+  import { fitsCanvasArea } from "../core/canvas-area";
 
   const PRESETS = [
     { label: "1920×1080", w: 1920, h: 1080 },
@@ -79,12 +80,18 @@
     }
   });
 
+  const clampSide = (v: number) => Math.max(16, Math.min(8192, Math.round(v)));
+  /** Every cell is a document-sized canvas, and iOS WebKit draws nothing on one over 16.7 MP
+   *  (review 2026-10-17 #10): 8192 a side is allowed, but not both at once. */
+  const tooBig = $derived(!fitsCanvasArea(clampSide(w), clampSide(h)));
+
   function close() {
     appState.sizeDialog.open = false;
   }
   async function confirm() {
-    const cw = Math.max(16, Math.min(8192, Math.round(w)));
-    const ch = Math.max(16, Math.min(8192, Math.round(h)));
+    const cw = clampSide(w);
+    const ch = clampSide(h);
+    if (!fitsCanvasArea(cw, ch)) return;
     if (appState.sizeDialog.mode === "new") {
       // The one remaining irreversible action reachable in a single tap: `replaceProject` clears
       // history and `clearAutosave` drops the latest autosave — so there is nothing to undo it WITH
@@ -234,6 +241,12 @@
           new size. Scale keeps them all.
         </p>
       {/if}
+      {#if tooBig}
+        <p class="text-xs/snug text-warn">
+          Too big: width × height can be at most 16,777,216 pixels (4096×4096), the largest canvas
+          an iPad can draw.
+        </p>
+      {/if}
       {#if appState.sizeDialog.mode === "new"}
         <p class="text-xs/snug text-warn">
           Replaces the current project and clears its autosave. Save it first if you want to keep
@@ -245,8 +258,10 @@
         <button class="px-3 py-1 rounded hover:bg-surface-hover text-text-secondary" onclick={close}
           >Cancel</button
         >
-        <button class="px-3 py-1 rounded bg-accent text-accent-text" onclick={confirm}
-          >{appState.sizeDialog.mode === "new" ? "Create" : "Resize"}</button
+        <button
+          class="px-3 py-1 rounded bg-accent text-accent-text disabled:opacity-50"
+          disabled={tooBig}
+          onclick={confirm}>{appState.sizeDialog.mode === "new" ? "Create" : "Resize"}</button
         >
       </div>
     </div>
