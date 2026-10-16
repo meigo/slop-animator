@@ -328,6 +328,8 @@
   // project. `autosaveDirty` additionally keeps an unchanged project from being re-encoded on every
   // app switch, which is a full PNG pass over every key cell.
   let autosaveReady = false;
+  /** The startup load's failure notice, while it stands (see `restoreAutosaveEntry`). */
+  let startupLoadAlert = "";
   let autosaveDirty = false;
 
   function errText(e: unknown): string {
@@ -400,7 +402,8 @@
       // so; a manual "Save Project" and a reload are both still available.
       console.error("startup restore failed", e);
       state.autosaveOff = true; // stops a later manual save retiring the warning below
-      state.persistAlert = `Couldn't load your saved project (${errText(e)}). Autosave is OFF so the saved copy isn't overwritten — reload to retry, or use File ▸ Open.`;
+      startupLoadAlert = `Couldn't load your saved project (${errText(e)}). Autosave is OFF so the saved copy isn't overwritten — reload to retry, or use File ▸ Open.`;
+      state.persistAlert = startupLoadAlert;
       return; // autosaveReady stays false — deliberately NOT a `finally`
     }
     // A CONDITION, not a control's tooltip — so `persistAlert`, not `statusHint`, which the
@@ -675,6 +678,15 @@
       replaceProject(project); // clears undo, re-baselines the guard, arms an autosave of it
       if (await hydrateFromStore(state.project, () => repaint())) repaint();
       state.restoreDialog = null;
+      if (!autosaveReady) {
+        // The startup load failed, so autosave was left off for the session to keep the stored
+        // copy safe. A copy restored from the store is a known document: autosave it from now
+        // on. Left off, an hour's work on it was lost on the next reload (2026-10-17 review #4).
+        autosaveReady = true;
+        autosaveDirty = true; // replaceProject's edit tick was ignored while the gate was shut
+        state.autosaveOff = false;
+        if (state.persistAlert === startupLoadAlert) state.persistAlert = "";
+      }
       resumeAutosave();
       state.statusHint = `Restored the copy${saved}`;
       if (state.project.audioUndecoded)
