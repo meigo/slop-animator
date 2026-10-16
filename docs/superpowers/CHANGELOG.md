@@ -8492,3 +8492,66 @@ compositing still apply; the caller's smoothing is copied to the scratch. Side e
 - **Owed on the iPad:** select → Distort or Mesh → Apply without moving a handle: no lines; and a real
   warp.
 
+
+**Code review 2 batch A: lost work (2026-10-17, branch `fix/review2-batch-a`).** The second
+whole-codebase review (`docs/superpowers/reviews/2026-10-17-code-review.md`: 8 areas, a reviewer and an
+adversarial verifier each, 35 distinct findings in batches A–E). A is everything that loses work; where
+the verifier corrected the reviewer, the verifier's reading was followed. One commit each:
+- **#1 A stroke cut off by the audio lane or a group row stayed open** (`55a8f8f`). `onStroke` returned
+  before its paint path for those rows, including on the release, and tapping the audio lane (or the
+  group of the layer being drawn) moves neither `activeLayerId` nor the playhead, so nothing closed the
+  stroke. The next pen-down resumed it: full-redraw brushes restored the old pre-stroke snapshot (the
+  first stroke vanished), the stamp engine drew nothing for the old stroke's length. New
+  `settleRefusedGesture` in `Canvas.svelte`: commits the stroke as shown, settles an open Transform drag
+  (`settleRefDrag`, which would otherwise jump from the old press point and share its undo step), drops
+  the rest of the pointer stream, and frees Fill's one-fill-per-press latch on the release.
+- **#2 The blank-layers guard counted undo steps** (`0103ba8`). It excused one emptied layer per undo
+  step since the save, whatever the step touched; a 1–4 layer document always had enough, and the hide
+  flush (the save the guard exists for) always has at least one. Now judged per CELL by each canvas's
+  ink revision (`inkRevision`, bumped by every pixel write, undo and redo): a key cell inked at the
+  save, never written to since and empty now means blanked. An edit excuses only the cell it wrote to.
+  `comparableLayers` and `History.changes` are gone. Cost: the baseline re-probes only canvases new or
+  edited since their last probe (a WeakMap by revision; a restore or "Keep the blank layers" re-probes
+  all, since an emptied canvas keeps its revision), and the check probes only the FIRST untouched cell
+  of each layer. That assumes iOS empties a page's canvases together, as slop-paint saw; a partial
+  reclaim that spares that cell goes unseen (as before). A stroke now marks its canvas at pen-down, so
+  an eraser stroke still open mid-encode counts as an edit.
+- **#3 No blank check on return with a lift open** (`2833de4`): the skip is gone. Every lift, Pose,
+  Deform and Outline write marks its canvas, so that cell counts as edited and the rest are checked.
+- **#4 Autosave stayed off after restoring a copy following a failed startup load** (`ff35682`): a
+  successful restore now opens the gate, clears `autosaveOff` and the startup notice. Ruling: the
+  latest that failed to load is still shelved into the checkpoints (the failure can be transient, so
+  it may hold the newest work); File ▸ Open after a failed load still leaves autosave off.
+- **#5 Checkpoints vs a full store** (`8622154`): after the first `QuotaExceededError`, saves write the
+  latest only (`saveAutosave`'s `checkpoints: false`) for the session. Ruling: older copies are never
+  deleted to make room — the latest may be the blank or broken copy they exist to undo. A failing latest
+  keeps the sticky alert (now saying older copies are no longer made); a checkpoint refused for space
+  says so in the status bar. Whether it frees enough depends on WebKit's quota accounting.
+- **#6 Crop dropped visible pixels of a transformed layer** (`3f04dea`). A Crop cuts CELL pixels, which
+  are the paper only for an untransformed layer. Only a Crop that shrinks a side cuts anything
+  (`cropTransformPlan`). Ruling: a static move and/or flip cuts its own window of the cell
+  (`cropShift`) — offset from the placement by whole pixels, so copied, not resampled, the flip and
+  any fraction of the move left in the transform; a static scale or turn is drawn through itself
+  straight into the new-size canvas (`cropBakeMatrix`), so a side that grows keeps art past the old
+  paper, and the transform resets — that resamples, as Apply does, and the Size dialog now says how
+  many layers it will apply. Animated layers and members of a transformed or animated group show a
+  different part of their cells per frame, so no cut keeps them all: the Size dialog warns and points
+  at Scale. Cells are processed one at a time inside the crop loop.
+- **#7 One Duplicate could evict the whole undo history** (`f77c1a2`). `detachedBytes` charged the
+  larger side of a structural step; on the undo stack the after side IS the live document, so a
+  Duplicate, paste, block move, audio import or upscale paid for canvases on screen (32 1080p keys =
+  265 MB, over the 256 MB budget alone). Now only canvases (and an old audio track) the before side
+  holds and the document dropped. A resize still counts its old canvases.
+- **#8 Timeline Copy / Cut captured a live lift's hole or an Outline preview** (`0d17fa5`):
+  `copyTimelineSelection` now `liftGuard.bank`s like Delete, Move and Paste (after its no-selection
+  return); Cut inherits it.
+- **Smoke test:** both blank-guard checks in `tools/ipad-smoke.mjs` now arm the save with undo steps
+  (Add layer and a stroke on it) instead of the Transparent background toggle, which pushed no step and
+  so could not catch #2. `e28b9f2` fixed a race in the mid-encode check (the pause shows before the
+  restore dialog has listed the copies; its backdrop then took the File-menu tap, failing about half the
+  runs on main since `5052abc`). `npm run test:ipad` passes on the branch.
+- Build 0/0, 1736 tests (1727 before). **Owed on the iPad:** #1 (Pencil mid-stroke or mid-Transform-drag,
+  a finger taps the audio lane or the layer's group, lift, draw or drag again); #2/#3 with a real
+  background-and-return, also with a lift open; #4 a restore after a failed startup load; #5 near the
+  storage quota; #6 Crop of a moved, a flipped and a turned layer from several anchors, a crop that
+  grows one side, and both Size dialog notices.

@@ -23,9 +23,10 @@ follows), then the reviewer's Problem / Scenario / Suggested fix, then the verif
 correct the reviewer where they disagree.
 
 Batches, in the order to fix them:
-- **A — lost work** (#1–8): an open stroke left uncommitted, the blank-layers guard on small
-  documents, autosave after a failed load, checkpoints vs quota, crop dropping visible pixels,
-  undo history evicted by one Duplicate, timeline Copy capturing a live lift.
+- **A — lost work** (#1–8): all FIXED on `fix/review2-batch-a` (see CHANGELOG, "Code review 2
+  batch A"). An open stroke left uncommitted, the blank-layers guard on small documents, autosave
+  after a failed load, checkpoints vs quota, crop dropping visible pixels, undo history evicted by
+  one Duplicate, timeline Copy capturing a live lift.
 - **B — wrong pixels or wrong place** (#9–20): Pose seams, the display canvas over iOS's area limit,
   resize vs rotating layers / reference scale / missing media, collapsed-group paste, play range
   vs insert/delete, Rigid pins, lasso rect rounding, bucket/eyedropper rounding, layer drag of a
@@ -37,9 +38,11 @@ Batches, in the order to fix them:
   gestures during a gizmo drag, pointer filtering on NumberField and the loop arrowhead, export
   "Done." on a refused share.
 
-## Batch A — lost work
+## Batch A — lost work (FIXED)
 
 ### 1. An open stroke is never committed when the working row becomes the audio lane or a group (same active layer) mid-stroke; the next stroke silently resumes it
+
+**FIXED 2026-10-17** in `55a8f8f` (branch `fix/review2-batch-a`).
 
 **verdict:** confirmed — **severity:** major (rare trigger, silent loss of one stroke) — **reviewer:** major — data-loss — `src/lib/Canvas.svelte:1336` (area: brushes)
 
@@ -74,6 +77,8 @@ Batches, in the order to fix them:
 
 ### 2. The blank-layers guard misses a blanking whenever there are unsaved undo steps at least equal to the number of drawing layers, which is the usual state when the hide-flush save is suspended mid-encode
 
+**FIXED 2026-10-17** in `0103ba8` (branch `fix/review2-batch-a`).
+
 **verdict:** confirmed — **severity:** major — **reviewer:** major — data-loss — `src/App.svelte:592` (`blankedSince`), `src/App.svelte:447` (`describeForSave`), `src/persist/autosave-plan.ts:59` (area: persist-export)
 
 - **Problem:** `looksBlanked` treats every history change since the last save (`history.changes - historyAtSave`) as an edit that might have emptied a layer: `emptied > historySteps`. Every edit counts, whatever layer it touched and whatever it did. Animator documents usually have 1 to 4 drawing layers, not slop-paint's 40, so a few strokes are enough to cover every layer. The failure is worst on the path the guard was built for. On hide, `flush` (App.svelte:549) runs `flushAutosave` only when `autosaveDirty`, which means unsaved edits, which means at least one history step since `historyAtSave`. `saveAutosave` then encodes key cells with one `toBlob` per cell over many awaits. On a large project (the kind at risk of being blanked) iOS suspends the page before the encode finishes. When the page comes back:
@@ -89,6 +94,8 @@ Batches, in the order to fix them:
 
 ### 3. A return from the background while a lift or Outline preview is open never runs the blank check, and the next check counts the lift's Apply as an explaining step
 
+**FIXED 2026-10-17** in `2833de4` (branch `fix/review2-batch-a`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — data-loss — `src/App.svelte:623` (`checkBlankOnReturn`), `src/App.svelte:549-553` (area: persist-export)
 
 - **Problem:** `checkBlankOnReturn` returns early when `liftGuard.isOpen?.()`, and the hide `flush` also skips the save when a lift is open, so the baseline stays at the last timed save. Nothing re-runs the check when the lift closes. The next check is in `flushAutosave` or `describeForSave`, and by then Apply (a history push) or any further edit has added to `history.changes - historyAtSave`. That raises the tolerance in `looksBlanked` (see #1).
@@ -98,6 +105,8 @@ Batches, in the order to fix them:
 - **Verifier:** `checkBlankOnReturn` returns early on `liftGuard.isOpen?.()` (App.svelte:624; `isOpen` = mesh pose, floating selection or Outline, `Canvas.svelte:1706`). The hide `flush` also skips (App.svelte:553), and nothing re-runs the check when the lift closes. `autosaveWhenQuiet` keeps polling while the lift is open, so the first guard run after Apply sees `history.changes - historyAtSave >= 1`. On a 1-layer document that hides the blanking. Cancel / discard pushes no step, so that path IS still caught. This is a narrow sub-case of #1 (needs a lift open while backgrounded, plus N <= steps), and fixing #1 closes it.
 
 ### 4. Restoring a copy after a failed startup load leaves autosave off for the session, and restoring an older copy pushes the unreadable latest into the checkpoints, evicting a good one
+
+**FIXED 2026-10-17** in `ff35682` (branch `fix/review2-batch-a`).
 
 **verdict:** confirmed (first half) / refuted (second half) — **severity:** minor — **reviewer:** major — data-loss — `src/App.svelte:403`, `src/App.svelte:420`, `src/App.svelte:639-680` (area: persist-export)
 
@@ -109,6 +118,8 @@ Batches, in the order to fix them:
 
 ### 5. Checkpoints keep up to 5 full project copies in IndexedDB, and a quota failure on the latest write never frees an older copy to make room
 
+**FIXED 2026-10-17** in `8622154` (branch `fix/review2-batch-a`).
+
 **verdict:** plausible — **severity:** minor — **reviewer:** minor — data-loss — `src/persist/autosave.ts:119-148` (area: persist-export)
 
 - **Problem:** Each stored copy (latest, kept, `autosave-cp-0..2`) is a full project zip. `save()` writes LATEST and META first. If that transaction aborts on quota, the error goes to `onAutosaveFailed` ("Autosave is failing … save to a file") and every later save fails the same way. Meanwhile the older checkpoints, which are the copies least worth keeping, still hold the space. Before this change only the single latest slot existed, so the space a large project needs roughly quadrupled with no fallback.
@@ -118,6 +129,8 @@ Batches, in the order to fix them:
 - **Verifier:** The code matches the description. `save()` (autosave.ts:119-148) writes LATEST+META in one transaction, and a quota abort rejects to `onAutosaveFailed` (App.svelte:349). Nothing deletes checkpoints or the kept copy, so up to 5 full zips (latest, kept, cp-0..2) can be stored. Whether this actually tips an iPad over quota depends on WebKit's quota and blob-storage accounting, which I can't trace: whether a `put` over an existing key needs headroom for both blobs, and whether identical Blobs are deduplicated. The suggested fix carries its own risk. Evicting checkpoints to make room for a latest that could be the blank or broken copy defeats the reason checkpoints exist. A safer variant would stop creating NEW checkpoints after a quota error. The failure is loud (sticky "Autosave is failing … save to a file"), which supports minor.
 
 ### 6. Crop resize throws away visible pixels of a moved or scaled drawing layer
+
+**FIXED 2026-10-17** in `3f04dea` (branch `fix/review2-batch-a`).
 
 **verdict:** confirmed — **severity:** major — **reviewer:** major — data-loss — `src/state/appState.svelte.ts:2354-2365` (area: transform)
 
@@ -129,6 +142,8 @@ Batches, in the order to fix them:
 
 ### 7. Structural steps charge the history budget for canvases that are still IN the document, so a Duplicate / paste / audio import / upscale can evict the whole undo history
 
+**FIXED 2026-10-17** in `f77c1a2` (branch `fix/review2-batch-a`).
+
 **verdict:** confirmed — **severity:** major — **reviewer:** major — undo — `src/anim/history.ts:166-177` (`detachedBytes`), used at `src/state/appState.svelte.ts:768` (area: state-undo)
 
 - **Problem:** `detachedBytes` returns `Math.max(onlyBefore, onlyAfter)`. Its comment says only one side is off the document at a time — true, but while a step sits on the UNDO stack the off-document side is always `before`; `after` is the live document. Taking the max charges a step for its `after`-only canvases while they are on screen. `History.push` adds that to `bytes` and `trim()` then shifts older steps until under 256 MB (`length > 1`). Steps whose `after` side is large and whose `before` side is empty: `duplicateLayer` / `duplicateGroup` (`cloneDrawingLayer` clones every key canvas), `pasteCells` / `moveTimelineSelection` (clones via `canvasOps`), `setAudioTrack` (counts the decoded PCM), `resizeProject` to a larger size (the test at `src/__tests__/history.test.ts:202` asserts that the NEW canvases are what gets counted: 3200, not the 800 actually detached).
@@ -138,6 +153,8 @@ Batches, in the order to fix them:
 - **Verifier:** `detachedBytes` (history.ts:166) returns `Math.max(onlyBefore, onlyAfter)` and `commitStructuralEdit` (appState:768) stores it as `bytes`; `History.push` → `trim()` shifts undo steps while `bytes > 256 MB && length > 1`. For `duplicateLayer` (appState:989, `cloneDrawingLayer` clones every key canvas at :972) `onlyBefore = 0` and `onlyAfter` = every cloned canvas, all of which are live in the document while the step sits on the undo stack, so the charge is pure over-count. 1920×1080×4 = 8.29 MB, ×32 keys = 265 MB > budget, so `trim()` evicts every older step. The `max` was a deliberate choice in `33104a2` (batch C; comment: "only one side is off the document... so it counts the larger") because `History` never moves bytes between stacks on undo/redo, so the redo-side case is covered by the same number; CHANGELOG accepts that "one very large step (resizing a long project) now evicts older steps" — but it did not anticipate that an all-`after` step (duplicate, paste, move-block clones, audio import) charges memory that history does not hold at all. The suggested fix (charge `onlyBefore`, swap to `onlyAfter` while on the redo stack) is sound. Severity stays major because the loss is silent and unrecoverable, but it needs a heavy layer (~31+ 1080p keys alone, or a sum of several such steps) to bite.
 
 ### 8. Copy (and so Cut) of a timeline selection doesn't settle a live lift or Outline preview, so the clipboard gets the hole or the un-applied preview
+
+**FIXED 2026-10-17** in `0d17fa5` (branch `fix/review2-batch-a`).
 
 **verdict:** confirmed — **severity:** major — **reviewer:** major — wrong-pixels — `src/state/appState.svelte.ts:2931` (`copyTimelineSelection`), `:2955` (`cutTimelineSelection`) (area: state-undo)
 
