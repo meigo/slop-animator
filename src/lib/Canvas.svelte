@@ -1327,6 +1327,23 @@
     bump(); // refresh the timeline (e.g. an empty cell that just gained ink flips ·→◆)
   }
 
+  /** The working row stopped admitting this tool mid-gesture (a finger tapped the audio lane, or a
+   *  group whose top layer is the one being drawn on, so `activeLayerId` and the banking effect did
+   *  not move). Close what the gesture left open, as `bankActiveEdits` does: commit the stroke as
+   *  shown and drop the rest of this pointer stream, and free the Fill latch on the release. Left
+   *  open, the next pen-down resumed the old stroke: full-redraw engines restored its pre-stroke
+   *  snapshot, wiping it, and the stamp engine resumed from its stale count (2026-10-17 review #1).
+   *  A Transform drag is settled the same way (`settleRefDrag`: its undo bracket, frozen box and
+   *  track, drag frame and guard hook): left open, the next drag on the same layer skipped its
+   *  grab, jumped from the old press point and shared the old drag's undo step (gotcha #6). */
+  function settleRefusedGesture(done: boolean) {
+    const open = !!strokeCanvas || !!refDrag;
+    if (strokeCanvas) commitOpenStroke(lastPoints);
+    if (refDrag) settleRefDrag();
+    if (open && !done) dropStrokeUntilUp = true;
+    if (done) fillUsed = false;
+  }
+
   function onStroke(points: InputPoint[], done: boolean) {
     if (dropStrokeUntilUp) {
       if (done) dropStrokeUntilUp = false;
@@ -1335,19 +1352,21 @@
     const wt = workingTarget(appState.activeRow);
     if (wt.kind === "audio") {
       const t = appState.tool;
-      if (t !== "eyedropper" && t !== "select" && t !== "lasso") return;
+      if (t !== "eyedropper" && t !== "select" && t !== "lasso") return settleRefusedGesture(done);
     }
     if (wt.kind === "group") {
       // Transform still aims at the group (scope set on select, including a group track).
       // Other pixel tools dim — leftover member is not the target.
       const t = appState.tool;
-      if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform") return;
+      if (t !== "eyedropper" && t !== "select" && t !== "lasso" && t !== "transform")
+        return settleRefusedGesture(done);
       // ...but only while the gesture really is that group's: the anchor `activeLayerId` under a
       // group row is memory, so layer scope, an anchor left in ANOTHER group, or a ref anchor would
       // each move something the lit row does not name. Same predicate as
       // RefTransformGizmo.activeTransformLayer, and these two MUST agree for the same reason the
       // gizmo and refPinned below do — a hidden handle set does not disable this drag.
-      if (t === "transform" && !rowAdmitsTransform(appState.activeRow, activeLayer())) return;
+      if (t === "transform" && !rowAdmitsTransform(appState.activeRow, activeLayer()))
+        return settleRefusedGesture(done);
     }
     if (appState.tool === "eyedropper") {
       // Commit on RELEASE, not on press: you cannot see the pixel under your own fingertip, so the
