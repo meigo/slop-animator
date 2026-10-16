@@ -10,6 +10,7 @@
   import { exportVideo, isVideoExportSupported } from "../export/video";
   import { exportGif } from "../export/gif";
   import { exportPsdFrame } from "../export/psd-frame";
+  import { boilFallbacks } from "../core/boil-gl";
   import { downloadBlob } from "../export/download";
   import { saveToFilesAvailable } from "../export/share";
   import { deliverToFiles } from "./deliver-file";
@@ -174,6 +175,15 @@
       finalising = d === t;
     };
     let closeAfter = false;
+    // Frames that went out without line boil because WebGL was lost or unavailable (review
+    // 2026-10-17 #20): said, rather than a file that silently mixes boiled and crisp frames.
+    const boilBefore = boilFallbacks();
+    const boilNote = () => {
+      const n = appState.project.boil.enabled ? boilFallbacks() - boilBefore : 0;
+      return n > 0
+        ? `line boil couldn't run on ${n === 1 ? "1 frame" : `${n} frames`} (WebGL unavailable) — exported without it`
+        : "";
+    };
     try {
       if (format === "png-sequence") {
         const blob = await exportPngSequence(appState.project, DPR, range, {
@@ -181,8 +191,9 @@
           onProgress,
           scale,
         });
-        closeAfter = await deliver(blob, sequenceName);
-        status = "Done.";
+        const note = boilNote();
+        closeAfter = await deliver(blob, sequenceName, note);
+        status = note ? `Done — ${note}.` : "Done.";
       } else if (format === "png-frame") {
         // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil
         // included). toBlob is async, but the render before it is not — yield once so "Writing
@@ -195,8 +206,9 @@
           DPR,
           scale,
         );
-        closeAfter = await deliver(blob, pngFrameFilename);
-        status = "Done.";
+        const note = boilNote();
+        closeAfter = await deliver(blob, pngFrameFilename, note);
+        status = note ? `Done — ${note}.` : "Done.";
       } else if (format === "psd-frame") {
         // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
         // its ink bounds, once to crop it) plus a full-frame read for the merged composite, all
@@ -222,9 +234,11 @@
           scale,
           quality: opts.videoQuality,
         });
-        const note = warning ? `exported without audio: ${warning}` : "";
+        const note = [warning ? `exported without audio: ${warning}` : "", boilNote()]
+          .filter(Boolean)
+          .join("; ");
         closeAfter = await deliver(blob, `${stem}.${format}`, note);
-        status = warning ? `Done — ${note}.` : "Done.";
+        status = note ? `Done — ${note}.` : "Done.";
       } else if (format === "gif") {
         const blob = await exportGif(appState.project, DPR, range, {
           signal,
@@ -233,8 +247,9 @@
           colors: opts.gifColors,
           grayscale: opts.gifGrayscale,
         });
-        closeAfter = await deliver(blob, `${stem}.gif`);
-        status = "Done.";
+        const note = boilNote();
+        closeAfter = await deliver(blob, `${stem}.gif`, note);
+        status = note ? `Done — ${note}.` : "Done.";
       } else {
         // Exhaustiveness guard: stops a future format from silently falling through to video/PNG.
         throw new Error(`Unhandled export format: ${format satisfies never}`);

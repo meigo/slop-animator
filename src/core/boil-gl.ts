@@ -69,19 +69,45 @@ function compile(g: WebGLRenderingContext, type: number, src: string): WebGLShad
  *  the 2D path for the session rather than building a new context every frame. */
 let unsupported = false;
 
+/** A build that failed for a reason that can pass (no context, or a LOST one — on a lost context
+ *  `getShaderParameter`/`getProgramParameter` return null, so compile and link "fail"): when to try
+ *  again, backing off from 0.5 s to 30 s while it keeps failing, so a GPU under memory pressure
+ *  isn't asked for a new context every frame. Review 2026-10-17 #20: such a failure used to set
+ *  `unsupported` and turned boil off for the rest of the session, silently. */
+let retryAt = 0;
+let failedBuilds = 0;
+
+/** How many times `boilBegin` refused (WebGL unavailable or lost), so the caller drew the 2D path
+ *  without boil. An exporter compares it before and after, to say frames went out unboiled. */
+let fallbacks = 0;
+export function boilFallbacks(): number {
+  return fallbacks;
+}
+
 function init(): boolean {
   if (gl) return true;
-  if (unsupported) return false;
+  if (unsupported || performance.now() < retryAt) return false;
+  let ok = false;
   try {
-    return build();
+    ok = build();
   } catch {
     // A shader that fails to compile throws from `compile` — and used to leave `gl` set with no
     // program, buffer or texture, so the next call returned true and every boil frame (playback
-    // and export) drew no drawing layers at all, with no error (2026-09-30 review).
-    unsupported = true;
+    // and export) drew no drawing layers at all, with no error (2026-09-30 review). Only a LIVE
+    // context's failure is the device's; a lost one's says nothing about the shaders.
+    const g = gl as WebGLRenderingContext | null; // set by `build` before it threw
+    if (g && !g.isContextLost()) unsupported = true;
     resetBoilGL();
-    return false;
   }
+  if (ok) {
+    failedBuilds = 0;
+    return true;
+  }
+  if (!unsupported) {
+    failedBuilds++;
+    retryAt = performance.now() + Math.min(30_000, 250 * 2 ** failedBuilds);
+  }
+  return false;
 }
 
 function build(): boolean {
@@ -104,7 +130,7 @@ function build(): boolean {
   g.attachShader(prog, compile(g, g.FRAGMENT_SHADER, FRAG));
   g.linkProgram(prog);
   if (!g.getProgramParameter(prog, g.LINK_STATUS)) {
-    unsupported = true;
+    if (!g.isContextLost()) unsupported = true; // lost: retried later (`init`)
     resetBoilGL();
     return false;
   }
@@ -137,11 +163,15 @@ function build(): boolean {
 
 /** Begin a frame: size/clear the GL accumulation surface. Returns false if WebGL is unavailable. */
 export function boilBegin(w: number, h: number): boolean {
-  if (!init()) return false;
+  if (!init()) {
+    fallbacks++;
+    return false;
+  }
   // Lost but not yet reported: the `webglcontextlost` event arrives later, and frames drawn in
   // between came out with no drawing layers. Drop it now, so the caller takes the 2D path.
   if (gl!.isContextLost()) {
     resetBoilGL();
+    fallbacks++;
     return false;
   }
   const g = gl!,
