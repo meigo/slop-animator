@@ -149,6 +149,7 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import {
+  accumulatePendingFit,
   centredBands,
   centredCellOffset,
   cropBakeMatrix,
@@ -162,6 +163,7 @@ import {
   resizeContentPivotTransform,
   resizeDocPivotTransform,
   resizeFitTransform,
+  settlePendingFit,
   turnsOrScales,
   type ResizeMode,
   type Anchor,
@@ -676,6 +678,9 @@ function restoreStructure(s: StructSnapshot) {
         // that has to CLEAR a later trim, not leave it.
         live.trimInFrames = snap.trimInFrames;
         live.trimLenFrames = snap.trimLenFrames;
+        // Owed with the transform it belongs to. A redo of a resize made while the media was
+        // missing, after the media was linked, applies it straight away (below).
+        live.pendingFit = snap.pendingFit;
       }
       return live;
     }
@@ -711,6 +716,8 @@ function restoreStructure(s: StructSnapshot) {
     state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
   state.project.height = s.height;
+  for (const l of state.project.layers)
+    if (l.kind === "ref") settlePendingFit(l, s.width, s.height); // media linked since (#18)
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
@@ -1858,6 +1865,8 @@ export function relinkReference(id: number, media: ReferenceMedia, blob?: Blob) 
   if (layer && layer.kind === "ref") {
     releaseReferenceMedia(layer.media); // free the old media (this is not undoable)
     layer.media = media;
+    // A resize while the media was missing left its re-fit owed (review 2026-10-17 #18).
+    settlePendingFit(layer, state.project.width, state.project.height);
     if (blob && (media.type === "image" || (media.type === "video" && layer.embedMedia)))
       persistReferenceMedia(layer, blob, blob instanceof File ? blob.name : layer.name);
     else {
@@ -2508,10 +2517,11 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
       } else {
         // A reference is re-fitted to the new document on its own; `k` is by how much.
         const size = mediaIntrinsicSize(layer.media);
-        const k =
-          size.w > 0 && size.h > 0
-            ? containRect(size.w, size.h, w, h).w / containRect(size.w, size.h, oldW, oldH).w
-            : pl.f; // media not loaded: assume the fit follows the placement
+        const known = size.w > 0 && size.h > 0;
+        const k = known
+          ? containRect(size.w, size.h, w, h).w / containRect(size.w, size.h, oldW, oldH).w
+          : pl.f; // size unknown: leave the scale, and owe the re-fit until the media is linked
+        if (!known) layer.pendingFit = accumulatePendingFit(layer.pendingFit, pl);
         map = (t) => resizeFitTransform(t, pl, k);
       }
       layer.transform = map(layer.transform);

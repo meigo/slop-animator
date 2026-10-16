@@ -8,6 +8,7 @@ import {
   createReferenceLayer,
 } from "../anim/document";
 import {
+  validPendingFit,
   projectToJson,
   frameAssetPath,
   migrateBoil,
@@ -1064,5 +1065,16 @@ describe("opening a zip that is not a project", () => {
     const frames = zipSync({ "frame-0001.png": new Uint8Array([1, 2, 3]) });
     const blob = new Blob([frames as BlobPart]);
     await expect(loadProjectBlob(blob, 1)).rejects.toThrow(/isn't a slop-animator project/);
+  });
+});
+
+describe("validPendingFit (review 2026-10-17 #18)", () => {
+  it("keeps three positive finite numbers, drops anything else", () => {
+    expect(validPendingFit({ w: 1920, h: 1080, f: 0.5 })).toEqual({ w: 1920, h: 1080, f: 0.5 });
+    expect(validPendingFit(undefined)).toBeUndefined();
+    expect(validPendingFit({ w: 1920, h: 1080 })).toBeUndefined();
+    expect(validPendingFit({ w: 1920, h: -1, f: 1 })).toBeUndefined();
+    expect(validPendingFit({ w: "1920", h: 1080, f: 1 })).toBeUndefined();
+    expect(validPendingFit({ w: 1920, h: 1080, f: Infinity })).toBeUndefined();
   });
 });

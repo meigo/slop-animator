@@ -8,6 +8,10 @@ import {
   resizeContentPivotTransform,
   resizeDocPivotTransform,
   resizeFitTransform,
+  accumulatePendingFit,
+  applyPendingFit,
+  pendingFitFactor,
+  settlePendingFit,
   centredBands,
   centredCellOffset,
   resizeCentredTransform,
@@ -17,7 +21,7 @@ import {
   type ResizeMode,
 } from "../anim/resize";
 import { forwardTransformPoint, MIN_SCALE } from "../core/ref-transform";
-import { containRect } from "../anim/document";
+import { containRect, type PendingFit, type ReferenceLayer } from "../anim/document";
 
 // After a resize every transformed thing must show where the resize moved its pixels: the new
 // render of the moved point equals the moved old render. Checked against the renderer's own
@@ -365,5 +369,100 @@ describe("resizeFitTransform keeps a reference's scale at or above the floor", (
     const pl: Placement = { f: 1, ox: 0, oy: 0, oldW: 480, oldH: 270, newW: 1920, newH: 1080 };
     const t = resizeFitTransform({ dx: 0, dy: 0, scaleX: 0.8, scaleY: 0.8, rotation: 0 }, pl, 4);
     expect(t.scaleX).toBeCloseTo(0.2, 12);
+  });
+});
+
+// Review 2026-10-17 #18: a reference whose media is missing has no size, so its re-fit (k) can't
+// be known and the resize leaves its scale as it was. The resize records what it couldn't do, and
+// a relink applies it once the size is known.
+describe("a pending re-fit for a reference with unknown media size", () => {
+  const media = { w: 1920, h: 1080 }; // 16:9 video
+  const T0 = { dx: 12, dy: -7, scaleX: 0.9, scaleY: -0.9, rotation: 0.3 };
+  function known(W: number, H: number, W2: number, H2: number, mode: ResizeMode, t: typeof T0) {
+    const { pl } = placement(W, H, W2, H2, mode, { ax: 0, ay: 0.5 });
+    const k = containRect(media.w, media.h, W2, H2).w / containRect(media.w, media.h, W, H).w;
+    return { t: resizeFitTransform(t, pl, k), pl };
+  }
+  function unknown(
+    W: number,
+    H: number,
+    W2: number,
+    H2: number,
+    mode: ResizeMode,
+    t: typeof T0,
+    p?: PendingFit,
+  ) {
+    const { pl } = placement(W, H, W2, H2, mode, { ax: 0, ay: 0.5 });
+    return { t: resizeFitTransform(t, pl, pl.f), pending: accumulatePendingFit(p, pl) };
+  }
+
+  it("the review's scenario: 1920×1080 → 1080×1080 Crop, relinked after", () => {
+    const want = known(1920, 1080, 1080, 1080, "crop", T0).t;
+    const { t, pending } = unknown(1920, 1080, 1080, 1080, "crop", T0);
+    const got = applyPendingFit(t, pendingFitFactor(pending, media, 1080, 1080));
+    expect(got.scaleX).toBeCloseTo(want.scaleX, 9);
+    expect(got.scaleY).toBeCloseTo(want.scaleY, 9);
+    expect(got.dx).toBeCloseTo(want.dx, 9); // the centre was right all along
+    expect(got.dy).toBeCloseTo(want.dy, 9);
+  });
+
+  it("several resizes before the relink add up to the same as with the size known", () => {
+    const a = known(1920, 1080, 1080, 1080, "crop", T0);
+    const b = known(1080, 1080, 640, 900, "scale", a.t);
+    const c = known(640, 900, 2000, 700, "crop", b.t);
+    const u1 = unknown(1920, 1080, 1080, 1080, "crop", T0);
+    const u2 = unknown(1080, 1080, 640, 900, "scale", u1.t, u1.pending);
+    const u3 = unknown(640, 900, 2000, 700, "crop", u2.t, u2.pending);
+    const got = applyPendingFit(u3.t, pendingFitFactor(u3.pending, media, 2000, 700));
+    expect(got.scaleX).toBeCloseTo(c.t.scaleX, 9);
+    expect(got.dx).toBeCloseTo(c.t.dx, 9);
+  });
+
+  it("a factor of 1 when the size is still unknown", () => {
+    const { pending } = unknown(1920, 1080, 1080, 1080, "crop", T0);
+    expect(pendingFitFactor(pending, { w: 0, h: 0 }, 1080, 1080)).toBe(1);
+  });
+});
+
+describe("settlePendingFit", () => {
+  function ref(media: unknown, pendingFit?: PendingFit): ReferenceLayer {
+    return {
+      kind: "ref",
+      id: 1,
+      name: "v",
+      visible: true,
+      opacity: 100,
+      offsetFrames: 0,
+      speed: 1,
+      audioEnabled: false,
+      groupId: null,
+      media: media as ReferenceLayer["media"],
+      pendingFit,
+      transform: { dx: 5, dy: 6, scaleX: 1, scaleY: 1, rotation: 0 },
+      tracks: {
+        transform: {
+          box: null,
+          keys: [{ frame: 0, v: { dx: 0, dy: 0, scaleX: 2, scaleY: -2, rotation: 1 } }],
+        },
+      },
+    };
+  }
+  const pending = { w: 1920, h: 1080, f: 1 }; // the review's Crop to 1080×1080
+  it("scales the static transform and every key once the media has a size, then clears", () => {
+    const l = ref({ type: "video", el: { videoWidth: 1920, videoHeight: 1080 } }, pending);
+    const before = l.tracks!.transform!;
+    expect(settlePendingFit(l, 1080, 1080)).toBe(true);
+    expect(l.transform.scaleX).toBeCloseTo(1920 / 1080, 9);
+    expect(l.transform.dx).toBe(5);
+    expect(l.tracks!.transform!.keys[0].v.scaleY).toBeCloseTo((-2 * 1920) / 1080, 9);
+    expect(l.tracks!.transform).not.toBe(before); // replaced, not mutated (gotcha #8)
+    expect(before.keys[0].v.scaleX).toBe(2);
+    expect(l.pendingFit).toBeUndefined();
+  });
+  it("waits while the media is still a placeholder", () => {
+    const l = ref({ type: "missing", was: "video", name: "v" }, pending);
+    expect(settlePendingFit(l, 1080, 1080)).toBe(false);
+    expect(l.pendingFit).toEqual(pending);
+    expect(l.transform.scaleX).toBe(1);
   });
 });

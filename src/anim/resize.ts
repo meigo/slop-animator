@@ -1,4 +1,5 @@
 import { floorScale } from "../core/ref-transform";
+import { containRect, mediaIntrinsicSize, type PendingFit, type ReferenceLayer } from "./document";
 
 export type ResizeMode = "scale" | "crop";
 
@@ -171,6 +172,52 @@ export function resizeFitTransform<T extends Transform>(t: T, pl: Placement, k: 
     scaleX: floorScale(t.scaleX * r),
     scaleY: floorScale(t.scaleY * r),
   };
+}
+
+/** A reference's pending re-fit after one more resize it can't re-fit (media size unknown): the
+ *  document size stays the first one's, the placement factors multiply. */
+export function accumulatePendingFit(prev: PendingFit | undefined, pl: Placement): PendingFit {
+  return { w: prev?.w ?? pl.oldW, h: prev?.h ?? pl.oldH, f: (prev?.f ?? 1) * pl.f };
+}
+
+/** What a pending re-fit multiplies the scale by, for media of `size` in a `docW`×`docH`
+ *  document: the `r = f ÷ k` each resize would have used, all at once. 1 while the size is
+ *  unknown. */
+export function pendingFitFactor(
+  p: PendingFit,
+  size: { w: number; h: number },
+  docW: number,
+  docH: number,
+): number {
+  if (!(size.w > 0 && size.h > 0)) return 1;
+  const now = containRect(size.w, size.h, docW, docH).w;
+  return now > 0 ? (p.f * containRect(size.w, size.h, p.w, p.h).w) / now : 1;
+}
+
+/** A transform with a pending re-fit applied: the scale about the reference's centre, which the
+ *  resizes already put in the right place, floored like `resizeFitTransform`'s. */
+export function applyPendingFit<T extends Transform>(t: T, factor: number): T {
+  return { ...t, scaleX: floorScale(t.scaleX * factor), scaleY: floorScale(t.scaleY * factor) };
+}
+
+/** Apply a reference's pending re-fit once its media's size is known (a re-link, or media restored
+ *  from storage): scale its static transform and every transform key, then clear it. Assigns, never
+ *  mutates in place (gotcha #8). Returns whether it applied. */
+export function settlePendingFit(layer: ReferenceLayer, docW: number, docH: number): boolean {
+  const p = layer.pendingFit;
+  if (!p) return false;
+  const size = mediaIntrinsicSize(layer.media);
+  if (!(size.w > 0 && size.h > 0)) return false;
+  const factor = pendingFitFactor(p, size, docW, docH);
+  layer.transform = applyPendingFit(layer.transform, factor);
+  const tr = layer.tracks?.transform;
+  if (tr)
+    layer.tracks = {
+      ...layer.tracks,
+      transform: { ...tr, keys: tr.keys.map((k) => ({ ...k, v: applyPendingFit(k.v, factor) })) },
+    };
+  layer.pendingFit = undefined;
+  return true;
 }
 
 /** A GROUP's transform after a resize: it turns about its content (or its frozen box, mapped with
