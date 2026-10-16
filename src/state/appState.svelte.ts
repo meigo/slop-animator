@@ -574,6 +574,10 @@ export interface StructSnapshot {
    *  every writer (the actions below, the ripple, the length cut) assigns a new array. Undefined =
    *  the project had none, and restoring that has to CLEAR a later add. */
   markers: Marker[] | undefined;
+  /** The play range, ONLY in a step taken with `{ playRange: true }` — the Insert / Delete frame
+   *  tools, which move it with the frames (review 2026-10-17 #13). Present = restore it; absent =
+   *  leave it, so undoing an unrelated step never reverts an in/out set after it. */
+  playRange?: { in: number; out: number } | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -599,8 +603,8 @@ function cloneLayers(layers: Layer[]): Layer[] {
         },
   );
 }
-function snapshotStructure(): StructSnapshot {
-  return {
+function snapshotStructure(opts?: { playRange?: boolean }): StructSnapshot {
+  const snap: StructSnapshot = {
     layers: cloneLayers(state.project.layers),
     groups: state.project.groups.map((g) => ({
       ...g,
@@ -623,6 +627,11 @@ function snapshotStructure(): StructSnapshot {
     audioUndecoded: state.project.audioUndecoded ?? null,
     markers: state.project.markers,
   };
+  if (opts?.playRange) {
+    const r = state.playback.range;
+    snap.playRange = r ? { ...r } : null;
+  }
+  return snap;
 }
 function restoreStructure(s: StructSnapshot) {
   // Restore the layer set/order and each drawing layer's cells, but keep view-props
@@ -697,6 +706,7 @@ function restoreStructure(s: StructSnapshot) {
   });
   state.project.frameCount = s.frameCount;
   state.project.markers = s.markers; // unconditional: undefined must clear markers added since
+  if ("playRange" in s) state.playback.range = s.playRange ? { ...s.playRange } : null;
   if (s.width !== state.project.width || s.height !== state.project.height)
     state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
@@ -748,8 +758,8 @@ function restoreStructure(s: StructSnapshot) {
 }
 
 /** Begin a multi-event structural edit (e.g. a drag): capture the before-state. */
-export function beginStructuralEdit(): StructSnapshot {
-  return snapshotStructure();
+export function beginStructuralEdit(opts?: { playRange?: boolean }): StructSnapshot {
+  return snapshotStructure(opts);
 }
 
 /** Finish a structural edit started with beginStructuralEdit: push one undo command. */
@@ -769,7 +779,7 @@ function noteRetiredRefMedia(a: StructSnapshot, b: StructSnapshot): void {
 }
 
 export function commitStructuralEdit(before: StructSnapshot): void {
-  const after = snapshotStructure();
+  const after = snapshotStructure({ playRange: "playRange" in before });
   noteRetiredRefMedia(before, after);
   history.push({
     undo: () => restoreStructure(before),
@@ -784,8 +794,8 @@ export function commitStructuralEdit(before: StructSnapshot): void {
  * own getImageData/putImageData commands. Structural and pixel commands share the same undo
  * stack and interleave correctly because snapshots keep the same canvas references.
  */
-export function commitStructural(mutate: () => void): void {
-  const before = beginStructuralEdit();
+export function commitStructural(mutate: () => void, opts?: { playRange?: boolean }): void {
+  const before = beginStructuralEdit(opts);
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
   state.timelineSelection = null; // any structural edit can invalidate stored endpoints

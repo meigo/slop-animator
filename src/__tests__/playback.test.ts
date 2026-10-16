@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  shiftPlayRange,
   advancePlayhead,
   Playback,
   effectiveRange,
@@ -163,5 +164,28 @@ describe("withRangeEdgeAt — dragging ONE edge of the play range", () => {
   // drag must start from what is on screen, not from the stale stored number.
   it("starts from the effective range when the stored one runs past the document", () => {
     expect(withRangeEdgeAt({ in: 5, out: 99 }, "in", 7, 30)).toEqual({ in: 7, out: 29 });
+  });
+});
+
+// Review 2026-10-17 #13: Insert / Delete frame ripple markers, keys and clips, but the play range
+// stayed put, so it slid off the frames it bracketed (and the export's default range with it).
+describe("shiftPlayRange", () => {
+  it("the review's scenario: in 10 / out 20, a frame inserted at 6 → 11-21", () => {
+    expect(shiftPlayRange({ in: 10, out: 20 }, 6, 1)).toEqual({ in: 11, out: 21 });
+  });
+  it("an insert inside the range grows it, one after it leaves it alone", () => {
+    expect(shiftPlayRange({ in: 10, out: 20 }, 15, 1)).toEqual({ in: 10, out: 21 });
+    expect(shiftPlayRange({ in: 10, out: 20 }, 21, 1)).toEqual({ in: 10, out: 20 });
+    expect(shiftPlayRange({ in: 10, out: 20 }, 10, 1)).toEqual({ in: 11, out: 21 });
+  });
+  it("a delete before it moves it back, inside it shrinks it, never below one frame", () => {
+    expect(shiftPlayRange({ in: 10, out: 20 }, 3, -1)).toEqual({ in: 9, out: 19 });
+    expect(shiftPlayRange({ in: 10, out: 20 }, 10, -1)).toEqual({ in: 10, out: 19 });
+    expect(shiftPlayRange({ in: 10, out: 20 }, 20, -1)).toEqual({ in: 10, out: 19 });
+    expect(shiftPlayRange({ in: 7, out: 7 }, 7, -1)).toEqual({ in: 7, out: 7 });
+    expect(shiftPlayRange({ in: 10, out: 20 }, 25, -1)).toEqual({ in: 10, out: 20 });
+  });
+  it("no range stays no range", () => {
+    expect(shiftPlayRange(null, 3, 1)).toBeNull();
   });
 });

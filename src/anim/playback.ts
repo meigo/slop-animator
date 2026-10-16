@@ -1,3 +1,5 @@
+import { shiftSpan } from "./timeline";
+
 /** Next playhead position for a tick over the inclusive range [start, end]. `stop` is true when the
  *  end is reached and not looping. */
 export function advancePlayhead(
@@ -25,6 +27,21 @@ export function effectiveRange(
   const end = Math.max(0, Math.min(range.out, last));
   if (start > end) return { start: 0, end: last };
   return { start, end };
+}
+
+/** The play range after a frame is inserted at / deleted from `at` (Insert / Delete frame): it
+ *  follows the frames it brackets like the markers and reference ranges do — moved when after
+ *  `at`, grown or shrunk when `at` is inside it (never below one frame), by the same `shiftSpan`
+ *  rule. Before, it stayed put and slid off its cycle, and the export's default range with it
+ *  (review 2026-10-17 #13). The frame tools take it into their undo step (`playRange`). */
+export function shiftPlayRange(
+  range: { in: number; out: number } | null,
+  at: number,
+  delta: 1 | -1,
+): { in: number; out: number } | null {
+  if (!range) return null;
+  const s = shiftSpan({ start: range.in, end: range.out }, at, delta);
+  return { in: s.start, out: s.end };
 }
 
 /** Set the range's in-point to `frame`, dragging out along if in would pass it. */

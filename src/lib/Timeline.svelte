@@ -138,7 +138,7 @@
     trimVideoTail,
     videoClipOriginOffset,
   } from "../anim/clip-layout";
-  import { effectiveRange } from "../anim/playback";
+  import { effectiveRange, shiftPlayRange } from "../anim/playback";
   import {
     columnAtX,
     lengthAtX,
@@ -2081,15 +2081,28 @@
     // drawing stays put). Short layers are padded up to that column first.
     liftGuard.bank?.();
     const at = appState.playhead + 1;
-    commitStructural(() => {
-      insertFrameAllLayers(appState.project, at);
-      appState.playhead += 1;
-    });
+    // The play range brackets frames like the markers do, so it moves with them — inside the
+    // step, so undo puts it back with the frames.
+    commitStructural(
+      () => {
+        insertFrameAllLayers(appState.project, at);
+        appState.playhead += 1;
+        appState.playback.range = shiftPlayRange(appState.playback.range, at, 1);
+      },
+      { playRange: true },
+    );
   }
   function deleteTool() {
     if (appState.project.frameCount <= 1) return; // never leave a project with no frames
     liftGuard.bank?.();
-    commitStructural(() => deleteFrameAllLayers(appState.project, appState.playhead));
+    const at = appState.playhead;
+    commitStructural(
+      () => {
+        deleteFrameAllLayers(appState.project, at);
+        appState.playback.range = shiftPlayRange(appState.playback.range, at, -1);
+      },
+      { playRange: true },
+    );
   }
   // Blank the active layer's keyframe at the current frame (keep it as an empty keyframe),
   // undoable. If the frame is a hold, it first becomes an editable keyframe, then is cleared.
