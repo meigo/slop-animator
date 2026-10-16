@@ -180,9 +180,6 @@ export class History {
    *  through this: a plain class getter is not a reactive dependency, so a button bound directly
    *  to `history.canUndo` would never re-render. One hook here beats notifying at every push site. */
   onChange?: () => void;
-  /** Counts every change to the stacks (push, undo, redo, clear), never down. The blank-layers
-   *  guard compares it with its value at the last autosave: how many undo steps happened since. */
-  changes = 0;
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private bytes = 0;
@@ -199,7 +196,6 @@ export class History {
     this.undoStack.push(cmd);
     this.bytes += cmd.bytes ?? 0;
     this.trim();
-    this.changes++;
     this.onChange?.();
   }
 
@@ -220,7 +216,6 @@ export class History {
     if (!cmd) return;
     cmd.undo();
     this.redoStack.push(cmd);
-    this.changes++;
     this.onChange?.();
   }
 
@@ -229,7 +224,6 @@ export class History {
     if (!cmd) return;
     cmd.redo();
     this.undoStack.push(cmd);
-    this.changes++;
     this.onChange?.();
   }
 
@@ -237,7 +231,6 @@ export class History {
     this.undoStack = [];
     this.redoStack = [];
     this.bytes = 0;
-    this.changes++;
     this.onChange?.();
   }
 

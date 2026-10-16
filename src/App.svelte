@@ -41,7 +41,6 @@
     markerActions,
     liftGuard,
     modalOpen,
-    history,
     autosaveActions,
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
@@ -56,16 +55,16 @@
     type AutosaveEntry,
   } from "./persist/autosave";
   import {
-    comparableLayers,
     formatBytes,
     IPAD_MEMORY_WARN_BYTES,
     keyCellMemoryBytes,
     looksBlanked,
+    type InkBaseline,
   } from "./persist/autosave-plan";
   import { isAppleTouch } from "./export/share";
   import { bumpPersistGeneration } from "./persist/generation";
   import { releaseReferenceMedia } from "./anim/reference";
-  import { probeEmpty } from "./lib/cell-ink";
+  import { inkRevision, probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore } from "./persist/media-store";
   import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
@@ -430,7 +429,7 @@
       state.persistAlert = AUTOSAVE_PAUSED;
       return;
     }
-    if (blankedSince(inkedLayers())) return haltForBlankLayers(); // don't even encode
+    if (blankedSince()) return haltForBlankLayers(); // don't even encode
     autosaveDirty = false;
     // If the write fails (e.g., QuotaExceededError on iPad), restore the dirty flag so the
     // next hide-event can retry rather than skipping the save on a stale "clean" status.
@@ -446,18 +445,16 @@
    *  same moment, so the copy is listed with what it holds. */
   function describeForSave() {
     if (autosaveHalted) return null;
-    const inked = inkedLayers();
-    if (blankedSince(inked)) {
+    if (blankedSince()) {
       haltForBlankLayers();
       return null;
     }
-    inkedAtSave = inked;
-    historyAtSave = history.changes;
+    inkAtSave = inkBaseline(false);
     return {
       savedAt: Date.now(),
       projectName: state.project.name,
       layerCount: state.project.layers.filter((l) => l.kind === "draw").length,
-      inkedCount: inked.size,
+      inkedCount: inkAtSave.size,
     };
   }
 
@@ -470,19 +467,34 @@
     state.statusHint = `Couldn't keep an older autosave copy (${errText(e)}) — the latest is saved`;
   }
 
-  /** The drawing layers that have any pixels, each with the first key-cell canvas found inked.
-   *  Read from the pixels (`probeEmpty`, uncached): the iPad empties canvases behind the ink
-   *  caches' back. Stops at the first inked cell, so an inked layer costs one small probe. */
-  function inkedLayers(): Map<number, HTMLCanvasElement> {
-    const out = new Map<number, HTMLCanvasElement>();
+  /** Each key-cell canvas's emptiness as last probed for the baseline, with its ink revision then.
+   *  A canvas whose revision has not moved since is not probed again: re-probing every key cell
+   *  froze the page for a few hundred ms per save on a long shot, right after the encode, when the
+   *  artist is often drawing again (a frozen stroke draws a chord). */
+  const baselineProbe = new WeakMap<HTMLCanvasElement, { rev: number; inked: boolean }>();
+
+  /** The guard's baseline: each drawing layer's inked key-cell canvases with their ink revisions
+   *  now. Every inked cell, not the first: a stroke on one cell must not excuse the others. Read
+   *  from the pixels (`probeEmpty`), never the ink cache, and only for canvases new or edited since
+   *  they were last probed (`baselineProbe`) — unless `fresh`: after "Keep the blank layers" or a
+   *  restore, a canvas the iPad emptied still holds its old revision and would be recorded inked,
+   *  pausing autosave again at once. */
+  function inkBaseline(fresh: boolean): InkBaseline<HTMLCanvasElement> {
+    const out = new Map<number, Map<HTMLCanvasElement, number>>();
     for (const l of state.project.layers) {
       if (l.kind !== "draw") continue;
+      const inked = new Map<HTMLCanvasElement, number>();
       for (const c of l.cells) {
-        if (c.kind === "key" && !probeEmpty(c.canvas)) {
-          out.set(l.id, c.canvas);
-          break;
+        if (c.kind !== "key") continue;
+        const rev = inkRevision(c.canvas);
+        let hit = baselineProbe.get(c.canvas);
+        if (fresh || !hit || hit.rev !== rev) {
+          hit = { rev, inked: !probeEmpty(c.canvas) };
+          baselineProbe.set(c.canvas, hit);
         }
+        if (hit.inked) inked.set(c.canvas, rev);
       }
+      if (inked.size) out.set(l.id, inked);
     }
     return out;
   }
@@ -572,30 +584,22 @@
   // An iPad reclaims a backgrounded page's image memory: a slop-paint document came back with every
   // layer still listed and every one EMPTY, and the next autosave would have replaced the only
   // stored copy with that. So each autosave, and each return from the background, first checks
-  // whether drawing layers lost all their pixels with no undo step to explain it (`looksBlanked`);
-  // if so, autosave pauses and the restore dialog opens. A layer counts as inked if any key cell
-  // has a pixel; it is compared only while it still holds the canvas found inked at the last save
-  // (`comparableLayers`: a timeline delete removes cells from several layers in one step).
-  let inkedAtSave = new Map<number, HTMLCanvasElement>(); // at the last save (or restore)
-  let historyAtSave = 0; // history.changes then: how many undo steps have happened since
+  // whether drawings lost their pixels with no edit to explain it (`looksBlanked`): a key cell
+  // inked at the last save, not written to since (its ink revision has not moved), and empty now.
+  // If so, autosave pauses and the restore dialog opens.
+  let inkAtSave: InkBaseline<HTMLCanvasElement> = new Map(); // at the last save (or restore)
   let autosaveHalted = false;
   const AUTOSAVE_PAUSED =
     "Your drawings went blank — autosave is paused so the saved copy is kept. File ▸ Restore autosave… brings it back, or keep the blank layers there.";
 
   /** The document now counts as saved in this state: the guard compares against it. */
   function markSaved() {
-    inkedAtSave = inkedLayers();
-    historyAtSave = history.changes;
+    inkAtSave = inkBaseline(true);
   }
   autosaveActions.rebaseline = markSaved;
 
-  function blankedSince(inked: Map<number, HTMLCanvasElement>): boolean {
-    return looksBlanked(
-      new Set(inkedAtSave.keys()),
-      new Set(inked.keys()),
-      comparableLayers(state.project.layers, inkedAtSave),
-      history.changes - historyAtSave,
-    );
+  function blankedSince(): boolean {
+    return looksBlanked(state.project.layers, inkAtSave, inkRevision, probeEmpty);
   }
 
   function haltForBlankLayers() {
@@ -622,7 +626,7 @@
    *  preview open: a lift leaves a hole with no undo step yet, which is not a blanking. */
   function checkBlankOnReturn() {
     if (!autosaveReady || autosaveHalted || liftGuard.isOpen?.()) return;
-    if (blankedSince(inkedLayers())) haltForBlankLayers();
+    if (blankedSince()) haltForBlankLayers();
   }
 
   async function openRestoreDialog(blanked: boolean) {

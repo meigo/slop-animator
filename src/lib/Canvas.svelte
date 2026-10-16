@@ -1578,6 +1578,9 @@
       strokeMaterialized = mk.materialized;
       strokeCtx = strokeCanvas.getContext("2d", { willReadFrequently: true })!;
       beforeSnapshot = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
+      // Marked now, not only at the commit: an eraser stroke still open while the autosave's
+      // blank-layers guard runs (it can, mid-encode) has emptied this canvas by an edit.
+      markInkChanged(strokeCanvas);
       frozenTo = 0;
       frozenCanvas = null;
       strokeSteps = cellComposeSteps(layer);

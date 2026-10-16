@@ -724,10 +724,18 @@ try {
 
   // The blank-layers guard (2026-10-02, from slop-paint 2c53625): an iPad empties a backgrounded
   // page's canvases, and the next autosave would have replaced the only stored copy with blanks.
-  // `slopBlankLayers` (dev builds only) empties every key cell as the iPad does; a non-pixel edit
-  // (Transparent background) then arms a save, which must pause and open File ▸ Restore autosave…,
-  // and restoring the latest copy must bring the drawing back. A deployed URL has no hook: skipped.
+  // `slopBlankLayers` (dev builds only) empties every key cell as the iPad does; undoable edits
+  // (a new layer and a stroke on it) then arm a save, which must pause and open File ▸ Restore
+  // autosave…, and restoring the latest copy must bring the drawing back. Undo steps, not a
+  // non-pixel toggle: the guard used to excuse one emptied layer per undo step, so with a toggle
+  // (no step) these checks could not see that (2026-10-17 review #2). A deployed URL has no hook:
+  // skipped.
   if (await page.evaluate(() => typeof window.slopBlankLayers === "function")) {
+    /** Two undo steps that leave the drawings already there alone: Add layer, then a stroke on it. */
+    const armWithSteps = async (pointerId) => {
+      await page.locator('button[title="Add layer"]').first().click();
+      await send(line("pen", pointerId).map((st) => [...st, 0.3]));
+    };
     const latestMeta = () =>
       page.evaluate(
         () =>
@@ -755,7 +763,7 @@ try {
     await page.evaluate(() => window.slopBlankLayers());
     await page.waitForTimeout(200);
     const blanked = (await ink()) === 0;
-    await menuItem("Document", "Transparent background");
+    await armWithSteps(61);
     let paused = false;
     for (let i = 0; i < 80 && !paused; i++) {
       await page.waitForTimeout(250);
@@ -802,7 +810,7 @@ try {
     await page.waitForTimeout(5000); // the restored copy's own autosave lands
     const metaBefore = await latestMeta();
     await page.evaluate(() => (window.__blankOnEncode = true));
-    await menuItem("Document", "Transparent background");
+    await armWithSteps(62);
     let pausedMid = false;
     for (let i = 0; i < 40 && !pausedMid; i++) {
       await page.waitForTimeout(250);
