@@ -622,10 +622,12 @@
     }
   }
 
-  /** Back from the background: were the drawings blanked while away? Not with a lift or Outline
-   *  preview open: a lift leaves a hole with no undo step yet, which is not a blanking. */
+  /** Back from the background: were the drawings blanked while away? Also with a lift or Outline
+   *  preview open: the hole or preview marked the canvas it wrote to (`markInkChanged`), so that
+   *  canvas counts as edited and the rest are checked now. Skipping the check left it to the
+   *  first save after Apply, which the step-counting guard took as an explanation. */
   function checkBlankOnReturn() {
-    if (!autosaveReady || autosaveHalted || liftGuard.isOpen?.()) return;
+    if (!autosaveReady || autosaveHalted) return;
     if (blankedSince()) haltForBlankLayers();
   }
 
