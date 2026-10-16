@@ -1777,6 +1777,9 @@ export function groupActiveLayer() {
 }
 /** Ungroup: clear members' groupId, remove the group. */
 export function ungroup(groupId: number) {
+  // A member's float was lifted through the group's compose; without the group, Apply would map it
+  // through a chain the cell no longer renders by (gotcha #9, review 2026-10-17 #19).
+  liftGuard.bank?.();
   commitStructural(() => {
     for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
     state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
@@ -1851,6 +1854,10 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
     order.every((e, i) => cur[i].id === e.id && cur[i].groupId === e.groupId)
   )
     return;
+  // Moving a layer into or out of a group changes its group ∘ layer ∘ cell chain, and a live
+  // float keeps its lift-time chain: Apply landed the pixels off where they showed. Apply it first,
+  // like every other layer-structure action (gotcha #9, review 2026-10-17 #19).
+  liftGuard.bank?.();
   const before = beginStructuralEdit();
   state.project.layers = applyOrder(state.project.layers, order);
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
