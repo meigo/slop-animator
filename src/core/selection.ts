@@ -741,14 +741,20 @@ export class Selection {
   }
 
   endDrag() {
-    if (
-      this.state === "warping" &&
-      this.deformMode === "rigid" &&
-      this.dragging === "grid" &&
-      this.dragGridIdx
-    ) {
-      const { row, col } = this.dragGridIdx;
-      this.pinned.set(row * this.warpCols + col, { ...this.warpGrid[row][col] });
+    if (this.state === "warping" && this.dragging) {
+      // A pin is "this point stays where it is": rigidDeformGrid maps each pinned point from where
+      // it sits now to its pin, so a pin must follow every other drag that moves its point — a
+      // whole-grid move, or an FFD drag of a pinned point after a mode switch. Stale pins pulled
+      // the next Rigid drag back to where they were (review 2026-10-17 #14). A Rigid drag leaves
+      // pinned points on their pins, so for it this only records the dragged point.
+      for (const idx of this.pinned.keys()) {
+        const p = this.warpGrid[Math.floor(idx / this.warpCols)]?.[idx % this.warpCols];
+        if (p) this.pinned.set(idx, { ...p });
+      }
+      if (this.deformMode === "rigid" && this.dragging === "grid" && this.dragGridIdx) {
+        const { row, col } = this.dragGridIdx;
+        this.pinned.set(row * this.warpCols + col, { ...this.warpGrid[row][col] });
+      }
       this.drawOverlay();
     }
     this.dragging = null;
