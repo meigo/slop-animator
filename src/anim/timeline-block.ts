@@ -1,4 +1,5 @@
 import {
+  groupOf,
   isLayerEditable,
   resolvedDisplayKeyCell,
   type Cell,
@@ -99,13 +100,21 @@ export function copyBlock(
 }
 
 /** Drawing-layer ids from `topLayerId` downward through the stack (toward the bottom = display-down),
- *  skipping reference layers. Empty if the id is unknown. Column 0 = the top layer. */
+ *  skipping reference layers and the members of a COLLAPSED group below the top — the rows the
+ *  timeline shows, as `resolveSelectionRect` (copy) counts them. Before, a copy across a collapsed
+ *  group pasted every later column one layer too high, onto a member nobody could see, and any
+ *  paste above a collapsed group wrote into it (review 2026-10-17 #12). The top itself is always
+ *  column 0, wherever it is: paste starts where it was asked. Empty if the id is unknown. */
 export function drawingLayerIdsDown(project: Project, topLayerId: number): number[] {
   const idx = project.layers.findIndex((l) => l.id === topLayerId);
   if (idx < 0) return [];
   const ids: number[] = [];
-  for (let i = idx; i >= 0; i--)
-    if (project.layers[i].kind === "draw") ids.push(project.layers[i].id);
+  for (let i = idx; i >= 0; i--) {
+    const l = project.layers[i];
+    if (l.kind !== "draw") continue;
+    if (i !== idx && groupOf(l, project.groups)?.collapsed) continue;
+    ids.push(l.id);
+  }
   return ids;
 }
 
