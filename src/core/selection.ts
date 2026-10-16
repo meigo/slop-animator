@@ -373,18 +373,16 @@ export class Selection {
    */
   copyPixelsFromDoc(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
     if (!this.rect) return null;
-    const r = this.rect;
-    const px = Math.round(r.x * dpr);
-    const py = Math.round(r.y * dpr);
-    const pw = Math.round(r.w * dpr);
-    const ph = Math.round(r.h * dpr);
+    const { x: px, y: py, w: pw, h: ph } = snapRectOutward(this.rect, dpr);
     if (pw <= 0 || ph <= 0) return null;
     // The selection takes the whole pixels it copied (slop-paint 1c8b5fd, roadmap 14a). A marquee
     // dragged at zoom or with the Pencil has fractional edges, and clearing and redrawing at those
     // while copying whole pixels resampled the art: an untouched lift + Apply blurred it and left a
     // half-cleared line at the edge, worse on every repeat. Callers crop before they clear, so the
     // hole, the float, the commit and the clipboard all sit on this grid. A lasso's bounds snap;
-    // its outline stays as drawn.
+    // its outline stays as drawn. OUTWARD, not rounded (review 2026-10-17 #15): a lasso clears
+    // through its own path, which rounding could leave up to a pixel outside the copied bitmap —
+    // cleared from the cell, missing from the float and the clipboard.
     this.rect = { x: px / dpr, y: py / dpr, w: pw / dpr, h: ph / dpr };
     const r2 = this.rect;
 
@@ -1149,6 +1147,21 @@ function ptsAabb(pts: Pt[]): SelectionRect {
     if (p.y > maxY) maxY = p.y;
   }
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** The device-pixel rect covering every pixel `r` (logical) touches: min edges floored, max edges
+ *  ceiled. A hair of float noise (1e-6 px) doesn't count as touching the next pixel, so a rect
+ *  already on whole pixels stays as it is. */
+export function snapRectOutward(r: SelectionRect, dpr: number): SelectionRect {
+  const eps = 1e-6;
+  const x = Math.floor(r.x * dpr + eps);
+  const y = Math.floor(r.y * dpr + eps);
+  return {
+    x,
+    y,
+    w: Math.ceil((r.x + r.w) * dpr - eps) - x,
+    h: Math.ceil((r.y + r.h) * dpr - eps) - y,
+  };
 }
 
 /** Where mesh triangles are drawn before being put down in one go (`drawMeshTriangles`). */
