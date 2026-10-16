@@ -9,6 +9,7 @@
     state as appState,
     replaceProject,
     resizeProject,
+    resizeTransformEffects,
     autosaveActions,
   } from "../state/appState.svelte";
   import NumberField from "./NumberField.svelte";
@@ -60,6 +61,13 @@
   let h = $state(720);
   let mode: ResizeMode = $state("scale");
   let anchor: Anchor = $state({ ax: 0.5, ay: 0.5 });
+  /** What a Crop does to transformed layers: flattens scaled or turned ones (`bakes`), and cuts
+   *  away shown pixels of animated ones or layers in a transformed group (`loses`). */
+  const cropEffects = $derived(
+    appState.sizeDialog.mode === "resize"
+      ? resizeTransformEffects(Math.round(w), Math.round(h), mode)
+      : { bakes: 0, loses: false },
+  );
 
   // Prefill from the current document each time the dialog opens.
   $effect(() => {
@@ -213,6 +221,19 @@
       <!-- Forewarn here, ask once on Create — the same shape the destructive length drag uses, so the
            prompt is never a surprise. Amber, not red: red is reserved but unused in this codebase and
            would need its own contrast pass; the native confirm is the actual gate. -->
+      {#if cropEffects.bakes > 0}
+        <p class="text-xs/snug text-warn">
+          Crop applies the transform of {cropEffects.bakes === 1
+            ? "1 scaled or turned layer"
+            : `${cropEffects.bakes} scaled or turned layers`}, which resamples them.
+        </p>
+      {/if}
+      {#if cropEffects.loses}
+        <p class="text-xs/snug text-warn">
+          Crop can cut away parts of animated layers or layers in a moved group that show inside the
+          new size. Scale keeps them all.
+        </p>
+      {/if}
       {#if appState.sizeDialog.mode === "new"}
         <p class="text-xs/snug text-warn">
           Replaces the current project and clears its autosave. Save it first if you want to keep
