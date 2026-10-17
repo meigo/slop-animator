@@ -8642,3 +8642,42 @@ four of its points were folded into the commits (#9's fold colour, #11's roundin
   round a near-vertical stroke, moved and applied; #18 a non-embedded video cropped before relinking (and
   saved and reopened first); #19 a lift dragged into a rotated group, and Ungroup; #20 a long boiled
   export under memory pressure.
+
+
+**Code review 2 batch C: undo and lifecycle (2026-10-17, branch `fix/review2-batch-c`, cut from batch
+B's).** Findings #21–#25 of `docs/superpowers/reviews/2026-10-17-code-review.md`; where the verifier
+corrected the reviewer, the verifier's reading was followed. A second reviewer went over C–E; its #25
+point (the span drag can shorten the document too) was folded into that commit. One commit each:
+- **#21 Enter / ✓ on an untouched Pose, Deform or Distort/Mesh baked and pushed a step** (`ffcba1e`),
+  wiping redo and adding mesh seams; reachable since the tools lift on arrival. Ruling: treat it like an
+  untouched transform's Apply — close the lift and restore. `applyPose` cancels when `!poseDirty`;
+  `Selection.untouchedLift` now also holds for a `"warping"` float whose every grid point sits where an
+  un-transformed lift puts it, at any density (a densified rest grid is still at rest), so `onCommit`
+  restores the cell. A paste is never untouched; a warp entered from a moved Free transform samples the
+  moved box, so it is an edit. Side effect: a point dragged away and back exactly counts as untouched
+  (the picture is the lift).
+- **#22 An untouched Select lift swallowed ⌘Z and blocked ⌘⇧Z** (`f63ccc8`), against `undo()`'s stated
+  rule: `liftHasEdits` predates `untouchedLift` (drift, not a decision). It now returns false for
+  `selection.untouchedLift`, so ⌘Z cancels the lift and goes on and ⌘⇧Z redoes; a moved warp and any
+  paste still hold undo/redo (safe through #21's warp test).
+- **#23 A span-edge drag that changed nothing pushed a step** (`3db3a15`). The commit test was the
+  pointer's boundary. Ruling: commit only if the document changed. The resize writes only at the
+  dragged span's end, so `rowUp` and `settleRowDrag` compare its VISIBLE end (`spanVisualEnd`, the grab's
+  `othersLen`) with the grab's: unchanged → `revertKeepingPlayhead` restores the grab snapshot (a 1-frame
+  span dragged left; a short layer's trailing span padded inside the others' length — the padding goes
+  too). `dragStartBoundary` removed.
+- **#24 Dragging a group's last layer out left the deleted group selected** (`7ca96d7`), so every pixel
+  tool refused with nothing lit. `reorderLayersWithGroups` now runs `resolveStaleTrackFocus` before its
+  commit, as `commitStructural` does; covers the verifier's track row moved into a collapsed group (falls
+  back to the group's row).
+- **#25 A drag that shortens the animation left the selection past the end** (`97b442f`); Copy then
+  materialised the held last key. Ruling: clear as the Length field's `commitStructural` does.
+  `settleLenDrag` clears on a committed length change; the span-edge drag's commits go through
+  `commitResize`, which clears when `frameCount` fell below the grab's (the longest layer's trailing
+  span sets the length).
+- Build 0/0 on every commit, 1794 tests (1785 before). `npm run test:ipad` not run (no dev server in this
+  pass). **Owed in a browser / on the iPad:** #21 Pose ✓ and Deform Enter with nothing moved keep redo; #22
+  Free transform untouched then ⌘Z / ⌘⇧Z; #23 a 1-frame span nudged left keeps redo; #24 a group of one
+  layer, header selected, layer dragged to the root — the brush works and the layer row is lit; #25
+  marquee 30–35, then the length (or the longest layer's last span edge) dragged to 20 — Cmd+C copies
+  nothing.

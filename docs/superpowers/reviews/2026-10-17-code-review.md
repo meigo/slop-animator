@@ -32,8 +32,9 @@ Batches, in the order to fix them:
   resize vs rotating layers / reference scale / missing media, collapsed-group paste, play range
   vs insert/delete, Rigid pins, lasso rect rounding, bucket/eyedropper rounding, layer drag of a
   lifted layer, boil after context loss.
-- **C — undo and lifecycle** (#21–25): untouched Apply / lift wiping redo, no-op span drags, stale
-  selected row and timeline selection.
+- **C — undo and lifecycle** (#21–25): all FIXED on `fix/review2-batch-c` (see CHANGELOG, "Code
+  review 2 batch C"). Untouched Apply / lift wiping redo, no-op span drags, stale selected row and
+  timeline selection.
 - **D — performance** (#26–29): onion scratch size, hidden video seeks, idle warp redraw, marquee.
 - **E — UI and input** (#30–35): focused `<select>` eating shortcuts, paste everywhere, finger
   gestures during a gizmo drag, pointer filtering on NumberField and the loop arrowhead, export
@@ -329,9 +330,11 @@ Batches, in the order to fix them:
 - **Verifier:** The code matches the description. `init()` (`src/core/boil-gl.ts:72-85`) sets `unsupported = true` on any throw from `build()`, and `build()` sets it on a failed `LINK_STATUS` (`:106-110`). The WebGL spec has `getShaderParameter`/`getProgramParameter` return null on a lost context, so `compile()` throws (`:63-64`) and the session's boil is disabled for good. That needs `getContext` on a fresh canvas to hand back an already-lost context, rather than null (null takes the retry-able `return false` at `:100`). Browsers can do that under GPU or memory pressure, but I cannot trace it, hence plausible. The export half is real: `renderFrame` takes the 2D path whenever `boilBegin` returns false (`render.ts:274`), and nothing tells the exporter. Note this is a deliberate improvement over the pre-`e1aba55` behaviour, where such frames had no drawing layers at all, so the cost is crisp frames in a boiled export, not missing ink. Minor is right.
 
 
-## Batch C — undo and lifecycle
+## Batch C — undo and lifecycle (FIXED)
 
 ### 21. Enter / ✓ on an untouched Pose, Deform or Distort/Mesh bakes a re-render and pushes an undo step, which wipes the redo stack
+
+**FIXED 2026-10-17** in `ffcba1e` (branch `fix/review2-batch-c`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — undo — `src/lib/Canvas.svelte:2239` (area: selection)
 
@@ -346,6 +349,8 @@ Batches, in the order to fix them:
 
 ### 22. An untouched Select lift makes ⌘Z only cancel it and blocks ⌘⇧Z, against undo()'s own stated rule
 
+**FIXED 2026-10-17** in `f63ccc8` (branch `fix/review2-batch-c`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — ui — `src/state/appState.svelte.ts:2859`, `:2885`; `src/lib/Canvas.svelte:2849` (`liftHasEdits`) (area: state-undo)
 
 - **Problem:** `undo()` says an untouched lift "is cancelled below and the undo goes on". But `liftHasEdits()` treats any floating selection as edited: `!!selection?.hasFloating && !(tool === "deform" && !deformDirty)`. It never consults `selection.untouchedLift`, which `onCommit` already uses to treat an unmoved lift as nothing. So with an unmoved Select or Free-transform lift, ⌘Z just cancels it and stops. ⌘⇧Z refuses with "Apply or cancel the transform first, then redo", even though applying or cancelling it would change nothing.
@@ -355,6 +360,8 @@ Batches, in the order to fix them:
 - **Verifier:** `liftHasEdits` (Canvas.svelte:2849) returns true for any `selection.hasFloating` outside an undirtied Deform, and `undo()` (appState:2859) / `redo()` (:2885) treat that as an edit: undo cancels and returns, redo refuses with the hint. `selection.untouchedLift` (selection.ts:488) exists and `onCommit` (Canvas.svelte:1639) already treats it as a no-op, but it landed in `a09c2f7` (2026-10-01), after `liftHasEdits` was written in `cae0a2b` (2026-09-29), so this is drift rather than a decision. `untouchedLift` requires `state === "transforming"`, `!fromPaste` and an identity matrix, so the suggested fix would not misclassify a Distort/Mesh warp (`"warping"`) or a paste. Impact: an extra ⌘Z press and a blocked redo, no data loss.
 
 ### 23. Dragging a span edge where nothing visibly changes still pushes an undo step and clears redo
+
+**FIXED 2026-10-17** in `3db3a15` (branch `fix/review2-batch-c`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — undo — `src/lib/Timeline.svelte:2039` (also `settleRowDrag` at `:1965`) (area: timeline)
 
@@ -366,6 +373,8 @@ Batches, in the order to fix them:
 
 ### 24. Dragging the last layer out of a group leaves the selected row pointing at the deleted group, which dims every pixel tool
 
+**FIXED 2026-10-17** in `7ca96d7` (branch `fix/review2-batch-c`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — lifecycle — `src/state/appState.svelte.ts:1819` (`reorderLayersWithGroups`) (area: state-undo)
 
 - **Problem:** `reorderLayersWithGroups` uses `beginStructuralEdit` / `commitStructuralEdit` directly, so it skips the `resolveStaleTrackFocus` repair that `commitStructural` runs (lines 781-789). That repair exists so that no edit can leave `activeRow` on something it destroyed. The reorder does destroy things: `nonEmptyGroups` drops a group whose last member moved out. A layer-grip drag never selects (`LayerList.svelte` `swallowClick`), so the group row, or one of that group's track rows, can still be the selected row. `pixelToolsBlock()` then returns `"not-layer-row"` (`workingTarget` kind `group`), no row is lit, and `transformScope()` reports `group` for a group that no longer exists.
@@ -375,6 +384,8 @@ Batches, in the order to fix them:
 - **Verifier:** `reorderLayersWithGroups` (appState:1818) uses `beginStructuralEdit`/`commitStructuralEdit` directly and prunes via `nonEmptyGroups` (document.ts:1259), but never runs `resolveStaleTrackFocus` (the only callers are appState:720 restore, :789 commitStructural, :1791). No Svelte component writes `activeRow` (grep of `src/lib`, `App.svelte` finds no assignment), so nothing else repairs it. The LayerList grip drag ends in `reorderLayersWithGroups(target.order)` (LayerList.svelte:363) and `swallowClick` suppresses the selecting click, so a previously selected group header or group track row survives; `workingTarget` maps it to `{kind:"group"}` (active-row.ts:28) and `pixelToolsBlock` (appState:2096) returns `"not-layer-row"`. A layer track row moved into a COLLAPSED group is a second, smaller instance of the same gap (`trackRowEmitted` false, not repaired). Recovery is one tap, so minor.
 
 ### 25. A length drag that shortens the animation leaves the timeline selection pointing past the end
+
+**FIXED 2026-10-17** in `97b442f` (branch `fix/review2-batch-c`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — lifecycle — `src/lib/Timeline.svelte:1028-1029` (area: timeline)
 
