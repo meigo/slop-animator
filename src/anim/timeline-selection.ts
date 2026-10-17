@@ -14,6 +14,18 @@ export interface SelectionRect {
   endFrame: number;
 }
 
+/** The same anchor and focus — setting it again would change nothing. A marquee drag asks this on
+ *  every pointer event, most of which stay in the same cell (review 2026-10-17 #29). */
+export function sameSelectionEnds(cur: TimelineSelection | null, next: TimelineSelection): boolean {
+  return (
+    !!cur &&
+    cur.anchor.layerId === next.anchor.layerId &&
+    cur.anchor.frame === next.anchor.frame &&
+    cur.focus.layerId === next.focus.layerId &&
+    cur.focus.frame === next.focus.frame
+  );
+}
+
 /** Derive the selection rectangle from two endpoints. Layer axis spans the two endpoint layers
  *  inclusive in display order (top-first = layers reversed), drawing layers only. Collapsed-group
  *  members have no timeline row and are skipped (same as refs). Returns null if either endpoint

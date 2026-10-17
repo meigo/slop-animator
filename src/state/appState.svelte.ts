@@ -86,6 +86,7 @@ import {
 } from "../anim/timeline-block";
 import {
   resolveSelectionRect,
+  sameSelectionEnds,
   type SelectionEndpoint,
   type TimelineSelection,
 } from "../anim/timeline-selection";
@@ -3058,7 +3059,12 @@ export function setActiveLayer(id: number): void {
 }
 
 export function setTimelineSelection(anchor: SelectionEndpoint, focus: SelectionEndpoint): void {
-  state.timelineSelection = { anchor, focus };
+  // Skip an identical selection: a fresh object re-derived the selection rect and re-ran every
+  // row × frame cell's in-selection test, per Pencil event of a marquee drag that stayed in one
+  // cell (review 2026-10-17 #29, the gotcha #17 class).
+  const next = { anchor, focus };
+  if (sameSelectionEnds(state.timelineSelection, next)) return;
+  state.timelineSelection = next;
 }
 
 export function clearTimelineSelection(): void {

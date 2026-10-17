@@ -37,6 +37,8 @@ function vidLayer(
   return {
     kind: "ref",
     id: 1,
+    visible: true,
+    groupId: null,
     media: { type: "video", el },
     offsetFrames,
     speed,
@@ -44,9 +46,49 @@ function vidLayer(
     ...trim,
   } as unknown as never;
 }
-function proj(layers: unknown[]): Project {
-  return { layers } as unknown as Project;
+function proj(layers: unknown[], groups: unknown[] = []): Project {
+  return { layers, groups } as unknown as Project;
 }
+
+// Review 2026-10-17 #27: a hidden reference was still exact-seeked on every scrubbed frame (a
+// hardware decode on iOS), and each landed seek's repaint ran a second full recomposite.
+describe("syncReferenceVideos — hidden references", () => {
+  const hidden = (el: FakeVid, audio = false) => ({
+    ...(vidLayer(el, 0, 1, audio) as object),
+    visible: false,
+  });
+  it("paused: a hidden reference is not seeked", () => {
+    const v = fakeVid();
+    syncReferenceVideos(proj([hidden(v)]), 12, 12, false);
+    expect(v.currentTime).toBe(0);
+  });
+
+  it("paused: a reference in a hidden group is not seeked", () => {
+    const v = fakeVid();
+    const l = { ...(vidLayer(v) as object), groupId: 7 };
+    syncReferenceVideos(proj([l], [{ id: 7, visible: false }]), 12, 12, false);
+    expect(v.currentTime).toBe(0);
+    syncReferenceVideos(proj([l], [{ id: 7, visible: true }]), 12, 12, false);
+    expect(v.currentTime).toBe(1); // shown again: the next sync seeks it
+  });
+
+  it("playing: a hidden muted reference is paused, not decoded", () => {
+    const v = fakeVid({ paused: false, currentTime: 5 });
+    syncReferenceVideos(proj([hidden(v)]), 12, 12, true);
+    expect(v.paused).toBe(true);
+    expect(v.currentTime).toBe(5);
+    const w = fakeVid();
+    syncReferenceVideos(proj([hidden(w)]), 12, 12, true);
+    expect(w.playCount).toBe(0);
+  });
+
+  it("playing: a hidden reference with its audio on keeps playing (its sound is heard)", () => {
+    const v = fakeVid();
+    syncReferenceVideos(proj([hidden(v, true)]), 12, 12, true);
+    expect(v.playCount).toBe(1);
+    expect(v.muted).toBe(false);
+  });
+});
 
 describe("syncReferenceVideos", () => {
   it("paused: exact-seeks to (frame+offset)/fps", () => {
@@ -244,6 +286,7 @@ describe("syncReferenceVideos", () => {
     const layer = {
       kind: "ref",
       id: 1,
+      visible: true,
       media: { type: "video", el: v },
       offsetFrames: 0,
       speed: 1,

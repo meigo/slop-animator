@@ -514,9 +514,14 @@
     }
     display.style.width = `${appState.project.width}px`;
     display.style.height = `${appState.project.height}px`;
-    if (scratch && (scratch.width !== w || scratch.height !== h)) {
-      scratch.width = w;
-      scratch.height = h;
+    // The onion scratch stays at document pixels (1×): every ghost renders into it at identity and
+    // the display's `ss` transform scales it up. Sizing it at `ss` too left 1 − 1/ss² of it unused
+    // — 133 MB at UHD and ss 2, for nothing (review 2026-10-17 #26).
+    const sw = appState.project.width * DPR;
+    const sh = appState.project.height * DPR;
+    if (scratch && (scratch.width !== sw || scratch.height !== sh)) {
+      scratch.width = sw;
+      scratch.height = sh;
     }
   }
 

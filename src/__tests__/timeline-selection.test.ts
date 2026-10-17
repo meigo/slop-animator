@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Cell, DrawingLayer, Layer, LayerGroup, ReferenceLayer } from "../anim/document";
-import { resolveSelectionRect } from "../anim/timeline-selection";
+import { resolveSelectionRect, sameSelectionEnds } from "../anim/timeline-selection";
 
 const key = (): Cell => ({ kind: "key", canvas: {} as unknown as HTMLCanvasElement });
 function drawLayer(id: number): DrawingLayer {
@@ -80,5 +80,24 @@ describe("resolveSelectionRect", () => {
     expect(
       resolveSelectionRect([a, b], { layerId: 1, frame: 0 }, { layerId: 2, frame: 0 }, groups),
     ).toBeNull();
+  });
+});
+
+// Review 2026-10-17 #29: a marquee drag set a fresh selection on every pointer event, so every
+// row × frame cell re-ran its in-selection test though the rectangle had not moved.
+describe("sameSelectionEnds", () => {
+  const sel = (al: number, af: number, fl: number, ff: number) => ({
+    anchor: { layerId: al, frame: af },
+    focus: { layerId: fl, frame: ff },
+  });
+  it("is true only for the same two endpoints", () => {
+    expect(sameSelectionEnds(sel(1, 2, 3, 4), sel(1, 2, 3, 4))).toBe(true);
+    expect(sameSelectionEnds(sel(1, 2, 3, 4), sel(1, 2, 3, 5))).toBe(false);
+    expect(sameSelectionEnds(sel(1, 2, 3, 4), sel(1, 2, 2, 4))).toBe(false);
+    expect(sameSelectionEnds(sel(1, 2, 3, 4), sel(1, 3, 3, 4))).toBe(false);
+    expect(sameSelectionEnds(sel(1, 2, 3, 4), sel(9, 2, 3, 4))).toBe(false);
+  });
+  it("no selection matches nothing", () => {
+    expect(sameSelectionEnds(null, sel(1, 2, 3, 4))).toBe(false);
   });
 });
