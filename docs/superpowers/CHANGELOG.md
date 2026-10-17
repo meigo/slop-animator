@@ -8681,3 +8681,34 @@ point (the span drag can shorten the document too) was folded into that commit. 
   layer, header selected, layer dragged to the root — the brush works and the layer row is lit; #25
   marquee 30–35, then the length (or the longest layer's last span edge) dragged to 20 — Cmd+C copies
   nothing.
+
+
+**Code review 2 batch D: performance (2026-10-17, branch `fix/review2-batch-d`, cut from batch C's).**
+Findings #26–#29 of `docs/superpowers/reviews/2026-10-17-code-review.md`. The second reviewer's #27 point
+(unhiding a paused video reference briefly shows the frame it was hidden on, until the seek lands) was
+ruled cosmetic and self-correcting and left as is. One commit each:
+- **#26 The onion scratch was sized at the display's zoom step** (`7e0789b`) while every ghost renders
+  into its top-left document-sized area: at ss 2, 33 MB unused at 1920×1080, 133 MB at UHD. Ruling: the
+  option that removes the waste without blurring ghosts further — `sizeDisplay` keeps the scratch at
+  document pixels (W·DPR × H·DPR), so ghosts look exactly as before. Rendering ghosts at the backing
+  scale (sharper) was not taken: it keeps the allocation.
+- **#27 Hidden video references were exact-seeked on every scrubbed frame** (`7620c4d`), a hardware decode
+  on iOS plus a second full recomposite from the `seeked` repaint. `syncReferenceVideos` skips (and
+  pauses) a reference that is not `isLayerVisible` (itself or its group), except one PLAYING with its
+  audio on, whose sound is heard. So only visible references are seeked, and the second recomposite per
+  seek happens only where the frame is drawn. Unhiding bumps the version, so the next sync seeks it.
+- **#28 An idle Deform / Distort / Mesh lift re-rendered its mesh every animation frame** (`985f180`):
+  the marching ants redraw the overlay each frame, and `drawWarpedMesh` (2·(rows−1)·(cols−1) clipped
+  full-bitmap draws) ran each time. `Selection.drawWarpedFloat` keeps the warped picture in an
+  overlay-sized cache canvas (the overlay is stage-sized), re-rendered only when the grid (every edit
+  assigns a new `warpGrid`), the bitmap, the box, the view/compose transform or the overlay size
+  changes; `contentAlpha` is applied at the blit. Released in `clear()`.
+- **#29 A marquee drag re-ran every cell's selection test per pointer event** (`e907fd1`):
+  `setTimelineSelection` returns without assigning when the anchor and focus are unchanged
+  (`sameSelectionEnds`, pure), so `selRect` and the rows × frames pass re-run only when the corner
+  enters another cell or row.
+- Build 0/0 on every commit, 1804 tests (1794 before). `npm run test:ipad` not run. **Owed on the iPad:**
+  #26 onion at 200 % zoom (ghosts placed and tinted as before); #27 a hidden video reference scrubbed
+  (smooth; unhiding shows the right frame after a moment); #28 Deform at 8×8 left idle (no continuous rAF
+  work in a trace), and the warp following drags, pans, zooms and Hide; #29 a slow Pencil marquee on a
+  long many-layer document.

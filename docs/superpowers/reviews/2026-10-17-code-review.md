@@ -35,7 +35,8 @@ Batches, in the order to fix them:
 - **C — undo and lifecycle** (#21–25): all FIXED on `fix/review2-batch-c` (see CHANGELOG, "Code
   review 2 batch C"). Untouched Apply / lift wiping redo, no-op span drags, stale selected row and
   timeline selection.
-- **D — performance** (#26–29): onion scratch size, hidden video seeks, idle warp redraw, marquee.
+- **D — performance** (#26–29): all FIXED on `fix/review2-batch-d` (see CHANGELOG, "Code review 2
+  batch D"). Onion scratch size, hidden video seeks, idle warp redraw, marquee.
 - **E — UI and input** (#30–35): focused `<select>` eating shortcuts, paste everywhere, finger
   gestures during a gizmo drag, pointer filtering on NumberField and the loop arrowhead, export
   "Done." on a refused share.
@@ -396,9 +397,11 @@ Batches, in the order to fix them:
 - **Verifier:** `settleLenDrag` (`Timeline.svelte:989-1031`) ends in `applyAnimationLength(end); commitStructuralEdit(undo)` (`:1028-1029`). Neither `applyAnimationLength` (`appState.svelte.ts:2272-2287`), `revertStructural` (`:2292`) nor `commitStructuralEdit` clears `timelineSelection`. Only `commitStructural` (`:782`), undo/redo (`:2867`, `:2893`), `resizeProject` and a few other sites do. Nothing in `lenGripDown` clears it either. The Length FIELD path goes through `commitStructural`, so only the ruler drag is affected. The paste claim holds: `copyBlock` materializes the leading cell through `resolvedDisplayKeyCell` → `resolveKeyframeIndex`, which clamps `frame` to `cells.length - 1` and walks back (`document.ts:569-575`), so it copies the last key. App.svelte's Cmd+C, Cmd+X and Delete (`:190-200`) act on the stale selection. Delete past the end is harmless (it changes nothing). Minor is right.
 
 
-## Batch D — performance
+## Batch D — performance (FIXED)
 
 ### 26. Onion scratch is allocated at outputScale but every ghost is rendered at 1× into its top-left quarter — up to 4× the memory for nothing, and ghosts upsampled when zoomed
+
+**FIXED 2026-10-17** in `7e0789b` (branch `fix/review2-batch-d`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — perf — `src/anim/onion.ts:152-158`, `src/lib/Canvas.svelte:513-516` (area: model-render)
 
@@ -410,6 +413,8 @@ Batches, in the order to fix them:
 
 ### 27. Hidden (or group-hidden) video references are still exact-seeked on every scrubbed frame, and each seek's `repaint()` forces a second full recomposite
 
+**FIXED 2026-10-17** in `7620c4d` (branch `fix/review2-batch-d`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — perf — `src/anim/reference.ts:95-124`, `src/lib/Toolbar.svelte:153` (area: model-render)
 
 - **Problem:** `syncReferenceVideos` gates only on `isRefVisibleAtFrame` (the clip's frame span); it never checks `layer.visible` / the group's visibility. Paused, every playhead change sets `vid.currentTime` on a hidden ref (a hardware decode on iOS — the cost gotcha #17 measured), and the `seeked` listener installed at load (`() => repaint()`) bumps `state.version`, so the Canvas tick runs `syncComposeSteps` and a full `recomposite()` a second time for a frame nobody can see. While playing, the "hidden + audio = audio only" decision needs hidden refs WITH audio to keep running, but a hidden muted ref has no reason to decode at all.
@@ -420,6 +425,8 @@ Batches, in the order to fix them:
 
 ### 28. An open Deform / Distort / Mesh lift re-renders the whole warped bitmap every animation frame while idle, now through an extra overlay-sized scratch
 
+**FIXED 2026-10-17** in `985f180` (branch `fix/review2-batch-d`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — perf — `src/core/selection.ts:960` (area: selection)
 
 - **Problem:** `drawOverlay` restarts its marching-ants rAF loop on every call (960) for any non-idle state. Each frame in `"warping"` re-runs `drawWarpedMesh` (993). That is `2·(rows−1)·(cols−1)` full-bitmap `drawImage` calls, each clipped to one triangle: 18 at the Deform default 4×4, 98 at 8×8. Since 646ddb7 each frame also clears and composites a scratch the size of the overlay (`meshScratch`). None of this changes between frames when no drag is happening; only the ants' dash offset moves. The Deform tool now lifts on arrival (Canvas.svelte tool effect ~2830), so simply having Deform selected keeps this running at display rate. On iPad that is constant GPU load and heat while the user is idle or drawing with another hand on the UI. The `"transforming"` state redraws only one image per frame, which is cheap.
@@ -429,6 +436,8 @@ Batches, in the order to fix them:
 - **Verifier:** `drawOverlay` (selection.ts:948-…) unconditionally reschedules itself with `requestAnimationFrame` (958-960) for any non-idle state with a rect, and in `"warping"` calls `drawWarpedMesh` (selection.ts:991-996) every frame: `2·(rows−1)·(cols−1)` clipped full-bitmap `drawImage`s (18 at the Deform default 4×4, Canvas.svelte:2010), plus since 646ddb7 a scratch clear and copy. One correction: the scratch is allocated overlay-sized but only the mesh's device box is cleared and copied (selection.ts:1191-1232), so per-frame scratch cost scales with the mesh box, not the whole overlay. Deform lifts on tool arrival (Canvas.svelte:2837-2839), so merely having Deform selected keeps this running; rAF is paused in a backgrounded tab, so it only burns while visible. A real but measured-nowhere perf/battery cost on iPad; minor is right.
 
 ### 29. A marquee drag re-evaluates the selection test for every frame cell of every row on every pointer event
+
+**FIXED 2026-10-17** in `e907fd1` (branch `fix/review2-batch-d`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — perf — `src/lib/Timeline.svelte:1893-1899`, `:3574-3575` (area: timeline)
 
