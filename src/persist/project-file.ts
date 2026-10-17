@@ -25,7 +25,9 @@ import {
   type KeyInterp,
   type LayerTracks,
   type GroupTracks,
+  type PendingFit,
 } from "../anim/document";
+import { settlePendingFit } from "../anim/resize";
 import { zipSync, unzipSync, strToU8, strFromU8, type ZipOptions } from "fflate";
 import { decodeAudioBytes } from "../audio/decode";
 import { mediaFromBlob } from "../anim/reference";
@@ -80,6 +82,8 @@ export interface ReferenceJson {
   mediaMime?: string;
   embedMedia?: boolean;
   groupId: number | null;
+  /** See `ReferenceLayer.pendingFit`. Optional and additive (format version unmoved). */
+  pendingFit?: PendingFit;
   was: "image" | "video";
   transform: RefTransform;
   tracks?: LayerTracks;
@@ -87,6 +91,14 @@ export interface ReferenceJson {
   tracksCollapsed?: boolean;
   /** LEGACY, read-only — see `DrawingLayerJson.transformTrack`. */
   transformTrack?: LegacyTransformTrackJson;
+}
+
+/** A saved `pendingFit`, or undefined when it is absent or not three positive finite numbers. */
+export function validPendingFit(p: unknown): PendingFit | undefined {
+  if (!p || typeof p !== "object") return undefined;
+  const { w, h, f } = p as Record<string, unknown>;
+  const ok = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  return ok(w) && ok(h) && ok(f) ? { w: w as number, h: h as number, f: f as number } : undefined;
 }
 
 /** Splice `refs` (by stack index, ascending) into `base`. Pure; rebuilds the original interleaving. */
@@ -291,6 +303,7 @@ export function projectToJson(project: Project): ProjectJson {
         mediaMime: l.mediaMime,
         embedMedia: l.embedMedia,
         groupId: l.groupId,
+        pendingFit: l.pendingFit,
         was: l.media.type === "missing" ? l.media.was : l.media.type,
         transform: l.transform,
         tracks: l.tracks,
@@ -717,6 +730,7 @@ export async function loadProjectBlob(
       mediaMime: rj.mediaMime,
       embedMedia: rj.embedMedia,
       groupId: rj.groupId ?? null,
+      pendingFit: validPendingFit(rj.pendingFit),
       transform: normalizeTransform(rj.transform) ?? { ...IDENTITY_TRANSFORM },
       tracks: sanitiseTracks(rj.tracks ?? legacyTracks(rj.transformTrack)),
       tracksCollapsed: rj.tracksCollapsed,
@@ -728,6 +742,7 @@ export async function loadProjectBlob(
       const mediaBlob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
       try {
         value.media = await mediaFromBlob(mediaBlob, mime, rj.name, onSeeked ?? (() => {}));
+        settlePendingFit(value, json.width, json.height);
         // Seed the local store so this file restores on every later reload (write-once path).
         void putMedia(rj.mediaId, { blob: mediaBlob, mime, name: rj.name }).catch(() =>
           onMediaPersistFailed?.(),

@@ -1,7 +1,7 @@
 import { coverSilhouette, type Mesh } from "./triangulate";
 import { geodesicFrom, meshAdjacency, poseWeights, type MeshAdjacency } from "./geodesic";
 import { mlsRigidWeighted, type Pt } from "./mls";
-import { drawTriangle, type SelectionRect } from "./selection";
+import { drawMeshTriangles, type SelectionRect } from "./selection";
 import { fillEnclosed, type FillEnclosedResult } from "./fill-holes";
 
 export interface PoseHandle {
@@ -230,17 +230,22 @@ export class MeshPose {
     this.deformed = this.rest.map((v) => ({ x: v.x, y: v.y }));
   }
 
-  /** Warp the lifted raster through the deformed mesh into `ctx` (doc coords). */
+  /**
+   * Warp the lifted raster through the deformed mesh into `ctx` (doc coords), through
+   * `drawMeshTriangles` as Distort/Mesh: one antialiased clip per triangle laid straight onto the
+   * target left a faint light lattice along every interior edge, baked in by Apply. Where a bent
+   * limb folds the mesh over itself, the later triangle shows (no added colour).
+   */
   render(ctx: CanvasRenderingContext2D) {
-    for (const [a, b, c] of this.triangles) {
-      drawTriangle(
-        ctx,
-        this.img,
-        this.rect,
-        [this.rest[a], this.rest[b], this.rest[c]],
-        [this.deformed[a], this.deformed[b], this.deformed[c]],
-      );
-    }
+    drawMeshTriangles(
+      ctx,
+      this.img,
+      this.rect,
+      this.triangles.map(([a, b, c]) => ({
+        src: [this.rest[a], this.rest[b], this.rest[c]],
+        dst: [this.deformed[a], this.deformed[b], this.deformed[c]],
+      })),
+    );
   }
   /** Mesh edges (faint) + handle dots (filled), at deformed positions. */
   drawWireframe(ctx: CanvasRenderingContext2D) {

@@ -373,18 +373,16 @@ export class Selection {
    */
   copyPixelsFromDoc(srcCtx: CanvasRenderingContext2D, dpr: number): HTMLCanvasElement | null {
     if (!this.rect) return null;
-    const r = this.rect;
-    const px = Math.round(r.x * dpr);
-    const py = Math.round(r.y * dpr);
-    const pw = Math.round(r.w * dpr);
-    const ph = Math.round(r.h * dpr);
+    const { x: px, y: py, w: pw, h: ph } = snapRectOutward(this.rect, dpr);
     if (pw <= 0 || ph <= 0) return null;
     // The selection takes the whole pixels it copied (slop-paint 1c8b5fd, roadmap 14a). A marquee
     // dragged at zoom or with the Pencil has fractional edges, and clearing and redrawing at those
     // while copying whole pixels resampled the art: an untouched lift + Apply blurred it and left a
     // half-cleared line at the edge, worse on every repeat. Callers crop before they clear, so the
     // hole, the float, the commit and the clipboard all sit on this grid. A lasso's bounds snap;
-    // its outline stays as drawn.
+    // its outline stays as drawn. OUTWARD, not rounded (review 2026-10-17 #15): a lasso clears
+    // through its own path, which rounding could leave up to a pixel outside the copied bitmap —
+    // cleared from the cell, missing from the float and the clipboard.
     this.rect = { x: px / dpr, y: py / dpr, w: pw / dpr, h: ph / dpr };
     const r2 = this.rect;
 
@@ -741,14 +739,20 @@ export class Selection {
   }
 
   endDrag() {
-    if (
-      this.state === "warping" &&
-      this.deformMode === "rigid" &&
-      this.dragging === "grid" &&
-      this.dragGridIdx
-    ) {
-      const { row, col } = this.dragGridIdx;
-      this.pinned.set(row * this.warpCols + col, { ...this.warpGrid[row][col] });
+    if (this.state === "warping" && this.dragging) {
+      // A pin is "this point stays where it is": rigidDeformGrid maps each pinned point from where
+      // it sits now to its pin, so a pin must follow every other drag that moves its point — a
+      // whole-grid move, or an FFD drag of a pinned point after a mode switch. Stale pins pulled
+      // the next Rigid drag back to where they were (review 2026-10-17 #14). A Rigid drag leaves
+      // pinned points on their pins, so for it this only records the dragged point.
+      for (const idx of this.pinned.keys()) {
+        const p = this.warpGrid[Math.floor(idx / this.warpCols)]?.[idx % this.warpCols];
+        if (p) this.pinned.set(idx, { ...p });
+      }
+      if (this.deformMode === "rigid" && this.dragging === "grid" && this.dragGridIdx) {
+        const { row, col } = this.dragGridIdx;
+        this.pinned.set(row * this.warpCols + col, { ...this.warpGrid[row][col] });
+      }
       this.drawOverlay();
     }
     this.dragging = null;
@@ -1145,54 +1149,125 @@ function ptsAabb(pts: Pt[]): SelectionRect {
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
-/** Where the warp's triangles are drawn before being put down in one go (`drawWarpedMesh`). */
+/** The device-pixel rect covering every pixel `r` (logical) touches: min edges floored, max edges
+ *  ceiled. A hair of float noise (1e-6 px) doesn't count as touching the next pixel, so a rect
+ *  already on whole pixels stays as it is. */
+export function snapRectOutward(r: SelectionRect, dpr: number): SelectionRect {
+  const eps = 1e-6;
+  const x = Math.floor(r.x * dpr + eps);
+  const y = Math.floor(r.y * dpr + eps);
+  return {
+    x,
+    y,
+    w: Math.ceil((r.x + r.w) * dpr - eps) - x,
+    h: Math.ceil((r.y + r.h) * dpr - eps) - y,
+  };
+}
+
+/** Where mesh triangles are drawn before being put down in one go (`drawMeshTriangles`). */
 let meshScratch: HTMLCanvasElement | null = null;
 
+/** One mesh triangle: where it sits in the bitmap (`src`) and where it is drawn (`dst`). */
+export type MeshTriangle = { src: [Pt, Pt, Pt]; dst: [Pt, Pt, Pt] };
+
+/** How far each triangle's clip is pushed out past its edges, in device px (`drawMeshTriangles`).
+ *  A pixel straddling an edge reaches at most √½ px past it, so at ≥ √½ px the triangle drawn
+ *  later covers every pixel on the shared edge fully. On the modelled canvas of `mesh-seams.test.ts`
+ *  (a six-triangle fan, every edge angle) the worst seam is 80/255 undilated, 0.43/255 at 0.5 px and
+ *  0 from 0.75 px; 1 px leaves a margin for real rasterisers. */
+export const MESH_DILATE_PX = 1;
+
 /**
- * Draw a bitmap warped through an N×M control-point grid by splitting each cell
- * into two triangles (along the cell's TL→BR diagonal) and rendering each with
- * a per-triangle affine. 2×2 = 4-corner distort.
- *
- * Seams (fixed 2026-10-06, port of slop-paint 5f708ce; measured here before: Distort / Mesh 3×3
- * applied without moving a handle changed ~585 / ~1300 px, faint light lines along every triangle
- * edge): each triangle is clipped to its own shape, and the canvas antialiases a clip's edge, so
- * along a shared edge both triangles are drawn part-transparent — two part coverages laid OVER each
- * other never add up to opaque. So the triangles are drawn onto an empty scratch with `lighter`
- * (added): there two coverages that share an edge add up to exactly one pixel, and inside a triangle
- * nothing changes (each pixel is covered once). The scratch is then put down in one draw, with the
- * caller's clip, alpha and compositing. A folded mesh (dragged over itself) adds where it overlaps,
- * a little brighter.
+ * A triangle grown outward by `d` (its edges moved out by `d`, either winding), as a convex polygon
+ * holding every point within `d` of it: a corner sharper than 60° has its miter cut square at `d`
+ * past the corner, so a sliver never sends a spike across its neighbours (every vertex lies within
+ * 2·d of the triangle). A degenerate triangle comes back as it is.
  */
-function drawWarpedMesh(
+export function dilateTriangle(t: [Pt, Pt, Pt], d: number): Pt[] {
+  const area = (t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x);
+  if (Math.abs(area) < 1e-9) return t;
+  const sign = area > 0 ? 1 : -1;
+  // Outward unit normal of edge i (t[i] → t[i+1]).
+  const n = [0, 1, 2].map((i) => {
+    const a = t[i];
+    const b = t[(i + 1) % 3];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    return { x: (sign * (b.y - a.y)) / len, y: (sign * -(b.x - a.x)) / len };
+  });
+  const out: Pt[] = [];
+  for (let j = 0; j < 3; j++) {
+    const n1 = n[(j + 2) % 3]; // the edge into corner j
+    const n2 = n[j]; // the edge out of it
+    const v = t[j];
+    const k = 1 + n1.x * n2.x + n1.y * n2.y; // miter: d·(n1 + n2) / k, length d·√(2/k)
+    if (k > 0.5) {
+      out.push({ x: v.x + (d * (n1.x + n2.x)) / k, y: v.y + (d * (n1.y + n2.y)) / k });
+    } else {
+      // Square-cut miter: the offset edges cut by the line d past the corner along the bisector b,
+      // which still holds every point within d of the corner and ends within d·√2 of it.
+      const bl = Math.hypot(n1.x + n2.x, n1.y + n2.y);
+      const b = { x: (n1.x + n2.x) / bl, y: (n1.y + n2.y) / bl };
+      const perp = { x: -b.y, y: b.x };
+      for (const nn of [n1, n2]) {
+        const sOff = (d * (1 - (b.x * nn.x + b.y * nn.y))) / (perp.x * nn.x + perp.y * nn.y);
+        out.push({ x: v.x + d * b.x + sOff * perp.x, y: v.y + d * b.y + sOff * perp.y });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Draw a bitmap through a triangle mesh with no seams along shared edges and no added colour where
+ * the mesh folds over itself.
+ *
+ * Seams (fixed 2026-10-06 for Distort/Mesh, port of slop-paint 5f708ce; measured here before:
+ * Distort / Mesh 3×3 applied without moving a handle changed ~585 / ~1300 px, faint light lines
+ * along every triangle edge): each triangle is clipped to its own shape, and the canvas antialiases
+ * a clip's edge, so along a shared edge both triangles were drawn part-transparent — two part
+ * coverages laid OVER each other never add up to opaque. That fix drew them with `lighter`, which
+ * adds coverage exactly but adds COLOUR too: where a mesh folds over itself (Pose's bent elbow, a
+ * Mesh point dragged over another) two layers of grey made white (batch-B review, 2026-10-17).
+ *
+ * Now each triangle is drawn as a LERP over what is under it: `destination-out` with its coverage c,
+ * then `lighter` of its image under the same clip, giving c·src + (1 − c)·dst — and its clip is
+ * DILATED by `MESH_DILATE_PX` (`dilateTriangle`). On a shared edge the triangle drawn later then
+ * covers every straddling pixel fully, so the edge is its image alone; just past it the two
+ * neighbours' affines agree to within the dilation, so the lerp of the two is the art. Translucent
+ * art stays exact (no double-drawn band), and a fold shows the later triangle, as `source-over` did.
+ * All on an empty scratch, put down in one draw with the caller's clip, alpha and compositing
+ * (the lerp would otherwise erase the target under the mesh). `mesh-seams.test.ts` checks it on a
+ * modelled canvas.
+ */
+export function drawMeshTriangles(
   ctx: CanvasRenderingContext2D,
   img: HTMLCanvasElement,
   rect: SelectionRect,
-  grid: Pt[][],
-  rows: number,
-  cols: number,
+  tris: MeshTriangle[],
 ) {
   // The mesh's box in device px, where the scratch is cleared and drawn from.
   const m = ctx.getTransform();
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
+  const dev = (p: Pt): Pt => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f });
+  const devTris = tris.map((t) => t.dst.map(dev) as [Pt, Pt, Pt]);
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
   let y1 = -Infinity;
-  for (const row of grid) {
-    for (const p of row) {
-      const x = m.a * p.x + m.c * p.y + m.e;
-      const y = m.b * p.x + m.d * p.y + m.f;
-      x0 = Math.min(x0, x);
-      y0 = Math.min(y0, y);
-      x1 = Math.max(x1, x);
-      y1 = Math.max(y1, y);
+  for (const t of devTris) {
+    for (const p of t) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
     }
   }
-  const bx = Math.max(0, Math.floor(x0) - 2);
-  const by = Math.max(0, Math.floor(y0) - 2);
-  const bw = Math.min(w, Math.ceil(x1) + 2) - bx;
-  const bh = Math.min(h, Math.ceil(y1) + 2) - by;
+  const pad = 2 + 2 * MESH_DILATE_PX;
+  const bx = Math.max(0, Math.floor(x0) - pad);
+  const by = Math.max(0, Math.floor(y0) - pad);
+  const bw = Math.min(w, Math.ceil(x1) + pad) - bx;
+  const bh = Math.min(h, Math.ceil(y1) + pad) - by;
   if (!(bw > 0 && bh > 0)) return;
   if (!meshScratch || meshScratch.width !== w || meshScratch.height !== h) {
     meshScratch = document.createElement("canvas");
@@ -1203,10 +1278,48 @@ function drawWarpedMesh(
   s.setTransform(1, 0, 0, 1, 0, 0);
   s.globalCompositeOperation = "source-over";
   s.clearRect(bx, by, bw, bh);
-  s.setTransform(m);
   s.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
   s.imageSmoothingQuality = ctx.imageSmoothingQuality;
-  s.globalCompositeOperation = "lighter";
+  s.fillStyle = "#000";
+  tris.forEach((t, i) => {
+    const poly = dilateTriangle(devTris[i], MESH_DILATE_PX);
+    const path = new Path2D();
+    path.moveTo(poly[0].x, poly[0].y);
+    for (let k = 1; k < poly.length; k++) path.lineTo(poly[k].x, poly[k].y);
+    path.closePath();
+    const a = triangleAffine(t.src, t.dst);
+    s.save();
+    s.setTransform(1, 0, 0, 1, 0, 0); // the clip is in device px
+    s.globalCompositeOperation = "destination-out";
+    s.fill(path); // dst·(1 − c)
+    s.clip(path);
+    s.globalCompositeOperation = "lighter";
+    s.setTransform(m);
+    s.transform(a.a, a.b, a.c, a.d, a.e, a.f);
+    s.drawImage(img, rect.x, rect.y, rect.w, rect.h); // + c·src
+    s.restore();
+  });
+  s.globalCompositeOperation = "source-over";
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(meshScratch, bx, by, bw, bh, bx, by, bw, bh);
+  ctx.restore();
+}
+
+/**
+ * Draw a bitmap warped through an N×M control-point grid by splitting each cell
+ * into two triangles (along the cell's TL→BR diagonal) and rendering each with
+ * a per-triangle affine, seamlessly (`drawMeshTriangles`). 2×2 = 4-corner distort.
+ */
+function drawWarpedMesh(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLCanvasElement,
+  rect: SelectionRect,
+  grid: Pt[][],
+  rows: number,
+  cols: number,
+) {
+  const tris: MeshTriangle[] = [];
   for (let r = 0; r < rows - 1; r++) {
     for (let c = 0; c < cols - 1; c++) {
       const u0 = c / (cols - 1);
@@ -1221,15 +1334,11 @@ function drawWarpedMesh(
       const tr = grid[r][c + 1];
       const br = grid[r + 1][c + 1];
       const bl = grid[r + 1][c];
-      drawTriangle(s, img, rect, [tlSrc, trSrc, brSrc], [tl, tr, br]);
-      drawTriangle(s, img, rect, [tlSrc, brSrc, blSrc], [tl, br, bl]);
+      tris.push({ src: [tlSrc, trSrc, brSrc], dst: [tl, tr, br] });
+      tris.push({ src: [tlSrc, brSrc, blSrc], dst: [tl, br, bl] });
     }
   }
-  s.globalCompositeOperation = "source-over";
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(meshScratch, bx, by, bw, bh, bx, by, bw, bh);
-  ctx.restore();
+  drawMeshTriangles(ctx, img, rect, tris);
 }
 
 /** Build a fresh rows×cols grid by uniformly sampling the matrix-transformed rect. */
@@ -1293,28 +1402,6 @@ function outerPerimeter(grid: Pt[][], rows: number, cols: number): Pt[] {
   for (let c = cols - 2; c >= 0; c--) ring.push(grid[rows - 1][c]);
   for (let r = rows - 2; r >= 1; r--) ring.push(grid[r][0]);
   return ring;
-}
-
-export function drawTriangle(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLCanvasElement,
-  rect: SelectionRect,
-  src: [Pt, Pt, Pt],
-  dst: [Pt, Pt, Pt],
-) {
-  const m = triangleAffine(src, dst);
-  ctx.save();
-  // Clip to dest triangle in current (pre-m) coord space.
-  ctx.beginPath();
-  ctx.moveTo(dst[0].x, dst[0].y);
-  ctx.lineTo(dst[1].x, dst[1].y);
-  ctx.lineTo(dst[2].x, dst[2].y);
-  ctx.closePath();
-  ctx.clip();
-  // Apply triangle-warp matrix on top of current transform.
-  ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
-  ctx.restore();
 }
 
 /** Affine that maps src triangle to dst triangle (3 corresponding vertices). */

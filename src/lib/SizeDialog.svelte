@@ -16,6 +16,7 @@
   import { createProject } from "../anim/document";
   import { clearAutosave, pruneUnusedMedia } from "../persist/autosave";
   import { linkedSize, type ResizeMode, type Anchor } from "../anim/resize";
+  import { fitsCanvasArea } from "../core/canvas-area";
 
   const PRESETS = [
     { label: "1920×1080", w: 1920, h: 1080 },
@@ -65,9 +66,20 @@
    *  away shown pixels of animated ones or layers in a transformed group (`loses`). */
   const cropEffects = $derived(
     appState.sizeDialog.mode === "resize"
-      ? resizeTransformEffects(Math.round(w), Math.round(h), mode)
-      : { bakes: 0, loses: false },
+      ? resizeTransformEffects(Math.round(w), Math.round(h), mode, anchor)
+      : { bakes: 0, loses: false, drifts: false, centred: 0, bands: [] },
   );
+
+  /** Exact motion for a turning animated layer costs drawable paper (review 2026-10-17 #11). */
+  const centredNote = $derived.by(() => {
+    const n = cropEffects.centred;
+    const where = cropEffects.bands.map((b) => `the ${b.px} px along the ${b.edge}`).join(" and ");
+    const who =
+      n === 1
+        ? "1 animated layer that turns or scales keeps its"
+        : `${n} animated layers that turn or scale keep their`;
+    return `${who} motion exact, but can't be drawn on in ${where} of the new canvas (strokes there are clipped) until moved back. Anchor the centre to avoid it.`;
+  });
 
   // Prefill from the current document each time the dialog opens.
   $effect(() => {
@@ -79,12 +91,18 @@
     }
   });
 
+  const clampSide = (v: number) => Math.max(16, Math.min(8192, Math.round(v)));
+  /** Every cell is a document-sized canvas, and iOS WebKit draws nothing on one over 16.7 MP
+   *  (review 2026-10-17 #10): 8192 a side is allowed, but not both at once. */
+  const tooBig = $derived(!fitsCanvasArea(clampSide(w), clampSide(h)));
+
   function close() {
     appState.sizeDialog.open = false;
   }
   async function confirm() {
-    const cw = Math.max(16, Math.min(8192, Math.round(w)));
-    const ch = Math.max(16, Math.min(8192, Math.round(h)));
+    const cw = clampSide(w);
+    const ch = clampSide(h);
+    if (!fitsCanvasArea(cw, ch)) return;
     if (appState.sizeDialog.mode === "new") {
       // The one remaining irreversible action reachable in a single tap: `replaceProject` clears
       // history and `clearAutosave` drops the latest autosave — so there is nothing to undo it WITH
@@ -234,6 +252,21 @@
           new size. Scale keeps them all.
         </p>
       {/if}
+      {#if cropEffects.bands.length > 0}
+        <p class="text-xs/snug text-warn">{centredNote}</p>
+      {/if}
+      {#if cropEffects.drifts}
+        <p class="text-xs/snug text-warn">
+          An animated layer that turns or scales will show its frames between keys off where they
+          were. Anchor the centre, or Scale, to keep them.
+        </p>
+      {/if}
+      {#if tooBig}
+        <p class="text-xs/snug text-warn">
+          Too big: width × height can be at most 16,777,216 pixels (4096×4096), the largest canvas
+          an iPad can draw.
+        </p>
+      {/if}
       {#if appState.sizeDialog.mode === "new"}
         <p class="text-xs/snug text-warn">
           Replaces the current project and clears its autosave. Save it first if you want to keep
@@ -245,8 +278,10 @@
         <button class="px-3 py-1 rounded hover:bg-surface-hover text-text-secondary" onclick={close}
           >Cancel</button
         >
-        <button class="px-3 py-1 rounded bg-accent text-accent-text" onclick={confirm}
-          >{appState.sizeDialog.mode === "new" ? "Create" : "Resize"}</button
+        <button
+          class="px-3 py-1 rounded bg-accent text-accent-text disabled:opacity-50"
+          disabled={tooBig}
+          onclick={confirm}>{appState.sizeDialog.mode === "new" ? "Create" : "Resize"}</button
         >
       </div>
     </div>

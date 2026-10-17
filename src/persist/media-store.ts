@@ -2,6 +2,7 @@ import { idbDo, MEDIA_STORE } from "./db";
 import { mediaFromBlob } from "../anim/reference";
 import { shouldRestoreMedia } from "./project-file";
 import { persistGeneration } from "./generation";
+import { settlePendingFit } from "../anim/resize";
 import type { Project } from "../anim/document";
 
 export interface MediaRecord {
@@ -41,6 +42,7 @@ export async function hydrateFromStore(project: Project, onSeeked: () => void): 
     if (!rec) continue;
     try {
       l.media = await mediaFromBlob(rec.blob, rec.mime, rec.name, onSeeked);
+      settlePendingFit(l, project.width, project.height); // a resize owed while it was missing
       changed = true;
     } catch {
       /* undecodable record → stays a re-link placeholder */

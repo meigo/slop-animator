@@ -5,6 +5,7 @@
   import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
   import { isTextEntry } from "./text-entry";
   import { Viewport } from "../core/viewport";
+  import { capScaleToArea } from "../core/canvas-area";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
   import {
@@ -492,11 +493,15 @@
    *  QUANTISED to genuine steps: the viewport hooks fire per raw pointermove/wheel event, so a
    *  continuous scale meant a pinch reallocated the display + scratch backing stores and
    *  re-composited every layer on every touch sample. Stepping caps that at one realloc per crossing
-   *  (and at worst renders a mid-step zoom from 1.5× pixels instead of, say, 1.7×). */
+   *  (and at worst renders a mid-step zoom from 1.5× pixels instead of, say, 1.7×).
+   *  CAPPED BY AREA (review 2026-10-17 #10): iOS WebKit draws nothing on a canvas over 16.7 MP, so
+   *  a 4K document went blank past 150 % zoom; `capScaleToArea` lowers the step just enough to fit
+   *  (it depends on the document size only, so it still changes only when a step is crossed). */
   const OUTPUT_SCALE_STEPS = [2, 1.5, 1];
   function displayOutputScale(): number {
     const z = viewport?.zoom ?? 1;
-    return OUTPUT_SCALE_STEPS.find((s) => z >= s) ?? 1;
+    const step = OUTPUT_SCALE_STEPS.find((s) => z >= s) ?? 1;
+    return capScaleToArea(step, appState.project.width * DPR, appState.project.height * DPR);
   }
 
   function sizeDisplay() {
@@ -979,8 +984,9 @@
 
   function sampleAt(p: { x: number; y: number }): string | null {
     const ss = display.width / Math.max(1, appState.project.width * DPR);
-    const px = Math.round(p.x * DPR * ss),
-      py = Math.round(p.y * DPR * ss);
+    // Floor, as the bucket's seed: pixel i covers [i, i+1) (review 2026-10-17 #16).
+    const px = Math.floor(p.x * DPR * ss),
+      py = Math.floor(p.y * DPR * ss);
     if (px < 0 || py < 0 || px >= display.width || py >= display.height) return null;
     const [r, g, b, a] = displayCtx.getImageData(px, py, 1, 1).data;
     // Nothing there: with a transparent background an empty pixel has no colour, and reading its

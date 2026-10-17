@@ -625,3 +625,64 @@ describe("pasteBlockInsert and transform keys", () => {
     expect(l.tracks?.transform).toBeUndefined();
   });
 });
+
+// Review 2026-10-17 #12: copy (resolveSelectionRect) makes one column per VISIBLE row and skips a
+// collapsed group's members, so paste must place columns over the same rows — or every column
+// after the group lands one layer too high, on a member nobody can see.
+describe("paste maps columns over the rows the timeline shows (collapsed groups)", () => {
+  // Stack top-first: A(1), group G (collapsed, member C = 3), B(2).
+  function setup() {
+    const a = drawLayer(1, [key(), hold(), hold()]);
+    const c = { ...drawLayer(3, [key(), hold(), hold()]), groupId: 9 };
+    const b = drawLayer(2, [key(), hold(), hold()]);
+    const p = proj([b, c, a], 3);
+    p.groups = [{ id: 9, name: "G", collapsed: true, visible: true }];
+    return { a, b, c, p };
+  }
+
+  it("drawingLayerIdsDown skips collapsed members below the anchor", () => {
+    const { p } = setup();
+    expect(drawingLayerIdsDown(p, 1)).toEqual([1, 2]);
+  });
+
+  it("the review's scenario: copy A..B, paste at A — B's column lands on B, C untouched", () => {
+    const { a, b, c, p } = setup();
+    const block = copyBlock(p, [1, 2], 0, 0, fakeOps); // the rows a marquee A..B gives
+    const cBefore = [...c.cells];
+    pasteBlockOverwrite(p, block, 1, 2, fakeOps);
+    expect(a.cells[2].kind).toBe("key");
+    expect(b.cells[2].kind).toBe("key");
+    expect(c.cells).toEqual(cBefore);
+  });
+
+  it("insert paste doesn't ripple the hidden member either", () => {
+    const { b, c, p } = setup();
+    const block = copyBlock(p, [1, 2], 0, 0, fakeOps);
+    pasteBlockInsert(p, block, 1, 1, fakeOps);
+    expect(c.cells.length).toBe(3);
+    expect(b.cells.length).toBe(4);
+  });
+
+  it("the wider case: a block copied elsewhere, pasted above a collapsed group, skips it", () => {
+    const { b, c, p } = setup();
+    const other = proj([drawLayer(8, [key()]), drawLayer(7, [key()])], 1);
+    const block = copyBlock(other, [7, 8], 0, 0, fakeOps); // two adjacent rows, no group
+    expect(block.cols).toBe(2);
+    const cBefore = [...c.cells];
+    pasteBlockOverwrite(p, block, 1, 1, fakeOps);
+    expect(c.cells).toEqual(cBefore);
+    expect(b.cells[1].kind).toBe("key");
+    expect(anyEditablePasteTarget(p, 1)).toBe(true);
+  });
+
+  it("an expanded group's members still take columns", () => {
+    const { p } = setup();
+    p.groups[0].collapsed = false;
+    expect(drawingLayerIdsDown(p, 1)).toEqual([1, 3, 2]);
+  });
+
+  it("the anchor itself is kept even inside a collapsed group (paste starts where it was asked)", () => {
+    const { p } = setup();
+    expect(drawingLayerIdsDown(p, 3)).toEqual([3, 2]);
+  });
+});

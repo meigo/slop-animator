@@ -149,15 +149,22 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import {
+  accumulatePendingFit,
+  centredBands,
+  centredCellOffset,
   cropBakeMatrix,
   cropShift,
   cropTransformPlan,
   halvingSteps,
+  keepsCentre,
   placeContent,
   resizeBox,
+  resizeCentredTransform,
   resizeContentPivotTransform,
   resizeDocPivotTransform,
   resizeFitTransform,
+  settlePendingFit,
+  turnsOrScales,
   type ResizeMode,
   type Anchor,
   type Placement,
@@ -569,6 +576,10 @@ export interface StructSnapshot {
    *  every writer (the actions below, the ripple, the length cut) assigns a new array. Undefined =
    *  the project had none, and restoring that has to CLEAR a later add. */
   markers: Marker[] | undefined;
+  /** The play range, ONLY in a step taken with `{ playRange: true }` — the Insert / Delete frame
+   *  tools, which move it with the frames (review 2026-10-17 #13). Present = restore it; absent =
+   *  leave it, so undoing an unrelated step never reverts an in/out set after it. */
+  playRange?: { in: number; out: number } | null;
 }
 function cloneLayers(layers: Layer[]): Layer[] {
   // Shallow per-layer clone with a fresh cells array (same cell + canvas refs), so later
@@ -594,8 +605,8 @@ function cloneLayers(layers: Layer[]): Layer[] {
         },
   );
 }
-function snapshotStructure(): StructSnapshot {
-  return {
+function snapshotStructure(opts?: { playRange?: boolean }): StructSnapshot {
+  const snap: StructSnapshot = {
     layers: cloneLayers(state.project.layers),
     groups: state.project.groups.map((g) => ({
       ...g,
@@ -618,6 +629,11 @@ function snapshotStructure(): StructSnapshot {
     audioUndecoded: state.project.audioUndecoded ?? null,
     markers: state.project.markers,
   };
+  if (opts?.playRange) {
+    const r = state.playback.range;
+    snap.playRange = r ? { ...r } : null;
+  }
+  return snap;
 }
 function restoreStructure(s: StructSnapshot) {
   // Restore the layer set/order and each drawing layer's cells, but keep view-props
@@ -662,6 +678,9 @@ function restoreStructure(s: StructSnapshot) {
         // that has to CLEAR a later trim, not leave it.
         live.trimInFrames = snap.trimInFrames;
         live.trimLenFrames = snap.trimLenFrames;
+        // Owed with the transform it belongs to. A redo of a resize made while the media was
+        // missing, after the media was linked, applies it straight away (below).
+        live.pendingFit = snap.pendingFit;
       }
       return live;
     }
@@ -692,10 +711,13 @@ function restoreStructure(s: StructSnapshot) {
   });
   state.project.frameCount = s.frameCount;
   state.project.markers = s.markers; // unconditional: undefined must clear markers added since
+  if ("playRange" in s) state.playback.range = s.playRange ? { ...s.playRange } : null;
   if (s.width !== state.project.width || s.height !== state.project.height)
     state.cellClipboard = null; // clipboard canvases belong to the old document size; drop on a size-changing undo/redo
   state.project.width = s.width;
   state.project.height = s.height;
+  for (const l of state.project.layers)
+    if (l.kind === "ref") settlePendingFit(l, s.width, s.height); // media linked since (#18)
   state.activeLayerId = s.activeLayerId;
   state.playhead = s.playhead;
   // Restore the track itself (import/remove are undoable), then its offset from the immutable
@@ -743,8 +765,8 @@ function restoreStructure(s: StructSnapshot) {
 }
 
 /** Begin a multi-event structural edit (e.g. a drag): capture the before-state. */
-export function beginStructuralEdit(): StructSnapshot {
-  return snapshotStructure();
+export function beginStructuralEdit(opts?: { playRange?: boolean }): StructSnapshot {
+  return snapshotStructure(opts);
 }
 
 /** Finish a structural edit started with beginStructuralEdit: push one undo command. */
@@ -764,7 +786,7 @@ function noteRetiredRefMedia(a: StructSnapshot, b: StructSnapshot): void {
 }
 
 export function commitStructuralEdit(before: StructSnapshot): void {
-  const after = snapshotStructure();
+  const after = snapshotStructure({ playRange: "playRange" in before });
   noteRetiredRefMedia(before, after);
   history.push({
     undo: () => restoreStructure(before),
@@ -779,8 +801,8 @@ export function commitStructuralEdit(before: StructSnapshot): void {
  * own getImageData/putImageData commands. Structural and pixel commands share the same undo
  * stack and interleave correctly because snapshots keep the same canvas references.
  */
-export function commitStructural(mutate: () => void): void {
-  const before = beginStructuralEdit();
+export function commitStructural(mutate: () => void, opts?: { playRange?: boolean }): void {
+  const before = beginStructuralEdit(opts);
   mutate();
   bump(); // refresh document length + clamp playhead, then bump version
   state.timelineSelection = null; // any structural edit can invalidate stored endpoints
@@ -1755,6 +1777,9 @@ export function groupActiveLayer() {
 }
 /** Ungroup: clear members' groupId, remove the group. */
 export function ungroup(groupId: number) {
+  // A member's float was lifted through the group's compose; without the group, Apply would map it
+  // through a chain the cell no longer renders by (gotcha #9, review 2026-10-17 #19).
+  liftGuard.bank?.();
   commitStructural(() => {
     for (const l of state.project.layers) if (l.groupId === groupId) l.groupId = null;
     state.project.groups = state.project.groups.filter((g) => g.id !== groupId);
@@ -1829,6 +1854,10 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
     order.every((e, i) => cur[i].id === e.id && cur[i].groupId === e.groupId)
   )
     return;
+  // Moving a layer into or out of a group changes its group ∘ layer ∘ cell chain, and a live
+  // float keeps its lift-time chain: Apply landed the pixels off where they showed. Apply it first,
+  // like every other layer-structure action (gotcha #9, review 2026-10-17 #19).
+  liftGuard.bank?.();
   const before = beginStructuralEdit();
   state.project.layers = applyOrder(state.project.layers, order);
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
@@ -1843,6 +1872,8 @@ export function relinkReference(id: number, media: ReferenceMedia, blob?: Blob) 
   if (layer && layer.kind === "ref") {
     releaseReferenceMedia(layer.media); // free the old media (this is not undoable)
     layer.media = media;
+    // A resize while the media was missing left its re-fit owed (review 2026-10-17 #18).
+    settlePendingFit(layer, state.project.width, state.project.height);
     if (blob && (media.type === "image" || (media.type === "video" && layer.embedMedia)))
       persistReferenceMedia(layer, blob, blob instanceof File ? blob.name : layer.name);
     else {
@@ -2345,23 +2376,63 @@ function cropPlanFor(layer: DrawingLayer, w: number, h: number, mode: ResizeMode
   );
 }
 
+/** Whether a layer's transform track turns or scales between keys (`turnsOrScales`). */
+function layerTurnsOrScales(layer: DrawingLayer): boolean {
+  const tr = layerTransformTrack(layer);
+  return !!tr && turnsOrScales(tr.keys.map((k) => k.v));
+}
+
+/** How a resize to `w`×`h` moves the old document's content, in logical px. */
+function resizePlacement(w: number, h: number, mode: ResizeMode, anchor: Anchor): Placement {
+  const oldW = state.project.width;
+  const oldH = state.project.height;
+  const rect = placeContent(oldW * DPR, oldH * DPR, w * DPR, h * DPR, mode, anchor);
+  return {
+    f: rect.w / (oldW * DPR),
+    ox: rect.x / DPR,
+    oy: rect.y / DPR,
+    oldW,
+    oldH,
+    newW: w,
+    newH: h,
+  };
+}
+
 /** What a resize to `w`×`h` will do to transformed layers with drawings, for the Size dialog:
- *  how many a Crop flattens (`bake`: resampled, transform reset), and whether it cuts away pixels
- *  that show inside the new size (`loses`: animated, or in a transformed group). */
+ *  how many a Crop flattens (`bake`: resampled, transform reset), whether it cuts away pixels
+ *  that show inside the new size (`loses`: animated, or in a transformed group), and whether such
+ *  a cut layer turns or scales between keys with an off-centre anchor, so its in-between frames
+ *  move (`drifts`, review 2026-10-17 #11). Where nothing is cut, `resizeProject` keeps such a
+ *  layer's motion exact by placing its cells centred — and then its cell no longer reaches a band
+ *  of the new paper (`centred`: how many layers, `bands`: which edges, how wide). */
 export function resizeTransformEffects(
   w: number,
   h: number,
   mode: ResizeMode,
-): { bakes: number; loses: boolean } {
+  anchor: Anchor,
+): {
+  bakes: number;
+  loses: boolean;
+  drifts: boolean;
+  centred: number;
+  bands: ReturnType<typeof centredBands>;
+} {
   let bakes = 0;
   let loses = false;
+  let drifts = false;
+  let centred = 0;
+  const pl = resizePlacement(w, h, mode, anchor);
+  const offCentre = !keepsCentre(pl);
   for (const l of state.project.layers) {
     if (l.kind !== "draw" || !l.cells.some((c) => c.kind === "key")) continue;
     const plan = cropPlanFor(l, w, h, mode);
     if (plan === "bake") bakes++;
-    else if (plan === "loses") loses = true;
+    else if (plan === "loses") {
+      loses = true;
+      if (offCentre && layerTurnsOrScales(l)) drifts = true;
+    } else if (plan === "keep" && offCentre && layerTurnsOrScales(l)) centred++;
   }
-  return { bakes, loses };
+  return { bakes, loses, drifts, centred, bands: centred > 0 ? centredBands(pl) : [] };
 }
 
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
@@ -2387,15 +2458,13 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
   commitStructural(() => {
     const oldW = state.project.width;
     const oldH = state.project.height;
-    const pl: Placement = {
-      f: rect.w / (oldW * DPR),
-      ox: rect.x / DPR,
-      oy: rect.y / DPR,
-      oldW,
-      oldH,
-      newW: w,
-      newH: h,
-    };
+    const pl = resizePlacement(w, h, mode, anchor);
+    // An animated layer that turns or scales between keys, where nothing is cut: its cells go in
+    // CENTRED and the anchor shift into the translation (`resizeCentredTransform`), linear in the
+    // keys — the anchor's own correction isn't, so its in-between frames drifted (review
+    // 2026-10-17 #11). A centre-keeping placement needs no correction at all.
+    const centred = new Set<DrawingLayer>();
+    const centredOffset = centredCellOffset(pl, DPR);
     // A Crop cuts CELL pixels, so a transformed layer cuts the part of its cells it SHOWED in the
     // new size (`cropTransformPlan`): a move or flip cuts its own window, a scale or turn is drawn
     // through itself into the new canvas. Decided before any transform below changes.
@@ -2404,7 +2473,13 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
       if (layer.kind !== "draw") continue;
       const plan = cropPlanFor(layer, w, h, mode);
       plans.set(layer, plan);
-      const shift = plan === "shift" ? cropShift(layer.transform, pl).offset : null;
+      if (plan === "keep" && !keepsCentre(pl) && layerTurnsOrScales(layer)) centred.add(layer);
+      const shift =
+        plan === "shift"
+          ? cropShift(layer.transform, pl).offset
+          : centred.has(layer)
+            ? centredOffset
+            : null;
       const bake = plan === "bake" ? cropBakeMatrix(layer.transform, pl) : null;
       // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
       // One cell at a time, so each intermediate canvas is garbage before the next is made.
@@ -2442,15 +2517,18 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
         layer.transform = { ...IDENTITY_TRANSFORM }; // drawn into the cells above
         continue;
       }
-      if (layer.kind === "draw") {
+      if (layer.kind === "draw" && centred.has(layer)) {
+        map = (t) => resizeCentredTransform(t, pl, centredOffset);
+      } else if (layer.kind === "draw") {
         map = (t) => resizeDocPivotTransform(t, pl);
       } else {
         // A reference is re-fitted to the new document on its own; `k` is by how much.
         const size = mediaIntrinsicSize(layer.media);
-        const k =
-          size.w > 0 && size.h > 0
-            ? containRect(size.w, size.h, w, h).w / containRect(size.w, size.h, oldW, oldH).w
-            : pl.f; // media not loaded: assume the fit follows the placement
+        const known = size.w > 0 && size.h > 0;
+        const k = known
+          ? containRect(size.w, size.h, w, h).w / containRect(size.w, size.h, oldW, oldH).w
+          : pl.f; // size unknown: leave the scale, and owe the re-fit until the media is linked
+        if (!known) layer.pendingFit = accumulatePendingFit(layer.pendingFit, pl);
         map = (t) => resizeFitTransform(t, pl, k);
       }
       layer.transform = map(layer.transform);

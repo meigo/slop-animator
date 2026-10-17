@@ -70,6 +70,17 @@ export interface DrawingLayer {
   tracksCollapsed?: boolean;
 }
 
+/** The re-fit a resize owes a reference whose media size was unknown (review 2026-10-17 #18):
+ *  its scale was left as it was, and still has to be multiplied by
+ *  `f × fit(w×h) ÷ fit(current document)` for the media's contain-fit (`pendingFitFactor`). `w×h`
+ *  is the document size before the first such resize and `f` the product of every resize's
+ *  placement factor since, so any number of resizes add up to one correction. */
+export interface PendingFit {
+  w: number;
+  h: number;
+  f: number;
+}
+
 export type ReferenceMedia =
   | { type: "image"; el: HTMLImageElement }
   | { type: "video"; el: HTMLVideoElement }
@@ -279,6 +290,10 @@ export interface ReferenceLayer {
   embedMedia?: boolean; // video-only opt-in: persist/embed the (potentially huge) video bytes
   groupId: number | null;
   media: ReferenceMedia;
+  /** A resize the reference couldn't re-fit because its media's size was unknown (a re-link
+   *  placeholder): see `PendingFit`. Applied, and cleared, once the media is linked. Saved;
+   *  absent = nothing pending. */
+  pendingFit?: PendingFit;
   transform: RefTransform;
   tracks?: LayerTracks;
   /** Are this layer's property rows folded away in the timeline? A VIEW-prop, like a group's
