@@ -2674,7 +2674,11 @@
         syncOverlayScale();
         repaintPoseOverlay();
       },
-      isDrawing: () => input.isDrawing(),
+      // A Pencil drag of a gizmo handle counts too: input.ts leaves `[data-ref-handle]` presses to
+      // the gizmo, so `isDrawing` stayed false and a palm or finger panned the view under the pen,
+      // jumping the transform (review 2026-10-17 #32). `transformDragFrame` is set at the handle's
+      // grab and cleared at its settle — exactly the drag (touch never starts one).
+      isDrawing: () => input.isDrawing() || appState.transformDragFrame !== null,
     });
 
     const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
