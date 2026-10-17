@@ -2266,6 +2266,12 @@
 
   function applyPose() {
     if (!meshPose || !selCtx || !selBefore) return;
+    // Untouched (no handle moved, see `poseDirty`): put the cell back rather than bake a re-render
+    // through the mesh — that pushed an undo step and wiped the redo stack (review 2026-10-17 #21).
+    if (!poseDirty) {
+      cancelPose();
+      return;
+    }
     selCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
     meshPose.render(selCtx); // bake the deformed raster into the cell
     const ctx = selCtx;
