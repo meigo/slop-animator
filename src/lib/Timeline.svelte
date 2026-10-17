@@ -1027,6 +1027,10 @@
       return; // declined — already reverted, nothing to undo
     }
     applyAnimationLength(end);
+    // As the Length field's `commitStructural` does: a shrink can leave the selection wholly past
+    // the end — no wash drawn, yet Copy materialised the held last key and Paste stamped a drawing
+    // nobody selected (review 2026-10-17 #25).
+    clearTimelineSelection();
     commitStructuralEdit(undo); // `undo` is still the correct before-state: we restored it
     restorePlayhead();
   }
@@ -1965,10 +1969,17 @@
     if (dragMode === "resize" && dragUndo) {
       // Same reasoning as rowUp's resize branch: a net-zero resize can still have destroyed a
       // transform key by collision, so restore rather than drop.
-      if (resizeChangedDoc()) commitStructuralEdit(dragUndo);
+      if (resizeChangedDoc()) commitResize(dragUndo);
       else revertKeepingPlayhead(dragUndo);
     }
     resetRowDrag();
+  }
+
+  /** Commit a span drag. Shrinking the longest layer's trailing span shortens the document, so a
+   *  selection can be left wholly past the end: cleared, as the length drag does (#25). */
+  function commitResize(undo: StructSnapshot) {
+    if (appState.project.frameCount < undo.frameCount) clearTimelineSelection();
+    commitStructuralEdit(undo);
   }
 
   /** Did the span drag change what the document shows? The resize writes only at the dragged
@@ -2050,7 +2061,7 @@
       // the later one: dragging left then back destroys the earlier key permanently, with nothing
       // pushed for ⌘Z to pop. So abandon by RESTORING the grab-time snapshot, never by re-applying
       // or by walking away — the same rule the ruler's length drag had to learn.
-      if (resizeChangedDoc()) commitStructuralEdit(dragUndo);
+      if (resizeChangedDoc()) commitResize(dragUndo);
       else revertKeepingPlayhead(dragUndo);
     } else if (dragMode === "none" && armedOutside) {
       if (armedOnKey) {
