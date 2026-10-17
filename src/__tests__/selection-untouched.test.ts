@@ -16,6 +16,10 @@ function selection(): Selection {
       },
     },
   );
+  // …and caches the warped picture in a canvas of its own (review 2026-10-17 #28).
+  (globalThis as { document?: unknown }).document ??= {
+    createElement: () => ({ width: 0, height: 0, getContext: () => ctx }),
+  };
   return new Selection({ getContext: () => ctx } as unknown as HTMLCanvasElement);
 }
 const pixels = {} as HTMLCanvasElement;

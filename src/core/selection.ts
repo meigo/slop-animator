@@ -848,6 +848,8 @@ export class Selection {
     this.isCreating = false;
     this.dragging = null;
     this.cellSpaceLift = false;
+    this.warpCacheKey = null; // let go of the float it was rendered from
+    if (this.warpCache) this.warpCache.width = this.warpCache.height = 0;
     this.state = "idle";
     cancelAnimationFrame(this.animFrame);
     this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
@@ -966,6 +968,80 @@ export class Selection {
    *  clears (the compose lives in the callback, not on the selection). */
   boundsToDoc: ((p: { x: number; y: number }) => { x: number; y: number }) | null = null;
 
+  /** The warped float as last rendered, in overlay device px, and what it was rendered from. */
+  private warpCache: HTMLCanvasElement | null = null;
+  private warpCacheKey: {
+    grid: Pt[][];
+    pixels: HTMLCanvasElement;
+    rect: SelectionRect;
+    m: [number, number, number, number, number, number];
+    w: number;
+    h: number;
+  } | null = null;
+
+  /**
+   * Draw the warped float onto the overlay from a cache, re-rendering it through the mesh only when
+   * the grid (every edit assigns a new `warpGrid`), the bitmap, the box, the view/compose transform
+   * or the overlay size changed. The marching ants redraw the overlay every animation frame, and
+   * re-rendering the mesh each time was `2·(rows−1)·(cols−1)` clipped full-bitmap draws per frame
+   * while nothing moved — constant GPU load with Deform merely selected (review 2026-10-17 #28).
+   */
+  private drawWarpedFloat(
+    ctx: CanvasRenderingContext2D,
+    pixels: HTMLCanvasElement,
+    rect: SelectionRect,
+  ) {
+    const t = ctx.getTransform();
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const k = this.warpCacheKey;
+    const fresh =
+      !!k &&
+      !!this.warpCache &&
+      k.grid === this.warpGrid &&
+      k.pixels === pixels &&
+      k.rect.x === rect.x &&
+      k.rect.y === rect.y &&
+      k.rect.w === rect.w &&
+      k.rect.h === rect.h &&
+      k.m[0] === t.a &&
+      k.m[1] === t.b &&
+      k.m[2] === t.c &&
+      k.m[3] === t.d &&
+      k.m[4] === t.e &&
+      k.m[5] === t.f &&
+      k.w === w &&
+      k.h === h;
+    if (!fresh) {
+      if (!this.warpCache) this.warpCache = document.createElement("canvas");
+      const cache = this.warpCache;
+      if (cache.width !== w || cache.height !== h) {
+        cache.width = w;
+        cache.height = h;
+      }
+      const c = cache.getContext("2d")!;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, w, h);
+      c.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+      c.imageSmoothingQuality = ctx.imageSmoothingQuality;
+      c.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+      drawWarpedMesh(c, pixels, rect, this.warpGrid, this.warpRows, this.warpCols);
+      this.warpCacheKey = {
+        grid: this.warpGrid,
+        pixels,
+        rect: { ...rect },
+        m: [t.a, t.b, t.c, t.d, t.e, t.f],
+        w,
+        h,
+      };
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = this.contentAlpha; // content, unlike the grid and ants drawn after
+    ctx.drawImage(this.warpCache!, 0, 0);
+    ctx.restore();
+  }
+
   drawOverlay() {
     const ctx = this.overlayCtx;
     const cvs = this.overlayCanvas;
@@ -1008,12 +1084,7 @@ export class Selection {
       // 'warping' state: tessellated render + grid lines + handles + outer perimeter.
       if (this.state === "warping" && this.warpGrid.length === this.warpRows) {
         const grid = this.warpGrid;
-        if (this.floatingPixels) {
-          ctx.save();
-          ctx.globalAlpha = this.contentAlpha; // content, unlike the grid and ants below
-          drawWarpedMesh(ctx, this.floatingPixels, this.rect, grid, this.warpRows, this.warpCols);
-          ctx.restore();
-        }
+        if (this.floatingPixels) this.drawWarpedFloat(ctx, this.floatingPixels, this.rect);
         // Internal grid lines (between adjacent control points).
         ctx.save();
         ctx.strokeStyle = "rgba(0,0,0,0.3)";
