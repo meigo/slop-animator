@@ -2879,10 +2879,16 @@
   // Bank any in-progress lift (pose / selection transform / deform warp) into the layer/frame it was
   // started on, so switching the active layer or frame leaves a clean slate — mirrors the tool-switch
   // banker. A plain marquee is document-level and kept; the gizmo-based layer transform self-retargets.
-  /** A live lift that `bankActiveEdits` would apply rather than cancel — the same rule. */
+  /** A live lift that `bankActiveEdits` would apply rather than cancel — the same rule. An
+   *  untouched float (`untouchedLift`: unmoved, unwarped, not a paste) is cancelled by `onCommit`
+   *  too, so it is no edit: ⌘Z cancels it and goes on, ⌘⇧Z redoes (review 2026-10-17 #22). */
   function liftHasEdits(): boolean {
     if (meshPose && poseDirty) return true;
-    return !!selection?.hasFloating && !(appState.tool === "deform" && !deformDirty);
+    return (
+      !!selection?.hasFloating &&
+      !selection.untouchedLift &&
+      !(appState.tool === "deform" && !deformDirty)
+    );
   }
 
   function bankActiveEdits() {
