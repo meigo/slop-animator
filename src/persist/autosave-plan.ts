@@ -39,52 +39,54 @@ export function planCheckpoint(
   return { write: key, list: [...byAge.filter((e) => e.key !== key), { ...meta, key }] };
 }
 
-/**
- * The blank-layers guard. `before` holds the ids of layers that had pixels at the last save (or
- * the last check), `now` those that have pixels now, `existing` the layers that can be compared
- * (see `comparableLayers`). A layer that can be compared but lost ALL its pixels counts as
- * emptied. Every way the user empties a layer (a clear, an erase, an undo) is an undo step, so more
- * layers emptied than undo steps taken since (`historySteps`) means something else emptied them:
- * iPad dropping the page's image memory in the background, which kept the layers and blanked
- * their pixels.
- */
-export function looksBlanked(
-  before: ReadonlySet<number>,
-  now: ReadonlySet<number>,
-  existing: ReadonlySet<number>,
-  historySteps: number,
-): boolean {
-  let emptied = 0;
-  for (const id of before) if (existing.has(id) && !now.has(id)) emptied++;
-  return emptied > 0 && emptied > historySteps;
-}
-
-/** The shape `comparableLayers` reads: a drawing layer's key cells and their canvases. */
+/** The shape `looksBlanked` reads: a drawing layer's key cells and their canvases. */
 export interface InkLayerShape<C> {
   id: number;
   kind: string;
   cells?: readonly { kind: string; canvas?: C }[];
 }
 
+/** The guard's baseline, taken at each save: every drawing layer that had pixels → each of its
+ *  inked key-cell canvases → that canvas's ink revision then (`inkRevision` in `cell-ink`). */
+export type InkBaseline<C> = ReadonlyMap<number, ReadonlyMap<C, number>>;
+
 /**
- * The drawing layers the guard can compare with the last save: those still holding the key-cell
- * canvas that was found inked then (`inkedAt`: layer id → that canvas). A layer here is many cells,
- * and one edit can take every inked cell out of several layers at once — a timeline delete or cut
- * across rows, a resize that gives every cell a new canvas — which is a single undo step. Those
- * cells are GONE, not blank. The iPad's blanking keeps the very same canvases and empties them,
- * so requiring the canvas to still be there keeps that case and drops the edits.
+ * The blank-layers guard: did drawings lose their pixels with nothing the user did to explain it?
+ * That is iPad dropping the page's image memory in the background, which keeps the layers and
+ * their very canvases and empties them.
+ *
+ * Judged per CELL: a key-cell canvas that was inked at the save (`baseline`), is still in that
+ * layer, was never written to since — its ink revision (`revision`, bumped by every pixel write,
+ * undo and redo) has not moved — and is empty now (`isEmpty`) was blanked. Every way the user
+ * empties a canvas (erase, clear, cut, undo) moves its revision, and ink drawn on another cell
+ * excuses nothing. A canvas no longer in the layer was deleted or replaced (a timeline delete
+ * across rows, a resize — one step for many cells): gone, not blank.
+ *
+ * Only the FIRST untouched canvas of each layer is probed: iOS empties a page's canvases together,
+ * so one per layer tells, and probing every cell on every save froze the page on a long shot. A
+ * blanking that spares that one canvas (partial reclaim) goes unseen, as it did before.
+ *
+ * It used to excuse one emptied layer per undo step taken since the save, whatever the step
+ * touched — on a 1-4 layer document one stroke was enough to hide a blanking, and the hide flush
+ * always has one (2026-10-17 review #2).
  */
-export function comparableLayers<C>(
+export function looksBlanked<C>(
   layers: readonly InkLayerShape<C>[],
-  inkedAt: ReadonlyMap<number, C>,
-): Set<number> {
-  const out = new Set<number>();
+  baseline: InkBaseline<C>,
+  revision: (canvas: C) => number,
+  isEmpty: (canvas: C) => boolean,
+): boolean {
   for (const l of layers) {
-    if (l.kind !== "draw" || !inkedAt.has(l.id)) continue;
-    const canvas = inkedAt.get(l.id);
-    if (l.cells?.some((c) => c.kind === "key" && c.canvas === canvas)) out.add(l.id);
+    const was = baseline.get(l.id);
+    if (l.kind !== "draw" || !was) continue;
+    for (const c of l.cells ?? []) {
+      if (c.kind !== "key" || c.canvas === undefined) continue;
+      if (was.get(c.canvas) !== revision(c.canvas)) continue; // not inked at the save, or edited
+      if (isEmpty(c.canvas)) return true;
+      break;
+    }
   }
-  return out;
+  return false;
 }
 
 /** Image memory `count` canvases take: 4 bytes a pixel, at the canvas's device resolution. */

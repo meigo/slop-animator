@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  comparableLayers,
   formatBytes,
   keyCellMemoryBytes,
   layerMemoryBytes,
@@ -53,67 +52,112 @@ describe("planCheckpoint", () => {
 });
 
 describe("looksBlanked", () => {
-  const ids = (...n: number[]) => new Set(n);
-
-  it("flags layers emptied with no undo step to explain it", () => {
-    expect(looksBlanked(ids(1, 2, 3), ids(), ids(1, 2, 3), 0)).toBe(true);
-    // Even one, when nothing was done (a one-layer document blanked in the background).
-    expect(looksBlanked(ids(1), ids(), ids(1), 0)).toBe(true);
-  });
-
-  it("allows one emptied layer per undo step (clear, erase, undo)", () => {
-    expect(looksBlanked(ids(1, 2), ids(2), ids(1, 2), 1)).toBe(false);
-    expect(looksBlanked(ids(1, 2, 3), ids(), ids(1, 2, 3), 1)).toBe(true);
-  });
-
-  it("ignores deleted layers and layers that gained pixels", () => {
-    expect(looksBlanked(ids(1, 2), ids(2, 5), ids(2, 5), 0)).toBe(false);
-  });
-});
-
-describe("comparableLayers", () => {
   const a = { name: "a" };
   const b = { name: "b" };
   const c = { name: "c" };
   const key = (canvas: object) => ({ kind: "key", canvas });
   const hold = { kind: "hold" };
+  /** Layer id → [canvas, its ink revision at the save]. */
+  const base = (...e: [number, [object, number][]][]) =>
+    new Map(e.map(([id, cs]) => [id, new Map(cs)]));
+  const revs = (m: Map<object, number>) => (cv: object) => m.get(cv) ?? 0;
+  const empty =
+    (...cs: object[]) =>
+    (cv: object) =>
+      cs.includes(cv);
 
-  it("keeps a drawing layer that still holds the cell found inked at the save", () => {
-    const layers = [{ id: 1, kind: "draw", cells: [hold, key(b), key(a)] }];
-    expect(comparableLayers(layers, new Map([[1, a]]))).toEqual(new Set([1]));
+  it("flags a cell inked at the save, never edited since, and empty now (the iPad's blanking)", () => {
+    const layers = [{ id: 1, kind: "draw", cells: [key(a), hold, key(b)] }];
+    const at = base([
+      1,
+      [
+        [a, 3],
+        [b, 0],
+      ],
+    ]);
+    expect(looksBlanked(layers, at, revs(new Map([[a, 3]])), empty(a, b))).toBe(true);
   });
 
-  it("drops a layer whose inked cell was deleted or replaced — an edit, not the iPad", () => {
-    // A timeline delete across three layers is ONE undo step; their cells are gone, not blank.
+  it("an edit to one cell excuses only that cell, whatever its order or ink", () => {
+    // A stroke on blanked cell a after the blanking (a inked again, revision moved): b, untouched
+    // and empty, still tells.
+    const layers = [{ id: 1, kind: "draw", cells: [key(a), key(b)] }];
+    const at = base([
+      1,
+      [
+        [a, 3],
+        [b, 0],
+      ],
+    ]);
+    expect(looksBlanked(layers, at, revs(new Map([[a, 4]])), empty(b))).toBe(true);
+    // …and with the edited cell second.
+    const flipped = [{ id: 1, kind: "draw", cells: [key(b), key(a)] }];
+    expect(looksBlanked(flipped, at, revs(new Map([[a, 4]])), empty(b))).toBe(true);
+  });
+
+  it("allows cells the user emptied: each one was edited (erase, clear, undo)", () => {
+    const layers = [{ id: 1, kind: "draw", cells: [key(a), key(b)] }];
+    const at = base([
+      1,
+      [
+        [a, 3],
+        [b, 0],
+      ],
+    ]);
+    const now = revs(
+      new Map([
+        [a, 4],
+        [b, 2],
+      ]),
+    );
+    expect(looksBlanked(layers, at, now, empty(a, b))).toBe(false);
+  });
+
+  it("passes untouched cells that still have their ink", () => {
+    const layers = [{ id: 1, kind: "draw", cells: [key(a), key(b)] }];
+    const at = base([
+      1,
+      [
+        [a, 0],
+        [b, 0],
+      ],
+    ]);
+    expect(looksBlanked(layers, at, revs(new Map()), empty())).toBe(false);
+  });
+
+  it("ignores inked cells that were deleted or replaced — an edit, not the iPad", () => {
+    // A timeline delete across rows, or a resize giving every cell a new canvas, is ONE step and
+    // leaves no canvas from the save behind: gone, not blank.
     const layers = [
       { id: 1, kind: "draw", cells: [] },
       { id: 2, kind: "draw", cells: [key(c)] },
     ];
-    expect(
-      comparableLayers(
-        layers,
-        new Map([
-          [1, a],
-          [2, b],
-        ]),
-      ),
-    ).toEqual(new Set());
+    const at = base([1, [[a, 0]]], [2, [[b, 0]]]);
+    expect(looksBlanked(layers, at, revs(new Map()), empty(a, b, c))).toBe(false);
   });
 
-  it("ignores deleted layers, reference layers and layers that had no ink", () => {
+  it("ignores deleted layers, references and layers that had no ink", () => {
     const layers = [
       { id: 2, kind: "ref" },
       { id: 3, kind: "draw", cells: [key(c)] },
     ];
-    expect(
-      comparableLayers(
-        layers,
-        new Map([
-          [1, a],
-          [2, b],
-        ]),
-      ),
-    ).toEqual(new Set());
+    const at = base([2, [[b, 0]]], [4, [[b, 0]]]);
+    expect(looksBlanked(layers, at, revs(new Map()), empty(b, c))).toBe(false);
+  });
+
+  it("probes one untouched cell per layer, not every cell", () => {
+    const layers = [{ id: 1, kind: "draw", cells: [key(a), key(b), key(c)] }];
+    const at = base([
+      1,
+      [
+        [a, 0],
+        [b, 0],
+        [c, 0],
+      ],
+    ]);
+    const probed: object[] = [];
+    looksBlanked(layers, at, revs(new Map()), (cv) => (probed.push(cv), false));
+    expect(probed).toEqual([a]);
   });
 });
 

@@ -157,24 +157,22 @@ function audioBytes(a: SnapshotMemory["audio"]): number {
 
 /**
  * What a structural step keeps alive that the document does not: the canvases (w·h·4 each) only
- * one side of it holds, and the audio track when the two sides differ. At any moment only one side
- * is off the document (before, while the step is on the undo stack; after, once undone), so it
- * counts the larger. Structural steps used to count 0, so deleting a layer or resizing the canvas
- * kept every old canvas alive outside the 256 MB budget, limited only by the 50-step count
- * (2026-09-30 review, roadmap 14c; slop-paint's `detachedLayerBytes`).
+ * its BEFORE side holds, and the old audio track when the step replaced it. That is what the step
+ * holds while it sits on the undo stack, the only place the budget is enforced (`trim` runs on
+ * push, which first empties the redo stack, so an undone step's after side is never weighed).
+ * Canvases a step ADDS (Duplicate, paste, a bigger resize's new canvases, an imported track) are
+ * in the live document while the step is undoable, so they cost history nothing; counting them
+ * (`max` of both sides, until 2026-10-17) let one Duplicate of a heavy layer evict every older
+ * step. Structural steps used to count 0, so deleting a layer or resizing the canvas kept every old
+ * canvas alive outside the 256 MB budget, limited only by the 50-step count (2026-09-30 review,
+ * roadmap 14c; slop-paint's `detachedLayerBytes`).
  */
 export function detachedBytes(before: SnapshotMemory, after: SnapshotMemory): number {
-  const a = canvasesOf(before);
-  const b = canvasesOf(after);
-  let onlyBefore = 0;
-  let onlyAfter = 0;
-  for (const c of a) if (!b.has(c)) onlyBefore += c.width * c.height * 4;
-  for (const c of b) if (!a.has(c)) onlyAfter += c.width * c.height * 4;
-  if (before.audio !== after.audio) {
-    onlyBefore += audioBytes(before.audio);
-    onlyAfter += audioBytes(after.audio);
-  }
-  return Math.max(onlyBefore, onlyAfter);
+  const live = canvasesOf(after);
+  let bytes = 0;
+  for (const c of canvasesOf(before)) if (!live.has(c)) bytes += c.width * c.height * 4;
+  if (before.audio !== after.audio) bytes += audioBytes(before.audio);
+  return bytes;
 }
 
 export class History {
@@ -182,9 +180,6 @@ export class History {
    *  through this: a plain class getter is not a reactive dependency, so a button bound directly
    *  to `history.canUndo` would never re-render. One hook here beats notifying at every push site. */
   onChange?: () => void;
-  /** Counts every change to the stacks (push, undo, redo, clear), never down. The blank-layers
-   *  guard compares it with its value at the last autosave: how many undo steps happened since. */
-  changes = 0;
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private bytes = 0;
@@ -201,7 +196,6 @@ export class History {
     this.undoStack.push(cmd);
     this.bytes += cmd.bytes ?? 0;
     this.trim();
-    this.changes++;
     this.onChange?.();
   }
 
@@ -222,7 +216,6 @@ export class History {
     if (!cmd) return;
     cmd.undo();
     this.redoStack.push(cmd);
-    this.changes++;
     this.onChange?.();
   }
 
@@ -231,7 +224,6 @@ export class History {
     if (!cmd) return;
     cmd.redo();
     this.undoStack.push(cmd);
-    this.changes++;
     this.onChange?.();
   }
 
@@ -239,7 +231,6 @@ export class History {
     this.undoStack = [];
     this.redoStack = [];
     this.bytes = 0;
-    this.changes++;
     this.onChange?.();
   }
 

@@ -36,6 +36,7 @@ import {
   copyTracks,
   normalizedTracks,
   layerTransformTrack,
+  groupOf,
   layerOpacityTrack,
   isLayerAnimated,
   layerAcceptsPropertyTracks,
@@ -148,6 +149,9 @@ export type ToolSettings = Omit<BrushSettings, "isEraser"> & {
 
 import { planMergeDown, type CanvasOps } from "../anim/timeline";
 import {
+  cropBakeMatrix,
+  cropShift,
+  cropTransformPlan,
   halvingSteps,
   placeContent,
   resizeBox,
@@ -2327,6 +2331,39 @@ function shrinkInSteps(src: HTMLCanvasElement, w: number, h: number): HTMLCanvas
   return cur;
 }
 
+/** What a resize to `w`×`h` must do about `layer`'s transform (`cropTransformPlan`). */
+function cropPlanFor(layer: DrawingLayer, w: number, h: number, mode: ResizeMode) {
+  const g = groupOf(layer, state.project.groups);
+  return cropTransformPlan(
+    { mode, oldW: state.project.width, oldH: state.project.height, newW: w, newH: h },
+    {
+      transform: layer.transform,
+      animated: !!layerTransformTrack(layer),
+      groupTransformed:
+        !!g && ((!!g.transform && !isIdentityTransform(g.transform)) || !!g.tracks?.transform),
+    },
+  );
+}
+
+/** What a resize to `w`×`h` will do to transformed layers with drawings, for the Size dialog:
+ *  how many a Crop flattens (`bake`: resampled, transform reset), and whether it cuts away pixels
+ *  that show inside the new size (`loses`: animated, or in a transformed group). */
+export function resizeTransformEffects(
+  w: number,
+  h: number,
+  mode: ResizeMode,
+): { bakes: number; loses: boolean } {
+  let bakes = 0;
+  let loses = false;
+  for (const l of state.project.layers) {
+    if (l.kind !== "draw" || !l.cells.some((c) => c.kind === "key")) continue;
+    const plan = cropPlanFor(l, w, h, mode);
+    if (plan === "bake") bakes++;
+    else if (plan === "loses") loses = true;
+  }
+  return { bakes, loses };
+}
+
 export function resizeProject(newW: number, newH: number, mode: ResizeMode, anchor: Anchor) {
   const w = Math.max(16, Math.min(8192, Math.round(newW)));
   const h = Math.max(16, Math.min(8192, Math.round(newH)));
@@ -2348,25 +2385,6 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
     anchor,
   );
   commitStructural(() => {
-    for (const layer of state.project.layers) {
-      if (layer.kind !== "draw") continue;
-      // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
-      layer.cells = layer.cells.map((c): Cell => {
-        if (c.kind !== "key") return c;
-        // Bake any per-cell transform into pixels first (at the current dims) so resize preserves the
-        // transformed look instead of silently dropping it. bakeCell returns c unchanged if identity.
-        const src = shrinkInSteps(bakeCell(c, IDENTITY_TRANSFORM).canvas, rect.w, rect.h);
-        const nc = createCellCanvas(w, h, DPR);
-        const ctx = nc.getContext("2d")!;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(src, rect.x, rect.y, rect.w, rect.h);
-        return { kind: "key", canvas: nc };
-      });
-    }
-    // Transforms are document-space too: without this every moved, turned or scaled layer,
-    // reference or group ended up somewhere else once the pixels had been placed (2026-09-30
-    // review). Assigned, never mutated — snapshots deep-copy these fields, but the rule stands.
     const oldW = state.project.width;
     const oldH = state.project.height;
     const pl: Placement = {
@@ -2378,8 +2396,52 @@ export function resizeProject(newW: number, newH: number, mode: ResizeMode, anch
       newW: w,
       newH: h,
     };
+    // A Crop cuts CELL pixels, so a transformed layer cuts the part of its cells it SHOWED in the
+    // new size (`cropTransformPlan`): a move or flip cuts its own window, a scale or turn is drawn
+    // through itself into the new canvas. Decided before any transform below changes.
+    const plans = new Map<DrawingLayer, ReturnType<typeof cropPlanFor>>();
+    for (const layer of state.project.layers) {
+      if (layer.kind !== "draw") continue;
+      const plan = cropPlanFor(layer, w, h, mode);
+      plans.set(layer, plan);
+      const shift = plan === "shift" ? cropShift(layer.transform, pl).offset : null;
+      const bake = plan === "bake" ? cropBakeMatrix(layer.transform, pl) : null;
+      // Replace cells (don't mutate cell.canvas) so the undo before-snapshot keeps the old canvases.
+      // One cell at a time, so each intermediate canvas is garbage before the next is made.
+      layer.cells = layer.cells.map((c): Cell => {
+        if (c.kind !== "key") return c;
+        // Bake any per-cell transform into pixels first (at the current dims) so resize preserves the
+        // transformed look instead of silently dropping it. bakeCell returns c unchanged if identity.
+        const flat = bakeCell(c, IDENTITY_TRANSFORM).canvas;
+        const nc = createCellCanvas(w, h, DPR);
+        const ctx = nc.getContext("2d")!;
+        ctx.imageSmoothingQuality = "high";
+        if (bake) {
+          const [a, b, cc, d, e, f] = bake;
+          ctx.setTransform(a, b, cc, d, e * DPR, f * DPR);
+          ctx.drawImage(flat, 0, 0);
+        } else {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          const x = shift ? shift.x * DPR : rect.x;
+          const y = shift ? shift.y * DPR : rect.y;
+          ctx.drawImage(shrinkInSteps(flat, rect.w, rect.h), x, y, rect.w, rect.h);
+        }
+        return { kind: "key", canvas: nc };
+      });
+    }
+    // Transforms are document-space too: without this every moved, turned or scaled layer,
+    // reference or group ended up somewhere else once the pixels had been placed (2026-09-30
+    // review). Assigned, never mutated — snapshots deep-copy these fields, but the rule stands.
     for (const layer of state.project.layers) {
       let map: (t: RefTransform) => RefTransform;
+      if (layer.kind === "draw" && plans.get(layer) === "shift") {
+        layer.transform = cropShift(layer.transform, pl).transform; // static by plan: no track
+        continue;
+      }
+      if (layer.kind === "draw" && plans.get(layer) === "bake") {
+        layer.transform = { ...IDENTITY_TRANSFORM }; // drawn into the cells above
+        continue;
+      }
       if (layer.kind === "draw") {
         map = (t) => resizeDocPivotTransform(t, pl);
       } else {
@@ -2931,6 +2993,7 @@ function currentSelectionRect() {
 export function copyTimelineSelection(): void {
   const rect = currentSelectionRect();
   if (!rect) return;
+  liftGuard.bank?.(); // a live lift has punched the cell (or an Outline preview is in it) → apply first
   state.cellClipboard = copyBlock(
     state.project,
     rect.layerIds,

@@ -182,6 +182,20 @@ describe("autosave storage", () => {
     expect(kv.has("autosave-checkpoints")).toBe(false); // not listed without its blob
   });
 
+  it("#5: with checkpoints off (storage full), a save writes the latest and no checkpoint", async () => {
+    await store.saveAutosave(doc(1), { describe: () => meta(0), checkpoints: false });
+    expect(blobRev("autosave")).toBe(1);
+    expect(kv.has("autosave-cp-0")).toBe(false);
+    expect(kv.has("autosave-checkpoints")).toBe(false);
+  });
+
+  it("#5: tells a full disk from other failures", () => {
+    expect(store.isQuotaError(new DOMException("full", "QuotaExceededError"))).toBe(true);
+    expect(store.isQuotaError(new DOMException("gone", "AbortError"))).toBe(false);
+    expect(store.isQuotaError(new Error("put autosave failed"))).toBe(false);
+    expect(store.isQuotaError(null)).toBe(false);
+  });
+
   it("C3: shelving the latest puts it in the rotation now, dropping only the oldest", async () => {
     for (const t of [0, 5, 10]) await save(doc(t), meta(t * MIN));
     await save(doc(12), meta(12 * MIN)); // latest only: too soon for a checkpoint

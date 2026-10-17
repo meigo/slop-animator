@@ -135,3 +135,103 @@ export function halvingSteps(
   if (!last || last.w !== toW || last.h !== toH) steps.push({ w: toW, h: toH });
   return steps;
 }
+
+/**
+ * What a resize must do about a drawing layer's transform. A Crop cuts every key cell in CELL
+ * space, which is the paper only for an untransformed layer: a moved, scaled or turned layer shows
+ * a different part of its cell, so the crop dropped pixels that showed inside the new document
+ * and kept some that showed off it (2026-10-17 review #6). Only a Crop that shrinks a side cuts
+ * anything — Scale fits the whole cell and a growing Crop keeps all of it, and the transform
+ * mapping (`resizeDocPivotTransform`) then keeps the picture in place.
+ * - `shift`: a static move and/or flip (`isRigidAxisTransform`) cuts its own window of the cell,
+ *   the part that shows in the new document (`cropShift`): exact, no resampling, the flip kept.
+ * - `bake`: any other static transform (a scale or a turn) is drawn through itself straight into
+ *   the new canvas (`cropBakeMatrix`) and reset — it resamples, as Apply does, and the Size dialog
+ *   says so.
+ * - `loses`: an animated layer, or any member of a transformed or animated group, shows a different
+ *   part of its cells on different frames; no single cut keeps them all. The Size dialog warns.
+ */
+export function cropTransformPlan(
+  resize: { mode: ResizeMode; oldW: number; oldH: number; newW: number; newH: number },
+  layer: { transform: Transform; animated: boolean; groupTransformed: boolean },
+): "keep" | "shift" | "bake" | "loses" {
+  const cuts = resize.mode === "crop" && (resize.newW < resize.oldW || resize.newH < resize.oldH);
+  if (!cuts) return "keep";
+  if (layer.animated || layer.groupTransformed) return "loses";
+  const t = layer.transform;
+  if (t.dx === 0 && t.dy === 0 && t.scaleX === 1 && t.scaleY === 1 && t.rotation === 0)
+    return "keep";
+  return isRigidAxisTransform(t) ? "shift" : "bake";
+}
+
+/** A move and/or a flip: unit scale on both axes, no turn. Such a layer shows its cell pixel for
+ *  pixel, only somewhere else (or mirrored). */
+export function isRigidAxisTransform(t: Transform): boolean {
+  const unit = (s: number) => Math.abs(Math.abs(s) - 1) < 1e-9;
+  return (
+    unit(t.scaleX) &&
+    unit(t.scaleY) &&
+    Math.abs(Math.sin(t.rotation)) < 1e-9 &&
+    Math.cos(t.rotation) > 0
+  );
+}
+
+/**
+ * A Crop (`pl.f` = 1) of a moved or flipped layer (`isRigidAxisTransform`): where its old cell goes
+ * in the new cell (`offset`, logical px, in place of the placement's `ox`/`oy`) and its transform
+ * after. The window is the part of the cell that shows in the new document: the cell point shown at
+ * the new centre lands at the new cell's centre. The offset differs from the placement's by whole
+ * pixels, so the pixels are copied, not resampled; the fraction of the move that is left stays in
+ * the transform, and so does the flip. Derived from new-render(q) = old-render(p) + o with
+ * q = p + offset: `d' = d + e − A(e + offset − o)`, e = M(C) − C' (as `resizeDocPivotTransform`).
+ */
+export function cropShift<T extends Transform>(
+  t: T,
+  pl: Placement,
+): { offset: { x: number; y: number }; transform: T } {
+  const cx = pl.oldW / 2,
+    cy = pl.oldH / 2;
+  const ncx = pl.newW / 2,
+    ncy = pl.newH / 2;
+  // The cell point shown at the new centre: the old paper point X* = C' − o, through render⁻¹ (A is
+  // its own inverse for a flip).
+  const sx = Math.sign(t.scaleX),
+    sy = Math.sign(t.scaleY);
+  const px = cx + sx * (ncx - pl.ox - cx - t.dx);
+  const py = cy + sy * (ncy - pl.oy - cy - t.dy);
+  const offset = {
+    x: pl.ox + Math.round(ncx - px - pl.ox),
+    y: pl.oy + Math.round(ncy - py - pl.oy),
+  };
+  const ex = cx + pl.ox - ncx,
+    ey = cy + pl.oy - ncy;
+  return {
+    offset,
+    transform: {
+      ...t,
+      dx: t.dx + ex - sx * (ex + offset.x - pl.ox),
+      dy: t.dy + ey - sy * (ey + offset.y - pl.oy),
+    },
+  };
+}
+
+/**
+ * A Crop (`pl.f` = 1) of a scaled or turned layer: the canvas matrix `[a, b, c, d, e, f]` (as
+ * `setTransform` takes it, logical px) that draws the old cell straight into the new one where it
+ * showed — render(p) = C + d + A(p − C), then the placement. The transform is reset after. Drawn
+ * into the NEW canvas, so a side that grows keeps the art that shows past the old paper.
+ */
+export function cropBakeMatrix(
+  t: Transform,
+  pl: Placement,
+): [number, number, number, number, number, number] {
+  const cos = Math.cos(t.rotation),
+    sin = Math.sin(t.rotation);
+  const a = cos * t.scaleX,
+    b = sin * t.scaleX,
+    c = -sin * t.scaleY,
+    d = cos * t.scaleY;
+  const cx = pl.oldW / 2,
+    cy = pl.oldH / 2;
+  return [a, b, c, d, cx + t.dx - (a * cx + c * cy) + pl.ox, cy + t.dy - (b * cx + d * cy) + pl.oy];
+}

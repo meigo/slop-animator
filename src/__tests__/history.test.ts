@@ -127,35 +127,6 @@ describe("History.onChange", () => {
   });
 });
 
-describe("History.changes", () => {
-  it("counts every push, undo, redo and clear — the guard's undo steps since a save", () => {
-    const s = { n: 0 };
-    const h = new History();
-    expect(h.changes).toBe(0);
-    h.push(counterCmd(s, 1));
-    h.push(counterCmd(s, 1));
-    h.undo();
-    h.redo();
-    expect(h.changes).toBe(4);
-    h.clear();
-    expect(h.changes).toBe(5);
-  });
-
-  it("does not count an undo or redo with nothing to do", () => {
-    const h = new History();
-    h.undo();
-    h.redo();
-    expect(h.changes).toBe(0);
-  });
-
-  it("keeps counting when the stack is trimmed (it is not the stack depth)", () => {
-    const s = { n: 0 };
-    const h = new History(2);
-    for (let i = 0; i < 5; i++) h.push(counterCmd(s, 1));
-    expect(h.changes).toBe(5);
-  });
-});
-
 describe("pixelCommand marks its canvas's ink as changed", () => {
   it("on creation (the write it records just happened), on undo and on redo", async () => {
     const { pixelCommand } = await import("../anim/history");
@@ -196,10 +167,43 @@ describe("detachedBytes (structural steps count toward the budget)", () => {
     expect(detachedBytes({ layers: [lay(a), lay(b)] }, { layers: [lay(a)] })).toBe(400);
   });
 
-  it("counts a resize once (old canvases or new ones — only one side is off the document)", () => {
-    const old = [cv(), cv()];
-    const fresh = [cv(20, 20), cv(20, 20)];
-    expect(detachedBytes({ layers: [lay(...old)] }, { layers: [lay(...fresh)] })).toBe(3200);
+  it("counts a resize's old canvases (what the undo step keeps off the document), up or down", () => {
+    const small = [cv(), cv()];
+    const big = [cv(20, 20), cv(20, 20)];
+    expect(detachedBytes({ layers: [lay(...small)] }, { layers: [lay(...big)] })).toBe(800);
+    expect(detachedBytes({ layers: [lay(...big)] }, { layers: [lay(...small)] })).toBe(3200);
+  });
+
+  it("counts nothing for canvases a step ADDS: they are in the document (Duplicate, paste)", () => {
+    const a = cv(),
+      copy1 = cv(),
+      copy2 = cv();
+    expect(detachedBytes({ layers: [lay(a)] }, { layers: [lay(a), lay(copy1, copy2)] })).toBe(0);
+  });
+
+  it("counts nothing for an added audio track, but a replaced one's old samples", () => {
+    const old = { buffer: { length: 1000, numberOfChannels: 2 }, bytes: { byteLength: 500 } };
+    const fresh = { buffer: { length: 9000, numberOfChannels: 2 }, bytes: { byteLength: 900 } };
+    expect(detachedBytes({ layers: [], audio: null }, { layers: [], audio: fresh })).toBe(0);
+    expect(detachedBytes({ layers: [], audio: old }, { layers: [], audio: fresh })).toBe(8500);
+  });
+
+  it("a Duplicate of a heavy layer no longer evicts the strokes before it", () => {
+    const h = new History(50, 1000);
+    for (let i = 0; i < 5; i++) h.push({ undo() {}, redo() {}, bytes: 100 });
+    const a = cv(),
+      clones = [cv(20, 20), cv(20, 20)]; // 3200 bytes, over the 1000 budget by itself
+    h.push({
+      undo() {},
+      redo() {},
+      bytes: detachedBytes({ layers: [lay(a)] }, { layers: [lay(a), lay(...clones)] }),
+    });
+    let undos = 0;
+    while (h.canUndo) {
+      h.undo();
+      undos++;
+    }
+    expect(undos).toBe(6);
   });
 
   it("counts nothing for a step that keeps every canvas (reorder, rename, length)", () => {
