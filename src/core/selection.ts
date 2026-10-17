@@ -482,13 +482,30 @@ export class Selection {
    * along a lasso edge (the hole and the float are two anti-aliased clips of the same outline, and
    * composited they don't add back to full alpha) and pushed an undo step for nothing. A paste is
    * never "untouched" — placing it is the edit.
+   *
+   * A warp (Deform, or Distort/Mesh) counts too when every grid point still sits where an
+   * un-transformed lift puts it, at any grid density: re-rendering it through the mesh would add
+   * seams and push a step that wiped the redo stack (review 2026-10-17 #21). A warp entered from a
+   * moved Free transform samples the moved box, so it is an edit.
    */
   get untouchedLift(): boolean {
+    if (this.floatingPixels === null || this.fromPaste || !this.rect) return false;
+    if (this.state === "warping") {
+      const rest = sampleGrid(this.rect, identity(), this.warpRows, this.warpCols);
+      const eps = 1e-6;
+      return (
+        this.warpGrid.length === this.warpRows &&
+        rest.every((row, r) =>
+          row.every((p, c) => {
+            const q = this.warpGrid[r]?.[c];
+            return !!q && Math.abs(q.x - p.x) < eps && Math.abs(q.y - p.y) < eps;
+          }),
+        )
+      );
+    }
     const m = this.matrix;
     return (
       this.state === "transforming" &&
-      this.floatingPixels !== null &&
-      !this.fromPaste &&
       m.a === 1 &&
       m.b === 0 &&
       m.c === 0 &&

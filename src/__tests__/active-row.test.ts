@@ -16,7 +16,8 @@ import {
   workingTarget,
   type ActiveRow,
 } from "../anim/active-row";
-import type { AudioTrack, Layer } from "../anim/document";
+import { nonEmptyGroups, type AudioTrack, type Layer } from "../anim/document";
+import { applyOrder } from "../anim/layer-drop";
 
 const layer = (id: number, groupId: number | null = null): Layer =>
   ({
@@ -475,5 +476,45 @@ describe("whyRowRefusesTransform", () => {
   it("is null on a layer row, and on a valid group drag", () => {
     expect(whyRowRefusesTransform({ kind: "layer", id: 1 }, g10)).toBeNull();
     expect(whyRowRefusesTransform({ kind: "group", id: 10 }, g10)).toBeNull();
+  });
+});
+
+// Review 2026-10-17 #24: the layer panel's drag (reorderLayersWithGroups) prunes a group whose
+// last member moved out, and a layer track can move into a collapsed group, but it never ran this
+// repair, so the selected row pointed at a group that no longer existed (every pixel tool refused).
+describe("resolveStaleTrackFocus after a layer drag", () => {
+  const G = { id: 10, name: "G", collapsed: false, visible: true };
+  it("a group emptied by dragging its last layer out falls back to the draw target", () => {
+    const layers = [layer(1, 10), layer(2)];
+    const moved = applyOrder(layers, [
+      { id: 1, groupId: null },
+      { id: 2, groupId: null },
+    ]);
+    const groups = nonEmptyGroups([G], moved);
+    expect(groups).toEqual([]);
+    for (const row of [
+      { kind: "group", id: 10 },
+      { kind: "track", owner: "group", id: 10, prop: "opacity" },
+    ] as ActiveRow[])
+      expect(resolveStaleTrackFocus(row, { layers: moved, groups }, 1)).toEqual({
+        kind: "layer",
+        id: 1,
+      });
+  });
+
+  it("a layer track dragged into a collapsed group falls back to that group's row", () => {
+    const tracked = { ...layer(1), tracks: { opacity: { keys: [{ frame: 0, v: 100 }] } } };
+    const moved = applyOrder([tracked, layer(2, 10)] as Layer[], [
+      { id: 1, groupId: 10 },
+      { id: 2, groupId: 10 },
+    ]);
+    const row: ActiveRow = { kind: "track", owner: "layer", id: 1, prop: "opacity" };
+    expect(
+      resolveStaleTrackFocus(
+        row,
+        { layers: moved, groups: [{ ...G, collapsed: true }] } as never,
+        1,
+      ),
+    ).toEqual({ kind: "group", id: 10 });
   });
 });

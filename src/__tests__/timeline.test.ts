@@ -978,6 +978,22 @@ describe("ripple insert/delete shift document-space clips", () => {
       expect(track(l).keys.map((k) => k.frame)).toEqual([0, 35]);
     });
 
+    // Review 2026-10-17 #23: the drag keeps its step only when the span's VISIBLE end moved — the
+    // two no-op cases the pointer test missed both leave it where it was.
+    it("a 1-frame span dragged left, or a short trailing span padded, keeps its visible end", () => {
+      const a = short(10, []);
+      a.cells[1] = { kind: "key", canvas: fakeOps.create() }; // key 0's span is 1
+      const aEnd = spanVisualEnd(a, 0, 40);
+      resizeHoldSpan(a, 0, Math.max(1, -3), 40);
+      expect(spanVisualEnd(a, 0, 40)).toBe(aEnd);
+
+      const b = short(30, [0, 35]); // 30 cells in a 40-frame document: visibly ends at 40
+      resizeHoldSpan(b, 0, 35, 40); // dragged from 40 to 35: pads the track to 35 cells
+      expect(b.cells.length).toBe(35);
+      expect(spanVisualEnd(b, 0, 40)).toBe(40);
+      expect(track(b).keys.map((k) => k.frame)).toEqual([0, 35]);
+    });
+
     it("a span that is not trailing ripples exactly as before", () => {
       const l = short(10, [0, 8]);
       l.cells[5] = { kind: "key", canvas: fakeOps.create() }; // span of key 0 ends at 5

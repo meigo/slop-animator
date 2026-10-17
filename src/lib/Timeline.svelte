@@ -79,6 +79,7 @@
     clearFrameIsNoOp,
     restoreCellTrack,
     resizeHoldSpan,
+    spanVisualEnd,
     setLoop,
     removeLoop,
     setLoopBack,
@@ -1026,6 +1027,10 @@
       return; // declined — already reverted, nothing to undo
     }
     applyAnimationLength(end);
+    // As the Length field's `commitStructural` does: a shrink can leave the selection wholly past
+    // the end — no wash drawn, yet Copy materialised the held last key and Paste stamped a drawing
+    // nobody selected (review 2026-10-17 #25).
+    clearTimelineSelection();
     commitStructuralEdit(undo); // `undo` is still the correct before-state: we restored it
     restorePlayhead();
   }
@@ -1138,10 +1143,12 @@
   let dragLayerId = -1;
   let dragKey = -1; // key index being resized
   let dragUndo: StructSnapshot | null = null;
-  let dragStartBoundary = -1;
   let dragLastBoundary = -1;
   /** The longest OTHER drawing layer at grab: where this layer's trailing span visibly ends. */
   let dragOthersLen = 1;
+  /** Where the dragged span visibly ended at the grab — what decides whether the drag changed the
+   *  document (`resizeChangedDoc`), since the pointer can move while nothing is written. */
+  let dragStartVisualEnd = -1;
   let rowCursor = $state("default");
   let gridWrapper = $state<HTMLElement | null>(null);
 
@@ -1837,9 +1844,9 @@
       if (settled.kind !== "resize") return;
       dragMode = "resize";
       dragKey = settled.keyIndex;
-      dragStartBoundary = rowBoundary(e);
-      dragLastBoundary = dragStartBoundary;
+      dragLastBoundary = rowBoundary(e);
       dragOthersLen = othersLength(layer);
+      dragStartVisualEnd = spanVisualEnd(layer, dragKey, dragOthersLen);
       dragUndo = beginStructuralEdit();
       transformDragGuard.settle = settleRowDrag;
       armRowEdgeScroll(layer);
@@ -1962,10 +1969,28 @@
     if (dragMode === "resize" && dragUndo) {
       // Same reasoning as rowUp's resize branch: a net-zero resize can still have destroyed a
       // transform key by collision, so restore rather than drop.
-      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
+      if (resizeChangedDoc()) commitResize(dragUndo);
       else revertKeepingPlayhead(dragUndo);
     }
     resetRowDrag();
+  }
+
+  /** Commit a span drag. Shrinking the longest layer's trailing span shortens the document, so a
+   *  selection can be left wholly past the end: cleared, as the length drag does (#25). */
+  function commitResize(undo: StructSnapshot) {
+    if (appState.project.frameCount < undo.frameCount) clearTimelineSelection();
+    commitStructuralEdit(undo);
+  }
+
+  /** Did the span drag change what the document shows? The resize writes only at the dragged
+   *  span's end, so its VISIBLE end decides. Comparing pointer boundaries pushed a step (wiping
+   *  redo, counting as a change for the blank-layers guard) for a 1-frame span dragged left, which
+   *  writes nothing, and for a short layer's trailing span dragged inside the others' length, which
+   *  only pads the stored track (review 2026-10-17 #23). Reverting those restores the grab. */
+  function resizeChangedDoc(): boolean {
+    const l = appState.project.layers.find((x) => x.id === dragLayerId);
+    if (!l || l.kind !== "draw") return false;
+    return spanVisualEnd(l, dragKey, dragOthersLen) !== dragStartVisualEnd;
   }
 
   function resetRowDrag() {
@@ -1983,8 +2008,8 @@
     dragLayerId = -1;
     dragKey = -1;
     dragUndo = null;
-    dragStartBoundary = -1;
     dragLastBoundary = -1;
+    dragStartVisualEnd = -1;
     moveGrabFrame = -1;
     moveDelta = 0;
     moved = false;
@@ -2036,7 +2061,7 @@
       // the later one: dragging left then back destroys the earlier key permanently, with nothing
       // pushed for ⌘Z to pop. So abandon by RESTORING the grab-time snapshot, never by re-applying
       // or by walking away — the same rule the ruler's length drag had to learn.
-      if (dragLastBoundary !== dragStartBoundary) commitStructuralEdit(dragUndo);
+      if (resizeChangedDoc()) commitResize(dragUndo);
       else revertKeepingPlayhead(dragUndo);
     } else if (dragMode === "none" && armedOutside) {
       if (armedOnKey) {

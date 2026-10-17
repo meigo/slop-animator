@@ -1862,6 +1862,11 @@ export function reorderLayersWithGroups(order: { id: number; groupId: number | n
   state.project.layers = applyOrder(state.project.layers, order);
   state.project.groups = nonEmptyGroups(state.project.groups, state.project.layers);
   bump();
+  // The drag can delete a group (its last member moved out) or move a layer's track row into a
+  // collapsed group, and it never selects a row (the grip swallows the click), so the selected row
+  // could outlive its target: every pixel tool refused with nothing lit (review 2026-10-17 #24).
+  // The repair `commitStructural` runs for every other structural edit.
+  state.activeRow = resolveStaleTrackFocus(state.activeRow, state.project, state.activeLayerId);
   commitStructuralEdit(before);
 }
 

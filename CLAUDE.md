@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1785 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1794 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
@@ -332,8 +332,8 @@ coverage × rim × grain, `multiply` with Mix colours; full redraw, NEVER frozen
 own scratch between frames and recomputes the rim only in a window (`window.slopWashFull` in dev to
 compare). The eraser gets Wobble only. See the 2026-10-03 changelog entry.
 
-Shipped 2026-10-17: **Code review 2 batches A and B** (`docs/superpowers/reviews/2026-10-17-code-review.md`;
-batches C–E still open). User-visible (A): a Crop that shrinks a side keeps what transformed layers showed —
+Shipped 2026-10-17: **Code review 2 batches A, B and C** (`docs/superpowers/reviews/2026-10-17-code-review.md`;
+batches D–E still open). User-visible (A): a Crop that shrinks a side keeps what transformed layers showed —
 a moved or flipped layer cuts its own window, a scaled or turned one has its transform applied
 (resampled, and the Size dialog says so); animated layers and layers in a transformed group get a
 warning. (B): Pose, Distort and Mesh leave no seams and no bright folds (`drawMeshTriangles`, replacing
@@ -344,7 +344,11 @@ scale floor and re-fits one resized while its media was missing on relink; paste
 groups like copy; Insert/Delete frame move the play range (undoable); Rigid pins follow the grid; a
 lasso lift copies all it clears; bucket and eyedropper pick the pixel under the tap; a layer drag or
 Ungroup applies a live lift; boil retries after a lost WebGL context and an export says which frames
-went out without it. See the CHANGELOG entries.
+went out without it. (C): an untouched Pose / Deform / Distort-Mesh ✓ or Enter, and an untouched lift
+under ⌘Z / ⌘⇧Z, change nothing and keep redo (`Selection.untouchedLift` now covers a warp grid at
+rest); a span-edge drag that changes nothing visible pushes no step; a layer drag repairs a selected
+row it removed or folded away; a drag that shortens the document (ruler length, or the longest
+layer's last span) clears the timeline selection. See the CHANGELOG entries.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 
