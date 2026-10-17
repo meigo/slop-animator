@@ -33,3 +33,15 @@ export function pasteRoute(c: PasteContext): PasteRoute {
   if (c.hasCellClipboard) return "cells";
   return "image";
 }
+
+/** Whether the window `paste` event may turn an OS-clipboard image into a reference layer. Not
+ *  into a text field (the paste is the field's text, and preventing it lost it), not under a modal
+ *  dialog, and not while an export renders the live project frame by frame — the same gates as the
+ *  key handler, which a `paste` event never passed through (review 2026-10-17 #31). */
+export function windowPasteAllowed(c: {
+  exportBusy: boolean;
+  modalOpen: boolean;
+  textEntry: boolean;
+}): boolean {
+  return !c.exportBusy && !c.modalOpen && !c.textEntry;
+}

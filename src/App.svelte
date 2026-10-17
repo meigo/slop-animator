@@ -68,7 +68,7 @@
   import { inkRevision, probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore } from "./persist/media-store";
-  import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
+  import { pasteRoute, windowPasteAllowed, type PasteRoute } from "./anim/paste-precedence";
   import { innerWidth } from "svelte/reactivity/window";
   import { panelBesideToolOptions } from "./anim/panel-layout";
 
@@ -308,6 +308,16 @@
     // `currentPasteRoute()` again (rather than reading a flag set during the keydown) is what fixes
     // the old bug: the flag could never be cleared by the very event its own preventDefault
     // suppressed, so it stayed armed and swallowed the NEXT Cmd+V.
+    // The key handler's gates too: a text field's paste is its own, a dialog owns the keys, and an
+    // export renders the live project (review 2026-10-17 #31).
+    if (
+      !windowPasteAllowed({
+        exportBusy: state.exportBusy,
+        modalOpen: modalOpen(),
+        textEntry: isTextEntry(e.target as HTMLElement | null),
+      })
+    )
+      return;
     if (currentPasteRoute() !== "image") return;
     const items = e.clipboardData?.items;
     if (!items) return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pasteRoute, type PasteContext } from "../anim/paste-precedence";
+import { pasteRoute, windowPasteAllowed, type PasteContext } from "../anim/paste-precedence";
 
 const ctx = (o: Partial<PasteContext> = {}): PasteContext => ({
   selectTool: false,
@@ -52,5 +52,17 @@ describe("pasteRoute", () => {
     const atKeydown = ctx({ selectTool: true, pixelPasteReady: false, hasCellClipboard: false });
     expect(pasteRoute(atKeydown)).toBe("image");
     expect(pasteRoute({ ...atKeydown })).toBe("image"); // a fresh context, same state, same answer
+  });
+});
+
+// Review 2026-10-17 #31: a paste in a text field, under a dialog or during an export added a
+// reference layer from an image on the OS clipboard.
+describe("windowPasteAllowed", () => {
+  const base = { exportBusy: false, modalOpen: false, textEntry: false };
+  it("allows the image paste only with none of the gates up", () => {
+    expect(windowPasteAllowed(base)).toBe(true);
+    expect(windowPasteAllowed({ ...base, exportBusy: true })).toBe(false);
+    expect(windowPasteAllowed({ ...base, modalOpen: true })).toBe(false);
+    expect(windowPasteAllowed({ ...base, textEntry: true })).toBe(false);
   });
 });
