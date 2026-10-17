@@ -59,12 +59,38 @@
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
 
   // Non-reactive on purpose: nothing renders from it.
-  let scrub: { startX: number; startValue: number; moved: boolean; lastEmitted: number } | null =
-    null;
+  // `pointerId`: the contact that started the scrub. Move, up and cancel from any other (a resting
+  // palm, a finger panning the canvas — its events bubble to window too) are ignored; they drove
+  // the value from their own x and ended the scrub, committing it (review 2026-10-17 #33).
+  let scrub: {
+    pointerId: number;
+    pointerType: string;
+    startX: number;
+    startValue: number;
+    moved: boolean;
+    lastEmitted: number;
+  } | null = null;
 
   function onPointerDown(e: PointerEvent) {
     if (disabled || e.button !== 0) return;
-    scrub = { startX: e.clientX, startValue: value, moved: false, lastEmitted: value };
+    // A second contact on the field must not restart the scrub in flight — unless the scrub's own
+    // pointer cannot still be down, i.e. its release never arrived: a pen or a mouse has only one
+    // contact, so a new press of the same type means the old one ended (each Pencil contact gets a
+    // new pointerId, so comparing ids locked the field for good). The stale scrub is dropped.
+    if (
+      scrub &&
+      scrub.pointerId !== e.pointerId &&
+      !(scrub.pointerType === e.pointerType && e.pointerType !== "touch")
+    )
+      return;
+    scrub = {
+      pointerId: e.pointerId,
+      pointerType: e.pointerType,
+      startX: e.clientX,
+      startValue: value,
+      moved: false,
+      lastEmitted: value,
+    };
     // NO preventDefault: the browser still focuses the field and places the caret, so a press that
     // never travels is an ordinary tap-to-type.
     window.addEventListener("pointermove", onPointerMove);
@@ -75,7 +101,7 @@
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (!scrub) return;
+    if (!scrub || e.pointerId !== scrub.pointerId) return;
     const dx = e.clientX - scrub.startX;
     if (!scrub.moved) {
       if (Math.abs(dx) < SCRUB_THRESHOLD_PX) return;
@@ -102,7 +128,8 @@
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: PointerEvent) {
+    if (scrub && e.pointerId !== scrub.pointerId) return;
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
