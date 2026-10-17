@@ -27,7 +27,8 @@ Batches, in the order to fix them:
   batch A"). An open stroke left uncommitted, the blank-layers guard on small documents, autosave
   after a failed load, checkpoints vs quota, crop dropping visible pixels, undo history evicted by
   one Duplicate, timeline Copy capturing a live lift.
-- **B — wrong pixels or wrong place** (#9–20): Pose seams, the display canvas over iOS's area limit,
+- **B — wrong pixels or wrong place** (#9–20): all FIXED on `fix/review2-batch-b` (see CHANGELOG,
+  "Code review 2 batch B"). Pose seams, the display canvas over iOS's area limit,
   resize vs rotating layers / reference scale / missing media, collapsed-group paste, play range
   vs insert/delete, Rigid pins, lasso rect rounding, bucket/eyedropper rounding, layer drag of a
   lifted layer, boil after context loss.
@@ -165,9 +166,11 @@ Batches, in the order to fix them:
 - **Verifier:** `copyTimelineSelection` (appState:2931) calls `copyBlock` with no `liftGuard.bank`, while its siblings `deleteTimelineSelection` (:2948), `moveTimelineSelection` (:2968) and `pasteCells` (:2994) all bank. `liftPixels`/the Free-transform path punch the region out of the live cell canvas (selection.ts:453-457, Canvas.svelte:1781-1814), and App routes both ⌘C/⌘X (App.svelte:146,156-197) and Edit ▸ Copy/Cut (:100-109) to the timeline whenever the pixel selection is floating (`active && !hasFloating` is false). Nothing in the timeline press path banks for a same-layer, same-frame press: `rowDown` (Timeline.svelte:1778) calls `setActiveLayer` with the same id (no layer change for `bankActiveEdits`) and the long-press marquee sets the selection without moving the playhead; `liftGuard.bank` in rowDown runs only for a `resize` plan. Cut then banks inside `deleteTimelineSelection` and deletes the cell the float was just applied to. Undo recovers the pixels (the bank and the delete are both undo steps), and the TimelineSelectionBar's Copy/Cut buttons hit the same path; major is right for silently wrong clipboard contents.
 
 
-## Batch B — wrong pixels or wrong place
+## Batch B — wrong pixels or wrong place (FIXED)
 
 ### 9. Pose still draws each mesh triangle under its own antialiased clip, so Apply leaves seams along every triangle edge (the 646ddb7 fix only covered Distort/Mesh)
+
+**FIXED 2026-10-17** in `4dbfc19` (branch `fix/review2-batch-b`).
 
 **verdict:** confirmed — **severity:** major — **reviewer:** major — wrong-pixels — `src/core/mesh-pose.ts:234` (area: selection)
 
@@ -179,6 +182,8 @@ Batches, in the order to fix them:
 
 ### 10. Display (and onion scratch) backing store is doc × outputScale² with no area cap — over iOS WebKit's canvas-area limit for a 4K/UHD document at ≥ 200 % zoom
 
+**FIXED 2026-10-17** in `614e2f0` (branch `fix/review2-batch-b`).
+
 **verdict:** plausible — **severity:** major — **reviewer:** major — wrong-pixels — `src/lib/Canvas.svelte:496-517` (area: model-render)
 
 - **Problem:** `displayOutputScale()` picks 2 whenever `viewport.zoom >= 2`, independent of document size, and `sizeDisplay()` sets BOTH `display` and `scratch` to `round(W·DPR·ss) × round(H·DPR·ss)`. iOS WebKit refuses canvases above 16,777,216 px of area (the "Canvas area exceeds the maximum limit (width * height > 16777216)" console error) and also caps total canvas memory. A 3840×2160 document is 8.3 MP; at ss = 2 the display becomes 7680×4320 = 33 MP, and the onion scratch the same — both over the limit, so the 2D context draws nothing (blank canvas) the moment the zoom crosses 200 %. A 2896×2896-or-larger document crosses at 2×; `MAX_DOC_PX = 8192` (resize.ts:101) even lets a document whose CELL canvases exceed the limit at 1× (8192×8192 = 67 MP). Desktop browsers and desktop WebKit (`test:ipad`) have far higher limits, so nothing local would catch it. UNVERIFIED on device — reasoned from WebKit's documented iOS limit.
@@ -188,6 +193,8 @@ Batches, in the order to fix them:
 - **Verifier:** The code path holds up. `displayOutputScale()` (`src/lib/Canvas.svelte:496-500`) picks from `OUTPUT_SCALE_STEPS = [2, 1.5, 1]` on zoom alone. `sizeDisplay()` (`:502-517`) sizes both `display` and `scratch` to `round(W·DPR·ss) × round(H·DPR·ss)`, with `DPR = 1` (`appState.svelte.ts:510`). Nothing caps the area: the viewport only clamps zoom (`viewport.ts:48`, maxZoom 20), and `SizeDialog` / `MAX_DOC_PX` allow up to 8192 per side. The review UNDERSTATES the threshold. The 1.5 step already pushes a 3840×2160 document to 5760×3240 = 18.7 MP, over 16,777,216, so the failure starts at 150 % zoom, not 200 %. Any document over about 7.46 MP (for example 2732×2732) crosses at 1.5×, and a square document over 4096×4096 is already over the limit at 1×, cells included. I can confirm the arithmetic and that no guard exists. That WebKit on iPadOS 18/26 still enforces the 16.7 MP area limit (and what a refused canvas then shows) depends on the device, so the verdict is plausible. The fix should clamp `ss` by area, not only by zoom.
 
 ### 11. Resize with a non-centre anchor makes a rotating drawing layer's in-between frames land far from where they showed (keys are exact)
+
+**FIXED 2026-10-17** in `c750df8` (branch `fix/review2-batch-b`).
 
 **verdict:** confirmed — **severity:** major — **reviewer:** major — wrong-place — `src/state/appState.svelte.ts:2396` (`resizeTrack`), `src/anim/resize.ts:61` (`resizeDocPivotTransform`) (area: transform)
 
@@ -203,6 +210,8 @@ Batches, in the order to fix them:
 
 ### 12. Copy/paste across a collapsed group writes the copied columns onto the wrong layers, including a layer hidden in the collapsed group
 
+**FIXED 2026-10-17** in `ecc6967` (branch `fix/review2-batch-b`).
+
 **verdict:** confirmed — **severity:** major — **reviewer:** major — wrong-place — `src/anim/timeline-selection.ts:37`, `src/anim/timeline-block.ts:103-110` (area: timeline)
 
 - **Problem:** `resolveSelectionRect` drops members of a COLLAPSED group from `layerIds` (line 37), so `copyBlock` builds one column per visible row. `pasteBlockOverwrite` / `pasteBlockInsert` then place column `c` on `drawingLayerIdsDown(project, top)[c]`, which lists every drawing layer down the stack. It skips only references, so collapsed members are included. `isLayerEditable` checks lock and visibility, not collapse, so the collapsed member is written. Copy and paste disagree on which layers count, so every column after the collapsed group lands one layer (or more) too high.
@@ -213,6 +222,8 @@ Batches, in the order to fix them:
 
 ### 13. Insert/delete frame does not move the play range, so the in/out points slide off the frames they bracketed
 
+**FIXED 2026-10-17** in `c1e705d` (branch `fix/review2-batch-b`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/anim/timeline.ts:352-417` (area: timeline)
 
 - **Problem:** `rippleDocumentFrames` shifts every document-frame quantity: track keys, ref ranges, video offset, audio, and markers. It does not shift `state.playback.range`, which is also in document frames (`{in, out}`, used by `effectiveRange`). `frameTool` / `deleteTool` (Timeline.svelte:2077-2093) call only `insertFrameAllLayers` / `deleteFrameAllLayers`. Markers on the same frames do move, so after an insert inside or before the range, the range and the markers disagree.
@@ -222,6 +233,8 @@ Batches, in the order to fix them:
 - **Verifier:** `rippleDocumentFrames` (`timeline.ts:352-417`) shifts ref ranges, audio, `audioUndecoded` and markers, but never touches `state.playback.range`. The only writers of `playback.range` are the in/out/edge/clear actions (`appState.svelte.ts:2685-2703`). `frameTool` and `deleteTool` (`Timeline.svelte:2077-2093`) call only `insertFrameAllLayers` and `deleteFrameAllLayers` inside `commitStructural`. The scenario holds: insert lands at `playhead + 1 = 6`, the marker at 10 moves to 11, and the range stays 10-20. The review missed one more consumer: the stale range is also the default export range (`ExportDialog.svelte:90`, `resolveExportRange(opts, appState.playback.range, …)`), so an export of the play range is off by the same frames. Minor, because it is session state and visible on the ruler.
 
 ### 14. Rigid warp pins are not moved with the grid, so after a whole-grid move (or an FFD drag of a pinned point) the next Rigid drag yanks the pins back to their old spots
+
+**FIXED 2026-10-17** in `809796f` (branch `fix/review2-batch-b`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/core/selection.ts:658` (area: selection)
 
@@ -236,6 +249,8 @@ Batches, in the order to fix them:
 
 ### 15. Lasso lift snaps the copy rect by rounding (not outward), so a lasso edge left outside the rounded rect is cleared from the cell but missing from the float and the clipboard
 
+**FIXED 2026-10-17** in `ecbf402` (branch `fix/review2-batch-b`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-pixels — `src/core/selection.ts:377` (area: selection)
 
 - **Problem:** `copyPixelsFromDoc` (377-385), from fix 5c1b1ed (old #11), snaps `px = round(x)`, `pw = round(w)` and copies only `[px, px+pw)`. For a rect marquee this is consistent, because `clearRegion`'s rect branch clears the same snapped rect. For a lasso it is not. `clearRegion`'s lasso branch (~430-444; the needsMap branch likewise uses the unsnapped `lassoPoints`) clears everything inside the lasso PATH. The path is unchanged, and rounding can pull the rect up to 0.5 px inside the lasso on either side. Example: leftmost lasso x = 10.55 gives px = 11. Column 10 lies 45% inside the lasso along the whole stretch of the edge near x≈10.55. `clearRegion` erases 45% of its alpha, but the float starts at column 11. The right and bottom edges behave the same way when `round(x) + round(w) < x + w`.
@@ -245,6 +260,8 @@ Batches, in the order to fix them:
 - **Verifier:** A lasso's `rect` is the raw fractional AABB of its points (selection.ts:304-317, `updateCreate`), and `copyPixelsFromDoc` (selection.ts:374-412) rounds it to `[round(x), round(x)+round(w))` and clips the copy to that bitmap, while `clearRegion`'s lasso branch (selection.ts:428-441, and the `needsMap` branch 416-426) clears through the unsnapped lasso path over the whole canvas. So partial-coverage pixels of the path outside the rounded rect are cleared but never copied. The finding actually understates the right/bottom side: `round(x)+round(w)` can fall nearly a whole pixel short of `x+w` (e.g. x=10.4, w=5.4 → 15 vs 15.8), not just 0.5 px. The rounding itself is deliberate (code comment at 383-388, same as slop-paint `src/selection.ts:359`), but its interaction with the lasso clear was not considered; for rect marquees it is consistent because `rect` is reassigned to the snapped value before `clearRegion`. Affected area is limited to where the freehand path reaches its bbox extremes (usually short stretches), only on Select/Lasso paper-crop lifts (Deform/Pose use content bounds) and copy; an untouched Apply restores via `untouchedLift`, so it shows only after a real move. Minor holds.
 
 ### 16. The bucket picks the tapped pixel with Math.round, so at high zoom a tap on a pixel's right or bottom half fills its neighbour
+
+**FIXED 2026-10-17** in `3d56867` (branch `fix/review2-batch-b`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/core/fill.ts:430` (area: brushes)
 
@@ -265,6 +282,8 @@ Batches, in the order to fix them:
 
 ### 17. Resize can push a reference's scale below the 0.05 floor, so it later pops (between keys, after reload, on the next scale drag)
 
+**FIXED 2026-10-17** in `59358e9` (branch `fix/review2-batch-b`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-pixels — `src/anim/resize.ts:76-86` (`resizeFitTransform`) (area: transform)
 
 - **Problem:** `resizeFitTransform` multiplies `scaleX/scaleY` by `r = f / k` and does not apply `floorScale`. When a crop enlarges the document (f = 1, k = new fit ÷ old fit > 1), `r < 1`, and a small reference drops below `MIN_SCALE` (0.05), which `RefTransform`'s doc says a magnitude never goes below (document.ts:82). Everything else enforces that floor, so the value does not survive: (a) `lerpTransform` floors (document.ts:712), so on an animated ref the in-between frames render at 0.05 while key frames render at the sub-floor value, and the ref flickers in size at every key. (b) `normalizeTransform` floors on load (project-file.ts:500), so after save and reopen, or an autosave restore, the ref is bigger than it was. (c) The next corner or side drag starts from `floorScale(t.scaleX * k)` (ref-transform.ts:154/171), so the first move snaps it up.
@@ -274,6 +293,8 @@ Batches, in the order to fix them:
 - **Verifier:** `resizeFitTransform` (src/anim/resize.ts:76-87) sets `scaleX: t.scaleX * r` with `r = f/k` and no `floorScale`. For a 480×270 → 1920×1080 Crop with 16:9 media, f = 1 and k = 4, so 0.15 becomes 0.0375, below MIN_SCALE (ref-transform.ts:15). All three knock-on effects trace through the code. (a) `resolveTrack` returns key values raw, while `lerpTransform` floors in-betweens (document.ts:712-713), so even two equal sub-floor keys render at 0.05 between them. (b) `normalizeTransform` floors on load (project-file.ts:499-502). (c) `applyScale`/`applyStretch` floor `t.scaleX * k` (ref-transform.ts:157, 172-174), so the first drag snaps. The static value also renders unfloored right after the resize, so it looks correct until any of those paths runs. It needs a small reference plus a resize where k > f, so minor is right.
 
 ### 18. Resize with a reference whose media is missing (or still loading) guesses its re-fit, so it comes back the wrong size once relinked
+
+**FIXED 2026-10-17** in `ef54de2` (branch `fix/review2-batch-b`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/state/appState.svelte.ts:2387-2391` (area: transform)
 
@@ -285,6 +306,8 @@ Batches, in the order to fix them:
 
 ### 19. A layer drag (or Ungroup) changes a lifted layer's group compose without banking the float, so Apply lands the pixels off where they were shown
 
+**FIXED 2026-10-17** in `6b14f7d` (branch `fix/review2-batch-b`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/lib/LayerList.svelte:363`, `src/state/appState.svelte.ts:1819` (and `:1753` ungroup, `src/lib/LayerProps.svelte:629`) (area: ui-input)
 
 - **Problem:** `reorderLayersWithGroups` (called from `endDrag` on release) and `ungroup` change a layer's `groupId`, so its `group ∘ layer ∘ cell` chain changes. Neither calls `liftGuard.bank`, although `addLayerToProject`, `removeLayer`, `removeGroup` and `duplicate*` do. Dragging the active layer by its grip doesn't switch layers (the click is swallowed), so Canvas's bank-on-layer-switch effect (Canvas ~2914) doesn't fire either. Selecting the group row to reach Ungroup also leaves `activeLayerId` unchanged when the lifted layer is the group's top drawing member (`selectGroup`). A paper-crop float keeps its lift-time `liftComposeSteps` (`syncComposeSteps` returns early while `hasFloating`), so Apply maps the float into the cell through the OLD chain, and the cell is then drawn through the NEW one.
@@ -294,6 +317,8 @@ Batches, in the order to fix them:
 - **Verifier:** `reorderLayersWithGroups` (`appState.svelte.ts:1819-1833`) and `ungroup` (`:1753-1758`) have no `liftGuard.bank`. `addLayerToProject` (`:808`) and the other structural actions (`:919`, `:938`, `:992`, `:1015`, …) do. `LayerList.endDrag` (`:353-364`) calls the reorder directly, and `startDrag` never switches layers. Canvas banks on an `activeLayerId`/`playhead` change (`:2914-2922`) and on a tool change, not on `groupId`. `selectGroup` (`:2120-2131`) leaves `activeLayerId` alone when the lifted layer is already the group's top draw member. The float keeps its lift-time `liftComposeSteps` (`:1809`; `syncComposeSteps` returns while `hasFloating`, `:233-236`), and `onCommit` inverts that old chain (`:1649`). After the reorder, `layerComposeSteps` (`:141-159`) adds or drops the group step, so the cell renders through a chain the commit did not invert. The float lands displaced by the group transform. This only shows when the group has a non-identity transform, so minor is right.
 
 ### 20. A WebGL context that is (or comes back) lost during `build()` now disables boil for the whole session, and a loss mid-export silently drops boil for some frames
+
+**FIXED 2026-10-17** in `acbd489` (branch `fix/review2-batch-b`).
 
 **verdict:** plausible — **severity:** minor — **reviewer:** minor — wrong-pixels — `src/core/boil-gl.ts:72-110,141-146` (area: model-render)
 

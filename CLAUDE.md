@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1736 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1785 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
@@ -322,12 +322,6 @@ pause autosave. Media pruning keeps every stored copy's media (New no longer cle
 > autosave; the check probes the first untouched cell of each layer. See the CHANGELOG entry "Code
 > review 2 batch A".
 
-Shipped 2026-10-17: **Code review 2 batch A** (`docs/superpowers/reviews/2026-10-17-code-review.md`;
-batches B–E still open). User-visible: a Crop that shrinks a side keeps what transformed layers showed —
-a moved or flipped layer cuts its own window, a scaled or turned one has its transform applied
-(resampled, and the Size dialog says so); animated layers and layers in a transformed group get a
-warning. See the CHANGELOG entry.
-
 Shipped 2026-10-03: **Wobble and the Watercolour brush** (port of slop-paint `f9fb670` + `4d24cde`).
 `src/core/wobble.ts` (slop-paint's, with `strokeSeed`; `dry-brush.ts` is slop-paint's byte for byte):
 outline points / ribbon corners move by noise of their PAGE (cell) position — `smoothWobble`,
@@ -337,6 +331,20 @@ and Smooth's path averaging in document space first, as for Smooth): one filled 
 coverage × rim × grain, `multiply` with Mix colours; full redraw, NEVER frozen (translucent); keeps its
 own scratch between frames and recomputes the rim only in a window (`window.slopWashFull` in dev to
 compare). The eraser gets Wobble only. See the 2026-10-03 changelog entry.
+
+Shipped 2026-10-17: **Code review 2 batches A and B** (`docs/superpowers/reviews/2026-10-17-code-review.md`;
+batches C–E still open). User-visible (A): a Crop that shrinks a side keeps what transformed layers showed —
+a moved or flipped layer cuts its own window, a scaled or turned one has its transform applied
+(resampled, and the Size dialog says so); animated layers and layers in a transformed group get a
+warning. (B): Pose, Distort and Mesh leave no seams and no bright folds (`drawMeshTriangles`, replacing
+the `lighter` scratch); a zoomed 4K display no longer goes blank on iPad, and New/Resize refuse
+W × H over 16,777,216; resize keeps a turning animated layer's in-betweens in place (cells centred,
+with a Size dialog note on the band of paper it can't draw on), keeps a reference at or above the
+scale floor and re-fits one resized while its media was missing on relink; paste skips collapsed
+groups like copy; Insert/Delete frame move the play range (undoable); Rigid pins follow the grid; a
+lasso lift copies all it clears; bucket and eyedropper pick the pixel under the tap; a layer drag or
+Ungroup applies a live lift; boil retries after a lost WebGL context and an export says which frames
+went out without it. See the CHANGELOG entries.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

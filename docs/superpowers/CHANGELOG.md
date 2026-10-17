@@ -7819,6 +7819,8 @@ batch A's).** Ten findings from `docs/superpowers/reviews/2026-09-30-code-review
   `forwardTransformPoint` (both modes, four anchors, a turned + mirrored + stretched transform).
   Known limit: between keys of a layer that rotates while cropped to a corner the interpolated path
   can differ slightly (the correction depends on the rotation); keys are exact.
+  > **SUPERSEDED 2026-10-17** — not slight (134 px at the midpoint of a 0°→90° pair); fixed exactly for
+  > Scale and a growing Crop, warned for a shrinking one. See "Code review 2 batch B", #11.
 - Build 0/0, 1567 tests. Not run in a browser or on the iPad: owed a pass for the brushes (stamp
   density slow vs fast, mouse opacity, eraser opacity), a lasso lift + Apply, a Pose tap, a bucket
   recolour, a span drag on a short layer, the merge-down block message, and a resize of a project
@@ -8223,6 +8225,9 @@ layer listed and empty, and the next autosave would have replaced the only store
   the restore dialog opens. A layer is compared only while it still holds the canvas found inked
   (`comparableLayers`): a timeline delete or cut across rows empties several layers in ONE step by
   removing cells, which the iPad never does. `replaceProject` re-baselines (`autosaveActions.rebaseline`).
+  > **SUPERSEDED 2026-10-17** — the guard no longer counts undo steps (`History.changes` and
+  > `comparableLayers` are gone): it judges each key cell by its ink revision. See "Code review 2 batch
+  > A", #2.
 - **UI:** `RestoreDialog.svelte` (state in `state.restoreDialog`, in `modalOpen`), File ▸ Restore
   autosave…; Restore asks first, then `loadAutosave(DPR, key)` → `replaceProject` → `hydrateFromStore`.
   Document menu: "Drawing memory ~N MB" (unique key-cell canvases × document size); on iPad above
@@ -8485,6 +8490,10 @@ one pixel; inside a triangle each pixel is covered once), only the mesh's device
 copied, then put down in ONE `drawImage` at the identity transform — the caller's clip, alpha and
 compositing still apply; the caller's smoothing is copied to the scratch. Side effect: a folded mesh
 (dragged over itself) is a little brighter where it overlaps.
+
+> **SUPERSEDED 2026-10-17** — `lighter` added colour where a mesh folds (grey + grey → white); the shared
+> `drawMeshTriangles` now draws each triangle as a lerp through a 1 px dilated clip. See "Code review 2
+> batch B", #9.
 - Patch applied by hand (context differed). Checked with a throwaway script (a marquee over a solid
   scribble → Distort 2×2 / Mesh 3×3 → Apply, no handle moved, pixel diff): before 585 / ~1300 px
   changed (WebKit and Chromium alike); after 0 / 0 in WebKit, 27 / 59 in Chromium at ≤ 4 levels
@@ -8555,3 +8564,81 @@ the verifier corrected the reviewer, the verifier's reading was followed. One co
   background-and-return, also with a lift open; #4 a restore after a failed startup load; #5 near the
   storage quota; #6 Crop of a moved, a flipped and a turned layer from several anchors, a crop that
   grows one side, and both Size dialog notices.
+
+
+**Code review 2 batch B: wrong pixels or wrong place (2026-10-17, branch `fix/review2-batch-b`, cut from
+batch A's).** Findings #9–#20 of `docs/superpowers/reviews/2026-10-17-code-review.md`; where the verifier
+corrected the reviewer, the verifier's reading was followed. A second reviewer went over the batch and
+four of its points were folded into the commits (#9's fold colour, #11's rounding and drawing-area note,
+#13's undo). One commit each:
+- **#9 Pose left seams along its mesh; Distort/Mesh brightened folds** (`4dbfc19`). `MeshPose.render`
+  drew each triangle straight onto the target under its own antialiased clip — the seams 646ddb7 fixed
+  for Distort/Mesh, now a lattice about every 16 px baked in by Apply. 646ddb7's `lighter` scratch also
+  added COLOUR where a mesh folds (grey + grey → white, red brighter, translucent ink more opaque), the
+  normal case for Pose's bent elbow. Replaced for every user: the shared `drawMeshTriangles` (in
+  `selection.ts`; `drawWarpedMesh` and `MeshPose.render` both use it) draws each triangle on an empty
+  scratch as a LERP over what is under it — `destination-out` by its coverage c, then `lighter` of its
+  image under the same clip: c·src + (1 − c)·dst — through its clip dilated `MESH_DILATE_PX` = 1 device
+  px (`dilateTriangle`: either winding, corners under 60° cut square so a sliver can't spike). The later
+  triangle covers every pixel on a shared edge fully, translucent art stays exact (a dilated
+  source-over would double-draw a band), and a fold shows the later triangle. `drawTriangle` removed.
+  Checked on a modelled canvas (`mesh-seams.test.ts`, supersampled coverage): a six-triangle fan's worst
+  seam is 80/255 undilated, 0.43/255 at 0.5 px, 0 from 0.75 px.
+- **#10 The zoomed display went blank over iOS WebKit's canvas-area limit** (`614e2f0`). The display and
+  onion scratch were doc × 2 (or 1.5) from the zoom alone; iOS draws nothing on a canvas over
+  16,777,216 px, so a 4K document went blank from 150 %. `capScaleToArea` (`src/core/canvas-area.ts`)
+  lowers the step just enough (4K shows at ~1.42×), never below 1; desktop sizes are unchanged. Ruling:
+  cells are document-sized, so the Size dialog now refuses W × H over 16,777,216 (4096×4096, or e.g.
+  8192×2048; a side can still be 8192) with a note. Projects opened from a file aren't checked.
+- **#11 Resize made a rotating layer's in-betweens land far off** (`c750df8`). Each key got
+  `d' = f·d + e − A·e`, not linear in the rotation, while in-betweens lerp `dx/dy`: 134 px off at the
+  midpoint of a 0°→90° pair after a middle-left Crop 1920 → 1000. Exact fix, no model change: a layer
+  whose track turns or scales, with an off-centre placement, in a resize that cuts nothing (Scale or a
+  growing Crop) gets its cells placed CENTRED (`centredCellOffset`) and the anchor shift in the
+  translation (`resizeCentredTransform`, `d' = f·d + e`). In a Crop that offset is rounded to whole
+  device px (copied, not resampled, on an odd margin); the remainder r goes in per key (`− A·r`), so
+  keys stay exact and in-betweens are off by at most |r| ≤ 0.71 px. Cost: the layer reads as moved by e,
+  and its cell no longer reaches a band |e| wide of the new paper, where strokes are clipped — the Size
+  dialog says which edge and how wide (`centredBands`). A frozen pivot box on the layer track was
+  rejected (render, gizmo and inverse never read one). A shrinking Crop still cuts at the anchor
+  (animated layers are its "loses" case), so its in-betweens still drift: the dialog says so when the
+  anchor is off-centre (`drifts`) and points at the centre anchor or Scale.
+- **#12 Paste across a collapsed group wrote onto the wrong layers** (`ecc6967`): `drawingLayerIdsDown`
+  skips collapsed-group members below the anchor, as copy's row set does. Covers the verifier's wider
+  case (any paste above a collapsed group wrote into it); the anchor itself always stays column 0.
+- **#13 Insert/Delete frame left the play range behind** (`c1e705d`): `shiftPlayRange` (the reference
+  ranges' `shiftSpan` rule) moves it with the frames, inside the step. Undo restores it for these two
+  tools only: `StructSnapshot.playRange` is captured only for `commitStructural(…, { playRange: true })`
+  and restored only when present, so an in/out set after an unrelated step is never reverted.
+- **#14 Rigid pins stayed behind** (`809796f`): `endDrag` re-syncs every pin from the grid after any warp
+  drag (a whole-grid move, an FFD drag of a pinned point); a Rigid drag already leaves pins on their
+  points.
+- **#15 A lasso cleared pixels it didn't copy** (`ecbf402`): `snapRectOutward` (floor min, ceil max,
+  1e-6 px of noise ignored) replaces the rounding; the selection rect stays the snapped pixels (14a).
+- **#16 Bucket and eyedropper picked the next pixel** (`3d56867`): `Math.floor` in `floodFill`'s seed and
+  `sampleAt`.
+- **#17 A resize could push a reference below the scale floor** (`59358e9`). Ruling: clamp in
+  `resizeFitTransform` (`floorScale`), so the reference grows a little at the resize and then stays put,
+  rather than lowering MIN_SCALE, which would change every scale drag and keyed flip and still not cover
+  every resize (r down to 1/512).
+- **#18 A reference resized while its media was missing came back the wrong size** (`ef54de2`). The save
+  keeps no media size, so the resize records what it owes: `ReferenceLayer.pendingFit {w, h, f}` (the
+  first such resize's document size, the product of the placement factors — any number of resizes add up
+  to one correction). `settlePendingFit` scales the static transform and every key once the media has a
+  size: on relink, media restored from the file or the media store, and after undo/redo. Saved
+  (optional, additive, `validPendingFit` on load) and restored by undo.
+- **#19 A layer drag or Ungroup moved a lifted layer's compose** (`6b14f7d`): `reorderLayersWithGroups`
+  (after its no-op guard) and `ungroup` call `liftGuard.bank` first (gotcha #9).
+- **#20 Boil after a WebGL context loss** (`acbd489`): a failed build on a lost context (or none) no
+  longer marks boil unsupported for the session; it backs off 0.5 s → 30 s and keeps trying. Only a
+  live-context shader failure is final. `boilFallbacks()` counts frames drawn without boil; the Export
+  dialog notes "line boil couldn't run on N frames (WebGL unavailable) — exported without it" through the
+  existing note path. The frames are still encoded, not retried.
+- Build 0/0 on every commit, 1785 tests (1736 before); `npm run test:ipad` passes on the branch.
+  **Owed on the iPad:** #9 a filled shape posed and applied (no lattice), a grey or coloured limb bent to
+  fold (no bright wedge), an untouched Distort and Mesh 3×3 (no seams); #10 a 3840×2160 document past
+  150 % and 200 % zoom, and the Size dialog's limit note; #11 a 0°→90° layer through a middle-left Scale
+  to a narrower aspect, an odd-margin Crop (no blur), the drawing-area and drift notes; #15 a Pencil lasso
+  round a near-vertical stroke, moved and applied; #18 a non-embedded video cropped before relinking (and
+  saved and reopened first); #19 a lift dragged into a rotated group, and Ungroup; #20 a long boiled
+  export under memory pressure.
