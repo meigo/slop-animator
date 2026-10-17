@@ -1,13 +1,15 @@
-import { state as appState } from "../state/appState.svelte";
+import { AUDIO_UNDECODED_ALERT, state as appState } from "../state/appState.svelte";
 import { canShareFile, isStandalone, shareFile } from "../export/share";
 import { downloadBlob } from "../export/download";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A project file reached the user (share sheet or download). Same rule as a plain Save: retire the
- *  autosave warning, except the one saying autosave is off for the session. */
+ *  autosave warning, except the one saying autosave is off for the session — and the
+ *  undecodable-audio notice, which a save doesn't change (review 2026-10-17 #35). */
 export function markProjectSaved(): void {
-  if (!appState.autosaveOff) appState.persistAlert = "";
+  if (!appState.autosaveOff && appState.persistAlert !== AUDIO_UNDECODED_ALERT)
+    appState.persistAlert = "";
 }
 
 /**
@@ -28,10 +30,12 @@ export async function deliverToFiles(
 ): Promise<"shared" | "dismissed" | "ready" | "downloaded" | "failed"> {
   if (!canShareFile(file)) {
     // The Home Screen app can't download either: a download there does nothing and reports
-    // success. Say so instead — sticky, since "no file appeared" is the state in which someone
-    // closes the app believing they are saved.
+    // success. Say so instead — for a PROJECT sticky, since "no file appeared" is the state in
+    // which someone closes the app believing they are saved (a successful Save retires it). An
+    // export's dialog reports its own failure; a sticky copy outlived it for the session.
     if (isStandalone()) {
-      appState.persistAlert = `Couldn't save ${file.name}: the share sheet won't take this file, and the Home Screen app can't download — open the app in Safari and save there.`;
+      if (isProject)
+        appState.persistAlert = `Couldn't save ${file.name}: the share sheet won't take this file, and the Home Screen app can't download — open the app in Safari and save there.`;
       return "failed";
     }
     downloadBlob(file, file.name);

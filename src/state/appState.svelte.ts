@@ -733,6 +733,7 @@ function restoreStructure(s: StructSnapshot) {
   // gone at the next autosave. `audio` and `audioUndecoded` are never both set, and restoring both
   // from the same snapshot preserves that.
   state.project.audioUndecoded = s.audioUndecoded;
+  retireStaleAudioAlert(); // undoing a remove brings it back silently; undoing it away retires it
   // The selected ROW follows the restored layer — but only when a LAYER row is selected. Row
   // selection is session state, and undo must not move it BETWEEN rows: resetting it
   // unconditionally silently dropped an audio-lane selection on any unrelated undo, so the next
@@ -1927,6 +1928,7 @@ export function setAudioTrack(track: AudioTrack) {
     // left the engine reading offsetFrames 0 forever. Same fix in replaceProject.
     audioEngine.setTrack(state.project.audio);
   });
+  retireStaleAudioAlert();
 }
 /** Move the playhead (clamped); when paused, plays a short audio scrub window at the new frame.
  *  All paused playhead-move UI routes through this (ruler, prev/next, keyboard stepping). */
@@ -2020,6 +2022,7 @@ export function removeAudioTrack() {
     state.project.audioUndecoded = null; // "Remove" means remove — including bytes we couldn't decode
     audioEngine.setTrack(null);
   });
+  retireStaleAudioAlert();
 }
 
 /** Write a completed trim gesture. Takes `offsetFrames` too because a HEAD trim moves it and
@@ -2735,6 +2738,16 @@ export function applyPreferences(p: Partial<Preferences>): void {
   state.keepProportions = keepProportionsPref(p);
 }
 
+/** The notice for an audio track this device can't decode. A CONDITION of the open document, not
+ *  a save state: shown while it holds, retired when the document or its audio changes
+ *  (`retireStaleAudioAlert`), and never by a Save or an autosave (review 2026-10-17 #35). */
+export const AUDIO_UNDECODED_ALERT =
+  "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+function retireStaleAudioAlert(): void {
+  if (state.persistAlert === AUDIO_UNDECODED_ALERT && !state.project.audioUndecoded)
+    state.persistAlert = "";
+}
+
 /** Replace the whole document (e.g. after Open or autosave restore). */
 export function replaceProject(project: Project) {
   invalidateInk(); // a new document: no cached ink answer carries over
@@ -2773,6 +2786,7 @@ export function replaceProject(project: Project) {
   setActiveLayer(firstDrawing.id);
   bump();
   autosaveActions.rebaseline?.(); // its drawings are the blank-layers guard's new baseline
+  retireStaleAudioAlert(); // the callers re-announce it when the new document has the condition
 }
 
 /** View-only recomposite (play/stop, onion, layer switch). Does not mark the project dirty. */
