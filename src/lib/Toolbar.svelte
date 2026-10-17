@@ -21,6 +21,7 @@
     editActions,
     liftGuard,
     autosaveActions,
+    AUDIO_UNDECODED_ALERT,
   } from "../state/appState.svelte";
   import {
     formatBytes,
@@ -34,7 +35,7 @@
   import { pruneUnusedMedia } from "../persist/autosave";
   import { downloadBlob } from "../export/download";
   import { isAppleTouch, isStandalone, saveToFilesAvailable } from "../export/share";
-  import { deliverToFiles } from "./deliver-file";
+  import { deliverToFiles, markProjectSaved } from "./deliver-file";
   import ToolbarMenu from "./ToolbarMenu.svelte";
   import {
     Paintbrush,
@@ -138,9 +139,7 @@
         replaceProject(project);
         void pruneUnusedMedia(appState.project.layers); // keeps what stored autosaves point at
         // Sticky slot, not the hover hint — see the matching note in App.svelte's startup path.
-        if (appState.project.audioUndecoded)
-          appState.persistAlert =
-            "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+        if (appState.project.audioUndecoded) appState.persistAlert = AUDIO_UNDECODED_ALERT;
         return;
       }
       if (pendingKind === "audio") {
@@ -231,7 +230,8 @@
       } else downloadBlob(blob, name);
       // The work is on disk, so retire any autosave warning — EXCEPT the one saying autosave is off
       // for the session, which a save does not fix: everything drawn after this is still unprotected.
-      if (!appState.autosaveOff) appState.persistAlert = "";
+      // (And the undecodable-audio notice, a condition of the document — `markProjectSaved`.)
+      markProjectSaved();
       appState.statusHint = embedFailed
         ? `Saved ${name} — a reference couldn't be embedded, so it's saved without it`
         : `Saved ${name}`;

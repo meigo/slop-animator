@@ -54,16 +54,27 @@
   // always outlasts the tap that started it, so the sheet is never opened directly from here.
   const toFiles = saveToFilesAvailable();
 
-  /** Hand the finished file over. Returns whether the export dialog should close (the ready dialog
-   *  replaces it); a type the share sheet won't take downloads as before (in the Home Screen app,
-   *  which can't download, it is reported instead) and the dialog stays. */
-  async function deliver(blob: Blob, filename: string, note = ""): Promise<boolean> {
+  /** Hand the finished file over. `"ready"`: the ready dialog replaces this one, so it closes. A
+   *  type the share sheet won't take downloads as before (`"done"`) — except in the Home Screen app,
+   *  which can't download: `"failed"`, and no file exists (review 2026-10-17 #35). */
+  async function deliver(
+    blob: Blob,
+    filename: string,
+    note = "",
+  ): Promise<"ready" | "done" | "failed"> {
     if (!toFiles) {
       downloadBlob(blob, filename);
-      return false;
+      return "done";
     }
     const file = new File([blob], filename, { type: blob.type });
-    return (await deliverToFiles(file, { isProject: false, tryDirect: false, note })) === "ready";
+    const r = await deliverToFiles(file, { isProject: false, tryDirect: false, note });
+    return r === "ready" ? "ready" : r === "failed" ? "failed" : "done";
+  }
+  /** The dialog's closing line. A refused file said "Done." with nothing written. */
+  function doneLine(d: "ready" | "done" | "failed", note = ""): string {
+    if (d === "failed")
+      return "No file was written — the share sheet won't take this file here, and the Home Screen app can't download. Open the app in Safari to export it.";
+    return note ? `Done — ${note}.` : "Done.";
   }
   const stem = $derived(sanitizeFilename(appState.project.name));
   // Counted regardless of visibility: a hidden reference is equally absent from the export, and the
@@ -192,8 +203,9 @@
           scale,
         });
         const note = boilNote();
-        closeAfter = await deliver(blob, sequenceName, note);
-        status = note ? `Done — ${note}.` : "Done.";
+        const d = await deliver(blob, sequenceName, note);
+        closeAfter = d === "ready";
+        status = doneLine(d, note);
       } else if (format === "png-frame") {
         // Same frame the PSD button takes, rendered exactly as the sequence renders it (boil
         // included). toBlob is async, but the render before it is not — yield once so "Writing
@@ -207,8 +219,9 @@
           scale,
         );
         const note = boilNote();
-        closeAfter = await deliver(blob, pngFrameFilename, note);
-        status = note ? `Done — ${note}.` : "Done.";
+        const d = await deliver(blob, pngFrameFilename, note);
+        closeAfter = d === "ready";
+        status = doneLine(d, note);
       } else if (format === "psd-frame") {
         // One frame, but NOT instant: the driver draws each surviving layer twice (once to measure
         // its ink bounds, once to crop it) plus a full-frame read for the merged composite, all
@@ -222,11 +235,12 @@
         // exposed to.
         await yieldToEventLoop();
         const bytes = exportPsdFrame(appState.project, appState.playhead, DPR);
-        closeAfter = await deliver(
+        const d = await deliver(
           new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/vnd.adobe.photoshop" }),
           psdFilename,
         );
-        status = "Done.";
+        closeAfter = d === "ready";
+        status = doneLine(d);
       } else if (format === "mp4" || format === "webm") {
         const { blob, warning } = await exportVideo(appState.project, DPR, format, range, {
           signal,
@@ -237,8 +251,9 @@
         const note = [warning ? `exported without audio: ${warning}` : "", boilNote()]
           .filter(Boolean)
           .join("; ");
-        closeAfter = await deliver(blob, `${stem}.${format}`, note);
-        status = note ? `Done — ${note}.` : "Done.";
+        const d = await deliver(blob, `${stem}.${format}`, note);
+        closeAfter = d === "ready";
+        status = doneLine(d, note);
       } else if (format === "gif") {
         const blob = await exportGif(appState.project, DPR, range, {
           signal,
@@ -248,8 +263,9 @@
           grayscale: opts.gifGrayscale,
         });
         const note = boilNote();
-        closeAfter = await deliver(blob, `${stem}.gif`, note);
-        status = note ? `Done — ${note}.` : "Done.";
+        const d = await deliver(blob, `${stem}.gif`, note);
+        closeAfter = d === "ready";
+        status = doneLine(d, note);
       } else {
         // Exhaustiveness guard: stops a future format from silently falling through to video/PNG.
         throw new Error(`Unhandled export format: ${format satisfies never}`);

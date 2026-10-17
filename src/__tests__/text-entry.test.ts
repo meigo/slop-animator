@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isTextEntry } from "../lib/text-entry";
+import { blursOnCanvasPress, isTextEntry } from "../lib/text-entry";
 
 describe("isTextEntry", () => {
   it("is true for fields that take typed text", () => {
@@ -19,5 +19,20 @@ describe("isTextEntry", () => {
     expect(isTextEntry({ tagName: "INPUT", type: "file" })).toBe(false);
     expect(isTextEntry({ tagName: "BUTTON" })).toBe(false);
     expect(isTextEntry(null)).toBe(false);
+  });
+});
+
+// Review 2026-10-17 #30: a focused <select> kept focus through canvas presses, and the key
+// handlers stand aside for a select, so every shortcut stayed dead (and typeahead retyped it).
+describe("blursOnCanvasPress", () => {
+  it("text fields and dropdowns give up focus to a canvas press", () => {
+    expect(blursOnCanvasPress({ tagName: "INPUT", type: "text" })).toBe(true);
+    expect(blursOnCanvasPress({ tagName: "TEXTAREA" })).toBe(true);
+    expect(blursOnCanvasPress({ tagName: "SELECT" })).toBe(true);
+  });
+  it("other controls keep it (they never block shortcuts)", () => {
+    expect(blursOnCanvasPress({ tagName: "INPUT", type: "range" })).toBe(false);
+    expect(blursOnCanvasPress({ tagName: "BUTTON" })).toBe(false);
+    expect(blursOnCanvasPress(null)).toBe(false);
   });
 });

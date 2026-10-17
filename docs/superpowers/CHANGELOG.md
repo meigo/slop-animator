@@ -8712,3 +8712,44 @@ ruled cosmetic and self-correcting and left as is. One commit each:
   (smooth; unhiding shows the right frame after a moment); #28 Deform at 8×8 left idle (no continuous rAF
   work in a trace), and the warp following drags, pans, zooms and Hide; #29 a slow Pencil marquee on a
   long many-layer document.
+
+
+**Code review 2 batch E: UI and input (2026-10-17, branch `fix/review2-batch-e`, cut from batch D's).**
+Findings #30–#35 of `docs/superpowers/reviews/2026-10-17-code-review.md`, the last batch: all five batches
+of the review have shipped. The second reviewer's points on #33, #34 and #35 were folded into those
+commits. One commit each:
+- **#30 A focused `<select>` kept focus through canvas presses** (`c4ddce9`): the key handlers stand aside
+  for a SELECT and the press preventDefaults, so every shortcut stayed dead and typed tool keys went to
+  the dropdown's typeahead (Ink → Smooth on `s`; a key's easing rewritten on `e`, an undoable edit). The
+  stage's capture-phase blur now uses `blursOnCanvasPress` (`text-entry.ts`: a text field or a SELECT).
+- **#31 The window paste made a reference layer from a text field, under a dialog or mid-export**
+  (`0562f82`): `onPaste` returns first unless `windowPasteAllowed` (pure, `paste-precedence.ts`): no
+  export, no `modalOpen()`, target not `isTextEntry`.
+- **#32 Fingers panned under a Pencil drag of a gizmo handle** (`db06b36`): `input.ts` leaves
+  `[data-ref-handle]` presses to the gizmo, so `isDrawing` stayed false. Canvas now reports
+  `input.isDrawing() || appState.transformDragFrame !== null` — set at the handle's grab, cleared at its
+  settle (every exit path), and never by touch.
+- **#33 A NumberField scrub took any pointer** (`d8e16cf`): the scrub records its `pointerId` and
+  ignores other pointers' move, up and cancel; a second contact can't restart it. Ruling (second review):
+  a new press of the same type when it's a pen or mouse (one contact each) drops a stale scrub whose
+  release was lost — ids alone locked the field, since each Pencil contact gets a new id.
+- **#34 The loop arrowhead drag took any pointer** (`fcfaa89`): `loopDrag` records `pointerId` and its
+  arrowhead `el`; other pointers are ignored, a second pen can't replace it, and a press while the
+  arrowhead has lost capture settles the stale drag first (as `rowDown` does). A finger on the arrowhead
+  now pans — Ruling: not while `loopDrag` is set or `rowPointer !== -1` (a pan moves the column under a
+  still pen).
+- **#35 A refused Home Screen export said "Done."; autosave wiped sticky warnings** (`467a349`).
+  `ExportDialog.deliver` returns the outcome; a failed one says "No file was written — the share sheet
+  won't take this file here, and the Home Screen app can't download. Open the app in Safari to export
+  it." Rulings: an export writes no sticky alert (the dialog reports it); `onAutosaveOk` retires only
+  autosave's own warning; "Save failed" / a refused project save stay until a successful Save (File ▸
+  Save now uses `markProjectSaved`); the undecodable-audio notice (`AUDIO_UNDECODED_ALERT`) retires when
+  the document or audio changes without the condition (`replaceProject`, `setAudioTrack`,
+  `removeAudioTrack`, an undo/redo) and no longer on Save; "Couldn't set the paused autosave aside"
+  retires when autosave resumes. Side effect: a failed export leaves no trace outside its dialog.
+- Build 0/0 on every commit, 1807 tests (1804 before). `npm run test:ipad` not run. **Owed in a browser /
+  on the iPad:** #30 pick "Ink", draw, press `s` (desktop, iPad with a keyboard); #31 Copy image, then
+  paste into a layer rename and Project settings; #32 a Pencil handle drag with a finger sliding on the
+  canvas; #33 a Pencil scrub with a resting or panning finger; #34 a Pencil arrowhead drag while a finger
+  taps another arrowhead, and a finger pan from an arrowhead; #35 in the Home Screen app, an export the
+  sheet refuses (WebM or PSD), and an undecodable-audio project replaced by New.

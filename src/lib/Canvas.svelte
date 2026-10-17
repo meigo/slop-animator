@@ -3,7 +3,7 @@
   import { Check, X } from "@lucide/svelte";
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
-  import { isTextEntry } from "./text-entry";
+  import { blursOnCanvasPress, isTextEntry } from "./text-entry";
   import { Viewport } from "../core/viewport";
   import { capScaleToArea } from "../core/canvas-area";
   import { setupTouchGestures } from "../core/touch-gestures";
@@ -2654,10 +2654,12 @@
     // field stayed focused — on iPad the keyboard stayed up and a rename stayed uncommitted, and
     // on desktop the next tool key went into the field (roadmap 14f, slop-paint 1c8b5fd). Not on
     // the stage's own panels: the pose bar's Gap field lives there.
+    // A focused <select> is blurred too (review 2026-10-17 #30): the key handlers skip every
+    // shortcut while one has focus, so it must not keep it through strokes.
     const blurTextEntry = (e: PointerEvent) => {
       if (isStageChromeTarget(e.target)) return;
       const el = document.activeElement as HTMLElement | null;
-      if (el && isTextEntry(el)) el.blur();
+      if (el && blursOnCanvasPress(el)) el.blur();
     };
     stage.addEventListener("pointerdown", blurTextEntry, true);
 
@@ -2672,7 +2674,11 @@
         syncOverlayScale();
         repaintPoseOverlay();
       },
-      isDrawing: () => input.isDrawing(),
+      // A Pencil drag of a gizmo handle counts too: input.ts leaves `[data-ref-handle]` presses to
+      // the gizmo, so `isDrawing` stayed false and a palm or finger panned the view under the pen,
+      // jumping the transform (review 2026-10-17 #32). `transformDragFrame` is set at the handle's
+      // grab and cleared at its settle — exactly the drag (touch never starts one).
+      isDrawing: () => input.isDrawing() || appState.transformDragFrame !== null,
     });
 
     const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {

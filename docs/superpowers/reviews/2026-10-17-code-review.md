@@ -37,7 +37,8 @@ Batches, in the order to fix them:
   timeline selection.
 - **D — performance** (#26–29): all FIXED on `fix/review2-batch-d` (see CHANGELOG, "Code review 2
   batch D"). Onion scratch size, hidden video seeks, idle warp redraw, marquee.
-- **E — UI and input** (#30–35): focused `<select>` eating shortcuts, paste everywhere, finger
+- **E — UI and input** (#30–35): all FIXED on `fix/review2-batch-e` (see CHANGELOG, "Code review 2
+  batch E"). Focused `<select>` eating shortcuts, paste everywhere, finger
   gestures during a gizmo drag, pointer filtering on NumberField and the loop arrowhead, export
   "Done." on a refused share.
 
@@ -448,9 +449,11 @@ Batches, in the order to fix them:
 - **Verifier:** in marquee mode `rowMoveAt` (`Timeline.svelte:1893-1899`) calls `setTimelineSelection`, which always assigns a fresh `{anchor, focus}` (`appState.svelte.ts:2915-2916`), with no equality check on the focus. `selRect` (`Timeline.svelte:1274-1283`) is a `$derived` that returns a new object from `resolveSelectionRect` each time. Every `{#if inSelection(layer.id, f)}` inside `{#each Array(frameCount)}` (`:3574-3575`) reads it, so all rows × frames blocks re-run per event. Each one does `rowMovesWithBlock` and `layerIds.includes`, which is cheap. Nothing virtualizes frames or coalesces to rAF on this path. The finding counts edge-scroll ticks as triggers too, and that holds (`armRowEdgeScroll` re-calls `rowMoveAt`). The real cost on iPad has not been measured, so minor (perf) is right.
 
 
-## Batch E — UI and input
+## Batch E — UI and input (FIXED)
 
 ### 30. A focused `<select>` keeps focus after a canvas press, so every shortcut is dead and typed tool keys retype the brush or the key's easing
+
+**FIXED 2026-10-17** in `c4ddce9` (branch `fix/review2-batch-e`).
 
 **verdict:** confirmed (the dead shortcuts) / plausible (the typeahead retyping) — **severity:** major — **reviewer:** major — ui — `src/App.svelte:144`, `src/lib/Canvas.svelte:334`, `src/lib/Canvas.svelte:2618-2622`, `src/lib/ToolOptions.svelte:121`, `src/lib/TrackKeyControls.svelte:183` (area: ui-input)
 
@@ -462,6 +465,8 @@ Batches, in the order to fix them:
 
 ### 31. The window `paste` handler turns any paste into a new reference layer: in a text field, under a modal dialog, during an export
 
+**FIXED 2026-10-17** in `0562f82` (branch `fix/review2-batch-e`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — ui — `src/App.svelte:304` (area: ui-input)
 
 - **Problem:** `onPaste` (bound with `<svelte:window onpaste>`) checks only `currentPasteRoute() !== "image"`. It has none of `onKey`'s guards: `isTextEntry(target)`, `modalOpen()` and `state.exportBusy`. A `paste` event inside a text field bubbles to the window. With no cell clipboard the route is "image", so when the OS clipboard holds an image file, the handler calls `e.preventDefault()`, which stops the text paste, and then calls `pasteImageReference(blob)`. That adds an undoable reference layer behind whatever is focused. "Copy image" in a browser puts both the image and text/html on the clipboard, and the loop skips the string items to find the file. During an export, `onKey` returns at `exportBusy` without preventDefault, so Cmd+V still produces the `paste` event and adds a layer (with `liftGuard.bank` and an undo push) mid-render.
@@ -471,6 +476,8 @@ Batches, in the order to fix them:
 - **Verifier:** `onPaste` (`App.svelte:304`, bound at `:799`) checks only `currentPasteRoute() !== "image"`. In a text field, `onKey` returns at `isTextEntry` (`:143`) before any preventDefault. With a modal open or `exportBusy` it returns at `:129-130`, also without preventDefault. So the browser's `paste` event fires and bubbles to the window either way. If the clipboard holds an image file item, `onPaste` preventDefaults (the text paste is lost) and calls `pasteImageReference`, which adds a layer through `addLayerToProject` (`appState.svelte.ts:805`, with `liftGuard.bank` and `commitStructural`). Nothing there checks `exportBusy`, so the live project changes mid-render, which the export gate exists to prevent. Whether a "Copy image" clipboard exposes a `file` item next to text/html depends on the browser, but Chrome and Safari both do for image/png. Minor is right: the case is uncommon and the layer can be undone. The export case is the worst of them, because it can change the rendered file.
 
 ### 32. Finger pan, pinch and two-finger undo still act during a Pencil drag of a transform gizmo handle
+
+**FIXED 2026-10-17** in `db06b36` (branch `fix/review2-batch-e`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — wrong-place — `src/core/touch-gestures.ts:121`, `src/core/input.ts:148-151`, `src/lib/RefTransformGizmo.svelte:315` (area: ui-input)
 
@@ -482,6 +489,8 @@ Batches, in the order to fix them:
 
 ### 33. NumberField scrub doesn't filter by pointerId: a second contact (a resting palm) drives or ends the scrub
 
+**FIXED 2026-10-17** in `d8e16cf` (branch `fix/review2-batch-e`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — ui — `src/lib/NumberField.svelte:65-118` (area: ui-input)
 
 - **Problem:** `onPointerDown` doesn't record `e.pointerId`, and the window-level `onPointerMove` / `onPointerUp` (and `pointercancel`) accept any pointer. `dx` is `e.clientX - scrub.startX`, so a move from another contact is read as a huge or negative drag, and any other contact's up or cancel ends the gesture and commits. The timeline fix in batch C (#20) addressed this same class there.
@@ -492,6 +501,8 @@ Batches, in the order to fix them:
 
 ### 34. The loop arrowhead drag accepts any pointer's move and lift, so a second contact ends or drives the Pencil's drag; a finger on the arrowhead cannot pan
 
+**FIXED 2026-10-17** in `fcfaa89` (branch `fix/review2-batch-e`).
+
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — ui — `src/lib/Timeline.svelte:1750-1765`, `:1737` (area: timeline)
 
 - **Problem:** `loopHandleMove` checks only `loopDrag.layerId === layer.id`, and `loopHandleUp` checks nothing. The #20 fix (owning pointer) covered the row, clip and audio-lane drags, but not this one. Touch pointers are implicitly captured by their pointerdown target, so a finger pressed on any arrowhead keeps sending its move/up events to that handle. Its `pointerup` (or `pointercancel`) runs `settleLoopDrag` and commits the Pencil's drag halfway through. On the same layer, the finger's moves also set `back` from the finger's column. `loopHandleDown` also calls `stopPropagation()` before it returns on a finger, so a finger on the arrowhead neither pans nor starts anything, leaving a dead zone in an otherwise pannable row.
@@ -501,6 +512,8 @@ Batches, in the order to fix them:
 - **Verifier:** `loopHandleDown` (`Timeline.svelte:1735-1749`) calls `e.stopPropagation()` first and then returns for a non-fine pointer. With Svelte 5 delegation (gotcha #12) that stops the row's `rowDown`/`touchPanDown`, so a finger on the handle neither pans nor does anything else. `loopHandleMove` (`:1750-1761`) checks only `loopDrag.layerId === layer.id`, and `loopHandleUp` (`:1762-1765`, also bound to `pointercancel` at `:3565`) settles without checking `pointerId`. A finger that lifts on any arrowhead therefore runs `settleLoopDrag` mid-Pencil-drag, which commits or reverts and nulls `loopDrag`, so the Pencil's later moves do nothing. On the same layer, a finger's moves rewrite `back` from the finger's column. The route depends on the handle being only 16×8 px (`h-2 w-4`, `:3555`), so a stray contact has to land on that strip. That keeps it minor, and how often it happens on iPad is the only part that can't be traced. Line numbers are correct.
 
 ### 35. In the Home Screen app, an export the share sheet refuses says "Done.", and the sticky "couldn't save" alert is cleared by the next autosave
+
+**FIXED 2026-10-17** in `467a349` (branch `fix/review2-batch-e`).
 
 **verdict:** confirmed — **severity:** minor — **reviewer:** minor — ui — `src/lib/deliver-file.ts:33-36`, `src/lib/ExportDialog.svelte:185/199/217/237`, `src/App.svelte:340` (area: persist-export)
 

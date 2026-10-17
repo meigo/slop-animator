@@ -42,6 +42,7 @@
     liftGuard,
     modalOpen,
     autosaveActions,
+    AUDIO_UNDECODED_ALERT,
   } from "./state/appState.svelte";
   import { isTextEntry } from "./lib/text-entry";
   import {
@@ -68,7 +69,7 @@
   import { inkRevision, probeEmpty } from "./lib/cell-ink";
   import { loadPreferences, savePreferences } from "./persist/preferences";
   import { hydrateFromStore } from "./persist/media-store";
-  import { pasteRoute, type PasteRoute } from "./anim/paste-precedence";
+  import { pasteRoute, windowPasteAllowed, type PasteRoute } from "./anim/paste-precedence";
   import { innerWidth } from "svelte/reactivity/window";
   import { panelBesideToolOptions } from "./anim/panel-layout";
 
@@ -308,6 +309,16 @@
     // `currentPasteRoute()` again (rather than reading a flag set during the keydown) is what fixes
     // the old bug: the flag could never be cleared by the very event its own preventDefault
     // suppressed, so it stayed armed and swallowed the NEXT Cmd+V.
+    // The key handler's gates too: a text field's paste is its own, a dialog owns the keys, and an
+    // export renders the live project (review 2026-10-17 #31).
+    if (
+      !windowPasteAllowed({
+        exportBusy: state.exportBusy,
+        modalOpen: modalOpen(),
+        textEntry: isTextEntry(e.target as HTMLElement | null),
+      })
+    )
+      return;
     if (currentPasteRoute() !== "image") return;
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -340,9 +351,16 @@
   // A write that succeeds retires the warning — otherwise one transient quota blip would nag for
   // the rest of the session.
   function onAutosaveOk() {
-    // Not the pause (a save already in flight when the guard paused lands after it).
-    if (state.persistAlert && !autosaveHalted) state.persistAlert = "";
+    // Only autosave's OWN warning: the alert slot is shared, and clearing whatever stood there let
+    // the next autosave wipe "Couldn't save …" (a refused share in the Home Screen app), "Save
+    // failed" or the undecodable-audio notice seconds after it appeared, with no file written
+    // (review 2026-10-17 #35). Those clear on a successful save of their own kind. Not the pause
+    // either (a save already in flight when the guard paused lands after it).
+    if (!autosaveHalted && autosaveFailAlert && state.persistAlert === autosaveFailAlert)
+      state.persistAlert = "";
   }
+  /** The text `onAutosaveFailed` last put in the alert slot — what `onAutosaveOk` may retire. */
+  let autosaveFailAlert = "";
 
   // Autosave failures used to be swallowed entirely (`.catch(() => (autosaveDirty = true))`), so a
   // DETERMINISTIC failure — iPad quota exhaustion, or the documented stale-tab VersionError after a
@@ -354,7 +372,8 @@
     console.error("autosave failed", e);
     const full = isQuotaError(e);
     if (full) storageFull = true;
-    state.persistAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save) so this work isn't lost.${full ? " Storage is full: older autosave copies are no longer made." : ""}`;
+    autosaveFailAlert = `Autosave is failing (${errText(e)}) — save to a file (File ▸ Save) so this work isn't lost.${full ? " Storage is full: older autosave copies are no longer made." : ""}`;
+    state.persistAlert = autosaveFailAlert;
   }
 
   // The PAGE must never scroll — `app.css` pins `#app` so it cannot be dragged. iOS can still shift it
@@ -412,9 +431,7 @@
     // A CONDITION, not a control's tooltip — so `persistAlert`, not `statusHint`, which the
     // window-level title writer wipes on the next pointer move. There is no UI for an undecoded
     // track (the lane renders only a decoded one), so this line is its only announcement.
-    if (state.project.audioUndecoded)
-      state.persistAlert =
-        "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+    if (state.project.audioUndecoded) state.persistAlert = AUDIO_UNDECODED_ALERT;
     autosaveReady = true;
   });
 
@@ -627,10 +644,18 @@
     void openRestoreDialog(true);
   }
 
+  /** The text a failed `setAsideIfPaused` put in the alert slot — what `resumeAutosave` retires. */
+  let asideFailAlert = "";
   /** Autosave runs again (a copy restored, the blank layers kept, or the copy set aside). */
   function resumeAutosave() {
     autosaveHalted = false;
-    if (state.persistAlert === AUTOSAVE_PAUSED) state.persistAlert = "";
+    // The pause notice, and a failed set-aside's: that was about the paused copy, and the decision
+    // it waited on (restore, keep, or a set-aside that worked) has now been made (review #35).
+    if (
+      state.persistAlert === AUTOSAVE_PAUSED ||
+      (asideFailAlert && state.persistAlert === asideFailAlert)
+    )
+      state.persistAlert = "";
     if (autosaveDirty) {
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(autosaveWhenQuiet, 3000);
@@ -701,9 +726,7 @@
       }
       resumeAutosave();
       state.statusHint = `Restored the copy${saved}`;
-      if (state.project.audioUndecoded)
-        state.persistAlert =
-          "The audio track couldn't be decoded on this device — it's kept in the project and re-saved unchanged, but won't play or export here.";
+      if (state.project.audioUndecoded) state.persistAlert = AUDIO_UNDECODED_ALERT;
     } catch (e) {
       console.error("restoring an autosave failed", e);
       state.statusHint = `Couldn't restore — ${errText(e)}`;
@@ -738,7 +761,8 @@
       await keepLatestAutosave(state.project.layers);
     } catch (e) {
       console.error("setting the autosave aside failed", e);
-      state.persistAlert = `Couldn't set the paused autosave aside (${errText(e)}), so the project was not replaced — the saved copy is untouched. Try again, or restore it from File ▸ Restore autosave….`;
+      asideFailAlert = `Couldn't set the paused autosave aside (${errText(e)}), so the project was not replaced — the saved copy is untouched. Try again, or restore it from File ▸ Restore autosave….`;
+      state.persistAlert = asideFailAlert;
       return false;
     }
     resumeAutosave();

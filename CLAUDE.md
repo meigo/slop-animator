@@ -36,7 +36,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   with client isolation can block iPad→Mac entirely — a tunnel (cloudflared/ngrok) is the fallback.
 - `npm run build` — **`svelte-check && tsc --noEmit && vite build`**. The bar for every change is
   **0 errors, 0 warnings.**
-- `npm test` — Vitest (node env, no DOM). Baseline **1804 passing**. Canvas/DOM code isn't
+- `npm test` — Vitest (node env, no DOM). Baseline **1807 passing**. Canvas/DOM code isn't
   node-testable; only pure logic is unit-tested.
 - `npm run test:ipad` — iPad smoke check (`tools/ipad-smoke.mjs`, Playwright; port of slop-paint
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
@@ -332,8 +332,8 @@ coverage × rim × grain, `multiply` with Mix colours; full redraw, NEVER frozen
 own scratch between frames and recomputes the rim only in a window (`window.slopWashFull` in dev to
 compare). The eraser gets Wobble only. See the 2026-10-03 changelog entry.
 
-Shipped 2026-10-17: **Code review 2 batches A–D** (`docs/superpowers/reviews/2026-10-17-code-review.md`;
-batch E still open). User-visible (A): a Crop that shrinks a side keeps what transformed layers showed —
+Shipped 2026-10-17: **Code review 2 — ALL FIVE BATCHES** (A–E, `docs/superpowers/reviews/2026-10-17-code-review.md`;
+branches `fix/review2-batch-a` … `-e`, stacked; every finding marked FIXED there). User-visible (A): a Crop that shrinks a side keeps what transformed layers showed —
 a moved or flipped layer cuts its own window, a scaled or turned one has its transform applied
 (resampled, and the Size dialog says so); animated layers and layers in a transformed group get a
 warning. (B): Pose, Distort and Mesh leave no seams and no bright folds (`drawMeshTriangles`, replacing
@@ -351,7 +351,13 @@ row it removed or folded away; a drag that shortens the document (ruler length, 
 layer's last span) clears the timeline selection. (D, performance): the onion scratch stays at
 document pixels; a hidden video reference is not seeked (unless playing with its audio on); an idle
 warp lift draws its mesh from a cache instead of every frame; a marquee drag skips selections it
-already has. See the CHANGELOG entries.
+already has. (E): a canvas press takes focus from a dropdown too (shortcuts work after picking a
+brush type or easing); the window paste ignores text fields, dialogs and exports; fingers sit out a
+Pencil drag of a gizmo handle; NumberField scrubs and the loop arrowhead follow only their own
+pointer (a finger on the arrowhead pans, except during a pen gesture); a Home Screen export the share
+sheet refuses says no file was written, and each sticky status-bar warning now clears only with its
+own condition (`AUDIO_UNDECODED_ALERT` when the document or audio changes; an export writes none).
+See the CHANGELOG entries.
 
 ## Roadmap / deferred (wanted-later, not abandoned)
 

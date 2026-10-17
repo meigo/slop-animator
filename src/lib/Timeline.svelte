@@ -1719,6 +1719,13 @@
   // Arrowhead drag: sets a loop's `back` live, one undo step per gesture, nothing for a tap.
   // Pen/mouse only, like every other edit gesture on a row (fingers pan the timeline).
   let loopDrag: {
+    /** The pen/mouse pointer that grabbed the arrowhead: any other contact's move, up or cancel is
+     *  ignored. A finger lifting on ANY arrowhead (touch is captured by its own press target)
+     *  settled the Pencil's drag halfway, and on the same row its moves rewrote `back` (review
+     *  2026-10-17 #34 — the owning-pointer rule #20 of the 2026-09-30 review gave the row drags). */
+    pointerId: number;
+    /** The arrowhead holding its capture: lost capture means the release was lost too. */
+    el: HTMLElement;
     layerId: number;
     frame: number;
     startBack: number;
@@ -1741,10 +1748,26 @@
 
   function loopHandleDown(e: PointerEvent, layer: DrawingLayer, r: LoopRegion) {
     e.stopPropagation(); // the row's own handlers must not also start a gesture (gotcha #12)
-    if (!isFinePointer(e) || !isLayerEditable(layer, appState.project.groups)) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!isFinePointer(e)) {
+      // A finger pans, as everywhere else on the row: stopping the row's handlers and returning
+      // left a dead zone on the arrowhead. Not while a pen gesture is live (`rowDown`'s "a finger
+      // sits out"): both drags read columns off the scrolled content, so a pan would move the
+      // column under a still pen.
+      if (loopDrag || rowPointer !== -1) return;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      touchPanDown(e);
+      return;
+    }
+    // A drag whose arrowhead no longer holds its pointer lost its release: settle it rather than
+    // lock every arrowhead (as `rowDown` does for the row's owner).
+    if (loopDrag && !loopDrag.el.hasPointerCapture(loopDrag.pointerId)) settleLoopDrag();
+    if (loopDrag || !isLayerEditable(layer, appState.project.groups)) return;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
     liftGuard.bank?.();
     loopDrag = {
+      pointerId: e.pointerId,
+      el,
       layerId: layer.id,
       frame: r.frame,
       startBack: r.back,
@@ -1756,7 +1779,11 @@
   }
   function loopHandleMove(e: PointerEvent, layer: DrawingLayer) {
     e.stopPropagation();
-    if (!loopDrag || loopDrag.layerId !== layer.id) return;
+    if (!isFinePointer(e)) {
+      if (!loopDrag && rowPointer === -1) touchPanMove(e); // a finger sits out a pen gesture
+      return;
+    }
+    if (!loopDrag || e.pointerId !== loopDrag.pointerId || loopDrag.layerId !== layer.id) return;
     // Press-relative: the handle straddles a column boundary, so an absolute column would jump
     // `back` by one on a pen tap in its left half. Only a column CHANGE since the press moves it.
     const delta = loopHandleCol(e) - loopDrag.pressCol;
@@ -1768,6 +1795,11 @@
   }
   function loopHandleUp(e: PointerEvent) {
     e.stopPropagation();
+    if (!isFinePointer(e)) {
+      touchPanUp(e);
+      return;
+    }
+    if (loopDrag && e.pointerId !== loopDrag.pointerId) return; // not the drag's pointer
     settleLoopDrag();
   }
   function settleLoopDrag() {

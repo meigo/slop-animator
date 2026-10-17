@@ -23,3 +23,14 @@ export function isTextEntry(
   if (el.tagName === "INPUT") return !NON_TEXT_INPUTS.has((el.type || "text").toLowerCase());
   return false;
 }
+
+/** Whether a canvas press should take focus from `el`: a text field, and a `<select>` too. The key
+ *  handlers stand aside for both ("a dropdown keeps its own keys"), and the canvas press prevents
+ *  the browser's own focus change, so a dropdown picked from once (brush type, a key's easing) kept
+ *  focus through any number of strokes — every shortcut dead, and typed tool keys retyped it by
+ *  typeahead (review 2026-10-17 #30). */
+export function blursOnCanvasPress(
+  el: { tagName?: string; type?: string; isContentEditable?: boolean } | null,
+): boolean {
+  return isTextEntry(el) || el?.tagName === "SELECT";
+}
