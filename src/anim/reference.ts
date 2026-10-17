@@ -1,5 +1,6 @@
 import {
   createReferenceLayer,
+  isLayerVisible,
   isRefVisibleAtFrame,
   type ReferenceLayer,
   type ReferenceMedia,
@@ -105,6 +106,14 @@ export function syncReferenceVideos(
     // to seek for — and waking the decoder for an undrawn frame is exactly the cost the persistTick
     // split exists to avoid. Pause a running element so it cannot free-run past the gate.
     if (!isRefVisibleAtFrame(layer, frame, fps)) {
+      if (!vid.paused) vid.pause();
+      continue;
+    }
+    // Hidden (itself or its group): nothing to draw, so no seek — each one was a hardware decode on
+    // iOS, and its `seeked` repaint a second full recomposite (review 2026-10-17 #27). Only a hidden
+    // ref PLAYING with its audio on runs on, since its sound is still heard. Showing it again bumps
+    // the version, so the next sync seeks it.
+    if (!isLayerVisible(layer, project.groups) && !(playing && (layer.audioEnabled ?? false))) {
       if (!vid.paused) vid.pause();
       continue;
     }
