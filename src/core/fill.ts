@@ -3,7 +3,7 @@
  * Operates on raw ImageData for performance.
  */
 
-import { dilateMask, distanceToMask, thickenMask } from "./mask-ops";
+import { distanceToMask, thickenMask } from "./mask-ops";
 import { clampGap, enclosedRegion } from "./fill-holes";
 
 export interface FillOptions {
@@ -224,9 +224,39 @@ export function ridgeCoverage(
     }
   }
   const smooth = smoothDistance(d, ww, wh, 2);
-  // The empty space beyond the lines: not filled, and empty even with the grain smoothed over.
+  // The empty space beyond the lines: not filled, and empty even with the grain smoothed over —
+  // and every empty pixel joined to that. The smoothing alone also raised the paper just beyond a
+  // thin or light line, which moved its "middle" outward and put fill on the paper outside it (up
+  // to 80/255 with Fill enclosed). A grain hole inside a line isn't joined to the paper, so it
+  // still isn't "beyond" it.
   const outside = new Uint8Array(n);
   for (let i = 0; i < n; i++) outside[i] = !reg[i] && smooth[i] < tol ? 1 : 0;
+  const joins = (j: number) => !outside[j] && !reg[j] && d[j] < tol;
+  const stack: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (!outside[i]) continue;
+    const x = i % ww;
+    if (
+      (x > 0 && joins(i - 1)) ||
+      (x < ww - 1 && joins(i + 1)) ||
+      (i >= ww && joins(i - ww)) ||
+      (i + ww < n && joins(i + ww))
+    )
+      stack.push(i);
+  }
+  const visit = (j: number) => {
+    if (!joins(j)) return;
+    outside[j] = 1;
+    stack.push(j);
+  };
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % ww;
+    if (x > 0) visit(i - 1);
+    if (x < ww - 1) visit(i + 1);
+    if (i >= ww) visit(i - ww);
+    if (i + ww < n) visit(i + ww);
+  }
   const dIn = distanceToMask(reg, ww, wh);
   const dOut = distanceToMask(outside, ww, wh);
   const peak = maxFilter(smooth, ww, wh, 3);
@@ -253,9 +283,9 @@ export function ridgeCoverage(
 
 /**
  * The fill grown `expand` px under the lines (Expand), as coverage 0–255 (2026-10-02). Soft 0: the
- * old whole-pixel round dilation (`dilateMask`). Above 0 the grown edge is a smooth round offset
- * measured by true distance (`distanceToMask`), solid up to `expand` px and fading to nothing over
- * the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
+ * old whole-pixel round dilation (`dilateMask`'s pixels, by distance: `thickenMask`). Above 0 the
+ * grown edge is a smooth round offset measured by true distance (`distanceToMask`), solid up to
+ * `expand` px and fading to nothing over the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
  * under the line, showing through a see-through one, and Soft's fade (`ridgeCoverage`) starts from
  * that edge, already in the line's dark middle where it has nothing left to fade: with Expand on,
  * Soft seemed to do nothing. Pure.
@@ -269,7 +299,9 @@ export function expandedCoverage(
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(w * h);
   if (soft <= 0) {
-    const grown = dilateMask(mask, w, h, expand);
+    // The same pixels as `dilateMask(mask, expand)`, in linear time: the dilation is
+    // O(pixels × expand²), 610 ms for a big 1080p fill at Expand 8 against 43 ms (slop-paint 640cda9).
+    const grown = thickenMask(mask, w, h, expand);
     for (let i = 0; i < w * h; i++) if (grown[i]) out[i] = 255;
     return out;
   }
@@ -289,8 +321,10 @@ export function expandedCoverage(
  * `gap` (clamped to MAX_GAP, as Fill enclosed's Bridge) closes breaks in the walls of up to about
  * 2×gap px: the walls are thickened by `gap`, the flood runs in what's left, and the region is
  * grown back `gap` steps over fillable pixels only (`growWithin`) — so it still reaches the lines,
- * into sharp inside corners too, and pokes only about `gap` px out through a bridged break. A region too narrow to survive the thickening (the tap lands
- * inside it) is filled without bridging instead, so a small pocket still fills.
+ * into sharp inside corners too, and pokes only about `gap` px out through a bridged break. A tap
+ * near a line starts from the nearest pixel the thickening left open (`nearestOpen`). A region too
+ * narrow to survive the thickening (nothing open within reach) is filled without bridging
+ * instead, so a small pocket still fills.
  */
 export function fillMask(
   data: Uint8ClampedArray,
@@ -320,13 +354,47 @@ export function fillMask(
     for (let i = 0; i < w * h; i++) walls[i] = fillable[i] ? 0 : 1;
     const thick = thickenMask(walls, w, h, r); // dilateMask's mask at any radius, in constant time
     const start = sy * w + sx;
-    if (!thick[start]) {
-      const open = new Uint8Array(w * h);
-      for (let i = 0; i < w * h; i++) open[i] = thick[i] ? 0 : 1;
-      return growWithin(flood(open, w, h, start), fillable, w, h, r);
+    const open = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) open[i] = thick[i] ? 0 : 1;
+    // A tap inside the thickened walls — within `gap` px of a line, or of a stray speck — starts
+    // from the nearest open pixel it can reach: it fell back to the unbridged flood, which leaked
+    // through the very break Bridge was set for (26–80% of the taps inside a wide box).
+    const from = open[start] ? start : nearestOpen(open, fillable, w, h, start, 2 * r + 1);
+    if (from >= 0) {
+      const region = growWithin(flood(open, w, h, from), fillable, w, h, r);
+      if (region[start]) return region;
     }
   }
   return flood(fillable, w, h, sy * w + sx);
+}
+
+/** The open pixel nearest `start` through fillable pixels (4-connected), at most `limit` steps
+ *  away; -1 if none. */
+function nearestOpen(
+  open: Uint8Array,
+  fillable: Uint8Array,
+  w: number,
+  h: number,
+  start: number,
+  limit: number,
+): number {
+  const seen = new Uint8Array(w * h);
+  seen[start] = 1;
+  let ring = [start];
+  for (let s = 0; s < limit && ring.length; s++) {
+    const next: number[] = [];
+    for (const i of ring) {
+      const x = i % w;
+      for (const n of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+        if (n < 0 || n >= w * h || seen[n] || !fillable[n]) continue;
+        if (open[n]) return n;
+        seen[n] = 1;
+        next.push(n);
+      }
+    }
+    ring = next;
+  }
+  return -1;
 }
 
 /** Grow `region` by `steps` 8-connected steps, only into `allowed` pixels. Square steps reach a
@@ -460,18 +528,21 @@ export function floodFill(
   // the expand ring goes behind. Painting the whole region behind could never change an opaque
   // pixel, so at the default expand a recolour tap did nothing but add a faint rim. An EMPTY area
   // (the usual fill between lines) still goes all behind, so faint anti-aliased line pixels that
-  // fall inside the region stay on top of the fill.
+  // fall inside the region stay on top of the fill. From a painted tap the ring lands on no EMPTY
+  // pixel: the transparent space round the art is no line to tuck under, and the ring drawn there
+  // (Expand px wide round a recoloured shape on a transparent layer) was a change the artist never
+  // asked for, with an undo step (slop-paint 27538c5).
   const painted = targetA > tolerance;
   if (expand > 0 && painted) {
     for (let i = 0; i < w * h; i++) {
+      const pi = i * 4;
       if (mask[i]) {
-        const pi = i * 4;
         data[pi] = fillColor.r;
         data[pi + 1] = fillColor.g;
         data[pi + 2] = fillColor.b;
         data[pi + 3] = fillColor.a;
         cover![i] = 0; // written; what is left of the coverage is the ring
-      }
+      } else if (data[pi + 3] === 0) cover![i] = 0;
     }
     ctx.putImageData(imageData, 0, 0);
   }

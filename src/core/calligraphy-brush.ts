@@ -105,17 +105,18 @@ function supportPoint(
 /** Light centred smoothing of the sample positions. Centred, so it costs no lag — this engine
  *  redraws the whole stroke every frame and has the future samples in hand, unlike an
  *  incremental one. Deliberately mild: it removes sub-pixel noise without rounding real corners
- *  (verified against a hard zigzag). */
-function smoothPositions(points: InputPoint[]): InputPoint[] {
+ *  (verified against a hard zigzag). The window narrows to the ends, so the first and last
+ *  points stay where the pen was: a one-sided window pulled each end in by 2/3 of a point's
+ *  spacing, which shortened a quick hatch (3 px apart) by 2 px at each end. */
+export function smoothPositions(points: InputPoint[]): InputPoint[] {
   if (points.length < 3) return points;
-  const K = 2;
   return points.map((p, i) => {
+    const K = Math.min(2, i, points.length - 1 - i);
     let sx = 0;
     let sy = 0;
     let sw = 0;
     for (let j = -K; j <= K; j++) {
       const q = points[i + j];
-      if (!q) continue;
       const w = K + 1 - Math.abs(j);
       sx += q.x * w;
       sy += q.y * w;
@@ -398,10 +399,14 @@ export function isCorner(
  * 6000-point redraw, against 13ms for this.
  */
 /**
- * `from` / `to`: draw only the pieces that start at an input point in that range, with the
- * geometry still worked out from the whole stroke — so a range draws exactly the pixels the whole
- * stroke would there. App freezes the settled part of a long opaque stroke this way and redraws
- * only the rest each frame (2026-10-01).
+ * `from` / `to`: draw only the pieces that start before input point `to` and end past `from`, with
+ * the geometry still worked out from the whole stroke — so a range draws exactly the pixels the
+ * whole stroke would there. Canvas freezes the settled part of a long opaque stroke this way and
+ * redraws only the rest each frame (2026-10-01). A piece that merely STARTS before `from` is drawn
+ * too, so the range's first piece is always one the frozen part already holds and the cut lies
+ * inside paint: its input-point overlap alone often held no piece (they are up to 3 px apart, and
+ * a resting or slow pen sends many points per piece), and two pieces filled apart meet in a
+ * hairline of ~75% alpha along their shared edge, baked in for good.
  */
 export function drawCalligraphyStroke(
   ctx: CanvasRenderingContext2D,
@@ -471,7 +476,7 @@ export function drawCalligraphyStroke(
   // cut is the chord between the nib's two support points, which lies along the nib — the chisel
   // entry/exit that actually reads as calligraphy. Compared side by side before choosing.
   for (let i = 1; i < pts.length; i++) {
-    if (src[i - 1] < from || src[i - 1] >= to) continue;
+    if (src[i] <= from || src[i - 1] >= to) continue;
     const p1 = pts[i - 1];
     const p2 = pts[i];
     const o1 = off[i - 1];

@@ -5,6 +5,7 @@ import {
   INK_WIDTH_QUANTUM,
   MAX_DWELL_SWELL,
   POOL_REF_WIDTH,
+  rangeBox,
   type InkRun,
 } from "../core/ink-brush";
 import type { InputPoint } from "../core/input";
@@ -257,5 +258,29 @@ describe("dwellSwell trigger", () => {
   it("pools on a deliberate slowdown at the default brush size", () => {
     const pts = stroke([{ dx: 0.4, dt: 4, n: 40 }]); // 0.1 px/ms at a ~4px nib
     expect(dwellSwell(pts, flat(pts, 4), 100)[10]).toBeGreaterThan(4 * 1.3);
+  });
+});
+
+describe("rangeBox (translucent Ink's scratch area)", () => {
+  const m = { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 } as DOMMatrix; // dpr 2
+  const pts = [0, 10, 20, 30, 40].map((x) => ({
+    x: 100 + x,
+    y: 50,
+    pressure: 1,
+    hasPressure: true,
+    timestamp: x,
+  }));
+  const widths = [8, 8, 20, 8];
+
+  it("covers the range's segments padded by their widest width, in device px", () => {
+    const box = rangeBox(m, pts, widths, 0, Infinity, 4000, 4000)!;
+    // x 100…140, y 50, pad 20 / 2 + 2 = 12 doc px → device ×2.
+    expect(box).toEqual({ x: 176, y: 76, w: 128, h: 48 });
+  });
+
+  it("takes only the range, and is clamped to the canvas", () => {
+    const box = rangeBox(m, pts, widths, 3, Infinity, 4000, 4000)!;
+    expect(box.x).toBe((120 - 6) * 2); // points 2…4, segment 3's width 8
+    expect(rangeBox(m, pts, widths, 0, Infinity, 100, 100)).toBeNull();
   });
 });

@@ -84,6 +84,20 @@ describe("History", () => {
     h.undo();
     expect(h.canUndo).toBe(false);
   });
+
+  it("a step with no bytes doesn't evict a step that alone is over the budget", () => {
+    const s = { n: 0 };
+    const h = new History(50, 10);
+    h.push({ ...counterCmd(s, 1), bytes: 5 });
+    h.push({ ...counterCmd(s, 1), bytes: 99 }); // deleting a heavy layer: evicts the step before it
+    h.push(counterCmd(s, 1)); // an eye toggle: no bytes
+    let undone = 0;
+    while (h.canUndo) {
+      h.undo();
+      undone++;
+    }
+    expect(undone).toBe(2); // the toggle and the delete
+  });
 });
 
 describe("History.onChange", () => {

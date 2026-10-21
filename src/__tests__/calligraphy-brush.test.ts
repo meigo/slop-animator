@@ -8,6 +8,7 @@ import {
   nibSupport,
   nibSupportPoint,
   normals,
+  smoothPositions,
   MAX_NIB_FLATNESS,
 } from "../core/calligraphy-brush";
 
@@ -388,5 +389,59 @@ describe("nibSupportPoint", () => {
     // The cut runs from -s to +s; its direction should be the nib's, within a few degrees.
     const cut = Math.atan2(s.y, s.x);
     expect(Math.abs(cut - angle)).toBeLessThan((5 * Math.PI) / 180);
+  });
+});
+
+describe("drawCalligraphyStroke (frozen ranges)", () => {
+  function rings(points: InputPointLike[], from = 0, to = Infinity) {
+    const out: string[] = [];
+    let cur: number[][] = [];
+    const ctx = {
+      save() {},
+      restore() {},
+      beginPath() {},
+      fill() {},
+      moveTo: (x: number, y: number) => (cur = [[x, y]]),
+      lineTo: (x: number, y: number) => cur.push([x, y]),
+      closePath: () => out.push(cur.map(([x, y]) => `${x.toFixed(4)},${y.toFixed(4)}`).join(";")),
+    } as unknown as CanvasRenderingContext2D;
+    const settings = { size: 16, nibAngle: 45, nibFlatness: 0.35, opacity: 100, color: "#000" };
+    drawCalligraphyStroke(ctx, points as never, settings as BrushSettings, 3, from, to);
+    return out;
+  }
+  type InputPointLike = { x: number; y: number; pressure: number; timestamp: number };
+
+  it("a range starting 8 points before a cut redraws a piece the frozen part holds", () => {
+    // A slow pen: 0.2 px per point, so a 3 px piece spans ~15 input points — more than the overlap.
+    const pts: InputPointLike[] = Array.from({ length: 900 }, (_, i) => ({
+      x: 10 + i * 0.2,
+      y: 50 + 20 * Math.sin(i / 200),
+      pressure: 0.6,
+      timestamp: i * 4,
+    }));
+    for (const cut of [300, 451, 617]) {
+      const frozen = new Set(rings(pts, 0, cut));
+      const rest = rings(pts, cut - 8);
+      expect(rest.some((r) => frozen.has(r))).toBe(true);
+      // Together they are still exactly the whole stroke's pieces.
+      const whole = new Set(rings(pts));
+      for (const r of [...frozen, ...rest]) expect(whole.has(r)).toBe(true);
+    }
+  });
+});
+
+describe("smoothPositions", () => {
+  const pt = (x: number, y = 0) => ({ x, y, pressure: 1, timestamp: 0 });
+
+  it("keeps the first and last points where the pen was", () => {
+    // A quick hatch: pen down at 0, moves 3 px apart, lift at 10.
+    const out = smoothPositions([0, 3, 6, 9, 10].map((x) => pt(x)) as never);
+    expect(out[0].x).toBe(0);
+    expect(out[out.length - 1].x).toBe(10);
+  });
+
+  it("still damps jitter in the middle", () => {
+    const pts = [0, 1, 2, 3, 4, 5, 6].map((x, i) => pt(x, i === 3 ? 1 : 0));
+    expect(Math.abs(smoothPositions(pts as never)[3].y)).toBeLessThan(0.5);
   });
 });

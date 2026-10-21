@@ -89,6 +89,9 @@ export interface BrushSettings {
   washMultiply?: boolean;
 }
 
+/** Taper stroke ends: how long each end's taper is, in widths of the stroke at its widest. */
+export const TAPER_WIDTHS = 4;
+
 /** perfect-freehand's outline point spacing (its `smoothing`), before the thin-stroke cap. It was
  *  the Smooth slider once, but it only rounds the outline's edge; Smooth now smooths the path. */
 const OUTLINE_SPACING = 0.5;
@@ -192,8 +195,11 @@ export function outlineOfPath(
       pfSize,
     ),
     streamline: 0.3,
-    start: { taper, cap: !taper },
-    end: { taper, cap: !taper },
+    // A fixed length, not `true`: perfect-freehand reads `true` as the WHOLE stroke's length, so
+    // every stroke was a spindle that never reached its full width (~80% at the middle), and the
+    // start thinned again as the stroke grew.
+    start: { taper: taper ? TAPER_WIDTHS * maxSize : 0, cap: !taper },
+    end: { taper: taper ? TAPER_WIDTHS * maxSize : 0, cap: !taper },
     last: done,
     // Always use our supplied (mapped) pressure. perfect-freehand's simulatePressure
     // is velocity-based and would override our size mapping, leaving the cursor

@@ -10,7 +10,7 @@ import {
   floodFill,
   fillRegionBehind,
 } from "../core/fill";
-import { distanceToMask } from "../core/mask-ops";
+import { dilateMask, distanceToMask } from "../core/mask-ops";
 
 const row = (bits: number[]) => Uint8Array.from(bits);
 /** One row: `region` 1s, then the line's strengths, then empty space beyond. */
@@ -35,6 +35,13 @@ describe("ridgeCoverage", () => {
     const c = across([50, 110, 40, 130, 60, 140, 120, 140, 60, 130, 40, 110, 50]);
     for (let i = 0; i < 5; i++) expect(c[i]).toBeGreaterThan(0);
     expect(c.slice(9)).toEqual(Array(c.length - 9).fill(0));
+  });
+
+  it("puts nothing on the paper just beyond a thin line", () => {
+    // Smoothed, the paper beside a 1px line reads as line too, which moved its middle outward.
+    for (const soft of [1, 2])
+      for (const a of [100, 160, 255])
+        expect(across([a], soft).slice(1)).toEqual(Array(10).fill(0));
   });
 
   it("fades toward 1 − the line's strongest value: a light line keeps more fill than a solid one", () => {
@@ -96,6 +103,20 @@ describe("expandedCoverage / distanceToMask", () => {
   it("is the old whole-pixel dilation at Soft 0", () => {
     const m = row([1, 0, 0, 0]);
     expect([...expandedCoverage(m, 4, 1, 2, 0)]).toEqual([255, 255, 255, 0]);
+  });
+
+  it("at Soft 0 covers exactly the round dilation's pixels", () => {
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const w = 40;
+    const h = 30;
+    const m = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) m[i] = rnd() < 0.01 ? 1 : 0;
+    for (const r of [1, 2, 5, 9]) {
+      const grown = dilateMask(m, w, h, r);
+      const cover = expandedCoverage(m, w, h, r, 0);
+      for (let i = 0; i < w * h; i++) expect(cover[i]).toBe(grown[i] ? 255 : 0);
+    }
   });
 });
 
@@ -178,7 +199,7 @@ describe("floodFill with Soft", () => {
     expect(at(data, 3)).toEqual([0, 0, 0, 255]);
   });
 
-  it("with Expand, still recolours a tapped painted area, the feathered ring behind", () => {
+  it("with Expand, still recolours a tapped painted area, the ring only behind what's there", () => {
     const blue = { r: 0, g: 0, b: 255, a: 255 };
     const red: Px = [255, 0, 0, 255];
     const { ctx, data } = fakeCtx(7, 1, (i) =>
@@ -188,8 +209,11 @@ describe("floodFill with Soft", () => {
     expect(at(data, 0)).toEqual([0, 0, 255, 255]);
     expect(at(data, 1)).toEqual([0, 0, 255, 255]);
     expect(at(data, 2)).toEqual([0, 0, 0, 255]); // the line stays on top
-    expect(at(data, 3)).toEqual([0, 0, 255, 255]); // 2 px from the region: solid
-    expect(at(data, 4)[3]).toBe(128); // 3 px: half way through the 2 px feather
+    // Beyond the line the ring would land on empty pixels: from a painted tap it doesn't (it
+    // ringed a recoloured shape on a transparent layer, slop-paint 27538c5). The feather itself
+    // is `expandedCoverage`'s, tested above.
+    expect(at(data, 3)).toEqual([0, 0, 0, 0]);
+    expect(at(data, 4)).toEqual([0, 0, 0, 0]);
     expect(at(data, 5)).toEqual([0, 0, 0, 0]);
   });
 });

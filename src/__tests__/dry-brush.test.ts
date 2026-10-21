@@ -79,6 +79,32 @@ describe("dry brush", () => {
     expect(Math.abs(pts[3].ny)).toBeCloseTo(1);
   });
 
+  const path = (xy: number[][]) =>
+    xy.map(([x, y], i) => ({ x, y, pressure: 0.8, timestamp: i * 4, hasPressure: true }));
+
+  // A scrub: out along y = 0 to x = 200, then back along y = 4. The hairs keep their side of the
+  // page; the window's chord across the turn reversed the normal, so every hair crossed over.
+  it("keeps the normal's side of the page through a reversal", () => {
+    const xy: number[][] = [];
+    for (let x = 0; x <= 200; x += 2) xy.push([x, 0]);
+    xy.push([200, 4]);
+    for (let x = 198; x >= 0; x -= 2) xy.push([x, 4]);
+    const pts = resample(path(xy), 3);
+    for (const p of pts) expect(p.ny).toBeGreaterThan(0.9);
+  });
+
+  it("still turns the normal smoothly round a right-angle corner", () => {
+    const xy: number[][] = [];
+    for (let x = 0; x <= 100; x += 2) xy.push([x, 0]);
+    for (let y = 2; y <= 100; y += 2) xy.push([100, y]);
+    const pts = resample(path(xy), 3);
+    for (let i = 1; i < pts.length; i++) {
+      const dot = pts[i].nx * pts[i - 1].nx + pts[i].ny * pts[i - 1].ny;
+      expect(dot).toBeGreaterThan(Math.cos(Math.PI / 6));
+    }
+    expect(pts[pts.length - 1].nx).toBeCloseTo(-1);
+  });
+
   it("paints less the drier it is", () => {
     const wet = painted(bristleRuns(line(600), 30, 1, 0));
     const mid = painted(bristleRuns(line(600), 30, 1, 50));

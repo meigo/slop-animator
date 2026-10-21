@@ -1308,25 +1308,35 @@
     // delete the cell this command's `target` points into.
     const layerId = strokeLayer?.id ?? null;
     const mat = strokeMaterialized;
-    history.push(
-      pixelCommand(
-        target,
-        before,
-        after,
-        (put) => {
-          put();
-          if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
-          recomposite();
-        },
-        (put) => {
-          // Cell track FIRST: the canvas `target` writes into only belongs to the document once its
-          // cell is back in the track.
-          if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
-          put();
-          recomposite();
-        },
-      ),
-    );
+    if (sameImageData(before, after)) {
+      // The stroke changed no pixel (an eraser over empty paper, a stroke the marquee clipped
+      // away): push nothing — an empty step wipes redo and makes the next ⌘Z appear to do nothing —
+      // and take back the ◆ it materialised on a hold, as `doFill` does: a keyframe left behind by
+      // a gesture with no undo entry could never be taken back.
+      if (strokeLayer && mat) restoreCellTrack(strokeLayer, mat.before);
+      markInkChanged(target.canvas);
+      recomposite();
+    } else {
+      history.push(
+        pixelCommand(
+          target,
+          before,
+          after,
+          (put) => {
+            put();
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.before);
+            recomposite();
+          },
+          (put) => {
+            // Cell track FIRST: the canvas `target` writes into only belongs to the document once its
+            // cell is back in the track.
+            if (layerId !== null && mat) restoreTrackById(layerId, mat.after);
+            put();
+            recomposite();
+          },
+        ),
+      );
+    }
     strokeCanvas = null;
     strokeCtx = null;
     beforeSnapshot = null;
