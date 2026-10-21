@@ -1,7 +1,28 @@
 import { describe, it, expect } from "vitest";
-import type { BrushSettings } from "../core/brush";
+import { outlineOfPath, pathSpine, widthRange, type BrushSettings } from "../core/brush";
 import { drawCalligraphyStroke } from "../core/calligraphy-brush";
-import { noise2, wobbleAmp, wobbleOutline, wobbleScale } from "../core/wobble";
+import { noise2, strokeSeed, wobbleAmp, wobbleOutline, wobbleScale } from "../core/wobble";
+import type { InputPoint } from "../core/input";
+
+/** Filled length (nonzero winding) of a polygon along the vertical line x = x0. */
+function crossSection(poly: number[][], x0: number): number {
+  const hits: { y: number; dir: number }[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    if ((ax <= x0 && bx > x0) || (bx <= x0 && ax > x0)) {
+      hits.push({ y: ay + ((by - ay) * (x0 - ax)) / (bx - ax), dir: bx > ax ? 1 : -1 });
+    }
+  }
+  hits.sort((p, q) => p.y - q.y);
+  let w = 0;
+  let len = 0;
+  for (let i = 0; i < hits.length; i++) {
+    if (w !== 0) len += hits[i].y - hits[i - 1].y;
+    w += hits[i].dir;
+  }
+  return len;
+}
 
 // slop-paint 4d24cde's wobble.test.ts; its holdRestPressure half is already in
 // stroke-smoothing.test.ts (ported with the resting-tip fix, a952778).
@@ -145,5 +166,62 @@ describe("noise2 (dx / dy independence)", () => {
   // `key ^ x` made an even seed's next noise the same one with neighbouring columns swapped.
   it("gives seed and seed + 1 unrelated noise, even seeds too", () => {
     for (const seed of [2, 1000, 123456, 3, 1001]) expect(Math.abs(corr(seed))).toBeLessThan(0.05);
+  });
+});
+
+// slop-paint 6ee18ae. There `strokeOutline` smooths then outlines; here paintStroke smooths, so
+// `outlineOfPath` (with the path as given) is what `drawStroke` draws.
+describe("Smooth's inward cap (spine)", () => {
+  const line = (pressure: number, shift: number, n = 600): InputPoint[] =>
+    Array.from({ length: n + 1 }, (_, k) => ({
+      x: 100 + k + shift,
+      y: 300.37,
+      pressure,
+      hasPressure: true,
+      timestamp: 1000 + k * 4,
+    }));
+  const wobbled = (pts: InputPoint[], size: number, press: number, spine: boolean) => {
+    const outline = outlineOfPath(pts, size, press, true);
+    const maxW = widthRange(size, press).max;
+    return wobbleOutline(
+      outline,
+      strokeSeed(pts[0]),
+      wobbleAmp(maxW, 100),
+      wobbleScale(maxW),
+      true,
+      spine ? pathSpine(pts, size, press) : undefined,
+    );
+  };
+  const narrowest = (poly: number[][], from: number, to: number) => {
+    let m = Infinity;
+    for (let x = from; x <= to; x += 0.5) m = Math.min(m, crossSection(poly, x + 0.0123));
+    return m;
+  };
+
+  it("keeps at least about half the width at the lightest pressure, Wobble 100, Press 3", () => {
+    const nominal = widthRange(10, 3).min;
+    let without = Infinity;
+    for (let s = 0; s < 6; s++) {
+      const pts = line(0, s * 0.37);
+      expect(narrowest(wobbled(pts, 10, 3, true), 140, 660)).toBeGreaterThan(0.45 * nominal);
+      without = Math.min(without, narrowest(wobbled(pts, 10, 3, false), 140, 660));
+    }
+    expect(without).toBeLessThan(0.3 * nominal); // what it did before: pinched
+  });
+
+  it("changes nothing where the stroke is wide", () => {
+    const pts = line(1, 0);
+    expect(wobbled(pts, 10, 3, true)).toEqual(wobbled(pts, 10, 3, false));
+  });
+
+  it("moves no point near the start as the stroke grows", () => {
+    const short = line(0, 0, 200);
+    const long = line(0, 0, 600);
+    const outline = outlineOfPath(short, 10, 3, true).filter((p) => p[0] < 200);
+    const maxW = widthRange(10, 3).max;
+    const args = [strokeSeed(short[0]), wobbleAmp(maxW, 100), wobbleScale(maxW), true] as const;
+    expect(wobbleOutline(outline, ...args, pathSpine(short, 10, 3))).toEqual(
+      wobbleOutline(outline, ...args, pathSpine(long, 10, 3)),
+    );
   });
 });
