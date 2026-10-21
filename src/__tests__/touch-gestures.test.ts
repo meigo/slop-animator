@@ -148,3 +148,38 @@ describe("a three-finger tap", () => {
     expect(cb.onRedo).toHaveBeenCalledTimes(1);
   });
 });
+
+// Port of slop-paint 731f754: the resting-hand rule ran only when a finger touched down, so a pan
+// or pinch already moving when a stroke opened kept moving the view under it.
+describe("a pan under way when the pen lands", () => {
+  it("stops moving the view, and stays stopped until the fingers lift", () => {
+    const drawing = { on: false };
+    const { viewport, ev } = rig(drawing);
+    ev("pointerdown", 1, 100, 100);
+    ev("pointermove", 1, 150, 100);
+    expect(viewport.panX).toBe(50);
+    drawing.on = true; // the pen lands
+    ev("pointermove", 1, 200, 100);
+    expect(viewport.panX).toBe(50);
+    drawing.on = false; // the pen lifts, the finger stays
+    ev("pointermove", 1, 250, 100);
+    expect(viewport.panX).toBe(50);
+    ev("pointerup", 1, 250, 100);
+    ev("pointerdown", 2, 100, 100);
+    ev("pointermove", 2, 130, 100);
+    expect(viewport.panX).toBe(80);
+  });
+
+  it("a pinch stops too", () => {
+    const drawing = { on: false };
+    const { viewport, ev } = rig(drawing);
+    ev("pointerdown", 1, 100, 100);
+    ev("pointerdown", 2, 200, 100);
+    ev("pointermove", 2, 300, 100);
+    const zoom = viewport.zoom;
+    expect(zoom).toBeGreaterThan(1);
+    drawing.on = true;
+    ev("pointermove", 2, 400, 100);
+    expect(viewport.zoom).toBe(zoom);
+  });
+});
