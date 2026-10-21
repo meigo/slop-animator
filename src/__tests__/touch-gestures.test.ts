@@ -47,45 +47,45 @@ describe("shouldPreventTouchDefault", () => {
   });
 });
 
-describe("fingers landing during a stroke", () => {
-  // A fake workspace that records its listeners, and a viewport with just what the gestures touch.
-  function rig(drawing: { on: boolean }) {
-    const on: Record<string, (e: unknown) => void> = {};
-    const workspace = {
-      addEventListener: (t: string, f: (e: unknown) => void) => (on[t] = f),
-      removeEventListener: () => {},
-      setPointerCapture: () => {},
-      getBoundingClientRect: () => ({ left: 0, top: 0 }),
-    } as unknown as HTMLElement;
-    const viewport = {
-      panX: 0,
-      panY: 0,
-      zoom: 1,
-      rotation: 0,
-      applyTransformPublic: () => {},
-    } as unknown as Viewport;
-    const cb = {
-      onUndo: vi.fn(),
-      onRedo: vi.fn(),
-      onToggleEraser: vi.fn(),
-      onViewportChange: vi.fn(),
-      isDrawing: () => drawing.on,
-    };
-    setupTouchGestures(workspace, viewport, cb);
-    let t = 0;
-    const ev = (type: string, id: number, x: number, y: number) =>
-      on[type]({
-        pointerType: "touch",
-        pointerId: id,
-        clientX: x,
-        clientY: y,
-        timeStamp: (t += 10),
-        target: null,
-        preventDefault: () => {},
-      });
-    return { viewport, cb, ev };
-  }
+// A fake workspace that records its listeners, and a viewport with just what the gestures touch.
+function rig(drawing: { on: boolean }) {
+  const on: Record<string, (e: unknown) => void> = {};
+  const workspace = {
+    addEventListener: (t: string, f: (e: unknown) => void) => (on[t] = f),
+    removeEventListener: () => {},
+    setPointerCapture: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+  } as unknown as HTMLElement;
+  const viewport = {
+    panX: 0,
+    panY: 0,
+    zoom: 1,
+    rotation: 0,
+    applyTransformPublic: () => {},
+  } as unknown as Viewport;
+  const cb = {
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
+    onToggleEraser: vi.fn(),
+    onViewportChange: vi.fn(),
+    isDrawing: () => drawing.on,
+  };
+  setupTouchGestures(workspace, viewport, cb);
+  let t = 0;
+  const ev = (type: string, id: number, x: number, y: number) =>
+    on[type]({
+      pointerType: "touch",
+      pointerId: id,
+      clientX: x,
+      clientY: y,
+      timeStamp: (t += 10),
+      target: null,
+      preventDefault: () => {},
+    });
+  return { viewport, cb, ev };
+}
 
+describe("fingers landing during a stroke", () => {
   it("a finger dragging while the pen draws does not pan the view", () => {
     const drawing = { on: true };
     const { viewport, ev } = rig(drawing);
@@ -125,5 +125,26 @@ describe("fingers landing during a stroke", () => {
     ev("pointerup", 1, 100, 100);
     ev("pointerup", 2, 140, 100);
     expect(cb.onUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Port of slop-paint 19250a6: going from three fingers to two never re-measured the pinch, so when
+// one of the first two lifted first, the remaining pair was compared with the first pair's start —
+// a redo tap rotated and panned the view.
+describe("a three-finger tap", () => {
+  it("redoes without turning or panning the view, whichever finger lifts first", () => {
+    const { viewport, cb, ev } = rig({ on: false });
+    ev("pointerdown", 1, 100, 100);
+    ev("pointerdown", 2, 200, 100);
+    ev("pointerdown", 3, 150, 180);
+    ev("pointerup", 1, 100, 100);
+    ev("pointermove", 2, 201, 101);
+    ev("pointermove", 3, 151, 181);
+    ev("pointerup", 2, 201, 101);
+    ev("pointerup", 3, 151, 181);
+    expect(viewport.rotation).toBe(0);
+    expect(viewport.panX).toBe(0);
+    expect(viewport.panY).toBe(0);
+    expect(cb.onRedo).toHaveBeenCalledTimes(1);
   });
 });

@@ -168,6 +168,10 @@ export function setupTouchGestures(
     if (Math.abs(dx) > TAP_MAX_DISTANCE || Math.abs(dy) > TAP_MAX_DISTANCE) {
       gestureDidMove = true;
     }
+    // A gesture that ever had three fingers is a redo tap or nothing: it never moves the view.
+    // (When one of the first two lifted, the other two were measured against the first pair's
+    // start: a tap rotated the view ~40 degrees and panned it ~80 px.)
+    if (maxSimultaneousTouches >= 3) return;
 
     if (touches.size === 1 && singlePanActive) {
       // Single finger pan
@@ -217,6 +221,7 @@ export function setupTouchGestures(
 
     singlePanActive = false;
     restartSinglePan();
+    restartPinch();
   }
 
   function onPointerCancel(e: PointerEvent) {
@@ -233,6 +238,12 @@ export function setupTouchGestures(
       suppressed = false;
     }
     restartSinglePan();
+    restartPinch();
+  }
+
+  /** Down to two fingers from more: measure the pinch from this pair, where it is now. */
+  function restartPinch() {
+    if (touches.size === 2) initPinch();
   }
 
   /** After one finger goes away, hand the survivor back to single-finger pan from where it is now
