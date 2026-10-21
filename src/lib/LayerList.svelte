@@ -61,7 +61,7 @@
     type RowBox,
   } from "../anim/layer-drop";
   import { autoScrollStep, ghostTop, pastThreshold, slideOffsets } from "./layer-drag-visual";
-  import { isTextEntry } from "./text-entry";
+  import { isCommitEnter, isTextEntry } from "./text-entry";
 
   let listEl: HTMLDivElement;
 
@@ -481,7 +481,7 @@
           onclick={(e) => e.stopPropagation()}
           onpointerdown={(e) => e.stopPropagation()}
           onkeydown={(e) => {
-            if (e.key === "Enter") commitEdit(layer.id);
+            if (isCommitEnter(e)) commitEdit(layer.id);
             else if (e.key === "Escape") editingId = null;
           }}
           onblur={() => commitEdit(layer.id)}
@@ -751,7 +751,7 @@
                 bind:value={groupDraft}
                 use:focusSelect
                 onkeydown={(e) => {
-                  if (e.key === "Enter") commitGroupEdit(seg.group.id);
+                  if (isCommitEnter(e)) commitGroupEdit(seg.group.id);
                   else if (e.key === "Escape") editingGroupId = null;
                 }}
                 onblur={() => commitGroupEdit(seg.group.id)}

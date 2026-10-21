@@ -34,3 +34,15 @@ export function blursOnCanvasPress(
 ): boolean {
   return isTextEntry(el) || el?.tagName === "SELECT";
 }
+
+/** Whether this keydown is an Enter that commits a text field's value — not the Enter that commits
+ *  an input method's composition (Japanese, Chinese…), which arrives as a keydown too:
+ *  `isComposing`, or keyCode 229 in Safari. Taken as a commit, it ended a rename or a marker label
+ *  mid-composition. */
+export function isCommitEnter(e: {
+  key: string;
+  isComposing?: boolean;
+  keyCode?: number;
+}): boolean {
+  return e.key === "Enter" && !e.isComposing && e.keyCode !== 229;
+}

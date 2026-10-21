@@ -9,6 +9,7 @@
   } from "../state/appState.svelte";
   import { markerAt } from "../anim/markers";
   import { clickOutside } from "./click-outside";
+  import { isCommitEnter } from "./text-entry";
 
   // The marker label editor, mounted at APP level just under the tool options row — not beside the
   // marker in the timeline. On iPad it lived in the timeline, near the bottom of the window, which is
@@ -42,7 +43,7 @@
   }
 
   function editorKey(e: KeyboardEvent) {
-    if (e.key === "Enter") {
+    if (isCommitEnter(e)) {
       e.preventDefault();
       commitEdit();
     } else if (e.key === "Escape") {

@@ -247,10 +247,15 @@ export function createCurveEditor(
     }
   });
 
-  cvs.addEventListener("pointerup", () => {
+  // A cancelled drag (the browser took the touch, capture lost) ends like a release; it used to
+  // stay armed, so the next hover moved the point with no button down.
+  const endDrag = () => {
     dragging = null;
     cvs.style.cursor = "default";
-  });
+  };
+  cvs.addEventListener("pointerup", endDrag);
+  cvs.addEventListener("pointercancel", endDrag);
+  cvs.addEventListener("lostpointercapture", endDrag);
 
   // Initial draw
   draw();

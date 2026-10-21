@@ -161,6 +161,12 @@ export function setupTouchGestures(
     t.x = e.clientX;
     t.y = e.clientY;
     if (suppressed) return; // a hand resting during a stroke: no pan, pinch or tap until it lifts
+    // A pan or pinch already under way when the pen lands stops there: moving the view under an
+    // open stroke moved the line (a pen held still drew across the page).
+    if (callbacks.isDrawing?.()) {
+      suppressed = true;
+      return;
+    }
 
     // Check if this counts as movement
     const dx = t.x - t.startX;
@@ -168,6 +174,10 @@ export function setupTouchGestures(
     if (Math.abs(dx) > TAP_MAX_DISTANCE || Math.abs(dy) > TAP_MAX_DISTANCE) {
       gestureDidMove = true;
     }
+    // A gesture that ever had three fingers is a redo tap or nothing: it never moves the view.
+    // (When one of the first two lifted, the other two were measured against the first pair's
+    // start: a tap rotated the view ~40 degrees and panned it ~80 px.)
+    if (maxSimultaneousTouches >= 3) return;
 
     if (touches.size === 1 && singlePanActive) {
       // Single finger pan
@@ -194,6 +204,9 @@ export function setupTouchGestures(
         suppressed = false;
         maxSimultaneousTouches = 0;
         gestureDidMove = false;
+        // Not snapped: the stroke may still be open. Left set, the next one-finger pan's lift
+        // snapped on this pinch's stale midpoint.
+        pinchActive = false;
       }
       return;
     }
@@ -217,6 +230,7 @@ export function setupTouchGestures(
 
     singlePanActive = false;
     restartSinglePan();
+    restartPinch();
   }
 
   function onPointerCancel(e: PointerEvent) {
@@ -233,6 +247,12 @@ export function setupTouchGestures(
       suppressed = false;
     }
     restartSinglePan();
+    restartPinch();
+  }
+
+  /** Down to two fingers from more: measure the pinch from this pair, where it is now. */
+  function restartPinch() {
+    if (touches.size === 2) initPinch();
   }
 
   /** After one finger goes away, hand the survivor back to single-finger pan from where it is now

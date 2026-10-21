@@ -43,6 +43,8 @@ const HANDLE_SIZE = 8;
 const ROTATE_OFFSET = 20;
 /** Minimum hit half-width in screen pixels — hit areas grow at low zoom so handles stay grabbable. */
 const MIN_HIT_PX = 12;
+/** Below this many screen px a side, the handles' hit areas would cover a float whole. */
+const SMALL_FLOAT_PX = 4 * MIN_HIT_PX;
 
 /** Rotation cursor (CSS has no built-in 'rotate'). White halo + black stroke for legibility on any background. Hot-spot at center. */
 const ROTATE_CURSOR_SVG =
@@ -219,6 +221,9 @@ export class Selection {
   private overlayCanvas: HTMLCanvasElement;
   private overlayCtx: CanvasRenderingContext2D;
 
+  /** Cell pixels per document unit (the document's pixel ratio): a moved float lands on whole ones. */
+  pixelRatio: () => number = () => 1;
+
   /** Current viewport zoom — used to keep handle hit areas at a constant screen-pixel size. */
   screenScale = 1;
 
@@ -327,7 +332,11 @@ export class Selection {
 
   endCreate() {
     this.isCreating = false;
-    if (!this.rect || this.rect.w < 3 || this.rect.h < 3) {
+    // A tap (or a drag under 3 SCREEN px a side) makes no marquee. It was 3 document px: zoomed
+    // out, a tap's jitter kept a speck of a marquee that clipped the next stroke, and zoomed in a
+    // deliberate thin drag was dropped. A marquee is document space, so `screenScale` is the zoom.
+    const s = this.screenScale;
+    if (!this.rect || this.rect.w * s < 3 || this.rect.h * s < 3) {
       this.clear();
       return;
     }
@@ -350,7 +359,7 @@ export class Selection {
     // Gate on lassoPath, exactly like every identity path does: the path is only built at ≥ 3
     // points, so a 2-point flick falls back to the rect here too. Gating on `lassoPoints.length > 1`
     // instead clipped such a flick to a degenerate line — i.e. clipped everything away.
-    return this.mode === "lasso" && this.lassoPath
+    return this.lassoPath
       ? mapDocPolyToCell(steps, this.lassoPoints)
       : mapDocRectToCell(steps, this.rect);
   }
@@ -532,6 +541,7 @@ export class Selection {
   beginWarp(rows = 2, cols = 2) {
     if (!this.rect || !this.floatingPixels) return;
     if (rows < 2 || cols < 2) return;
+    this.dropDrag();
     this.warpGrid = sampleGrid(this.rect, this.matrix, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
@@ -549,12 +559,22 @@ export class Selection {
     if (this.state !== "warping" || !this.rect) return;
     if (rows < 2 || cols < 2) return;
     if (rows === this.warpRows && cols === this.warpCols) return;
+    this.dropDrag();
     this.warpGrid = resampleGrid(this.warpGrid, this.warpRows, this.warpCols, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
     this.pinned.clear();
     this.drawOverlay();
     this.onStateChange?.();
+  }
+
+  /** A drag held across a grid change ends there: its next move rebuilt the grid from the copy
+   *  taken at its press — the old density (rows and grid disagreed, so drawing, hit-testing and
+   *  Apply went wrong) or, from a free-transform drag, no grid at all. The rest of the press does
+   *  nothing. */
+  private dropDrag() {
+    this.dragging = null;
+    this.dragGridIdx = null;
   }
 
   setDeformMode(m: "ffd" | "rigid") {
@@ -591,7 +611,10 @@ export class Selection {
 
     if (this.state === "selected") {
       // No handles in 'selected' state — only inside/outside the actual shape.
-      if (this.mode === "lasso" && this.lassoPath) {
+      // The marquee's own shape, not the tool's mode: switching Lasso → Select set the mode to
+      // rect, and a lasso marquee then hit-tested, clipped and showed as its box while Delete and a
+      // lift still took the lasso. `mode` only shapes a marquee being drawn (set at startCreate).
+      if (this.lassoPath) {
         return this.overlayCtx.isPointInPath(this.lassoPath, x, y) ? "move" : null;
       }
       const r = this.rect;
@@ -627,6 +650,16 @@ export class Selection {
     // handle once the view was zoomed out far enough to fit an HD canvas.
     const rotR = tol + 2 * this.px;
     if ((x - rotateHandle.x) ** 2 + (y - rotateHandle.y) ** 2 < rotR * rotR) return "rotate";
+
+    // A float under SMALL_FLOAT_PX on screen a side: inside it moves, and the handles are grabbed
+    // from just outside. Their hit areas (MIN_HIT_PX each way) otherwise covered all of it, so a
+    // small paste or lift could be scaled but never moved.
+    const side = Math.min(
+      Math.hypot(corners.tr.x - corners.tl.x, corners.tr.y - corners.tl.y),
+      Math.hypot(corners.bl.x - corners.tl.x, corners.bl.y - corners.tl.y),
+    );
+    if (side * this.screenScale < SMALL_FLOAT_PX && this.pointInsideTransformedBox(x, y))
+      return "move";
 
     const cornerHandles: { handle: Handle; p: { x: number; y: number } }[] = [
       { handle: "tl", p: corners.tl },
@@ -708,10 +741,16 @@ export class Selection {
 
     switch (this.dragging) {
       case "move": {
+        // By whole cell pixels: a float lifted on the pixel grid stays on it, so Apply draws it
+        // back without resampling. The raw pointer delta (any zoom but 1, or the Pencil) landed it
+        // between pixels and every lift + move + Apply blurred the art a little more. A turned or
+        // scaled float, or one under a layer/group transform, is resampled anyway; this only
+        // steps its moves.
+        const k = this.pixelRatio();
         this.matrix = {
           ...this.matrixStart,
-          e: this.matrixStart.e + dx,
-          f: this.matrixStart.f + dy,
+          e: this.matrixStart.e + Math.round(dx * k) / k,
+          f: this.matrixStart.f + Math.round(dy * k) / k,
         };
         break;
       }
@@ -799,7 +838,7 @@ export class Selection {
     if (needsMap(this.composeSteps)) {
       const path = this.cellPath();
       if (path) ctx.clip(path);
-    } else if (this.mode === "lasso" && this.lassoPath) {
+    } else if (this.lassoPath) {
       ctx.clip(this.lassoPath);
     } else {
       ctx.beginPath();
@@ -1061,7 +1100,10 @@ export class Selection {
       // is document-level (survives layer switches). Suppressing it made selections on a hidden layer
       // invisible until you activated a visible one (2026-08-11 report).
       if (this.state === "selected" || this.isCreating) {
-        if (this.mode === "lasso" && (this.lassoPath || this.lassoPoints.length > 1)) {
+        if (
+          this.lassoPath ||
+          (this.isCreating && this.mode === "lasso" && this.lassoPoints.length > 1)
+        ) {
           ctx.beginPath();
           ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
           for (let i = 1; i < this.lassoPoints.length; i++) {

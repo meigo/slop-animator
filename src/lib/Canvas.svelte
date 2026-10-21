@@ -4,7 +4,7 @@
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
   import { blursOnCanvasPress, isTextEntry } from "./text-entry";
-  import { Viewport } from "../core/viewport";
+  import { Viewport, wheelPx, wheelZoomFactor } from "../core/viewport";
   import { capScaleToArea } from "../core/canvas-area";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
@@ -345,9 +345,13 @@
       e.preventDefault();
     } else if (e.key === "0") {
       e.preventDefault();
+      // Not under an open press: its next point would map through the new view, and the line jump
+      // there in a straight chord.
+      if (pressOpen()) return;
       viewport?.fitView(appState.project.width, appState.project.height);
     } else if (e.key === "1") {
       e.preventDefault();
+      if (pressOpen()) return; // as `0`
       viewport?.setZoom(1);
     }
   }
@@ -480,6 +484,8 @@
   let strokeBrushType: BrushKind = "smooth";
   // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
   let dropStrokeUntilUp = false;
+  /** Whether a canvas press (pen or mouse) is open. Set from `setupInput` in onMount. */
+  let pressOpen: () => boolean = () => false;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
   // above the display refresh, so painting every event re-runs the full stroke wastefully.
   let drawRaf = 0;
@@ -1365,6 +1371,32 @@
     if (done) fillUsed = false;
   }
 
+  /** A tool change while a NON-stroke press is open (a finger on the toolbar, or a key, while the
+   *  Pencil holds a marquee, a selection or Deform drag, a Pose handle, a Fill tap or the
+   *  eyedropper): end that press as its release would and drop the rest of it. Every later event
+   *  is routed by the LIVE tool, so the rest of a Select press switched to Brush drew a stroke with
+   *  every point since pen-down, and a Fill press left `fillUsed` latched, so the next Fill tap did
+   *  nothing. The eyedropper picks nothing. An open stroke is committed by the caller, and a
+   *  Transform drag is settled by `transformDragGuard.settle`; the rest of their press is dropped
+   *  here too. */
+  function endOpenPress(prev: typeof appState.tool) {
+    if (selectionMode !== null && (prev === "select" || prev === "lasso" || prev === "deform")) {
+      if (selectionMode === "create") selection.endCreate();
+      else selection.endDrag();
+      selectionMode = null;
+      deformGrab = null;
+      recomposite();
+    }
+    if (prev === "pose") {
+      poseDrag = null;
+      poseGrab = null;
+      poseBarDragging = false;
+      poseAdjusting = false;
+    }
+    fillUsed = false;
+    dropStrokeUntilUp = true;
+  }
+
   function onStroke(points: InputPoint[], done: boolean) {
     if (dropStrokeUntilUp) {
       if (done) dropStrokeUntilUp = false;
@@ -1638,6 +1670,7 @@
 
     selection = new Selection(overlay);
     selection.mode = "rect";
+    selection.pixelRatio = () => DPR;
     selection.applyView = applyViewTransform;
     // Only consulted for a cellSpaceLift (deform) — see Selection.applyCompose.
     selection.applyCompose = applyOverlayCompose;
@@ -2632,8 +2665,24 @@
     rebuildPoseMesh();
   }
 
+  /** A grid change (Distort / Mesh, W / M, the mesh stepper) while the Pencil holds a point or a
+   *  free-transform drag: the Selection drops its drag (`dropDrag`), and the rest of this press
+   *  does nothing — the point stays where it got to. */
+  function endHeldSelectionDrag() {
+    if (selectionMode !== "drag") return;
+    selectionMode = null;
+    deformGrab = null;
+    dropStrokeUntilUp = true;
+  }
+
   function enterWarp(rows: number, cols: number) {
     if (!selection) return;
+    if (
+      selection.state === "transforming" ||
+      (selection.state === "warping" &&
+        (rows !== selection.warpRows || cols !== selection.warpCols))
+    )
+      endHeldSelectionDrag();
     if (selection.state === "selected") enterTransform();
     if (selection.state === "transforming") selection.beginWarp(rows, cols);
     else if (selection.state === "warping") selection.densifyWarp(rows, cols);
@@ -2699,6 +2748,7 @@
           ? activeStroke().streamline / 100
           : 0,
     });
+    pressOpen = () => input.isDrawing();
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
     let lastVersion = appState.version;
@@ -2856,7 +2906,7 @@
     if (toolChanged && strokeCanvas) {
       commitOpenStroke(lastPoints, prevTool === "eraser");
       dropStrokeUntilUp = true;
-    }
+    } else if (toolChanged && pressOpen()) endOpenPress(prevTool);
     if (toolChanged) {
       // An untouched lift cancels rather than bakes — see `deformDirty`/`poseDirty`.
       if (prevTool === "pose" && t !== "pose" && meshPose) {
@@ -2870,9 +2920,9 @@
       if (prevTool === "outline" && t !== "outline") cancelOutline();
     }
     prevTool = t;
-    if (t === "select") selection.mode = "rect";
-    else if (t === "lasso") selection.mode = "lasso";
-    else if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
+    // Deform manages its own selectionMode on entry. The selection's mode is not set here: a
+    // marquee keeps its own shape (`lassoPath`), and a new one takes the tool's at startCreate.
+    if (t !== "select" && t !== "lasso" && t !== "deform") selectionMode = null;
     // Lift on ARRIVAL, not on the first press. Waiting for a press made the tool look inert until
     // you guessed a tap would do something, and — worse — that press was consumed entirely by the
     // lift, so summoning the grid and grabbing a handle could never be one gesture. Entering here
@@ -3011,8 +3061,13 @@
   // ctrl+wheel) zooms at the cursor.
   function onWheel(e: WheelEvent) {
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
-    else viewport?.panBy(-e.deltaX, -e.deltaY); // content follows the scroll
+    if (pressOpen()) return; // as the view keys: not under an open press
+    // By the delta's size, not a fixed 10% per event: a trackpad pinch (many small deltas) zoomed
+    // ~10x too fast, and Ctrl with a horizontal scroll (deltaY 0) zoomed in.
+    if (e.ctrlKey || e.metaKey)
+      viewport?.zoomAt(e.clientX, e.clientY, wheelZoomFactor(e.deltaY, e.deltaMode));
+    // content follows the scroll; in pixels, whatever deltaMode (Firefox's wheel reports lines)
+    else viewport?.panBy(-wheelPx(e.deltaX, e.deltaMode), -wheelPx(e.deltaY, e.deltaMode));
   }
 
   // Tools that WRITE to the active layer. The eyedropper samples the composite and select/lasso can
@@ -3120,6 +3175,7 @@
     onDensify={(d) => {
       if (!selection) return;
       const n = clampDensity(selection.warpRows + d);
+      if (n !== selection.warpRows) endHeldSelectionDrag();
       selection.densifyWarp(n, n);
     }}
     onSetDeformMode={(m) => selection?.setDeformMode(m)}

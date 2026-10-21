@@ -208,17 +208,19 @@
     // browser's Save dialog opened, Cmd+O toggled onion skins, Cmd+[ resized the brush.
     if (meta || e.altKey) return;
 
-    if (e.key === "b") state.tool = "brush";
-    else if (e.key === "e") state.tool = "eraser";
-    else if (e.key === "g") state.tool = "fill";
-    else if (e.key === "s") state.tool = "select";
-    else if (e.key === "l") state.tool = "lasso";
-    else if (e.key === "w") {
+    // The letter keys lowercased: with Caps Lock on the key reads "B", and the tool keys did nothing.
+    const letter = e.key.toLowerCase();
+    if (letter === "b") state.tool = "brush";
+    else if (letter === "e") state.tool = "eraser";
+    else if (letter === "g") state.tool = "fill";
+    else if (letter === "s") state.tool = "select";
+    else if (letter === "l") state.tool = "lasso";
+    else if (letter === "w") {
       if (selectionRef.current?.active) {
         e.preventDefault();
         selectionActions.enterWarp?.(2, 2);
       }
-    } else if (e.key === "m") {
+    } else if (letter === "m") {
       if (selectionRef.current?.active) {
         e.preventDefault();
         selectionActions.enterWarp?.(3, 3);
@@ -236,13 +238,13 @@
       else if (selectionRef.current?.active) selectionRef.current.commit();
       else if (poseActions.active()) poseActions.apply();
       else playbackController.toggle();
-    } else if (e.key === "k") {
+    } else if (letter === "k") {
       e.preventDefault();
       playbackController.toggle();
-    } else if (e.key === "o") {
+    } else if (letter === "o") {
       state.onion.enabled = !state.onion.enabled;
       repaint();
-    } else if (e.key === "n" && !meta) {
+    } else if (letter === "n" && !meta) {
       // preventDefault: the editor's input takes focus during this keystroke, and the "n" must not
       // be typed into it.
       e.preventDefault();
@@ -333,6 +335,26 @@
       }
     }
   }
+
+  // WebKit (Safari, iPad with a keyboard) fires `paste` for Cmd+V only while Edit ▸ Paste is
+  // enabled: with a text field focused, a text selection, or a `beforepaste` handler that prevents
+  // its default (slop-vector-editor 8257833). Over the canvas there is none of those, so Cmd+V of
+  // an OS image (the route `onPaste` serves; pixel and cell pastes run in the keydown) did nothing
+  // there. Same gates as `onPaste`. Not in lib.dom.d.ts, so <svelte:window> can't take it.
+  $effect(() => {
+    const onBeforePaste = (e: Event) => {
+      if (
+        windowPasteAllowed({
+          exportBusy: state.exportBusy,
+          modalOpen: modalOpen(),
+          textEntry: isTextEntry(e.target as HTMLElement | null),
+        })
+      )
+        e.preventDefault();
+    };
+    window.addEventListener("beforepaste", onBeforePaste);
+    return () => window.removeEventListener("beforepaste", onBeforePaste);
+  });
 
   // Autosave must not write before the startup restore has settled: `state.project` is a blank
   // createProject() until loadAutosave resolves, and saveAutosave overwrites the single slot — so a
