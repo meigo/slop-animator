@@ -2001,6 +2001,10 @@
 
   function pasteSelection(): boolean {
     if (!selectionClipboard) return false;
+    // Cmd+V while a marquee or drag is held: end that press first, as a tool change does. Under
+    // the Select tool nothing else would, and its release ran `endCreate`, whose under-3-px check
+    // wiped the pasted float. An open stroke is the tool change's to commit (pasting picks Select).
+    if (pressOpen() && !strokeCanvas) endOpenPress(appState.tool);
     liftGuard.bank?.(); // apply any in-progress lift before setting up the new float
     const target = activeDrawableCtx();
     if (!target) return false;
