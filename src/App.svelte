@@ -336,6 +336,26 @@
     }
   }
 
+  // WebKit (Safari, iPad with a keyboard) fires `paste` for Cmd+V only while Edit ▸ Paste is
+  // enabled: with a text field focused, a text selection, or a `beforepaste` handler that prevents
+  // its default (slop-vector-editor 8257833). Over the canvas there is none of those, so Cmd+V of
+  // an OS image (the route `onPaste` serves; pixel and cell pastes run in the keydown) did nothing
+  // there. Same gates as `onPaste`. Not in lib.dom.d.ts, so <svelte:window> can't take it.
+  $effect(() => {
+    const onBeforePaste = (e: Event) => {
+      if (
+        windowPasteAllowed({
+          exportBusy: state.exportBusy,
+          modalOpen: modalOpen(),
+          textEntry: isTextEntry(e.target as HTMLElement | null),
+        })
+      )
+        e.preventDefault();
+    };
+    window.addEventListener("beforepaste", onBeforePaste);
+    return () => window.removeEventListener("beforepaste", onBeforePaste);
+  });
+
   // Autosave must not write before the startup restore has settled: `state.project` is a blank
   // createProject() until loadAutosave resolves, and saveAutosave overwrites the single slot — so a
   // hide (or the 3s debounce) landing mid-restore would replace the user's work with an empty
