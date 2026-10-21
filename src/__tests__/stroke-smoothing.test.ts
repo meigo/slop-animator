@@ -234,6 +234,31 @@ describe("corners", () => {
     expect(pauseBreaks(gap, 3)).toEqual([2]);
   });
 
+  it("a slow steady stroke (40 px/s) is not a pause; a held pen still is", () => {
+    // 240 Hz events, 1/6 px apart: the old 3 px radius read this as one pause after another.
+    const slow: InputPoint[] = Array.from({ length: 240 }, (_, i) => ({
+      x: i / 6,
+      y: 0,
+      pressure: 0.5,
+      hasPressure: true,
+      timestamp: (i * 1000) / 240,
+    }));
+    expect(pauseBreaks(slow, STILL_PX)).toEqual([]);
+    expect(pauseBreaks(slow, 3).length).toBeGreaterThan(0);
+    // A held pen trembling well within STILL_PX for PAUSE_MS still breaks the stroke there.
+    const held: InputPoint[] = [
+      ...slow.slice(0, 60),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        x: 10 + (i % 2) * 0.5,
+        y: 0,
+        pressure: 0.5,
+        hasPressure: true,
+        timestamp: 250 + i * 4,
+      })),
+    ];
+    expect(pauseBreaks(held, STILL_PX).length).toBe(1);
+  });
+
   it("Smooth keeps a paused corner only with Sharp corners, and rounds an unpaused one", () => {
     const r = SMOOTH_MAX_PX;
     expect(reach(smoothPath(lStroke(150), r, true))).toBeLessThan(1);

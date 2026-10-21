@@ -27,8 +27,13 @@ interface Pt {
 
 /** A pen still (within `STILL_PX` screen px) this long is pausing — at a corner, say (ms). */
 export const PAUSE_MS = 50;
-/** How far a pausing pen may still tremble (screen px). */
-export const STILL_PX = 3;
+/** How far a pausing pen may still tremble (screen px). Any steadier movement counts as a pause,
+ *  so this sets the speed below which Stream lets go and Sharp corners cuts: 1.5 px in `PAUSE_MS`
+ *  is 30 px/s (it was 3 px, 60 px/s, so a slow careful stroke was all pauses — unsteadied by
+ *  Stream, chopped into legs by Sharp corners). A GUESS: tune it on the iPad against a resting
+ *  Pencil's jitter — too tight and a held Pencil never counts as paused. The trail is kept at this
+ *  spacing too (its last point is where the pen came to rest). */
+export const STILL_PX = 1.5;
 /** The pen's recent path is kept for this many times the string's length — more than the rope
  *  can ever lag, so the catch-up always finds where the brush is. */
 export const TRAIL_SPAN = 3;
@@ -303,16 +308,17 @@ export function pauseBreaks(points: InputPoint[], stillDist: number, pauseMs = P
  * points within `radius` of it along the path — with `sharpCorners`, one leg at a time between
  * the pen's pauses, so a paused corner stays sharp (off, the corner rounds: a look worth keeping). The window at each point is also limited to its distance from either end of
  * its leg, so the ends — and the corners — stay put and nothing is pulled short. A pause is the pen
- * within `radius / 8` for `PAUSE_MS`: the same share of the window at any zoom.
+ * within `stillDist` (document px; the stroke passes `STILL_PX` on screen) for `PAUSE_MS`.
  */
 export function smoothPath(
   points: InputPoint[],
   radius: number,
   sharpCorners = false,
+  stillDist = radius / 8,
 ): InputPoint[] {
   if (points.length < 3 || !(radius > 0)) return points;
   points = collapseRests(points);
-  const breaks = sharpCorners ? pauseBreaks(points, radius / 8) : [];
+  const breaks = sharpCorners ? pauseBreaks(points, stillDist) : [];
   if (!breaks.length) return smoothLeg(points, radius);
   const out: InputPoint[] = [];
   let from = 0;

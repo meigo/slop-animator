@@ -13,6 +13,7 @@
     pathSmoothRadius,
     REST_PX,
     smoothPath,
+    STILL_PX,
   } from "../core/stroke-smoothing";
   import {
     floodFill,
@@ -880,6 +881,8 @@
         inPts,
         pathSmoothRadius(stroke.smoothing, viewport.zoom),
         brushType === "smooth" && (stroke.sharpCorners ?? false),
+        // Sharp corners' pause: the same on-screen stillness Stream's pause uses.
+        STILL_PX / viewport.zoom,
       );
     }
     const steps = strokeSteps;
