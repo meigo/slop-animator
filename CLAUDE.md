@@ -42,7 +42,7 @@ TypeScript + Vite + Tailwind 4 + Vitest.
   `0b2a071`, added 2026-10-01): the app in WebKit at iPad Pro 11 landscape with touch, in a fresh
   profile (never your autosave). Starts its own dev server; `npm run test:ipad -- <url>` checks a
   URL (e.g. the deployed site). Checks: loads, a pen stroke adds an undo step, a finger drag pans,
-  a finger drag of a layer row, a Dry brush stroke (its partial tones vs a Smooth stroke's), the tool-options row one line for every tool in iPad portrait (its own context), a finger tap opens the File menu, the blank-layers guard (dev server only: it needs `window.slopBlankLayers`; blank → the next save pauses and the restore dialog opens → Restore brings the drawing back; drawings emptied mid-encode leave the latest alone, 2026-10-02), no page errors, plus the browser-side fixes of the 2026-09-30
+  a finger drag of a layer row, a Dry brush stroke (its partial tones vs a Smooth stroke's), the tool-options row one line for every tool in iPad portrait (its own context), a finger tap opens the File menu, a number field drag ending unfocused and a typed value applying live (2026-10-21), the blank-layers guard (dev server only: it needs `window.slopBlankLayers`; blank → the next save pauses and the restore dialog opens → Restore brings the drawing back; drawings emptied mid-encode leave the latest alone, 2026-10-02), no page errors, plus the browser-side fixes of the 2026-09-30
   review (added 2026-10-01; each confirmed to FAIL on the pre-review code): a finger or a two-finger
   tap mid-stroke, a canvas press blurring a text field, Cmd chords / focused sliders / open dialogs
   vs the tool keys, redo with a moved selection, the eyedropper on transparent, a cancelled timeline

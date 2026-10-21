@@ -48,6 +48,11 @@
    *  a field that only writes on release (Length, Track step). */
   let focused = $state(false);
   let dragging = $state(false);
+  /** The value before typing sent its first live `onInput`, or null if it has sent none: Escape goes
+   *  back to it, and the typing ends with one `onCommit` measured from it. Typing sends in-range
+   *  values live because a tap on a button does not blur the field on iPad, so a value that waited
+   *  for blur was not there yet when the button acted (slop-paint `3b856bf`). */
+  let typedFrom: number | null = null;
 
   // Re-sync when the value changes from OUTSIDE this field — undo, a preset button, a timeline
   // drag. Guarded, or it would overwrite what is being typed or dragged.
@@ -168,22 +173,37 @@
    *  NOT snapped to the step grid, so typing 1281 into canvas width keeps 1281; only the drag path
    *  snaps. */
   function commitDraft() {
+    const from = typedFrom ?? value;
+    typedFrom = null;
     if (disabled) {
       draft = show(value);
       return;
     }
     const v = Number(draft);
-    if (!Number.isFinite(v) || draft.trim() === "") {
-      draft = show(value);
-      return;
-    }
-    const c = Number(clamp(v).toFixed(dp));
-    if (c === value) {
-      draft = show(value); // normalise what is displayed (e.g. "07" → "7")
+    // An empty or unreadable draft keeps the current value — the last one typing sent live, if any.
+    const c = !Number.isFinite(v) || draft.trim() === "" ? value : Number(clamp(v).toFixed(dp));
+    if (c === from) {
+      if (c !== value) onInput?.(c);
+      draft = show(c); // normalise what is displayed (e.g. "07" → "7")
       return;
     }
     onCommit(c);
     draft = show(c);
+  }
+
+  /** Send a typed value live through `onInput` while it is a number in range. Out-of-range or
+   *  half-typed text ("", "-", "1.") waits for Enter or blur, which clamp it. A field without
+   *  `onInput` (its setter is undoable) still writes only then — typing 120 into Length must not
+   *  cut the document to 1 frame on the way. */
+  function onTyped(text: string) {
+    draft = text;
+    if (!onInput || disabled || text.trim() === "") return;
+    const v = Number(text);
+    if (!Number.isFinite(v) || v < min || v > max) return;
+    const c = Number(v.toFixed(dp));
+    if (c === value) return;
+    typedFrom ??= value;
+    onInput(c);
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -199,7 +219,10 @@
       return;
     }
     if (e.key === "Escape") {
-      draft = show(value);
+      const back = typedFrom ?? value;
+      if (typedFrom !== null) onInput?.(typedFrom);
+      typedFrom = null;
+      draft = show(back);
       input?.blur();
       return;
     }
@@ -210,6 +233,7 @@
       const next = clamp(value + (e.key === "ArrowUp" ? 1 : -1) * step * (e.shiftKey ? 10 : 1));
       if (next === value) return;
       draft = show(next);
+      typedFrom = null;
       onInput?.(next);
       onCommit(next);
     }
@@ -229,9 +253,14 @@
   aria-disabled={disabled}
   title={title ? `${title} · Drag to change` : "Drag to change"}
   value={draft}
-  oninput={(e) => (draft = e.currentTarget.value)}
+  oninput={(e) => onTyped(e.currentTarget.value)}
   onpointerdown={onPointerDown}
-  onfocus={() => (focused = true)}
+  onfocus={(e) => {
+    // WebKit focuses the field AGAIN after the drag's first-move blur (pointerdown → focus → blur →
+    // focus), which left it focused at release: caret, the iPad keyboard, tool keys going to the field.
+    if (dragging) return e.currentTarget.blur();
+    focused = true;
+  }}
   onblur={() => {
     focused = false;
     // The blur the drag itself fires (first move) must not commit: the drag commits on release.
