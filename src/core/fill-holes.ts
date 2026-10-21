@@ -1,4 +1,4 @@
-import { dilateMask, erodeMask } from "./mask-ops";
+import { dilateMask, erodeMask, thickenMask } from "./mask-ops";
 
 export interface FillEnclosedResult {
   /** w*h, 1 = part of the shape: ink, or a region the ink encloses. */
@@ -286,7 +286,8 @@ export function enclosedRegion(
   if ((opts.gap ?? 0) > 0) region = keepAreasWith(region, filled.core, w, h);
 
   const expand = Math.max(0, Math.floor(opts.expand ?? 0));
-  if (expand > 0) region = new Uint8Array(dilateMask(region, w, h, expand));
+  // `dilateMask(region, expand)`'s pixels by distance: linear time, not O(px × r²).
+  if (expand > 0) region = new Uint8Array(thickenMask(region, w, h, expand));
 
   let area = 0;
   for (let i = 0; i < w * h; i++) area += region[i];

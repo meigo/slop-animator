@@ -3,7 +3,7 @@
  * Operates on raw ImageData for performance.
  */
 
-import { dilateMask, distanceToMask, thickenMask } from "./mask-ops";
+import { distanceToMask, thickenMask } from "./mask-ops";
 import { clampGap, enclosedRegion } from "./fill-holes";
 
 export interface FillOptions {
@@ -253,9 +253,9 @@ export function ridgeCoverage(
 
 /**
  * The fill grown `expand` px under the lines (Expand), as coverage 0–255 (2026-10-02). Soft 0: the
- * old whole-pixel round dilation (`dilateMask`). Above 0 the grown edge is a smooth round offset
- * measured by true distance (`distanceToMask`), solid up to `expand` px and fading to nothing over
- * the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
+ * old whole-pixel round dilation (`dilateMask`'s pixels, by distance: `thickenMask`). Above 0 the
+ * grown edge is a smooth round offset measured by true distance (`distanceToMask`), solid up to
+ * `expand` px and fading to nothing over the next max(1, 2 × Soft) px — antialiased at least. The whole-pixel dilation left a staircase
  * under the line, showing through a see-through one, and Soft's fade (`ridgeCoverage`) starts from
  * that edge, already in the line's dark middle where it has nothing left to fade: with Expand on,
  * Soft seemed to do nothing. Pure.
@@ -269,7 +269,9 @@ export function expandedCoverage(
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(w * h);
   if (soft <= 0) {
-    const grown = dilateMask(mask, w, h, expand);
+    // The same pixels as `dilateMask(mask, expand)`, in linear time: the dilation is
+    // O(pixels × expand²), 610 ms for a big 1080p fill at Expand 8 against 43 ms (slop-paint 640cda9).
+    const grown = thickenMask(mask, w, h, expand);
     for (let i = 0; i < w * h; i++) if (grown[i]) out[i] = 255;
     return out;
   }

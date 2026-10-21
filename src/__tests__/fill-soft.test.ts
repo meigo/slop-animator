@@ -10,7 +10,7 @@ import {
   floodFill,
   fillRegionBehind,
 } from "../core/fill";
-import { distanceToMask } from "../core/mask-ops";
+import { dilateMask, distanceToMask } from "../core/mask-ops";
 
 const row = (bits: number[]) => Uint8Array.from(bits);
 /** One row: `region` 1s, then the line's strengths, then empty space beyond. */
@@ -96,6 +96,20 @@ describe("expandedCoverage / distanceToMask", () => {
   it("is the old whole-pixel dilation at Soft 0", () => {
     const m = row([1, 0, 0, 0]);
     expect([...expandedCoverage(m, 4, 1, 2, 0)]).toEqual([255, 255, 255, 0]);
+  });
+
+  it("at Soft 0 covers exactly the round dilation's pixels", () => {
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const w = 40;
+    const h = 30;
+    const m = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) m[i] = rnd() < 0.01 ? 1 : 0;
+    for (const r of [1, 2, 5, 9]) {
+      const grown = dilateMask(m, w, h, r);
+      const cover = expandedCoverage(m, w, h, r, 0);
+      for (let i = 0; i < w * h; i++) expect(cover[i]).toBe(grown[i] ? 255 : 0);
+    }
   });
 });
 
