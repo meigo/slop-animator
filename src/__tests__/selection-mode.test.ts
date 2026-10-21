@@ -107,3 +107,80 @@ describe("snapRectOutward", () => {
     expect(snapRectOutward({ x: 1.3, y: 1.3, w: 1, h: 1 }, 2)).toEqual({ x: 2, y: 2, w: 3, h: 3 });
   });
 });
+
+class FakePath {
+  pts: { x: number; y: number }[] = [];
+  moveTo(x: number, y: number) {
+    this.pts.push({ x, y });
+  }
+  lineTo(x: number, y: number) {
+    this.pts.push({ x, y });
+  }
+  closePath() {}
+}
+function inPoly(pts: { x: number; y: number }[], x: number, y: number) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+/** A context that records each call by name, clips with their points, and hit-tests a path. */
+function recorder() {
+  const calls: string[] = [];
+  const clips: { x: number; y: number }[][] = [];
+  const ctx = new Proxy(
+    {},
+    {
+      get: (_t, k) => {
+        if (k === "clip")
+          return (p?: FakePath) => {
+            calls.push("clip");
+            clips.push(p ? p.pts : []);
+          };
+        if (k === "isPointInPath")
+          return (p: FakePath, x: number, y: number) => inPoly(p.pts, x, y);
+        if (k === "getTransform") return () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+        return () => calls.push(String(k));
+      },
+      set: () => true,
+    },
+  );
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, clips };
+}
+/** A Selection over a recording overlay. */
+function recordedSelection() {
+  (globalThis as { Path2D?: unknown }).Path2D ??= FakePath;
+  globalThis.requestAnimationFrame ??= () => 0;
+  const overlay = recorder();
+  const s = new Selection({
+    width: 400,
+    height: 300,
+    getContext: () => overlay.ctx,
+  } as unknown as HTMLCanvasElement);
+  return { s, overlay };
+}
+
+// Port of slop-paint 3414b5e: the tool effect set `selection.mode` on Lasso → Select, and a lasso
+// marquee then hit-tested, clipped and showed as its box while Delete and a lift took the lasso.
+describe("a lasso marquee keeps its shape", () => {
+  it("when the mode changes after it is drawn (Lasso → Select)", () => {
+    const { s, overlay } = recordedSelection();
+    s.startCreate(10, 10, "lasso");
+    s.updateCreate(100, 10);
+    s.updateCreate(10, 100);
+    s.endCreate();
+    s.mode = "rect";
+    expect(s.hitTest(90, 90)).toBe(null); // in the box, outside the triangle
+    expect(s.hitTest(20, 20)).toBe("move");
+    const c = recorder();
+    s.applyClip(c.ctx);
+    expect(c.clips[0].length).toBe(3);
+    overlay.calls.length = 0;
+    s.drawOverlay();
+    expect(overlay.calls).toContain("lineTo");
+    expect(overlay.calls).not.toContain("rect");
+  });
+});

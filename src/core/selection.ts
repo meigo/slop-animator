@@ -350,7 +350,7 @@ export class Selection {
     // Gate on lassoPath, exactly like every identity path does: the path is only built at ≥ 3
     // points, so a 2-point flick falls back to the rect here too. Gating on `lassoPoints.length > 1`
     // instead clipped such a flick to a degenerate line — i.e. clipped everything away.
-    return this.mode === "lasso" && this.lassoPath
+    return this.lassoPath
       ? mapDocPolyToCell(steps, this.lassoPoints)
       : mapDocRectToCell(steps, this.rect);
   }
@@ -591,7 +591,10 @@ export class Selection {
 
     if (this.state === "selected") {
       // No handles in 'selected' state — only inside/outside the actual shape.
-      if (this.mode === "lasso" && this.lassoPath) {
+      // The marquee's own shape, not the tool's mode: switching Lasso → Select set the mode to
+      // rect, and a lasso marquee then hit-tested, clipped and showed as its box while Delete and a
+      // lift still took the lasso. `mode` only shapes a marquee being drawn (set at startCreate).
+      if (this.lassoPath) {
         return this.overlayCtx.isPointInPath(this.lassoPath, x, y) ? "move" : null;
       }
       const r = this.rect;
@@ -799,7 +802,7 @@ export class Selection {
     if (needsMap(this.composeSteps)) {
       const path = this.cellPath();
       if (path) ctx.clip(path);
-    } else if (this.mode === "lasso" && this.lassoPath) {
+    } else if (this.lassoPath) {
       ctx.clip(this.lassoPath);
     } else {
       ctx.beginPath();
@@ -1061,7 +1064,10 @@ export class Selection {
       // is document-level (survives layer switches). Suppressing it made selections on a hidden layer
       // invisible until you activated a visible one (2026-08-11 report).
       if (this.state === "selected" || this.isCreating) {
-        if (this.mode === "lasso" && (this.lassoPath || this.lassoPoints.length > 1)) {
+        if (
+          this.lassoPath ||
+          (this.isCreating && this.mode === "lasso" && this.lassoPoints.length > 1)
+        ) {
           ctx.beginPath();
           ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
           for (let i = 1; i < this.lassoPoints.length; i++) {

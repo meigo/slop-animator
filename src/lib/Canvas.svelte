@@ -2870,9 +2870,9 @@
       if (prevTool === "outline" && t !== "outline") cancelOutline();
     }
     prevTool = t;
-    if (t === "select") selection.mode = "rect";
-    else if (t === "lasso") selection.mode = "lasso";
-    else if (t !== "deform") selectionMode = null; // deform manages its own selectionMode on entry
+    // Deform manages its own selectionMode on entry. The selection's mode is not set here: a
+    // marquee keeps its own shape (`lassoPath`), and a new one takes the tool's at startCreate.
+    if (t !== "select" && t !== "lasso" && t !== "deform") selectionMode = null;
     // Lift on ARRIVAL, not on the first press. Waiting for a press made the tool look inert until
     // you guessed a tap would do something, and — worse — that press was consumed entirely by the
     // lift, so summoning the grid and grabbing a handle could never be one gesture. Entering here
