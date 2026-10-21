@@ -356,6 +356,15 @@
     return () => window.removeEventListener("beforepaste", onBeforePaste);
   });
 
+  /** A FILE dragged over or dropped anywhere is refused: the browser's own drop opened it in the
+   *  tab in the app's place, unsaved work and all (slop-vector-editor's report). Dragged text
+   *  still drops into a field. Use the app's own file pickers instead. */
+  function refuseFileDrop(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "none";
+  }
+
   // Autosave must not write before the startup restore has settled: `state.project` is a blank
   // createProject() until loadAutosave resolves, and saveAutosave overwrites the single slot — so a
   // hide (or the 3s debounce) landing mid-restore would replace the user's work with an empty
@@ -873,6 +882,8 @@
 <svelte:window
   onkeydown={onKey}
   onpaste={onPaste}
+  ondragover={refuseFileDrop}
+  ondrop={refuseFileDrop}
   onpointerovercapture={onPointerHint}
   onpointerdowncapture={onPointerHint}
 />
