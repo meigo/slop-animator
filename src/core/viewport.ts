@@ -256,6 +256,12 @@ export class Viewport {
 /** Pixels per unit of a WheelEvent's `deltaMode`: pixels, lines (Firefox's mouse wheel), pages. */
 const WHEEL_UNIT_PX = [1, 16, 800];
 
+/** A WheelEvent delta in pixels. Firefox's mouse wheel reports lines (3 a notch): taken as pixels,
+ *  a notch panned the view ~3 px. */
+export function wheelPx(delta: number, deltaMode = 0): number {
+  return delta * (WHEEL_UNIT_PX[deltaMode] ?? 1);
+}
+
 /**
  * The zoom factor for a Ctrl/Cmd-wheel delta: exp(−deltaY / 100), the scale Chrome itself gives a
  * trackpad pinch, so the page follows the fingers; each event capped at ±10 px, so one mouse
@@ -263,6 +269,6 @@ const WHEEL_UNIT_PX = [1, 16, 800];
  * size: a pinch, sent as many small deltas, zoomed ~10× too fast, and deltaY 0 zoomed in.
  */
 export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
-  const px = deltaY * (WHEEL_UNIT_PX[deltaMode] ?? 1);
+  const px = wheelPx(deltaY, deltaMode);
   return Math.exp(-Math.max(-10, Math.min(10, px)) / 100);
 }

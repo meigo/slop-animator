@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wheelZoomFactor } from "../core/viewport";
+import { wheelPx, wheelZoomFactor } from "../core/viewport";
 
 // Port of slop-paint 4bd2825: zoomAt zoomed a fixed 10% per wheel event whatever its deltaY.
 describe("wheelZoomFactor", () => {
@@ -18,5 +18,15 @@ describe("wheelZoomFactor", () => {
 
   it("zooms nothing for deltaY 0", () => {
     expect(wheelZoomFactor(0)).toBe(1);
+  });
+});
+
+// Port of slop-paint 2acb7c8: the plain-wheel pan took deltas as pixels whatever deltaMode said.
+describe("wheelPx", () => {
+  it("converts lines and pages to pixels, leaves pixels alone", () => {
+    expect(wheelPx(3, 1)).toBe(48); // one Firefox mouse-wheel notch
+    expect(wheelPx(-1, 2)).toBe(-800);
+    expect(wheelPx(100, 0)).toBe(100);
+    expect(wheelPx(100)).toBe(100);
   });
 });

@@ -4,7 +4,7 @@
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
   import { blursOnCanvasPress, isTextEntry } from "./text-entry";
-  import { Viewport, wheelZoomFactor } from "../core/viewport";
+  import { Viewport, wheelPx, wheelZoomFactor } from "../core/viewport";
   import { capScaleToArea } from "../core/canvas-area";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
@@ -3032,7 +3032,8 @@
     // ~10x too fast, and Ctrl with a horizontal scroll (deltaY 0) zoomed in.
     if (e.ctrlKey || e.metaKey)
       viewport?.zoomAt(e.clientX, e.clientY, wheelZoomFactor(e.deltaY, e.deltaMode));
-    else viewport?.panBy(-e.deltaX, -e.deltaY); // content follows the scroll
+    // content follows the scroll; in pixels, whatever deltaMode (Firefox's wheel reports lines)
+    else viewport?.panBy(-wheelPx(e.deltaX, e.deltaMode), -wheelPx(e.deltaY, e.deltaMode));
   }
 
   // Tools that WRITE to the active layer. The eyedropper samples the composite and select/lasso can
