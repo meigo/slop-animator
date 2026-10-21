@@ -93,8 +93,8 @@ export class Viewport {
     };
   }
 
-  /** Zoom toward a screen point, keeping that point fixed */
-  zoomAt(screenX: number, screenY: number, delta: number) {
+  /** Zoom by `factor` toward a screen point, keeping that point fixed */
+  zoomAt(screenX: number, screenY: number, factor: number) {
     const rect = this.parent.getBoundingClientRect();
     const rx = screenX - rect.left;
     const ry = screenY - rect.top;
@@ -103,7 +103,6 @@ export class Viewport {
     const canvas = this.screenToCanvas(screenX, screenY);
 
     const oldZoom = this.zoom;
-    const factor = delta > 0 ? 0.9 : 1.1;
     this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, oldZoom * factor));
 
     // Adjust pan so the same canvas point stays under cursor
@@ -252,4 +251,18 @@ export class Viewport {
     this.target.style.transformOrigin = "0 0";
     this.target.style.transform = `translate(${this.panX}px, ${this.panY}px) rotate(${deg}deg) scale(${this.zoom})`;
   }
+}
+
+/** Pixels per unit of a WheelEvent's `deltaMode`: pixels, lines (Firefox's mouse wheel), pages. */
+const WHEEL_UNIT_PX = [1, 16, 800];
+
+/**
+ * The zoom factor for a Ctrl/Cmd-wheel delta: exp(−deltaY / 100), the scale Chrome itself gives a
+ * trackpad pinch, so the page follows the fingers; each event capped at ±10 px, so one mouse
+ * notch (100 px) zooms ~10% as before; 0 zooms nothing. It was a fixed 10% per event whatever its
+ * size: a pinch, sent as many small deltas, zoomed ~10× too fast, and deltaY 0 zoomed in.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  const px = deltaY * (WHEEL_UNIT_PX[deltaMode] ?? 1);
+  return Math.exp(-Math.max(-10, Math.min(10, px)) / 100);
 }

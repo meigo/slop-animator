@@ -4,7 +4,7 @@
   import { computeAnchor } from "../core/selection-anchor";
   import { setupInput, isStageChromeTarget, type InputPoint } from "../core/input";
   import { blursOnCanvasPress, isTextEntry } from "./text-entry";
-  import { Viewport } from "../core/viewport";
+  import { Viewport, wheelZoomFactor } from "../core/viewport";
   import { capScaleToArea } from "../core/canvas-area";
   import { setupTouchGestures } from "../core/touch-gestures";
   import { drawStroke, widthRange, type BrushSettings } from "../core/brush";
@@ -3028,7 +3028,10 @@
   // ctrl+wheel) zooms at the cursor.
   function onWheel(e: WheelEvent) {
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) viewport?.zoomAt(e.clientX, e.clientY, e.deltaY);
+    // By the delta's size, not a fixed 10% per event: a trackpad pinch (many small deltas) zoomed
+    // ~10x too fast, and Ctrl with a horizontal scroll (deltaY 0) zoomed in.
+    if (e.ctrlKey || e.metaKey)
+      viewport?.zoomAt(e.clientX, e.clientY, wheelZoomFactor(e.deltaY, e.deltaMode));
     else viewport?.panBy(-e.deltaX, -e.deltaY); // content follows the scroll
   }
 
