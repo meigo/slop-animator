@@ -197,6 +197,23 @@ describe("fillMask", () => {
     expect(count(fillMask(data, 20, 20, 6, 10, 32, 2))).toBe(3 * 14);
   });
 
+  it("bridges a tap next to a line or a speck too, not only one far from them", () => {
+    // Bridge 2 thickens the walls 2 px: a tap 1 px from the left wall, and one beside a stray dot,
+    // still fill the inside alone (they fell back to the unbridged flood and leaked).
+    const speck = box(3);
+    speck[(15 * 30 + 12) * 4 + 3] = 255;
+    for (const [x, y] of [
+      [6, 15],
+      [15, 6],
+      [13, 15],
+    ]) {
+      const m = fillMask(speck, 30, 30, x, y, 32, 2)!;
+      expect(m[y * 30 + x]).toBe(1);
+      expect(m[1 * 30 + 1]).toBe(0);
+      expect(count(m)).toBeLessThan(INSIDE + 3 + 12);
+    }
+  });
+
   it("doesn't slip through a 1px diagonal line while growing back", () => {
     // A closed box whose right part is cut off by a 1px diagonal: the fill stays on its side.
     const data = image(

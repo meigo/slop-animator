@@ -289,8 +289,10 @@ export function expandedCoverage(
  * `gap` (clamped to MAX_GAP, as Fill enclosed's Bridge) closes breaks in the walls of up to about
  * 2×gap px: the walls are thickened by `gap`, the flood runs in what's left, and the region is
  * grown back `gap` steps over fillable pixels only (`growWithin`) — so it still reaches the lines,
- * into sharp inside corners too, and pokes only about `gap` px out through a bridged break. A region too narrow to survive the thickening (the tap lands
- * inside it) is filled without bridging instead, so a small pocket still fills.
+ * into sharp inside corners too, and pokes only about `gap` px out through a bridged break. A tap
+ * near a line starts from the nearest pixel the thickening left open (`nearestOpen`). A region too
+ * narrow to survive the thickening (nothing open within reach) is filled without bridging
+ * instead, so a small pocket still fills.
  */
 export function fillMask(
   data: Uint8ClampedArray,
@@ -320,13 +322,47 @@ export function fillMask(
     for (let i = 0; i < w * h; i++) walls[i] = fillable[i] ? 0 : 1;
     const thick = thickenMask(walls, w, h, r); // dilateMask's mask at any radius, in constant time
     const start = sy * w + sx;
-    if (!thick[start]) {
-      const open = new Uint8Array(w * h);
-      for (let i = 0; i < w * h; i++) open[i] = thick[i] ? 0 : 1;
-      return growWithin(flood(open, w, h, start), fillable, w, h, r);
+    const open = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) open[i] = thick[i] ? 0 : 1;
+    // A tap inside the thickened walls — within `gap` px of a line, or of a stray speck — starts
+    // from the nearest open pixel it can reach: it fell back to the unbridged flood, which leaked
+    // through the very break Bridge was set for (26–80% of the taps inside a wide box).
+    const from = open[start] ? start : nearestOpen(open, fillable, w, h, start, 2 * r + 1);
+    if (from >= 0) {
+      const region = growWithin(flood(open, w, h, from), fillable, w, h, r);
+      if (region[start]) return region;
     }
   }
   return flood(fillable, w, h, sy * w + sx);
+}
+
+/** The open pixel nearest `start` through fillable pixels (4-connected), at most `limit` steps
+ *  away; -1 if none. */
+function nearestOpen(
+  open: Uint8Array,
+  fillable: Uint8Array,
+  w: number,
+  h: number,
+  start: number,
+  limit: number,
+): number {
+  const seen = new Uint8Array(w * h);
+  seen[start] = 1;
+  let ring = [start];
+  for (let s = 0; s < limit && ring.length; s++) {
+    const next: number[] = [];
+    for (const i of ring) {
+      const x = i % w;
+      for (const n of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+        if (n < 0 || n >= w * h || seen[n] || !fillable[n]) continue;
+        if (open[n]) return n;
+        seen[n] = 1;
+        next.push(n);
+      }
+    }
+    ring = next;
+  }
+  return -1;
 }
 
 /** Grow `region` by `steps` 8-connected steps, only into `allowed` pixels. Square steps reach a
