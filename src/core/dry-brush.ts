@@ -162,18 +162,43 @@ export function resample(
     }
     s += len;
   }
+  // A scrub (the path turning back on itself within the window) keeps the brush the way it was:
+  // the window's chord there points ACROSS the turn, and taken as it was it swung the normal
+  // round, and then the travel-relative normal came out reversed, so every hair crossed the stroke
+  // to the other side and fanned out past the turn (2026-10-17). So where the window doubles back
+  // the last normal is held, and each normal is flipped to agree with the one before: the hairs
+  // keep their sides of the page through a reversal. Gentler turns (under ~120°) swing as before.
   const w = 3;
+  let pnx = 0;
+  let pny = 0;
   for (let i = 0; i < out.length; i++) {
     const p = out[Math.max(0, i - w)];
     const q = out[Math.min(out.length - 1, i + w)];
     const dx = q.x - p.x;
     const dy = q.y - p.y;
-    const len = Math.hypot(dx, dy) || 1;
-    out[i].nx = -dy / len;
-    out[i].ny = dx / len;
+    const len = Math.hypot(dx, dy);
+    const held = pnx !== 0 || pny !== 0;
+    let nx = pnx;
+    let ny = pny;
+    if (len > 0 && (!held || len >= SCRUB_STRAIGHTNESS * (q.s - p.s))) {
+      nx = -dy / len;
+      ny = dx / len;
+      if (nx * pnx + ny * pny < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+    }
+    out[i].nx = nx;
+    out[i].ny = ny;
+    pnx = nx;
+    pny = ny;
   }
   return out;
 }
+
+/** Chord over path length in `resample`'s normal window below which the path has turned back
+ *  (more than ~120°) inside it: cos(turn / 2) for a single corner. */
+const SCRUB_STRAIGHTNESS = 0.5;
 
 /** Each hair's painted runs as polylines (x, y pairs), and its thickness in px. Pure. */
 export function bristleRuns(
