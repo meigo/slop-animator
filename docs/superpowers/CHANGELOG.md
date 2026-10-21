@@ -8850,3 +8850,21 @@ below failed them here first). One commit per paint commit, `animator` ← `pain
   Pencil holds a marquee, a Fill tap, a Pose handle); three-finger redo and a pen landing during a pan or
   pinch; Cmd+V of an OS image over the canvas in Safari (`beforepaste`); dropping a file on the app
   (desktop too).
+
+**NumberField: no focus left by a drag in WebKit, typed values apply live (2026-10-21, branch
+`fix/numberfield-webkit`).** From slop-paint's port of the vector editor's NumberField (`3b856bf`),
+which found both; checked here and both applied. (1) WebKit focuses the field AGAIN after the drag's
+first-move `blur()` (`pointerdown focus blur focus`; Chromium stops after the blur), so every drag in
+Safari / on iPad ended with the field focused: a caret, the iPad keyboard, tool keys going to the
+field, and the outside-change sync held off until a blur. `onfocus` blurs again while a drag is on.
+(2) A typed value waited for Enter or blur, and a tap on a button does not blur the field on iPad (and
+Pose ✓ / ✗ act on `pointerdown` with `preventDefault`, which keeps focus on EVERY platform: a typed Gap
+then ✓ baked the old Gap). Typing now sends an in-range number live through `onInput`; out of range or
+half-typed text waits for Enter / blur, which clamp it; Escape sends back the value from before typing
+(`typedFrom`); the typing ends with one `onCommit` measured from that value. Unlike slop-paint, a field
+WITHOUT `onInput` (Length, Track step — undoable setters) still writes only on Enter / blur: typing 120
+into Length must not cut the document to 1 frame on the way. Every field with `onInput` passes the same
+non-undoable setter to both. `npm run test:ipad` gains two checks (a drag leaves the field unfocused; a
+typed value applies live, out of range waits, Escape reverts) — both FAIL on the old NumberField. Build
+0/0, 1855 tests. **Owed on the iPad:** a drag on a number field brings up no keyboard; type a W in the
+Size dialog and tap Resize without Enter.

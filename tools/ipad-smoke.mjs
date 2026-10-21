@@ -239,6 +239,38 @@ try {
   check(/^Eraser/.test(await activeTool()), "tool keys work while a slider has focus");
   await page.keyboard.press("b");
 
+  // A drag on a number field ends with it unfocused: WebKit focused it again after the drag's
+  // first-move blur, leaving a caret (and on iPad the keyboard) behind (slop-paint 3b856bf).
+  const sizeField = page.locator('[aria-label="Brush size"]');
+  const sizeRange = sizeField.locator("xpath=preceding-sibling::input[@type='range']");
+  const nfBefore = await sizeRange.inputValue();
+  const fb = await sizeField.boundingBox();
+  await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++)
+    await page.mouse.move(fb.x + fb.width / 2 + i * 6, fb.y + fb.height / 2);
+  await page.mouse.up();
+  check(
+    (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) !==
+      "Brush size" && (await sizeRange.inputValue()) !== nfBefore,
+    "a drag on a number field changes it and leaves it unfocused",
+  );
+  // A typed value reaches the store before the field blurs (a tap on an iPad button doesn't blur
+  // it, so a button acted on the old value), and Escape takes it back.
+  await sizeField.click();
+  await sizeField.fill("");
+  await page.keyboard.type("33");
+  const typedLive = (await sizeRange.inputValue()) === "33";
+  const beforeTyping = await sizeRange.inputValue();
+  await page.keyboard.type("1"); // 331 is out of range: waits for Enter/blur
+  const outOfRangeWaits = (await sizeRange.inputValue()) === beforeTyping;
+  await page.keyboard.press("Escape");
+  check(
+    typedLive && outOfRangeWaits && (await sizeRange.inputValue()) !== "33",
+    "a typed number field value applies live, out of range waits, Escape reverts",
+  );
+  await page.keyboard.press("b");
+
   // …and stand aside while a dialog is open (batch E).
   await menuItem("Document", "Name, background colour");
   await page.getByRole("button", { name: "Close" }).focus();
