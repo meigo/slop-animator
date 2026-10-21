@@ -237,6 +237,28 @@ describe("enclosedRegion", () => {
     expect(grown).toBeGreaterThan(plain); // reaches into the ink it will be painted behind
   });
 
+  it("paints no corner speck across a 1px diagonal line", () => {
+    // An aliased 1px diamond whose two upper sides cross at the top and run on 15 px, as a sketch's
+    // corner: the closing's bloat in the open wedge above touches the diamond's inside only
+    // diagonally, through the line's steps, and an 8-connected area kept it (9–24 px).
+    const W = 90;
+    const rgba = new Uint8ClampedArray(W * W * 4);
+    const put = (x: number, y: number) => (rgba[(y * W + x) * 4 + 3] = 255);
+    for (let y = 0; y < W; y++)
+      for (let x = 0; x < W; x++) if (Math.abs(x - 45) + Math.abs(y - 50) === 25) put(x, y);
+    for (let k = 1; k <= 15; k++) {
+      put(45 + k, 25 - k);
+      put(45 - k, 25 - k);
+    }
+    for (const gap of [3, 4, 6]) {
+      const r = enclosedRegion(rgba, W, W, { gap });
+      expect(r.region[50 * W + 45]).toBe(1);
+      for (let y = 0; y < W; y++)
+        for (let x = 0; x < W; x++)
+          if (Math.abs(x - 45) + Math.abs(y - 50) > 25) expect(r.region[y * W + x]).toBe(0);
+    }
+  });
+
   it("paints NOTHING on an open channel, at every gap", () => {
     // The region is the CLOSING, which bridges this channel (37 px at gap 2 before the gate) —
     // but nothing here is enclosed, and "raise Gap" must never turn an open outline into a fill

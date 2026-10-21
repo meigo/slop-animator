@@ -192,7 +192,9 @@ export function fillEnclosed(
   };
 }
 
-/** The 8-connected areas of `region` that contain at least one `core` pixel. */
+/** The 4-connected areas of `region` that contain at least one `core` pixel. 4-connected, as the
+ *  flood that found them: across an aliased 1px diagonal line two empty pixels touch at a corner,
+ *  and 8-connected areas joined a corner speck outside the line to the area inside it. */
 function keepAreasWith(
   region: Uint8Array,
   core: Uint8Array,
@@ -213,19 +215,10 @@ function keepAreasWith(
       area.push(i);
       if (core[i]) keep = true;
       const x = i % w;
-      const y = (i - x) / w;
-      for (let dy = -1; dy <= 1; dy++) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= h) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx;
-          if (nx < 0 || nx >= w) continue;
-          const n = ny * w + nx;
-          if (region[n] && !seen[n]) {
-            seen[n] = 1;
-            stack.push(n);
-          }
-        }
+      for (const n of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+        if (n < 0 || n >= w * h || !region[n] || seen[n]) continue;
+        seen[n] = 1;
+        stack.push(n);
       }
     }
     if (keep) for (const i of area) out[i] = 1;
