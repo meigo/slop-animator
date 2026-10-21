@@ -398,10 +398,14 @@ export function isCorner(
  * 6000-point redraw, against 13ms for this.
  */
 /**
- * `from` / `to`: draw only the pieces that start at an input point in that range, with the
- * geometry still worked out from the whole stroke — so a range draws exactly the pixels the whole
- * stroke would there. App freezes the settled part of a long opaque stroke this way and redraws
- * only the rest each frame (2026-10-01).
+ * `from` / `to`: draw only the pieces that start before input point `to` and end past `from`, with
+ * the geometry still worked out from the whole stroke — so a range draws exactly the pixels the
+ * whole stroke would there. Canvas freezes the settled part of a long opaque stroke this way and
+ * redraws only the rest each frame (2026-10-01). A piece that merely STARTS before `from` is drawn
+ * too, so the range's first piece is always one the frozen part already holds and the cut lies
+ * inside paint: its input-point overlap alone often held no piece (they are up to 3 px apart, and
+ * a resting or slow pen sends many points per piece), and two pieces filled apart meet in a
+ * hairline of ~75% alpha along their shared edge, baked in for good.
  */
 export function drawCalligraphyStroke(
   ctx: CanvasRenderingContext2D,
@@ -471,7 +475,7 @@ export function drawCalligraphyStroke(
   // cut is the chord between the nib's two support points, which lies along the nib — the chisel
   // entry/exit that actually reads as calligraphy. Compared side by side before choosing.
   for (let i = 1; i < pts.length; i++) {
-    if (src[i - 1] < from || src[i - 1] >= to) continue;
+    if (src[i] <= from || src[i - 1] >= to) continue;
     const p1 = pts[i - 1];
     const p2 = pts[i];
     const o1 = off[i - 1];
