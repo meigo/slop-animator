@@ -496,18 +496,21 @@ export function floodFill(
   // the expand ring goes behind. Painting the whole region behind could never change an opaque
   // pixel, so at the default expand a recolour tap did nothing but add a faint rim. An EMPTY area
   // (the usual fill between lines) still goes all behind, so faint anti-aliased line pixels that
-  // fall inside the region stay on top of the fill.
+  // fall inside the region stay on top of the fill. From a painted tap the ring lands on no EMPTY
+  // pixel: the transparent space round the art is no line to tuck under, and the ring drawn there
+  // (Expand px wide round a recoloured shape on a transparent layer) was a change the artist never
+  // asked for, with an undo step (slop-paint 27538c5).
   const painted = targetA > tolerance;
   if (expand > 0 && painted) {
     for (let i = 0; i < w * h; i++) {
+      const pi = i * 4;
       if (mask[i]) {
-        const pi = i * 4;
         data[pi] = fillColor.r;
         data[pi + 1] = fillColor.g;
         data[pi + 2] = fillColor.b;
         data[pi + 3] = fillColor.a;
         cover![i] = 0; // written; what is left of the coverage is the ring
-      }
+      } else if (data[pi + 3] === 0) cover![i] = 0;
     }
     ctx.putImageData(imageData, 0, 0);
   }

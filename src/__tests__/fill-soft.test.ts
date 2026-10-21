@@ -178,7 +178,7 @@ describe("floodFill with Soft", () => {
     expect(at(data, 3)).toEqual([0, 0, 0, 255]);
   });
 
-  it("with Expand, still recolours a tapped painted area, the feathered ring behind", () => {
+  it("with Expand, still recolours a tapped painted area, the ring only behind what's there", () => {
     const blue = { r: 0, g: 0, b: 255, a: 255 };
     const red: Px = [255, 0, 0, 255];
     const { ctx, data } = fakeCtx(7, 1, (i) =>
@@ -188,8 +188,11 @@ describe("floodFill with Soft", () => {
     expect(at(data, 0)).toEqual([0, 0, 255, 255]);
     expect(at(data, 1)).toEqual([0, 0, 255, 255]);
     expect(at(data, 2)).toEqual([0, 0, 0, 255]); // the line stays on top
-    expect(at(data, 3)).toEqual([0, 0, 255, 255]); // 2 px from the region: solid
-    expect(at(data, 4)[3]).toBe(128); // 3 px: half way through the 2 px feather
+    // Beyond the line the ring would land on empty pixels: from a painted tap it doesn't (it
+    // ringed a recoloured shape on a transparent layer, slop-paint 27538c5). The feather itself
+    // is `expandedCoverage`'s, tested above.
+    expect(at(data, 3)).toEqual([0, 0, 0, 0]);
+    expect(at(data, 4)).toEqual([0, 0, 0, 0]);
     expect(at(data, 5)).toEqual([0, 0, 0, 0]);
   });
 });

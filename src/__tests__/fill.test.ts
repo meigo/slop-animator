@@ -106,7 +106,36 @@ describe("floodFill with expand (2: the default until 2026-10-02, now 0 with Sof
     expect(px(data, 0)).toEqual([0, 0, 255, 255]);
     expect(px(data, 1)).toEqual([0, 0, 255, 255]);
     expect(px(data, 2)).toEqual([0, 0, 0, 255]); // the line stays on top
-    expect(px(data, 3)).toEqual([0, 0, 255, 255]); // the expand ring still goes behind (empty here)
+    // From a painted tap the ring goes only behind what's there, never onto empty pixels (it
+    // ringed a recoloured shape on a transparent layer, slop-paint 27538c5).
+    expect(px(data, 3)).toEqual([0, 0, 0, 0]);
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  // A 4×4 opaque red square at (3..6, 3..6) on a transparent 10×10 layer (slop-paint 27538c5).
+  const W = 10;
+  const inSquare = (i: number) => {
+    const x = i % W;
+    const y = Math.floor(i / W);
+    return x >= 3 && x < 7 && y >= 3 && y < 7;
+  };
+  for (const softEdge of [0, 1]) {
+    it(`recolours a painted area with no ring round it (Soft ${softEdge})`, () => {
+      const { ctx, data } = withRing(W, W, (i) => (inSquare(i) ? red : [0, 0, 0, 0]));
+      floodFill(ctx, 4, 4, blue, { tolerance: 32, expand: 2, softEdge });
+      expect(px(data, 4 * W + 4)).toEqual([0, 0, 255, 255]);
+      expect(px(data, 4 * W + 2)).toEqual([0, 0, 0, 0]);
+      expect(px(data, 4 * W + 1)).toEqual([0, 0, 0, 0]);
+      delete (globalThis as { document?: unknown }).document;
+    });
+  }
+
+  it("still grows an empty-area fill behind the shape round it", () => {
+    // Tap outside the square: the fill reaches under its edge but the edge stays red on top.
+    const { ctx, data } = withRing(W, W, (i) => (inSquare(i) ? red : [0, 0, 0, 0]));
+    floodFill(ctx, 0, 0, blue, { tolerance: 32, expand: 2 });
+    expect(px(data, 0)).toEqual([0, 0, 255, 255]);
+    expect(px(data, 4 * W + 3)).toEqual(red);
     delete (globalThis as { document?: unknown }).document;
   });
 
