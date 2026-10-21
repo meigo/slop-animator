@@ -224,9 +224,39 @@ export function ridgeCoverage(
     }
   }
   const smooth = smoothDistance(d, ww, wh, 2);
-  // The empty space beyond the lines: not filled, and empty even with the grain smoothed over.
+  // The empty space beyond the lines: not filled, and empty even with the grain smoothed over —
+  // and every empty pixel joined to that. The smoothing alone also raised the paper just beyond a
+  // thin or light line, which moved its "middle" outward and put fill on the paper outside it (up
+  // to 80/255 with Fill enclosed). A grain hole inside a line isn't joined to the paper, so it
+  // still isn't "beyond" it.
   const outside = new Uint8Array(n);
   for (let i = 0; i < n; i++) outside[i] = !reg[i] && smooth[i] < tol ? 1 : 0;
+  const joins = (j: number) => !outside[j] && !reg[j] && d[j] < tol;
+  const stack: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (!outside[i]) continue;
+    const x = i % ww;
+    if (
+      (x > 0 && joins(i - 1)) ||
+      (x < ww - 1 && joins(i + 1)) ||
+      (i >= ww && joins(i - ww)) ||
+      (i + ww < n && joins(i + ww))
+    )
+      stack.push(i);
+  }
+  const visit = (j: number) => {
+    if (!joins(j)) return;
+    outside[j] = 1;
+    stack.push(j);
+  };
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % ww;
+    if (x > 0) visit(i - 1);
+    if (x < ww - 1) visit(i + 1);
+    if (i >= ww) visit(i - ww);
+    if (i + ww < n) visit(i + ww);
+  }
   const dIn = distanceToMask(reg, ww, wh);
   const dOut = distanceToMask(outside, ww, wh);
   const peak = maxFilter(smooth, ww, wh, 3);

@@ -37,6 +37,13 @@ describe("ridgeCoverage", () => {
     expect(c.slice(9)).toEqual(Array(c.length - 9).fill(0));
   });
 
+  it("puts nothing on the paper just beyond a thin line", () => {
+    // Smoothed, the paper beside a 1px line reads as line too, which moved its middle outward.
+    for (const soft of [1, 2])
+      for (const a of [100, 160, 255])
+        expect(across([a], soft).slice(1)).toEqual(Array(10).fill(0));
+  });
+
   it("fades toward 1 − the line's strongest value: a light line keeps more fill than a solid one", () => {
     const light = across([40, 70, 100, 100, 100, 70, 40]);
     const solid = across([100, 200, 255, 255, 255, 200, 100]);
