@@ -119,11 +119,16 @@ export function drawStroke(
   );
 
   if (strokePoints.length < 2) return;
+  const amp = wobbleAmp(maxSize, settings.smoothWobble ?? 0);
+  // `points` is already the smoothed centre line `outlineOfPath` draws (paintStroke smooths it),
+  // so its spine caps Wobble's inward pull at the widths drawn here.
   const outline = wobbleOutline(
     strokePoints,
     strokeSeed(points[0]),
-    wobbleAmp(maxSize, settings.smoothWobble ?? 0),
+    amp,
     wobbleScale(maxSize),
+    true,
+    amp > 0 ? pathSpine(points, settings.size, sizeRange) : undefined,
   );
 
   ctx.save();
@@ -206,6 +211,13 @@ export function outlineOfPath(
     // (which reflects the envelope) out of sync with the rendered stroke.
     simulatePressure: false,
   });
+}
+
+/** The stroke's centre line as [x, y, half-width] — the widths `outlineOfPath` draws at — for
+ *  Wobble's inward cap (`wobbleOutline`'s `spine`). Pure. */
+export function pathSpine(path: InputPoint[], size: number, sizeRange: number): number[][] {
+  const { min, max } = widthRange(size, sizeRange);
+  return path.map((p) => [p.x, p.y, (min + p.pressure * (max - min)) / 2]);
 }
 
 /**

@@ -23,6 +23,22 @@ describe("Selection.startCreate", () => {
   });
 });
 
+describe("Selection.pasteFloat", () => {
+  it("ends a marquee still being dragged, so the rest of the press leaves the float alone", () => {
+    // Cmd+V while the Select tool's marquee is held: `isCreating` stayed true, so the next moves
+    // rewrote the pasted float's rect (stretching it into the marquee box).
+    globalThis.requestAnimationFrame ??= () => 0;
+    const s = selection();
+    s.startCreate(10, 10, "rect");
+    s.updateCreate(11, 11);
+    const pixels = { width: 40, height: 30 } as HTMLCanvasElement;
+    s.pasteFloat(pixels, { x: 50, y: 50, w: 40, h: 30 });
+    s.updateCreate(200, 200);
+    expect(s.rect).toEqual({ x: 50, y: 50, w: 40, h: 30 });
+    expect(s.hasFloating).toBe(true);
+  });
+});
+
 // Review 2026-10-17 #14: a Rigid pin records where its point was pinned; a whole-grid move or an
 // FFD drag of a pinned point moved the grid without it, so the next Rigid drag pulled every stale
 // pin (and the art) back to where it had been.

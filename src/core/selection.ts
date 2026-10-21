@@ -477,6 +477,9 @@ export class Selection {
   /** Enter a floating transform from externally-supplied pixels (paste): position at `rect` as a
    *  rectangular float and go to "transforming" (beginTransform resets the matrix to identity). */
   pasteFloat(pixels: HTMLCanvasElement, rect: SelectionRect): void {
+    // A marquee still being dragged (Cmd+V mid-press) is over: the rest of the press would
+    // rewrite the float's rect through `updateCreate`.
+    this.isCreating = false;
     this.rect = { ...rect };
     this.mode = "rect";
     this.lassoPath = null;

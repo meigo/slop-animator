@@ -7583,6 +7583,9 @@ in the slop-paint session: the same four menus, in the same order and wording, i
   the corner point is stamped with the pause's START, earlier than catch-up points already added, so
   timestamps can step backwards there (read only by Pool, which skips a non-positive span, and by
   Sharp corners).
+  > **SUPERSEDED 2026-10-21** — `STILL_PX` is now 1.5 (so the hook is up to 1.5 screen px), and Sharp
+  > corners' pause radius is `STILL_PX / zoom`, no longer `radius / 8`; see "Ports from slop-paint's
+  > code review" (2026-10-21), `d8f434f`.
 - Tests: `stroke-smoothing.test.ts` (16). Desktop Chrome, synthetic mouse events: Stream 100
   flattened a 3 px wobble; Smooth 0/50/100 measured 6.0/5.2/4.0 px peak-to-peak on a 100 px wave
   (Gaussian σ = 16 predicts 6/5.3/3.6); no console errors. **iPad, deployed branch build: the user
@@ -8753,3 +8756,97 @@ commits. One commit each:
   canvas; #33 a Pencil scrub with a resting or panning finger; #34 a Pencil arrowhead drag while a finger
   taps another arrowhead, and a finger pan from an arrowhead; #35 in the Home Screen app, an export the
   sheet refuses (WebM or PSD), and an undecodable-audio project replaced by New.
+
+
+**Ports from slop-paint's code review (2026-10-21, branches `fix/paint-port-engines` → `fix/paint-port-input`
+→ `fix/paint-port-2`, stacked, each cut from the one before).** slop-paint's review fixes, checked one by
+one against this app (triage: paint's new tests run against copies of this app's modules; every bug
+below failed them here first). One commit per paint commit, `animator` ← `paint`, the bug as it showed here:
+
+- **Undo**
+  - `b97cbef` ← `b1ae15a`: every pixel step (strokes, fills, Delete, Outline, timeline Clear) kept BOTH
+    whole-canvas snapshots alive through its undo/redo closures while the budget counted only the tiles:
+    **20 small strokes on a 1920×1080 cell held 334 MB against 2.6 MB counted** (19 MB after). Tiles are
+    cut in `diffPatches`; a forced-GC test checks both snapshots are collected.
+  - `3758782` ← `e0c796e`: a zero-byte push (eye toggle, rename, reorder, transform drag) evicted a
+    structural step whose detached canvases alone were over 256 MB (deleting or resizing a heavy layer).
+  - `1448cf5` ← `0bfc562` (partial): a stroke that changed no pixel (eraser on empty paper, a stroke the
+    marquee clipped away) pushed an empty step that wiped redo and kept the ◆ it materialised. The other
+    pixel edits were already guarded, so only the stroke path is ported.
+- **Gestures**
+  - `8be1b16` ← `19250a6`: a three-finger redo tap turned and panned the view when one of the first two
+    fingers lifted first.
+  - `9e8af55` ← `731f754`: a pan or pinch already moving when the Pencil landed kept moving the view
+    under the stroke; a suppressed gesture also left a stale pinch for the next pan's lift snap.
+- **Selection**
+  - `e3b38da` ← `3414b5e`: a lasso marquee taken to Select was hit-tested, clipped and drawn as its box
+    (Delete and lift still used the lasso). The shape is the marquee's own `lassoPath` now.
+  - `2482f06` ← `9ffe9bb`: a moved float landed between pixels at any zoom but 1, so each Apply blurred it.
+  - `b25a855` ← `eb19203`: changing the warp grid (stepper, Distort/Mesh, W/M) mid-drag rebuilt it from
+    the old grid, or to nothing from a transform drag.
+  - `4c1b3eb` ← `4b4701e`: a float under ~24 screen px a side was all handle and could not be moved.
+  - `240f99f` ← `30f0412`: the tap-or-marquee threshold was 3 DOCUMENT px; it is 3 screen px.
+- **Input and view**
+  - `5cc958a` ← `ac2bd70` (partial: the cheap form, `endOpenPress`, not paint's per-press gesture owner):
+    a tool change mid-press carried the press on as the new tool (Select → Brush drew a stroke from
+    pen-down; Fill left `fillUsed` latched); the `0`/`1` keys and the wheel moved the view under a press.
+  - `7f196a9` ← `4bd2825`: Ctrl-wheel zoomed a fixed 10% per event (trackpad pinch ~10× too fast,
+    deltaY 0 zoomed in). `7872973` ← `2acb7c8`: Firefox's line-mode wheel panned ~3 px a notch.
+  - `267a619` ← `666b433`: the single-letter tool keys did nothing with Caps Lock on.
+  - `d8f434f` ← `62a7d8a`: a pause was the pen within 3 screen px for 50 ms, so anything under 60 px/s
+    counted: Stream let a slow stroke go unsteadied and Sharp corners chopped it into legs. `STILL_PX`
+    is 1.5 (≈30 px/s, a guess), and Sharp corners uses `STILL_PX / zoom` (`smoothPath`'s `stillDist`,
+    from `paintStroke`) instead of `radius / 8`.
+- **Brushes**
+  - `1a6181b` ← `55f0405`: "Taper stroke ends" made every Smooth stroke a spindle (6 of 8 px at the
+    middle) whose start thinned as it grew; each end now tapers over `TAPER_WIDTHS` widths.
+  - `21ad2fa` ← `0b34782`: a frozen Calligraphy stroke baked a ~75%-alpha hairline at the freeze cut.
+  - `f51c75e` ← `32ab5f8`: Calligraphy ends were pulled in (2 px each end of a quick hatch).
+  - `c102f42` ← `0c89059`: Dry brush hairs swapped sides through a scrub (69 of 135 samples).
+  - `50ef398` ← `5dd6f26`: Wobble's dx and dy noise were correlated for even seeds, so one diagonal
+    wobbled less (changes the pattern of NEW strokes only).
+  - `26fb850` ← `01af362` (perf): translucent Ink cleared and composited the whole cell-sized scratch
+    every frame (2.07 Mpx each way at 1080p); now only the stroke's box. Not measured in a browser.
+  - `cb16e80` ← `6ee18ae`, `1f82d9f` ← `c82cbc1`: Smooth's and Watercolour's Wobble pinched a light
+    stroke to nothing (0.003× / 0.0003× of its width at Wobble 100); `pathSpine` caps the inward pull
+    at half the local half-width. `drawStroke` already gets the smoothed path here, so no restructure.
+- **Fill**
+  - `a9d601a` ← `9f6e931`: Bridge fell back to an unbridged flood for a tap within Bridge px of a line
+    or speck and leaked (826 px of a 30×30 box, outside included).
+  - `051cb7e` ← `27538c5` (partial: the recolour half was already fixed, `8febec2`): a painted-area tap
+    with Expand drew an Expand-wide ring of the new colour round the shape. Paint's one-loop rewrite
+    not taken.
+  - `087d043` ← `640cda9` (perf): Expand at Soft 0 grew by dilation, 610 ms at Expand 8 on 1080p; now
+    `thickenMask`, ~45 ms, same pixels.
+  - `165f2e8` ← `81c7522`: Fill enclosed kept 9 px of corner specks across a 1 px diagonal line.
+  - `be202a7` ← `9804561`: Soft put fill on the paper just beyond a thin light line (48/255).
+  - `f9daa33` ← `4c4e3af`: under translucent flat paint wider than the reach, Soft's fill stopped dead
+    at `UNDER_LINE_MAX_PX`; it fades out over the last max(8, 2 × Soft) px.
+- **Misc**
+  - `98636f9` ← `d3aec0a`: WebKit fires the window paste for Cmd+V only while Edit ▸ Paste is enabled,
+    so an OS image pasted over the canvas probably did nothing in Safari / iPad with a keyboard; a
+    `beforepaste` handler enables it (from the code, not observed).
+  - `d5b1029` ← `b0665ab` (partial: `touch-action` was already set): a cancelled pressure-curve drag
+    stayed armed.
+  - `ae73f53` ← `abc1b6d` (partial: the IME half; dialogs here take no window Enter): the Enter that
+    commits IME input committed a rename or marker label mid-composition.
+  - `6a978cf` ← `eb1e5df`: a file dropped anywhere opened in the tab in the app's place; a window guard
+    refuses file drags. No drop-to-import (every import is still a file picker).
+- **Follow-ups found reviewing the ports:** `d6a8f3c` — Cmd+V while the Select tool's marquee was held
+  left `isCreating` set, so the rest of the press stretched the pasted float and a release under 3 px
+  cleared it (`pasteFloat` ends the marquee; `pasteSelection` ends an open press first). `ee81aa3` — the
+  wheel and `0`/`1` still moved the view during a reference-gizmo handle drag (its own listeners); they
+  use the touch gestures' check now (`viewHeld`).
+- **Already fixed here or not applicable:** `bf37d0a` (cancelled stroke end, `7abcb00`), `c6349e3`
+  (Space on blur, `fc420c9`; no hold-X), `a5f0dad` (tool hand-backs), `e950527` (lasso copy, `ecbf402`),
+  `047efc8` (Fit clamps to `minZoom` here), `49e35cd` (Ctrl letters already lower-cased), `b354fb5`
+  (paste under a dialog, `0562f82`), `6f6dcbd` (NumberField clamps sizes), `3256edf` (no Sharp layers,
+  DPR 1), `fe77f9d` (one layer-id allocator, no PSD import), `d8fbc62` (bucket seed, `3d56867`),
+  `e725778` (exact 4-channel match here, by design), `8b4fba1` (no whole-layer Move; Transform's undo is
+  structural and copies no pixels).
+- Build 0/0 on every commit, **1855 tests** (1807 before). `npm run test:ipad` not run. **Owed on the
+  iPad:** Stream / Sharp corners at `STILL_PX` 1.5 with a resting Pencil (too tight and a held Pencil
+  never counts as paused); the new taper look; a tool switch mid-press (finger on the toolbar while the
+  Pencil holds a marquee, a Fill tap, a Pose handle); three-finger redo and a pen landing during a pan or
+  pinch; Cmd+V of an OS image over the canvas in Safari (`beforepaste`); dropping a file on the app
+  (desktop too).

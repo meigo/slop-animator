@@ -164,6 +164,9 @@ function atLeast(a: Uint8ClampedArray, b: Uint8ClampedArray): Uint8ClampedArray 
 /** How far under a line the fill may reach, px from its region (half of the widest line it fills
  *  to the middle of). */
 export const UNDER_LINE_MAX_PX = 32;
+/** Where the middle is out of reach, the fill fades out over at least this many px before the
+ *  reach ends, instead of stopping dead. */
+const REACH_FADE_PX = 8;
 
 /**
  * The fill's coverage, 0–255, run under the surrounding lines to their MIDDLE (2026-10-04, port of
@@ -173,7 +176,8 @@ export const UNDER_LINE_MAX_PX = 32;
  * in, leaving its inner half blotchy with paper. On the inner half the fill fades from full to
  * 1 − the line's strongest value nearby (so a light line isn't darkened much, and a solid one hides
  * it), and ends at the middle over max(1, 2 × Soft) px, antialiased. Nothing beyond the middle.
- * Drawn BEHIND the line. Soft 0: the region alone, the hard edge. `dist` is each pixel's line
+ * Where the middle is out of reach (`UNDER_LINE_MAX_PX`) it fades out over the reach's last
+ * max(8, 2 × Soft) px instead. Drawn BEHIND the line. Soft 0: the region alone, the hard edge. `dist` is each pixel's line
  * strength (`colourDistance`; the bucket's `bucketStrength`); a pixel is empty below `tol`.
  * Worked out only around the region, so a small fill on a big layer stays fast. Pure.
  *
@@ -261,6 +265,7 @@ export function ridgeCoverage(
   const dOut = distanceToMask(outside, ww, wh);
   const peak = maxFilter(smooth, ww, wh, 3);
   const feather = Math.max(1, 2 * soft);
+  const reachFade = Math.max(REACH_FADE_PX, feather);
   for (let y = 0; y < wh; y++) {
     for (let x = 0; x < ww; x++) {
       const i = y * ww + x;
@@ -273,9 +278,16 @@ export function ridgeCoverage(
         ? Math.max(0, Math.min(1, ((0.5 - t) * span) / feather + 0.5))
         : 1;
       if (edge <= 0) continue;
+      // The middle out of reach (no empty space beyond, or a line over twice the reach wide): fade
+      // out over the reach's last px. It stopped dead at the reach, a hard edge that showed through
+      // translucent flat paint. Not where the middle is in reach: that end is the Soft cut above.
+      const reach =
+        !Number.isFinite(span) || span / 2 > UNDER_LINE_MAX_PX
+          ? Math.min(1, (UNDER_LINE_MAX_PX - dIn[i]) / reachFade)
+          : 1;
       const end = 1 - peak[i] / 255;
       const along = Math.min(1, t / 0.5);
-      out[(y + wy) * w + x + wx] = Math.round(255 * edge * (1 + (end - 1) * along));
+      out[(y + wy) * w + x + wx] = Math.round(255 * edge * reach * (1 + (end - 1) * along));
     }
   }
   return out;

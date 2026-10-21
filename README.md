@@ -114,6 +114,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   `⌘Z`/`⌘⇧Z` undo/redo
 - In a numeric field: `↑`/`↓` change it by one step (`Shift` = ten), `Enter` commits, `Escape`
   restores
+- The view keys (`0`, `1`) and the mouse wheel are ignored while the pen or mouse is down
 
 ## Running it
 
@@ -127,7 +128,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1807); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1855); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)

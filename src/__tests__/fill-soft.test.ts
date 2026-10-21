@@ -67,8 +67,26 @@ describe("ridgeCoverage", () => {
     const band = Array(UNDER_LINE_MAX_PX + 8).fill(255);
     const c = across(band, 1, 4, 0);
     expect(c[0]).toBeGreaterThan(0);
-    expect(c[UNDER_LINE_MAX_PX - 1]).toBeGreaterThan(0);
+    expect(c[UNDER_LINE_MAX_PX - 2]).toBeGreaterThan(0);
     expect(c[UNDER_LINE_MAX_PX + 2]).toBe(0);
+  });
+
+  it("fades out toward the reach instead of ending in a hard edge", () => {
+    // Translucent flat paint wider than the reach: no empty space beyond it.
+    const band = Array(UNDER_LINE_MAX_PX + 8).fill(100);
+    for (const soft of [0.25, 1, 4]) {
+      const c = across(band, soft, 4, 0);
+      const last = c.findLastIndex((v) => v > 0);
+      expect(last).toBeGreaterThan(UNDER_LINE_MAX_PX - 4);
+      // over the last 8 px it steps down evenly, never by more than an eighth of where it started
+      const start = c[last - 7];
+      expect(start).toBeGreaterThan(0);
+      for (let i = last - 7; i < last; i++) {
+        expect(c[i + 1]).toBeLessThanOrEqual(c[i]);
+        expect(c[i] - c[i + 1]).toBeLessThanOrEqual(Math.ceil(start / 7));
+      }
+      expect(c[last]).toBeLessThanOrEqual(Math.ceil(start / 7));
+    }
   });
 });
 

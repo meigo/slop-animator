@@ -13,6 +13,7 @@
     pathSmoothRadius,
     REST_PX,
     smoothPath,
+    STILL_PX,
   } from "../core/stroke-smoothing";
   import {
     floodFill,
@@ -347,11 +348,11 @@
       e.preventDefault();
       // Not under an open press: its next point would map through the new view, and the line jump
       // there in a straight chord.
-      if (pressOpen()) return;
+      if (viewHeld()) return;
       viewport?.fitView(appState.project.width, appState.project.height);
     } else if (e.key === "1") {
       e.preventDefault();
-      if (pressOpen()) return; // as `0`
+      if (viewHeld()) return; // as `0`
       viewport?.setZoom(1);
     }
   }
@@ -486,6 +487,9 @@
   let dropStrokeUntilUp = false;
   /** Whether a canvas press (pen or mouse) is open. Set from `setupInput` in onMount. */
   let pressOpen: () => boolean = () => false;
+  /** Whether the view must hold still: a canvas press, or a gizmo handle drag (which runs on the
+   *  gizmo's own listeners, not `setupInput`). The touch gestures' `isDrawing` check. */
+  const viewHeld = () => pressOpen() || appState.transformDragFrame !== null;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
   // above the display refresh, so painting every event re-runs the full stroke wastefully.
   let drawRaf = 0;
@@ -880,6 +884,8 @@
         inPts,
         pathSmoothRadius(stroke.smoothing, viewport.zoom),
         brushType === "smooth" && (stroke.sharpCorners ?? false),
+        // Sharp corners' pause: the same on-screen stillness Stream's pause uses.
+        STILL_PX / viewport.zoom,
       );
     }
     const steps = strokeSteps;
@@ -1998,6 +2004,10 @@
 
   function pasteSelection(): boolean {
     if (!selectionClipboard) return false;
+    // Cmd+V while a marquee or drag is held: end that press first, as a tool change does. Under
+    // the Select tool nothing else would, and its release ran `endCreate`, whose under-3-px check
+    // wiped the pasted float. An open stroke is the tool change's to commit (pasting picks Select).
+    if (pressOpen() && !strokeCanvas) endOpenPress(appState.tool);
     liftGuard.bank?.(); // apply any in-progress lift before setting up the new float
     const target = activeDrawableCtx();
     if (!target) return false;
@@ -2737,7 +2747,7 @@
       // the gizmo, so `isDrawing` stayed false and a palm or finger panned the view under the pen,
       // jumping the transform (review 2026-10-17 #32). `transformDragFrame` is set at the handle's
       // grab and cleared at its settle — exactly the drag (touch never starts one).
-      isDrawing: () => input.isDrawing() || appState.transformDragFrame !== null,
+      isDrawing: viewHeld,
     });
 
     const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
@@ -3061,7 +3071,7 @@
   // ctrl+wheel) zooms at the cursor.
   function onWheel(e: WheelEvent) {
     e.preventDefault();
-    if (pressOpen()) return; // as the view keys: not under an open press
+    if (viewHeld()) return; // as the view keys: not under an open press or handle drag
     // By the delta's size, not a fixed 10% per event: a trackpad pinch (many small deltas) zoomed
     // ~10x too fast, and Ctrl with a horizontal scroll (deltaY 0) zoomed in.
     if (e.ctrlKey || e.metaKey)
