@@ -105,17 +105,18 @@ function supportPoint(
 /** Light centred smoothing of the sample positions. Centred, so it costs no lag — this engine
  *  redraws the whole stroke every frame and has the future samples in hand, unlike an
  *  incremental one. Deliberately mild: it removes sub-pixel noise without rounding real corners
- *  (verified against a hard zigzag). */
-function smoothPositions(points: InputPoint[]): InputPoint[] {
+ *  (verified against a hard zigzag). The window narrows to the ends, so the first and last
+ *  points stay where the pen was: a one-sided window pulled each end in by 2/3 of a point's
+ *  spacing, which shortened a quick hatch (3 px apart) by 2 px at each end. */
+export function smoothPositions(points: InputPoint[]): InputPoint[] {
   if (points.length < 3) return points;
-  const K = 2;
   return points.map((p, i) => {
+    const K = Math.min(2, i, points.length - 1 - i);
     let sx = 0;
     let sy = 0;
     let sw = 0;
     for (let j = -K; j <= K; j++) {
       const q = points[i + j];
-      if (!q) continue;
       const w = K + 1 - Math.abs(j);
       sx += q.x * w;
       sy += q.y * w;

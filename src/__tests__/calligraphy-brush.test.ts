@@ -8,6 +8,7 @@ import {
   nibSupport,
   nibSupportPoint,
   normals,
+  smoothPositions,
   MAX_NIB_FLATNESS,
 } from "../core/calligraphy-brush";
 
@@ -426,5 +427,21 @@ describe("drawCalligraphyStroke (frozen ranges)", () => {
       const whole = new Set(rings(pts));
       for (const r of [...frozen, ...rest]) expect(whole.has(r)).toBe(true);
     }
+  });
+});
+
+describe("smoothPositions", () => {
+  const pt = (x: number, y = 0) => ({ x, y, pressure: 1, timestamp: 0 });
+
+  it("keeps the first and last points where the pen was", () => {
+    // A quick hatch: pen down at 0, moves 3 px apart, lift at 10.
+    const out = smoothPositions([0, 3, 6, 9, 10].map((x) => pt(x)) as never);
+    expect(out[0].x).toBe(0);
+    expect(out[out.length - 1].x).toBe(10);
+  });
+
+  it("still damps jitter in the middle", () => {
+    const pts = [0, 1, 2, 3, 4, 5, 6].map((x, i) => pt(x, i === 3 ? 1 : 0));
+    expect(Math.abs(smoothPositions(pts as never)[3].y)).toBeLessThan(0.5);
   });
 });
