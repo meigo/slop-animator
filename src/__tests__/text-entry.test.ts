@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blursOnCanvasPress, isTextEntry } from "../lib/text-entry";
+import { blursOnCanvasPress, isCommitEnter, isTextEntry } from "../lib/text-entry";
 
 describe("isTextEntry", () => {
   it("is true for fields that take typed text", () => {
@@ -34,5 +34,23 @@ describe("blursOnCanvasPress", () => {
     expect(blursOnCanvasPress({ tagName: "INPUT", type: "range" })).toBe(false);
     expect(blursOnCanvasPress({ tagName: "BUTTON" })).toBe(false);
     expect(blursOnCanvasPress(null)).toBe(false);
+  });
+});
+
+// Port of slop-paint abc1b6d (the IME half): the layer / group rename and the marker label
+// committed on the Enter that commits an input method's composition.
+describe("isCommitEnter", () => {
+  it("takes a plain Enter", () => {
+    expect(isCommitEnter({ key: "Enter" })).toBe(true);
+    expect(isCommitEnter({ key: "Enter", isComposing: false, keyCode: 13 })).toBe(true);
+  });
+
+  it("leaves the Enter that commits an input method's text", () => {
+    expect(isCommitEnter({ key: "Enter", isComposing: true })).toBe(false);
+    expect(isCommitEnter({ key: "Enter", keyCode: 229 })).toBe(false); // Safari
+  });
+
+  it("is only Enter", () => {
+    expect(isCommitEnter({ key: "Escape" })).toBe(false);
   });
 });
