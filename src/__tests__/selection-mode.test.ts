@@ -272,3 +272,28 @@ describe("a small float", () => {
     expect(s.hitTest(150, 150)).toBe("move");
   });
 });
+
+// Port of slop-paint 30f0412: endCreate dropped a marquee under 3 document px a side — zoomed out,
+// a tap's jitter kept a speck of a marquee that clipped the next stroke; zoomed in, a deliberate
+// thin drag was dropped.
+describe("a tap makes no marquee", () => {
+  const drag = (zoom: number, w: number, h: number) => {
+    const { s } = recordedSelection();
+    s.screenScale = zoom;
+    s.startCreate(100, 100, "rect");
+    s.updateCreate(100 + w, 100 + h);
+    s.endCreate();
+    return s.state;
+  };
+  it("zoomed out, a tap's jitter of a screen px or two", () => {
+    expect(drag(0.25, 4, 4)).toBe("idle");
+    expect(drag(0.25, 8, 8)).toBe("idle");
+  });
+  it("zoomed in, a thin deliberate drag is kept", () => {
+    expect(drag(8, 2, 40)).toBe("selected");
+  });
+  it("at 100%, 3 px a side is a marquee", () => {
+    expect(drag(1, 2, 40)).toBe("idle");
+    expect(drag(1, 3, 3)).toBe("selected");
+  });
+});

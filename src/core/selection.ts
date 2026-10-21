@@ -332,7 +332,11 @@ export class Selection {
 
   endCreate() {
     this.isCreating = false;
-    if (!this.rect || this.rect.w < 3 || this.rect.h < 3) {
+    // A tap (or a drag under 3 SCREEN px a side) makes no marquee. It was 3 document px: zoomed
+    // out, a tap's jitter kept a speck of a marquee that clipped the next stroke, and zoomed in a
+    // deliberate thin drag was dropped. A marquee is document space, so `screenScale` is the zoom.
+    const s = this.screenScale;
+    if (!this.rect || this.rect.w * s < 3 || this.rect.h * s < 3) {
       this.clear();
       return;
     }
