@@ -78,10 +78,14 @@ interface PixelPatch {
 /**
  * An undoable pixel write on `ctx`'s canvas, given the canvas's pixels from before and after it.
  * Only the `UNDO_TILE` tiles that differ are kept, both sides, so a step costs roughly the area it
- * touched rather than the whole canvas twice over; `before` and `after` are not retained. The
- * caller's `undo` / `redo` get a `put` that writes their side back — call it exactly where the
- * pixels must land relative to the other restores (redo puts the cell back in its track first).
- * The callbacks must not capture `before` / `after` themselves, or the full snapshots stay alive.
+ * touched rather than the whole canvas twice over; `before` and `after` are not retained — the
+ * tiles are cut in `diffPatches`, a function of its own, because closures made in one scope share
+ * it: built inline here, the returned `undo` / `redo` kept the cropping callbacks' `before` and
+ * `after` reachable, so every step held BOTH whole-canvas snapshots while `bytes` counted only the
+ * tiles (2026-10-21, slop-paint's review: 20 HD steps held 334 MB, counted 2.6 MB). The caller's
+ * `undo` / `redo` get a `put` that writes their side back — call it exactly where the pixels must
+ * land relative to the other restores (redo puts the cell back in its track first). The callbacks
+ * must not capture `before` / `after` themselves, or the full snapshots stay alive.
  *
  * Also marks the canvas's ink as changed — now (the write this records has just happened) and on
  * every undo/redo — so the per-canvas emptiness/bounds caches in `cell-ink` re-measure exactly the
@@ -96,22 +100,7 @@ export function pixelCommand(
   redo: (put: () => void) => void,
 ): Command {
   const canvas = ctx.canvas;
-  const w = after.width;
-  let was: PixelPatch[];
-  let now: PixelPatch[];
-  if (before.width === w && before.height === after.height) {
-    const rects = changedTiles(before.data, after.data, w, after.height);
-    was = rects.map((r) => ({ r, data: cropPixels(before.data, w, r) }));
-    now = rects.map((r) => ({ r, data: cropPixels(after.data, w, r) }));
-  } else {
-    // Not expected (both are snapshots of one canvas), but never lose pixels over it: keep both whole.
-    const whole = (d: ImageData): PixelPatch => ({
-      r: { x: 0, y: 0, w: d.width, h: d.height },
-      data: d.data as Uint8ClampedArray<ArrayBuffer>,
-    });
-    was = [whole(before)];
-    now = [whole(after)];
-  }
+  const { was, now } = diffPatches(before, after);
   const put = (side: PixelPatch[]) => () => {
     for (const p of side) ctx.putImageData(new ImageData(p.data, p.r.w, p.r.h), p.r.x, p.r.y);
   };
@@ -127,6 +116,28 @@ export function pixelCommand(
       markInkChanged(canvas);
     },
     bytes,
+  };
+}
+
+/** The changed tiles of two snapshots of one canvas, each side cropped out. Its own function,
+ *  not inline in `pixelCommand`: see there for the closure scope that kept both snapshots alive. */
+function diffPatches(
+  before: ImageData,
+  after: ImageData,
+): { was: PixelPatch[]; now: PixelPatch[] } {
+  const w = after.width;
+  if (before.width !== w || before.height !== after.height) {
+    // Not expected (both are snapshots of one canvas), but never lose pixels over it: keep both whole.
+    const whole = (d: ImageData): PixelPatch => ({
+      r: { x: 0, y: 0, w: d.width, h: d.height },
+      data: d.data as Uint8ClampedArray<ArrayBuffer>,
+    });
+    return { was: [whole(before)], now: [whole(after)] };
+  }
+  const rects = changedTiles(before.data, after.data, w, after.height);
+  return {
+    was: rects.map((r) => ({ r, data: cropPixels(before.data, w, r) })),
+    now: rects.map((r) => ({ r, data: cropPixels(after.data, w, r) })),
   };
 }
 
