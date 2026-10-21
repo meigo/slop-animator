@@ -43,6 +43,8 @@ const HANDLE_SIZE = 8;
 const ROTATE_OFFSET = 20;
 /** Minimum hit half-width in screen pixels — hit areas grow at low zoom so handles stay grabbable. */
 const MIN_HIT_PX = 12;
+/** Below this many screen px a side, the handles' hit areas would cover a float whole. */
+const SMALL_FLOAT_PX = 4 * MIN_HIT_PX;
 
 /** Rotation cursor (CSS has no built-in 'rotate'). White halo + black stroke for legibility on any background. Hot-spot at center. */
 const ROTATE_CURSOR_SVG =
@@ -644,6 +646,16 @@ export class Selection {
     // handle once the view was zoomed out far enough to fit an HD canvas.
     const rotR = tol + 2 * this.px;
     if ((x - rotateHandle.x) ** 2 + (y - rotateHandle.y) ** 2 < rotR * rotR) return "rotate";
+
+    // A float under SMALL_FLOAT_PX on screen a side: inside it moves, and the handles are grabbed
+    // from just outside. Their hit areas (MIN_HIT_PX each way) otherwise covered all of it, so a
+    // small paste or lift could be scaled but never moved.
+    const side = Math.min(
+      Math.hypot(corners.tr.x - corners.tl.x, corners.tr.y - corners.tl.y),
+      Math.hypot(corners.bl.x - corners.tl.x, corners.bl.y - corners.tl.y),
+    );
+    if (side * this.screenScale < SMALL_FLOAT_PX && this.pointInsideTransformedBox(x, y))
+      return "move";
 
     const cornerHandles: { handle: Handle; p: { x: number; y: number } }[] = [
       { handle: "tl", p: corners.tl },

@@ -245,3 +245,30 @@ describe("changing the warp grid while a drag is held", () => {
     expect(s.warpGrid[1][1]).toEqual({ x: 100, y: 100 });
   });
 });
+
+// Port of slop-paint 4b4701e: the handles' hit areas reach 12 screen px each way, so on a float up
+// to about 24 screen px a side they covered all of it — it could be scaled but never moved.
+describe("a small float", () => {
+  const pixels = (w: number, h: number) => ({ width: w, height: h }) as HTMLCanvasElement;
+  for (const [w, h] of [
+    [20, 20],
+    [40, 20],
+    [100, 10],
+  ]) {
+    it(`${w}×${h} screen px moves from inside and scales from just outside`, () => {
+      const { s } = recordedSelection();
+      s.screenScale = 1;
+      s.pasteFloat(pixels(w, h), { x: 100, y: 100, w, h });
+      expect(s.hitTest(100 + w / 2, 100 + h / 2)).toBe("move");
+      expect(s.hitTest(100 + w + 6, 100 + h + 6)).toBe("br");
+    });
+  }
+
+  it("a large float still scales from just inside its corner", () => {
+    const { s } = recordedSelection();
+    s.screenScale = 1;
+    s.pasteFloat(pixels(100, 100), { x: 100, y: 100, w: 100, h: 100 });
+    expect(s.hitTest(195, 195)).toBe("br");
+    expect(s.hitTest(150, 150)).toBe("move");
+  });
+});
