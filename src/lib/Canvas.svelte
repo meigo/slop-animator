@@ -2633,8 +2633,24 @@
     rebuildPoseMesh();
   }
 
+  /** A grid change (Distort / Mesh, W / M, the mesh stepper) while the Pencil holds a point or a
+   *  free-transform drag: the Selection drops its drag (`dropDrag`), and the rest of this press
+   *  does nothing — the point stays where it got to. */
+  function endHeldSelectionDrag() {
+    if (selectionMode !== "drag") return;
+    selectionMode = null;
+    deformGrab = null;
+    dropStrokeUntilUp = true;
+  }
+
   function enterWarp(rows: number, cols: number) {
     if (!selection) return;
+    if (
+      selection.state === "transforming" ||
+      (selection.state === "warping" &&
+        (rows !== selection.warpRows || cols !== selection.warpCols))
+    )
+      endHeldSelectionDrag();
     if (selection.state === "selected") enterTransform();
     if (selection.state === "transforming") selection.beginWarp(rows, cols);
     else if (selection.state === "warping") selection.densifyWarp(rows, cols);
@@ -3121,6 +3137,7 @@
     onDensify={(d) => {
       if (!selection) return;
       const n = clampDensity(selection.warpRows + d);
+      if (n !== selection.warpRows) endHeldSelectionDrag();
       selection.densifyWarp(n, n);
     }}
     onSetDeformMode={(m) => selection?.setDeformMode(m)}

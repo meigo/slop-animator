@@ -535,6 +535,7 @@ export class Selection {
   beginWarp(rows = 2, cols = 2) {
     if (!this.rect || !this.floatingPixels) return;
     if (rows < 2 || cols < 2) return;
+    this.dropDrag();
     this.warpGrid = sampleGrid(this.rect, this.matrix, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
@@ -552,12 +553,22 @@ export class Selection {
     if (this.state !== "warping" || !this.rect) return;
     if (rows < 2 || cols < 2) return;
     if (rows === this.warpRows && cols === this.warpCols) return;
+    this.dropDrag();
     this.warpGrid = resampleGrid(this.warpGrid, this.warpRows, this.warpCols, rows, cols);
     this.warpRows = rows;
     this.warpCols = cols;
     this.pinned.clear();
     this.drawOverlay();
     this.onStateChange?.();
+  }
+
+  /** A drag held across a grid change ends there: its next move rebuilt the grid from the copy
+   *  taken at its press — the old density (rows and grid disagreed, so drawing, hit-testing and
+   *  Apply went wrong) or, from a free-transform drag, no grid at all. The rest of the press does
+   *  nothing. */
+  private dropDrag() {
+    this.dragging = null;
+    this.dragGridIdx = null;
   }
 
   setDeformMode(m: "ffd" | "rigid") {

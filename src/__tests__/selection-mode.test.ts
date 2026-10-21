@@ -206,3 +206,42 @@ describe("moving a float", () => {
     });
   }
 });
+
+// Port of slop-paint eb19203: a finger on the mesh stepper (or Distort / Mesh, W / M) while the
+// Pencil held a grid point or a free-transform drag: the next move rebuilt the grid from the copy
+// taken at the press — the old density, or no grid at all from a transform drag.
+describe("changing the warp grid while a drag is held", () => {
+  function stubCanvas(w: number, h: number): HTMLCanvasElement {
+    const c = { width: w, height: h, getContext: () => recorder().ctx };
+    return c as unknown as HTMLCanvasElement;
+  }
+  (globalThis as { document?: unknown }).document ??= {
+    createElement: () => stubCanvas(0, 0),
+  };
+
+  it("a finer mesh ends the held drag instead of rebuilding the old grid", () => {
+    const { s } = recordedSelection();
+    s.pasteFloat(stubCanvas(100, 100), { x: 0, y: 0, w: 100, h: 100 });
+    s.beginWarp(2, 2);
+    s.startDrag(s.hitTest(100, 100), 100, 100);
+    s.densifyWarp(3, 3);
+    s.updateDrag(110, 110);
+    s.endDrag();
+    expect(s.warpRows).toBe(3);
+    expect(s.warpGrid.length).toBe(3);
+    expect(s.warpGrid.every((r) => r.length === 3)).toBe(true);
+    expect(s.warpGrid[2][2]).toEqual({ x: 100, y: 100 });
+    expect(() => s.renderFloatingTo(recorder().ctx)).not.toThrow();
+    expect(() => s.hitTest(500, 500)).not.toThrow();
+  });
+
+  it("Distort during a free-transform move drag keeps its grid", () => {
+    const { s } = recordedSelection();
+    s.pasteFloat(stubCanvas(100, 100), { x: 0, y: 0, w: 100, h: 100 });
+    s.startDrag("move", 50, 50);
+    s.beginWarp(2, 2);
+    s.updateDrag(60, 60);
+    expect(s.warpGrid.length).toBe(2);
+    expect(s.warpGrid[1][1]).toEqual({ x: 100, y: 100 });
+  });
+});
