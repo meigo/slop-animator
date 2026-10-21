@@ -345,9 +345,13 @@
       e.preventDefault();
     } else if (e.key === "0") {
       e.preventDefault();
+      // Not under an open press: its next point would map through the new view, and the line jump
+      // there in a straight chord.
+      if (pressOpen()) return;
       viewport?.fitView(appState.project.width, appState.project.height);
     } else if (e.key === "1") {
       e.preventDefault();
+      if (pressOpen()) return; // as `0`
       viewport?.setZoom(1);
     }
   }
@@ -480,6 +484,8 @@
   let strokeBrushType: BrushKind = "smooth";
   // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
   let dropStrokeUntilUp = false;
+  /** Whether a canvas press (pen or mouse) is open. Set from `setupInput` in onMount. */
+  let pressOpen: () => boolean = () => false;
   // Coalesce per-event drawing/compositing into one animation frame: the pen fires far
   // above the display refresh, so painting every event re-runs the full stroke wastefully.
   let drawRaf = 0;
@@ -1363,6 +1369,32 @@
     if (refDrag) settleRefDrag();
     if (open && !done) dropStrokeUntilUp = true;
     if (done) fillUsed = false;
+  }
+
+  /** A tool change while a NON-stroke press is open (a finger on the toolbar, or a key, while the
+   *  Pencil holds a marquee, a selection or Deform drag, a Pose handle, a Fill tap or the
+   *  eyedropper): end that press as its release would and drop the rest of it. Every later event
+   *  is routed by the LIVE tool, so the rest of a Select press switched to Brush drew a stroke with
+   *  every point since pen-down, and a Fill press left `fillUsed` latched, so the next Fill tap did
+   *  nothing. The eyedropper picks nothing. An open stroke is committed by the caller, and a
+   *  Transform drag is settled by `transformDragGuard.settle`; the rest of their press is dropped
+   *  here too. */
+  function endOpenPress(prev: typeof appState.tool) {
+    if (selectionMode !== null && (prev === "select" || prev === "lasso" || prev === "deform")) {
+      if (selectionMode === "create") selection.endCreate();
+      else selection.endDrag();
+      selectionMode = null;
+      deformGrab = null;
+      recomposite();
+    }
+    if (prev === "pose") {
+      poseDrag = null;
+      poseGrab = null;
+      poseBarDragging = false;
+      poseAdjusting = false;
+    }
+    fillUsed = false;
+    dropStrokeUntilUp = true;
   }
 
   function onStroke(points: InputPoint[], done: boolean) {
@@ -2716,6 +2748,7 @@
           ? activeStroke().streamline / 100
           : 0,
     });
+    pressOpen = () => input.isDrawing();
 
     // Recomposite when the document changes elsewhere (frame step, layer toggle…).
     let lastVersion = appState.version;
@@ -2873,7 +2906,7 @@
     if (toolChanged && strokeCanvas) {
       commitOpenStroke(lastPoints, prevTool === "eraser");
       dropStrokeUntilUp = true;
-    }
+    } else if (toolChanged && pressOpen()) endOpenPress(prevTool);
     if (toolChanged) {
       // An untouched lift cancels rather than bakes — see `deformDirty`/`poseDirty`.
       if (prevTool === "pose" && t !== "pose" && meshPose) {
@@ -3028,6 +3061,7 @@
   // ctrl+wheel) zooms at the cursor.
   function onWheel(e: WheelEvent) {
     e.preventDefault();
+    if (pressOpen()) return; // as the view keys: not under an open press
     // By the delta's size, not a fixed 10% per event: a trackpad pinch (many small deltas) zoomed
     // ~10x too fast, and Ctrl with a horizontal scroll (deltaY 0) zoomed in.
     if (e.ctrlKey || e.metaKey)
