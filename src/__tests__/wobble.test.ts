@@ -117,3 +117,33 @@ describe("Calligraphy wobble and the freeze", () => {
     expect(rings(pts, 60)).not.toEqual(rings(pts, 0));
   });
 });
+
+describe("noise2 (dx / dy independence)", () => {
+  /** Correlation of the noise for `seed` and `seed + 1` (wobbleOutline's dx and dy). */
+  function corr(seed: number) {
+    const a: number[] = [];
+    const b: number[] = [];
+    for (let k = 0; k < 20000; k++) {
+      const x = ((k * 0.6180339887) % 1) * 200;
+      const y = ((k * 0.7548776662) % 1) * 200;
+      a.push(noise2(seed, x, y) - 0.5);
+      b.push(noise2(seed + 1, x, y) - 0.5);
+    }
+    const ma = a.reduce((s, v) => s + v, 0) / a.length;
+    const mb = b.reduce((s, v) => s + v, 0) / b.length;
+    let sab = 0;
+    let saa = 0;
+    let sbb = 0;
+    for (let k = 0; k < a.length; k++) {
+      sab += (a[k] - ma) * (b[k] - mb);
+      saa += (a[k] - ma) ** 2;
+      sbb += (b[k] - mb) ** 2;
+    }
+    return sab / Math.sqrt(saa * sbb);
+  }
+
+  // `key ^ x` made an even seed's next noise the same one with neighbouring columns swapped.
+  it("gives seed and seed + 1 unrelated noise, even seeds too", () => {
+    for (const seed of [2, 1000, 123456, 3, 1001]) expect(Math.abs(corr(seed))).toBeLessThan(0.05);
+  });
+});

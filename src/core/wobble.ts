@@ -25,9 +25,12 @@ export function noise2(key: number, x: number, y: number): number {
   return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
 }
 
-/** The noise's random value at lattice point (x, y), 0–1. */
+/** The noise's random value at lattice point (x, y), 0–1. The key is scrambled before it meets x:
+ *  `key ^ x` made `seed + 1`'s noise `seed`'s with neighbouring columns swapped (for an even seed),
+ *  so the dx and dy wobble were correlated and edges along one diagonal wobbled less (2026-10-17). */
 export function lattice2(key: number, x: number, y: number): number {
-  let t = (Math.imul(key ^ x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ 0x6d2b79f5) >>> 0;
+  const k = Math.imul(key ^ (key >>> 15), 0x9e3779b1);
+  let t = (Math.imul(k ^ x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ 0x6d2b79f5) >>> 0;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
