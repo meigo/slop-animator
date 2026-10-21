@@ -209,6 +209,30 @@ describe("Smooth's inward cap (spine)", () => {
     expect(without).toBeLessThan(0.3 * nominal); // what it did before: pinched
   });
 
+  // Watercolour draws Smooth's outline (steady spacing, no taper) and takes the same cap
+  // (slop-paint c82cbc1).
+  it("keeps Watercolour's light stroke from pinching too, Wobble 100, Press 8", () => {
+    const nominal = widthRange(10, 8).min;
+    const wash = (pts: InputPoint[], spine: boolean) => {
+      const maxW = widthRange(10, 8).max;
+      return wobbleOutline(
+        outlineOfPath(pts, 10, 8, true, false, true),
+        strokeSeed(pts[0]),
+        wobbleAmp(maxW, 100),
+        wobbleScale(maxW),
+        true,
+        spine ? pathSpine(pts, 10, 8) : undefined,
+      );
+    };
+    let without = Infinity;
+    for (let s = 0; s < 6; s++) {
+      const pts = line(0, s * 0.37);
+      expect(narrowest(wash(pts, true), 140, 660)).toBeGreaterThan(0.45 * nominal);
+      without = Math.min(without, narrowest(wash(pts, false), 140, 660));
+    }
+    expect(without).toBeLessThan(0.45 * nominal); // what it did before: pinched
+  });
+
   it("changes nothing where the stroke is wide", () => {
     const pts = line(1, 0);
     expect(wobbled(pts, 10, 3, true)).toEqual(wobbled(pts, 10, 3, false));

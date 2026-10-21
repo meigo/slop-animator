@@ -1,4 +1,4 @@
-import { outlineOfPath, widthRange, type BrushSettings } from "./brush";
+import { outlineOfPath, pathSpine, widthRange, type BrushSettings } from "./brush";
 import { hexToRgba } from "./fill";
 import type { InputPoint } from "./input";
 import { distanceToMask } from "./mask-ops";
@@ -193,11 +193,16 @@ export function drawWatercolorStroke(
   const maxW = widthRange(settings.size, sizeRange).max;
   const amp = wobbleAmp(maxW, settings.washWobble ?? 30);
   const seed = strokeSeed(points[0]);
+  // Smooth's inward cap (pathSpine): a light stroke keeps at least half its width at any Wobble —
+  // it pinched to 0.29 of it at Wobble 100, Press 8. A drawn part still never moves as the stroke
+  // grows (each edge point keeps the earliest pass that holds it), which the rim window needs.
   const outline = wobbleOutline(
     outlineOfPath(path, settings.size, sizeRange, done, false, true),
     seed,
     amp,
     wobbleScale(maxW),
+    true,
+    amp > 0 ? pathSpine(path, settings.size, sizeRange) : undefined,
   );
   if (outline.length < 2) return;
   const rimPx = rimWidth(maxW) * m.a;
