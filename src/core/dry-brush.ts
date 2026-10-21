@@ -298,11 +298,11 @@ let scratch: HTMLCanvasElement | null = null;
 /** The part of `scratch` the last frame drew into, so the next one clears it. */
 let scratchBox: Box | null = null;
 
-type Box = { x: number; y: number; w: number; h: number };
+export type Box = { x: number; y: number; w: number; h: number };
 
 /** A document-space box under transform `m` (scale and translate) as whole device pixels,
  *  clamped to a `w`×`h` canvas; null when it falls outside. */
-function deviceBox(
+export function deviceBox(
   m: DOMMatrix,
   x0: number,
   y0: number,
@@ -324,7 +324,7 @@ function deviceBox(
     : null;
 }
 
-function unionBox(a: Box, b: Box): Box {
+export function unionBox(a: Box, b: Box): Box {
   const x = Math.min(a.x, b.x);
   const y = Math.min(a.y, b.y);
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };

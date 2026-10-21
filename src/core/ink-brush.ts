@@ -1,6 +1,7 @@
 import type { InputPoint } from "./input";
 import type { BrushSettings } from "./brush";
 import { widthRange } from "./brush";
+import { deviceBox, unionBox, type Box } from "./dry-brush";
 
 /**
  * Ink/marker brush — a quadratic curve through the running midpoints of the input points,
@@ -227,7 +228,11 @@ function strokeRuns(
  * (the common case) still draws straight to the target with no scratch at all.
  */
 let scratch: HTMLCanvasElement | null = null;
-function inkScratch(width: number, height: number): CanvasRenderingContext2D | null {
+/** The part of `scratch` the last frame drew into, so the next one clears it. */
+let scratchBox: Box | null = null;
+/** The scratch, with this frame's `box` and last frame's cleared: only the stroke's box is cleared
+ *  and composited, as the Dry brush does (it was the whole layer, twice, every frame). */
+function inkScratch(width: number, height: number, box: Box): CanvasRenderingContext2D | null {
   if (typeof document === "undefined") return null;
   if (!scratch) scratch = document.createElement("canvas");
   const ctx = scratch.getContext("2d");
@@ -238,10 +243,43 @@ function inkScratch(width: number, height: number): CanvasRenderingContext2D | n
     scratch.width = width;
     scratch.height = height;
   } else {
+    const clear = scratchBox ? unionBox(scratchBox, box) : box;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(clear.x, clear.y, clear.w, clear.h);
   }
+  scratchBox = box;
   return ctx;
+}
+
+/** The device-px box of segments [from, to) under `m`, padded by their widest width; null when
+ *  it falls off the canvas. Segment s lies within points s − 1 … s + 1. */
+export function rangeBox(
+  m: DOMMatrix,
+  points: InputPoint[],
+  widths: number[],
+  from: number,
+  to: number,
+  w: number,
+  h: number,
+): Box | null {
+  const a = Math.max(0, from);
+  const b = Math.min(widths.length, to);
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  let pad = 0;
+  for (let s = a; s < b; s++) pad = Math.max(pad, widths[s]);
+  for (let i = Math.max(0, a - 1); i <= Math.min(points.length - 1, b); i++) {
+    const p = points[i];
+    if (p.x < x0) x0 = p.x;
+    if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.y > y1) y1 = p.y;
+  }
+  if (x0 > x1) return null;
+  pad = pad / 2 + 2;
+  return deviceBox(m, x0 - pad, y0 - pad, x1 + pad, y1 + pad, w, h);
 }
 
 /**
@@ -293,8 +331,13 @@ export function drawInkStroke(
 
   // Opaque: the runs can go straight onto the target. Where they
   // overlap they paint the same colour at full alpha, so overlapping twice is invisible.
-  const sctx = alpha < 1 ? inkScratch(ctx.canvas.width, ctx.canvas.height) : null;
-  if (!sctx) {
+  const m = alpha < 1 ? ctx.getTransform() : null;
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  const box = m ? rangeBox(m, points, pooled, from, to, cw, ch) : null;
+  if (m && !box) return;
+  const sctx = box ? inkScratch(cw, ch, box) : null;
+  if (!sctx || !box || !m) {
     ctx.strokeStyle = settings.color;
     ctx.globalCompositeOperation = op;
     ctx.globalAlpha = alpha;
@@ -306,7 +349,7 @@ export function drawInkStroke(
   // transform, then hand the target a single flat shape at `alpha`. Compositing at identity
   // maps scratch device pixels 1:1; the caller's selection clip is stored in device space and
   // survives the transform change, so it still applies.
-  sctx.setTransform(ctx.getTransform());
+  sctx.setTransform(m);
   sctx.strokeStyle = settings.color;
   strokeRuns(sctx, points, mids, pooled, from, to);
 
@@ -315,7 +358,7 @@ export function drawInkStroke(
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = op;
     ctx.globalAlpha = alpha;
-    ctx.drawImage(sctx.canvas, 0, 0);
+    ctx.drawImage(sctx.canvas, box.x, box.y, box.w, box.h, box.x, box.y, box.w, box.h);
   } finally {
     ctx.restore();
   }
