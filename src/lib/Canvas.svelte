@@ -1638,6 +1638,7 @@
 
     selection = new Selection(overlay);
     selection.mode = "rect";
+    selection.pixelRatio = () => DPR;
     selection.applyView = applyViewTransform;
     // Only consulted for a cellSpaceLift (deform) — see Selection.applyCompose.
     selection.applyCompose = applyOverlayCompose;

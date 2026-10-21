@@ -219,6 +219,9 @@ export class Selection {
   private overlayCanvas: HTMLCanvasElement;
   private overlayCtx: CanvasRenderingContext2D;
 
+  /** Cell pixels per document unit (the document's pixel ratio): a moved float lands on whole ones. */
+  pixelRatio: () => number = () => 1;
+
   /** Current viewport zoom — used to keep handle hit areas at a constant screen-pixel size. */
   screenScale = 1;
 
@@ -711,10 +714,16 @@ export class Selection {
 
     switch (this.dragging) {
       case "move": {
+        // By whole cell pixels: a float lifted on the pixel grid stays on it, so Apply draws it
+        // back without resampling. The raw pointer delta (any zoom but 1, or the Pencil) landed it
+        // between pixels and every lift + move + Apply blurred the art a little more. A turned or
+        // scaled float, or one under a layer/group transform, is resampled anyway; this only
+        // steps its moves.
+        const k = this.pixelRatio();
         this.matrix = {
           ...this.matrixStart,
-          e: this.matrixStart.e + dx,
-          f: this.matrixStart.f + dy,
+          e: this.matrixStart.e + Math.round(dx * k) / k,
+          f: this.matrixStart.f + Math.round(dy * k) / k,
         };
         break;
       }

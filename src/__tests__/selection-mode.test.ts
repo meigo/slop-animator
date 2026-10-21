@@ -184,3 +184,25 @@ describe("a lasso marquee keeps its shape", () => {
     expect(overlay.calls).not.toContain("rect");
   });
 });
+
+// Port of slop-paint 9ffe9bb: a move drag added the raw pointer delta, so at any zoom but 1 a float
+// landed between pixels and Apply resampled it — each lift, move and Apply blurred the art more.
+describe("moving a float", () => {
+  for (const dpr of [1, 2]) {
+    it(`at pixel ratio ${dpr}, lands on whole cell pixels`, () => {
+      const { s } = recordedSelection();
+      s.screenScale = 0.75;
+      s.pixelRatio = () => dpr;
+      s.startCreate(10, 10, "rect");
+      s.updateCreate(50, 50);
+      s.endCreate();
+      s.beginTransform({ width: 40 * dpr, height: 40 * dpr } as HTMLCanvasElement);
+      s.startDrag("move", 30, 30);
+      s.updateDrag(30 + 10 / 0.75, 30 + 7 / 0.75);
+      s.endDrag();
+      expect(s.matrix.e * dpr).toBeCloseTo(Math.round(s.matrix.e * dpr), 9);
+      expect(s.matrix.f * dpr).toBeCloseTo(Math.round(s.matrix.f * dpr), 9);
+      expect(s.matrix.a).toBe(1);
+    });
+  }
+});
