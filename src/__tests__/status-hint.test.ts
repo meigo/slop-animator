@@ -162,6 +162,15 @@ describe("contextHint per tool state", () => {
     }
   });
 
+  it("Blend is clipped by the selection and honours alpha lock like the brush", () => {
+    expect(contextHint(ctx({ tool: "blend", selectionActive: true }))).toMatch(
+      /clipped to the selection/,
+    );
+    expect(contextHint(ctx({ tool: "blend", alphaLock: true, frameEmpty: true }))).toMatch(
+      /nothing on this frame/,
+    );
+  });
+
   it("paint tools explain the clip (and where the deselect is) when a selection exists", () => {
     for (const tool of ["brush", "eraser", "fill"]) {
       expect(contextHint(ctx({ tool, selectionActive: true }))).toMatch(/clipped to the selection/);

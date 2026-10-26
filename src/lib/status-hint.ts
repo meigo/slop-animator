@@ -139,6 +139,7 @@ export function contextHint(c: HintContext): string {
         : "Tap the drawing to build the pose mesh";
     case "brush":
     case "eraser":
+    case "blend":
     case "fill": {
       // Alpha lock never touches the eraser, so it is never mentioned for it.
       const locked = c.alphaLock && c.tool !== "eraser";
