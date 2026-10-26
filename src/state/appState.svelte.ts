@@ -573,7 +573,7 @@ export function activeStroke(): ToolSettings {
 }
 
 /** Tools that paint a stroke with a size: brush, eraser and Blend. */
-export function isStrokeTool(tool: Tool): boolean {
+export function isStrokeTool(tool: Tool): tool is "brush" | "eraser" | "blend" {
   return tool === "brush" || tool === "eraser" || tool === "blend";
 }
 

@@ -8896,7 +8896,7 @@ Roadmap item (18). Spec and plan: `docs/superpowers/specs/2026-10-26-blend-tool-
   nothing on a hold pushes no undo step and leaves no key (the `sameImageData` path).
 - **`cloneCanvas` change (`src/anim/document.ts`):** copied cells are made with `willReadFrequently: true`,
   so a Blend stroke's per-dab `getImageData` on a copied cell is fast. Cost: those canvases are CPU-backed,
-  so drawing them to the screen may be slower than a GPU-backed one.
+  so drawing them to the screen may be slower than a GPU-backed one. It also makes a PASTED float CPU-backed (`Canvas.svelte` paste path, ≈:2051), unlike a lifted float (`selection.ts:398`) — unmeasured, likely small.
 - **Duplicate to unify later:** `releaseCanvas` in `blend-brush.ts` is private and duplicates slop-paint's
   helper in its `dry-brush.ts`; this app's `dry-brush.ts` is byte for byte slop-paint's older file, so
   unify on a later Dry brush port.

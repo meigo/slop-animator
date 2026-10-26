@@ -112,7 +112,7 @@ lock. `a` = `blendStrength(opacity, pressure, hasPressure)`. `resetBlendState()`
   `resetBlendState()` where the stamp engine's `resetStampState()` is called at the press. It reads
   and writes `strokeCtx` — the pinned cell's own context — so it can only touch that cell.
 - Smooth (path averaging) does not apply to Blend; Stream does (through `input.ts`, as the brush).
-- `StatusBar.svelte` names the tool "Blend".
+- `StatusBar.svelte` shows "blend" in lowercase, like "eraser".
 - Status/caption text the brush shows when blocked (loop frame, locked layer, reference, audio or
   group row) shows for Blend too — through `PIXEL_TOOLS` and `status-hint.ts` above.
 
@@ -120,7 +120,8 @@ lock. `a` = `blendStrength(opacity, pressure, hasPressure)`. `resetBlendState()`
 
 - The engine's tests, ported (blendMix, blendStrength, premultiply round trip, boxBlur3 keeps paint,
   blurPlan).
-- Unit tests for any pure helper added (`isStrokeTool`; preferences round trip of `blend` and its
+- (appState is not node-tested; the smoke test covers `isStrokeTool`.)
+- Unit tests for any pure helper added (preferences round trip of `blend` and its
   curve).
 - `tools/ipad-smoke.mjs`: J/the Blend button selects Blend; a Blend stroke across a drawn stroke
   changes its pixels and is one undo step (undo restores them); the brush's size is untouched by

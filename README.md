@@ -113,7 +113,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - `Space` tap = play/pause, `Space` hold = pan the canvas · `←/→` step a frame (`Shift` = 10) ·
   `Home`/`End` first/last · `↑/↓` change layer · `0` fit view
 - `1` — actual size (100%) · `n` add marker · `<`/`>` previous/next marker
-- `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `j` blend · `[`/`]` brush size · `o` onion ·
+- `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `j` blend · `[`/`]` size of the active stroke tool (brush, eraser or Blend) · `o` onion ·
   `⌘Z`/`⌘⇧Z` undo/redo
 - In a numeric field: `↑`/`↓` change it by one step (`Shift` = ten), `Enter` commits, `Escape`
   restores

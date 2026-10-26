@@ -63,7 +63,11 @@
     playbackController,
   } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
-  import { drawBlendStrokeIncremental, resetBlendState } from "../core/blend-brush";
+  import {
+    drawBlendStrokeIncremental,
+    releaseBlendState,
+    resetBlendState,
+  } from "../core/blend-brush";
   import { drawInkStroke } from "../core/ink-brush";
   import { drawDryStroke } from "../core/dry-brush";
   import { drawWatercolorStroke } from "../core/watercolor-brush";
@@ -482,7 +486,7 @@
   let strokeMaterialized: CellTrackChange | null = null;
   type StrokeTool = "brush" | "eraser" | "blend";
   /** The stroke tool a press with `t` paints with: the tool itself, or the brush for any other. */
-  const asStrokeTool = (t: Tool): StrokeTool => (isStrokeTool(t) ? (t as StrokeTool) : "brush");
+  const asStrokeTool = (t: Tool): StrokeTool => (isStrokeTool(t) ? t : "brush");
   /** The ENGINE the stroke started with. A finger on the brush picker mid-stroke switched engines
    *  under it: the half-drawn Smooth stroke stayed, and the stamp engine resumed from a stale count
    *  left by an earlier stroke, drawing nothing for hundreds of points (2026-09-30 review). Size,
@@ -3040,6 +3044,7 @@
       const revertedTrack = !!(strokeLayer && strokeMaterialized);
       if (strokeLayer && strokeMaterialized)
         restoreCellTrack(strokeLayer, strokeMaterialized.before);
+      if (strokeTool === "blend") releaseBlendState();
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
