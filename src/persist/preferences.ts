@@ -10,6 +10,8 @@ export interface Preferences {
   toolBeforeRef?: Tool | null;
   brush: ToolSettings;
   eraser: ToolSettings;
+  /** Blend tool settings (2026-10-26). Absent in older prefs: the defaults apply. */
+  blend?: ToolSettings;
   /** `soft` (2026-10-02) is absent in older prefs: `fillSoftPref`. */
   fill: {
     tolerance: number;
@@ -28,6 +30,8 @@ export interface Preferences {
   pressureCurve: CurvePrefs;
   /** The eraser's own curve (2026-09-14). Absent in older prefs, where one curve drove both tools. */
   eraserPressureCurve?: CurvePrefs;
+  /** Blend's own curve (2026-10-26). Absent = it starts as a copy of the brush curve. */
+  blendPressureCurve?: CurvePrefs;
   /** Transform corners scale proportionally. Absent = on (the default), so older prefs keep it. */
   keepProportions?: boolean;
   /** Ignored since 2026-09-08 — the app is dark-only. Kept on the type so a stored pref from an
@@ -117,6 +121,15 @@ export function eraserCurvePref(p: Partial<Preferences>): Partial<CurvePrefs> {
   return curvePointsPref(
     p.eraserPressureCurve && typeof p.eraserPressureCurve === "object"
       ? p.eraserPressureCurve
+      : p.pressureCurve,
+  );
+}
+
+/** The Blend curve to apply: its own when stored, else the brush curve (as `eraserCurvePref`). */
+export function blendCurvePref(p: Partial<Preferences>): Partial<CurvePrefs> {
+  return curvePointsPref(
+    p.blendPressureCurve && typeof p.blendPressureCurve === "object"
+      ? p.blendPressureCurve
       : p.pressureCurve,
   );
 }

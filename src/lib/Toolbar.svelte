@@ -40,6 +40,7 @@
   import {
     Paintbrush,
     Eraser,
+    Droplet,
     PaintBucket,
     BoxSelect,
     Lasso,
@@ -260,6 +261,13 @@
     class:ui-on={appState.tool === "eraser"}
     title={pixelTitle("Eraser")}
     onclick={() => (appState.tool = "eraser")}><Eraser size={18} /></button
+  >
+  <button
+    class={toolBtn}
+    class:opacity-40={toolsDimmed}
+    class:ui-on={appState.tool === "blend"}
+    title={pixelTitle("Blend (J) — blur, smudge or smear the drawing")}
+    onclick={() => (appState.tool = "blend")}><Droplet size={18} /></button
   >
   <button
     class={toolBtn}

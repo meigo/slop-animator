@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Viewport } from "../core/viewport";
-  import { state as appState, activeStroke, activeLayer } from "../state/appState.svelte";
+  import {
+    state as appState,
+    activeStroke,
+    activeLayer,
+    isStrokeTool,
+  } from "../state/appState.svelte";
   import { isLayerEditable } from "../anim/document";
   import { nibSemiAxes } from "../core/calligraphy-brush";
 
@@ -25,7 +30,6 @@
   let swatch = $state<string | null>(null);
   let raf = 0;
 
-  const isStrokeTool = () => appState.tool === "brush" || appState.tool === "eraser";
   // A locked/hidden layer refuses strokes, and Canvas swaps in a not-allowed cursor — keep the brush
   // ring out of the way there, or it would still promise a stroke that cannot happen.
   const canDraw = () => isLayerEditable(activeLayer(), appState.project.groups);
@@ -100,7 +104,7 @@
   });
 </script>
 
-{#if visible && isStrokeTool() && canDraw() && diameter > 0}
+{#if visible && isStrokeTool(appState.tool) && canDraw() && diameter > 0}
   <div
     class="brush-cursor"
     class:dashed
@@ -113,7 +117,7 @@
     style="transform: translate({x}px, {y}px) translate(14px, -32px); background: {swatch};"
   ></div>
 {/if}
-{#if visible && (isStrokeTool() || appState.tool === "eyedropper")}
+{#if visible && (isStrokeTool(appState.tool) || appState.tool === "eyedropper")}
   <div
     class="brush-cursor-dot"
     style="transform: translate({x}px, {y}px) translate(-50%, -50%);"

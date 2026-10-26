@@ -183,6 +183,7 @@ import type { CurvePrefs, Preferences } from "../persist/preferences";
 import {
   curvePointsPref,
   eraserCurvePref,
+  blendCurvePref,
   fillSoftPref,
   fillExpandPref,
   keepProportionsPref,
@@ -258,6 +259,7 @@ export function defaultExportOptions(): ExportOptions {
 export type Tool =
   | "brush"
   | "eraser"
+  | "blend"
   | "fill"
   | "select"
   | "lasso"
@@ -288,6 +290,8 @@ interface AnimState {
   toolBeforeRef: Tool | null;
   brush: ToolSettings;
   eraser: ToolSettings;
+  /** Blend (smudge/blur/smear) stroke settings; `color` unused, `brushType` never read. */
+  blend: ToolSettings;
   /** The bucket's OWN colour and opacity. Separate from the brush on purpose — in a cel-painting
    *  model outlines and flats are different colours by definition, so sharing one swatch meant
    *  re-picking on every crossing between brush and bucket. Opacity separates with it: a brush
@@ -454,6 +458,34 @@ export const state: AnimState = $state({
     pencilGrade: "HB",
     charcoalTexture: "medium",
   },
+  blend: {
+    size: 20,
+    color: "#000000", // unused (Blend smears existing pixels)
+    opacity: 100,
+    smoothing: 0,
+    sharpCorners: false,
+    drawBehind: false,
+    alphaLock: false,
+    taper: false,
+    sizeRange: 3.0,
+    streamline: 50,
+    brushType: "smooth",
+    nibAngle: 45,
+    nibFlatness: 0.35,
+    dwellPool: 0,
+    dryness: 50,
+    dryTaper: 10,
+    smoothWobble: 0,
+    nibWobble: 0,
+    washEdge: 50,
+    washGrain: 40,
+    washWobble: 30,
+    washMultiply: true,
+    pencilGrade: "HB",
+    charcoalTexture: "medium",
+    blendSmear: 30,
+    blendTip: "soft",
+  },
   // Expand 0 by default (2026-10-02): it was 2 to cover the pale halo along a line's antialiased edge,
   // which Soft now does from the line's own alpha; at 2 with Soft on, the fill's feather showed as a faint
   // fringe outside thin lines. As slop-paint. Saved settings keep their own Expand.
@@ -533,7 +565,16 @@ export function activeLayer() {
 
 /** The stroke settings for the active drawing tool (eraser has its own; everything else uses brush). */
 export function activeStroke(): ToolSettings {
-  return state.tool === "eraser" ? state.eraser : state.brush;
+  return state.tool === "eraser"
+    ? state.eraser
+    : state.tool === "blend"
+      ? state.blend
+      : state.brush;
+}
+
+/** Tools that paint a stroke with a size: brush, eraser and Blend. */
+export function isStrokeTool(tool: Tool): boolean {
+  return tool === "brush" || tool === "eraser" || tool === "blend";
 }
 
 /**
@@ -2678,6 +2719,7 @@ export function gatherPreferences(): Preferences {
     toolBeforeRef: state.toolBeforeRef,
     brush: { ...state.brush },
     eraser: { ...state.eraser },
+    blend: { ...state.blend },
     fill: { ...state.fill },
     loop: state.playback.loop,
     timelineHeight: state.timelineHeight,
@@ -2691,6 +2733,10 @@ export function gatherPreferences(): Preferences {
     eraserPressureCurve: {
       cp1: { ...pressureCurves.eraser.cp1 },
       cp2: { ...pressureCurves.eraser.cp2 },
+    },
+    blendPressureCurve: {
+      cp1: { ...pressureCurves.blend.cp1 },
+      cp2: { ...pressureCurves.blend.cp2 },
     },
     keepProportions: state.keepProportions,
   };
@@ -2708,6 +2754,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
   }
   if (p.brush && typeof p.brush === "object") state.brush = { ...state.brush, ...p.brush };
   if (p.eraser && typeof p.eraser === "object") state.eraser = { ...state.eraser, ...p.eraser };
+  if (p.blend && typeof p.blend === "object") state.blend = { ...state.blend, ...p.blend };
   // Back-compat: older saves wrote brushType/sizeRange/streamline at the top level → onto the brush.
   if (p.brushType) state.brush.brushType = p.brushType;
   if (typeof p.sizeRange === "number") state.brush.sizeRange = p.sizeRange;
@@ -2735,6 +2782,7 @@ export function applyPreferences(p: Partial<Preferences>): void {
   };
   applyCurve(pressureCurves.brush, curvePointsPref(p.pressureCurve));
   applyCurve(pressureCurves.eraser, eraserCurvePref(p));
+  applyCurve(pressureCurves.blend, blendCurvePref(p));
   state.keepProportions = keepProportionsPref(p);
 }
 
@@ -3057,11 +3105,19 @@ export function redo(): void {
 
 /** Pressure-response curves, remapping raw pen pressure before drawing. Imperative widgets, one per
  *  stroke tool like `state.brush`/`state.eraser` (until 2026-09-14 one curve drove both). */
-export const pressureCurves = { brush: new PressureCurve(), eraser: new PressureCurve() };
+export const pressureCurves = {
+  brush: new PressureCurve(),
+  eraser: new PressureCurve(),
+  blend: new PressureCurve(),
+};
 
-/** The curve for the active drawing tool — the eraser's own, everything else the brush's. */
+/** The curve for the active drawing tool — the eraser's and Blend's own, everything else the brush's. */
 export function activePressureCurve(): PressureCurve {
-  return state.tool === "eraser" ? pressureCurves.eraser : pressureCurves.brush;
+  return state.tool === "eraser"
+    ? pressureCurves.eraser
+    : state.tool === "blend"
+      ? pressureCurves.blend
+      : pressureCurves.brush;
 }
 
 /** Set the active layer (and select its row). */

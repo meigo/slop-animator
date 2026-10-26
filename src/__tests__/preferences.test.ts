@@ -52,7 +52,7 @@ describe("keepProportions", () => {
   });
 });
 
-import { curvePointsPref, eraserCurvePref } from "../persist/preferences";
+import { curvePointsPref, eraserCurvePref, blendCurvePref } from "../persist/preferences";
 
 describe("pressure curve prefs", () => {
   const brush = { cp1: { x: 0.1, y: 0.4 }, cp2: { x: 0.6, y: 0.9 } };
@@ -84,6 +84,25 @@ describe("pressure curve prefs", () => {
 
   it("no stored curve at all applies nothing", () => {
     expect(eraserCurvePref({})).toEqual({});
+  });
+
+  it("Blend uses its own stored curve, else the brush curve", () => {
+    const p = parsePreferences(
+      JSON.stringify({ pressureCurve: brush, blendPressureCurve: eraser }),
+    );
+    expect(blendCurvePref(p)).toEqual(eraser);
+    expect(blendCurvePref(parsePreferences(JSON.stringify({ pressureCurve: brush })))).toEqual(
+      brush,
+    );
+    expect(blendCurvePref({})).toEqual({});
+  });
+
+  it("parsePreferences round-trips a blend object and leaves eraser alone", () => {
+    const p = parsePreferences(
+      JSON.stringify({ eraser: { size: 8 }, blend: { size: 20, blendSmear: 30 } }),
+    );
+    expect(p.blend).toEqual({ size: 20, blendSmear: 30 });
+    expect(p.eraser).toEqual({ size: 8 });
   });
 });
 

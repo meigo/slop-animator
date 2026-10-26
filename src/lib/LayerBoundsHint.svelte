@@ -30,7 +30,7 @@
    * Only for tools that write pixels into the cell, and deliberately NOT for "transform": its
    * gizmo already draws this exact box, and two outlines on the same rect read as a bug.
    */
-  const PAINT_TOOLS = ["brush", "eraser", "fill", "deform", "pose"];
+  const PAINT_TOOLS = ["brush", "eraser", "blend", "fill", "deform", "pose"];
 
   let corners = $state<{ x: number; y: number }[]>([]);
   let visible = $state(false);
