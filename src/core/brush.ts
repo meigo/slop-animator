@@ -87,6 +87,10 @@ export interface BrushSettings {
   washWobble?: number;
   /** Watercolour only: mix with the paint already on the layer, as glazes do (canvas multiply). */
   washMultiply?: boolean;
+  /** Blend only, 0–100: 0 blurs in place, higher carries the paint along the stroke (a smear). */
+  blendSmear?: number;
+  /** Blend only: its tip, "soft" … "rough" (`BLEND_TIPS`); Soft by default. */
+  blendTip?: string;
 }
 
 /** Taper stroke ends: how long each end's taper is, in widths of the stroke at its widest. */

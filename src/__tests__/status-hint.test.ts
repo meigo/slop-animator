@@ -37,7 +37,7 @@ describe("hidden layers", () => {
 
 describe("reference layers", () => {
   it("pixel tools say to switch; transform/select/eyedropper stay usable", () => {
-    for (const tool of ["brush", "eraser", "fill", "deform", "pose"]) {
+    for (const tool of ["brush", "eraser", "blend", "fill", "deform", "pose"]) {
       expect(contextHint(ctx({ tool, notDraw: true }))).toBe("Switch to a drawing layer to edit");
     }
     expect(contextHint(ctx({ tool: "transform", notDraw: true }))).toMatch(/Drag to move/);
@@ -97,6 +97,8 @@ describe("audio row selected", () => {
   // fine, so "switch to a drawing layer" pointed at the wrong remedy.
   it("pixel tools and transform say to pick a LAYER ROW", () => {
     expect(contextHint(ctx({ tool: "brush", audioRow: true }))).toBe("Select a layer row to edit");
+    expect(contextHint(ctx({ tool: "blend", audioRow: true }))).toBe("Select a layer row to edit");
+    expect(contextHint(ctx({ tool: "blend", groupRow: true }))).toBe("Select a layer row to edit");
     expect(contextHint(ctx({ tool: "transform", audioRow: true }))).toBe(
       "Select a layer row to edit",
     );
@@ -158,6 +160,15 @@ describe("contextHint per tool state", () => {
     for (const tool of ["brush", "eraser", "fill", "eyedropper"]) {
       expect(contextHint(ctx({ tool }))).toBe("");
     }
+  });
+
+  it("Blend is clipped by the selection and honours alpha lock like the brush", () => {
+    expect(contextHint(ctx({ tool: "blend", selectionActive: true }))).toMatch(
+      /clipped to the selection/,
+    );
+    expect(contextHint(ctx({ tool: "blend", alphaLock: true, frameEmpty: true }))).toMatch(
+      /nothing on this frame/,
+    );
   });
 
   it("paint tools explain the clip (and where the deselect is) when a selection exists", () => {

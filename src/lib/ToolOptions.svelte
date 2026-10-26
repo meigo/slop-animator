@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import {
     state as appState,
+    isStrokeTool,
     pressureCurves,
     bumpCurve,
     activeLayer,
@@ -37,7 +38,7 @@
   import { MAX_THICKNESS } from "../core/outline";
   import { MAX_NIB_FLATNESS } from "../core/calligraphy-brush";
   import { PENCIL_GRADES } from "../core/stamp-brush";
-  import { CHARCOAL_TEXTURES } from "../core/brush-textures";
+  import { CHARCOAL_TEXTURES, BLEND_TIPS } from "../core/brush-textures";
   import { whyNotEditable } from "../anim/document";
   import { editBlockLabel } from "./status-hint";
 
@@ -50,7 +51,14 @@
   // (the Eraser's row needed ~835 and wrapped to 69px, moving the canvas; slop-paint cd14268).
   const NARROW_PRESETS = new Set([1, 3, 8, 16, 60]);
 
-  const stroke = $derived(appState.tool === "eraser" ? appState.eraser : appState.brush);
+  const stroke = $derived(
+    appState.tool === "eraser"
+      ? appState.eraser
+      : appState.tool === "blend"
+        ? appState.blend
+        : appState.brush,
+  );
+  const isBlend = $derived(appState.tool === "blend");
   // Smooth and Taper are read ONLY by brush.ts (the perfect-freehand path). The ink and stamp
   // engines receive them in `settings` and never look at them, so on those brushes the two controls
   // are inert. They used to be DIMMED with a title explaining why; they are now HIDDEN, because on
@@ -65,11 +73,11 @@
   const rowCls = "flex items-center gap-2 text-text-secondary";
   const labelCls = "w-20 shrink-0";
   const valueCls = "w-10 shrink-0 text-right text-text-muted tabular-nums";
-  const smoothOnly = $derived(stroke.brushType === "smooth");
-  const isCalligraphy = $derived(stroke.brushType === "calligraphy");
-  const isInk = $derived(stroke.brushType === "ink");
-  const isDry = $derived(stroke.brushType === "dry");
-  const isWatercolor = $derived(stroke.brushType === "watercolor");
+  const smoothOnly = $derived(!isBlend && stroke.brushType === "smooth");
+  const isCalligraphy = $derived(!isBlend && stroke.brushType === "calligraphy");
+  const isInk = $derived(!isBlend && stroke.brushType === "ink");
+  const isDry = $derived(!isBlend && stroke.brushType === "dry");
+  const isWatercolor = $derived(!isBlend && stroke.brushType === "watercolor");
   // Brush *settings* stay live (session prefs). Actions and instructional copy must not
   // promise a stroke that will not land — same split as the toolbar's dimmed pixel tools.
   const editBlock = $derived(whyNotEditable(activeLayer(), appState.project.groups));
@@ -82,12 +90,16 @@
 
   let brushSettingsOpen = $state(false);
   let curvePopupEl: HTMLDivElement = $state()!;
-  let curveEditors: Record<"brush" | "eraser", HTMLElement & { redraw: () => void }> | null = null;
+  let curveEditors: Record<
+    "brush" | "eraser" | "blend",
+    HTMLElement & { redraw: () => void }
+  > | null = null;
 
   onMount(() => {
     curveEditors = {
       brush: createCurveEditor(pressureCurves.brush, bumpCurve),
       eraser: createCurveEditor(pressureCurves.eraser, bumpCurve),
+      blend: createCurveEditor(pressureCurves.blend, bumpCurve),
     };
   });
 
@@ -97,7 +109,10 @@
   // tool's, and closing the panel simply detaches it. Redraw on the same pass, so it reflects a
   // restored curve.
   $effect(() => {
-    const editor = curveEditors?.[appState.tool === "eraser" ? "eraser" : "brush"];
+    const editor =
+      curveEditors?.[
+        appState.tool === "eraser" || appState.tool === "blend" ? appState.tool : "brush"
+      ];
     if (brushSettingsOpen && curvePopupEl && editor) {
       // eslint-disable-next-line svelte/no-dom-manipulating -- the host div is empty in the template; Svelte owns none of its children
       curvePopupEl.replaceChildren(editor);
@@ -114,24 +129,27 @@
 <div
   class="flex min-h-10 flex-wrap items-center gap-2 border-b border-border bg-surface px-2 text-text *:shrink-0"
 >
-  {#if appState.tool === "brush" || appState.tool === "eraser"}
+  {#if isStrokeTool(appState.tool)}
     {#if appState.tool === "eraser"}<span class="text-xs text-warn">Eraser</span>{/if}
+    {#if isBlend}<span class="text-xs text-text-secondary">Blend</span>{/if}
     <!-- First, as in slop-paint: the type decides which settings apply (the gear panel's rows among
          them), so it is chosen before the numbers it governs. -->
-    <select
-      class="h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary"
-      bind:value={stroke.brushType}
-      title="Brush type"
-    >
-      <option value="smooth">Smooth</option>
-      <option value="ink">Ink</option>
-      <option value="pencil">Pencil</option>
-      <option value="charcoal">Charcoal</option>
-      <option value="airbrush">Airbrush</option>
-      <option value="calligraphy">Calligraphy</option>
-      <option value="dry">Dry brush</option>
-      <option value="watercolor">Watercolour</option>
-    </select>
+    {#if !isBlend}
+      <select
+        class="h-7 cursor-pointer rounded-md border border-border bg-surface-hover px-1.5 text-xs text-text-secondary"
+        bind:value={stroke.brushType}
+        title="Brush type"
+      >
+        <option value="smooth">Smooth</option>
+        <option value="ink">Ink</option>
+        <option value="pencil">Pencil</option>
+        <option value="charcoal">Charcoal</option>
+        <option value="airbrush">Airbrush</option>
+        <option value="calligraphy">Calligraphy</option>
+        <option value="dry">Dry brush</option>
+        <option value="watercolor">Watercolour</option>
+      </select>
+    {/if}
     <label class="flex items-center gap-1 text-xs text-text-secondary"
       >Size
       <input
@@ -186,8 +204,10 @@
       />
       <span class="text-xs text-text-secondary w-6">{stroke.sizeRange}×</span>
     </label>
-    <label class="flex items-center gap-1 text-xs text-text-secondary"
-      >Opacity
+    <label
+      class="flex items-center gap-1 text-xs text-text-secondary"
+      title={isBlend ? "Strength — how strongly it blends" : undefined}
+      >{isBlend ? "Strength" : "Opacity"}
       <input
         type="range"
         min="1"
@@ -197,6 +217,22 @@
         style={sliderFill(stroke.opacity, 1, 100)}
       />
     </label>
+    {#if isBlend}
+      <label
+        class="flex items-center gap-1 text-xs text-text-secondary"
+        title="Smear — 0 blurs in place; higher carries the paint along the stroke: a smudge, then a long smear"
+        >Smear
+        <input
+          type="range"
+          min="0"
+          max="100"
+          class="w-16 max-[960px]:w-12"
+          bind:value={stroke.blendSmear}
+          style={sliderFill(stroke.blendSmear ?? 30, 0, 100)}
+        />
+        <span class="text-xs w-6 tabular-nums">{stroke.blendSmear ?? 30}</span>
+      </label>
+    {/if}
     <!-- Set-and-forget params live behind the gear, the pattern onion/boil/playback already use:
          what you adjust mid-stroke stays on the bar, what you calibrate once does not. On iPad the
          brush row was overrunning the viewport and the far controls were out of comfortable reach. -->
@@ -204,7 +240,9 @@
       <button
         class="size-8 rounded flex items-center justify-center text-text-secondary hover:bg-surface-hover"
         class:ui-on={brushSettingsOpen}
-        title="Brush settings — streamline, smoothing, wobble, pooling, watercolour edge and grain, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"
+        title={isBlend
+          ? "Blend settings — stream, tip, pressure curve"
+          : "Brush settings — streamline, smoothing, wobble, pooling, watercolour edge and grain, nib angle and flatness, pencil grade, charcoal texture, dryness, taper, paint behind, pressure curve"}
         onclick={() => (brushSettingsOpen = !brushSettingsOpen)}
       >
         <Settings size={18} />
@@ -310,7 +348,7 @@
               <span class={valueCls}>{stroke.dwellPool ?? 0}</span>
             </label>
           {/if}
-          {#if stroke.brushType === "pencil"}
+          {#if !isBlend && stroke.brushType === "pencil"}
             <div
               class={rowCls}
               title="Pencil grade, as on real pencils: H is hard — lighter, more paper grain; B is soft — darker, even at a light touch"
@@ -329,7 +367,7 @@
               </div>
             </div>
           {/if}
-          {#if stroke.brushType === "charcoal"}
+          {#if !isBlend && stroke.brushType === "charcoal"}
             <div
               class={rowCls}
               title="Charcoal texture: Rough has big holes in it, Dense hardly any"
@@ -455,7 +493,28 @@
               <input type="checkbox" bind:checked={stroke.sharpCorners} /> Sharp corners where you pause
             </label>
           {/if}
-          {#if appState.tool !== "eraser"}
+          {#if isBlend}
+            <div
+              class={rowCls}
+              title="Blend tip — Soft is a smooth brush; Hard has an edge; Grain and Rough break it up"
+            >
+              <span class={labelCls}>Tip</span>
+              <div class="flex min-w-0 flex-1 gap-px">
+                {#each BLEND_TIPS as t (t)}
+                  <button
+                    class="h-6 min-w-0 flex-1 rounded text-[10px] capitalize text-text-secondary hover:bg-surface-hover"
+                    class:ui-on={(stroke.blendTip ?? "soft") === t}
+                    aria-pressed={(stroke.blendTip ?? "soft") === t}
+                    title="{t[0].toUpperCase() + t.slice(1)} tip{t === 'soft'
+                      ? ' — the default'
+                      : ''}"
+                    onclick={() => (stroke.blendTip = t)}>{t}</button
+                  >
+                {/each}
+              </div>
+            </div>
+          {/if}
+          {#if appState.tool === "brush"}
             <label
               class={rowCls}
               title="Paint behind existing pixels (e.g. white fill under a black outline)"
@@ -464,13 +523,17 @@
             </label>
           {/if}
           <span class="text-text-secondary"
-            >{appState.tool === "eraser" ? "Eraser pressure curve" : "Pressure curve"}</span
+            >{appState.tool === "eraser"
+              ? "Eraser pressure curve"
+              : isBlend
+                ? "Blend pressure curve"
+                : "Pressure curve"}</span
           >
           <div class="flex justify-center" bind:this={curvePopupEl}></div>
         </div>
       {/if}
     </div>
-    {#if appState.tool !== "eraser"}
+    {#if appState.tool === "brush"}
       <ColorSwatch
         value={appState.brush.color}
         title="Brush colour"

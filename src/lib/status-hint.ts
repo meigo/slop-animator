@@ -80,6 +80,7 @@ export function contextHint(c: HintContext): string {
     if (
       c.tool === "brush" ||
       c.tool === "eraser" ||
+      c.tool === "blend" ||
       c.tool === "fill" ||
       c.tool === "deform" ||
       c.tool === "pose" ||
@@ -91,6 +92,7 @@ export function contextHint(c: HintContext): string {
     if (
       c.tool === "brush" ||
       c.tool === "eraser" ||
+      c.tool === "blend" ||
       c.tool === "fill" ||
       c.tool === "deform" ||
       c.tool === "pose"
@@ -110,6 +112,7 @@ export function contextHint(c: HintContext): string {
     c.notDraw &&
     (c.tool === "brush" ||
       c.tool === "eraser" ||
+      c.tool === "blend" ||
       c.tool === "fill" ||
       c.tool === "deform" ||
       c.tool === "pose")
@@ -136,6 +139,7 @@ export function contextHint(c: HintContext): string {
         : "Tap the drawing to build the pose mesh";
     case "brush":
     case "eraser":
+    case "blend":
     case "fill": {
       // Alpha lock never touches the eraser, so it is never mentioned for it.
       const locked = c.alphaLock && c.tool !== "eraser";

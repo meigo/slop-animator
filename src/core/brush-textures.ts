@@ -173,6 +173,24 @@ export function getTip(type: BrushType, grain = 1, texture?: string): HTMLCanvas
   }
 }
 
+/** The Blend brush's tips, softest first (`blend-brush.ts`): only their alpha is used, as a mask. */
+export const BLEND_TIPS = ["soft", "hard", "grain", "rough"] as const;
+export type BlendTip = (typeof BLEND_TIPS)[number];
+
+/** A Blend tip's mask; an unknown name is Soft. */
+export function blendTip(tip: string | undefined): HTMLCanvasElement {
+  switch (tip) {
+    case "hard":
+      return hardRoundTip();
+    case "grain":
+      return pencilTip();
+    case "rough":
+      return charcoalTip();
+    default:
+      return softRoundTip();
+  }
+}
+
 export function clearTipCache() {
   tipCache.clear();
 }

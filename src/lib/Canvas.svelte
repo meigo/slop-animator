@@ -35,6 +35,7 @@
     canvasOps,
     activeLayer,
     activeStroke,
+    isStrokeTool,
     bump,
     repaint,
     pressureCurves,
@@ -62,6 +63,11 @@
     playbackController,
   } from "../state/appState.svelte";
   import { drawStampStrokeIncremental, resetStampState } from "../core/stamp-brush";
+  import {
+    drawBlendStrokeIncremental,
+    releaseBlendState,
+    resetBlendState,
+  } from "../core/blend-brush";
   import { drawInkStroke } from "../core/ink-brush";
   import { drawDryStroke } from "../core/dry-brush";
   import { drawWatercolorStroke } from "../core/watercolor-brush";
@@ -478,11 +484,18 @@
   // the stroke began on, whatever the active layer is by the time the pointer lifts.
   let strokeLayer: DrawingLayer | null = null;
   let strokeMaterialized: CellTrackChange | null = null;
+  type StrokeTool = "brush" | "eraser" | "blend";
+  /** The stroke tool a press with `t` paints with: the tool itself, or the brush for any other. */
+  const asStrokeTool = (t: Tool): StrokeTool => (isStrokeTool(t) ? t : "brush");
   /** The ENGINE the stroke started with. A finger on the brush picker mid-stroke switched engines
    *  under it: the half-drawn Smooth stroke stayed, and the stamp engine resumed from a stale count
    *  left by an earlier stroke, drawing nothing for hundreds of points (2026-09-30 review). Size,
    *  opacity and the rest still follow the controls live. Set at every stroke start. */
-  let strokeBrushType: BrushKind = "smooth";
+  let strokeBrushType: BrushKind | "blend" = "smooth";
+  /** The TOOL the stroke started with (its settings and pressure curve), pinned at the press for the
+   *  same reason: a finger on the toolbar, J or the eraser toggle can change the tool under an open
+   *  Pencil stroke, and the commit must redraw it as the tool that drew it. */
+  let strokeTool: StrokeTool = "brush";
   // After a mid-stroke layer/frame switch we commit and ignore the rest of this pointer.
   let dropStrokeUntilUp = false;
   /** Whether a canvas press (pen or mouse) is open. Set from `setupInput` in onMount. */
@@ -867,9 +880,11 @@
     frozenTo = i;
   }
 
-  function paintStroke(pts: InputPoint[], done: boolean, asEraser = appState.tool === "eraser") {
+  function paintStroke(pts: InputPoint[], done: boolean, tool: StrokeTool = strokeTool) {
     if (!strokeCtx) return;
-    const stroke = asEraser ? appState.eraser : appState.brush;
+    const asEraser = tool === "eraser";
+    const stroke =
+      tool === "eraser" ? appState.eraser : tool === "blend" ? appState.blend : appState.brush;
     const brushType = strokeBrushType;
     let inPts = pts;
     // Smooth averages the Smooth brush's path here, in DOCUMENT space — before the cell-space
@@ -897,7 +912,7 @@
     }
     // The tool can change under an open Pencil stroke (a finger on the toolbar, a double-tap).
     // Commit must redraw with the tool that STARTED the stroke, or the ink is erased or dropped.
-    const curve = asEraser ? pressureCurves.eraser : pressureCurves.brush;
+    const curve = pressureCurves[tool];
     const curved = inPts.map((p) => ({ ...p, pressure: curve.evaluate(p.pressure) }));
     // No-pressure strokes (mouse) draw at constant nominal width: range = 1.
     const sr = (curved[0]?.hasPressure ?? true) ? stroke.sizeRange : 1;
@@ -982,6 +997,18 @@
         strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
         selection?.applyClip(strokeCtx);
         drawWatercolorStroke(strokeCtx, curved, settings, sr, done);
+      } finally {
+        strokeCtx.restore();
+      }
+    } else if (kind === "blend") {
+      // Blend (slop-paint's engine): incremental like the stamps — each dab reads the cell under it
+      // (`getImageData`) and writes the blend back, so there is no snapshot restore. It reads and
+      // writes `strokeCtx` only, the pinned cell. `done` lets go of its scratch canvases.
+      strokeCtx.save();
+      try {
+        strokeCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        selection?.applyClip(strokeCtx);
+        drawBlendStrokeIncremental(strokeCtx, curved, settings, sr, done);
       } finally {
         strokeCtx.restore();
       }
@@ -1294,7 +1321,7 @@
     }
   }
 
-  function commitOpenStroke(pts: InputPoint[], asEraser = appState.tool === "eraser") {
+  function commitOpenStroke(pts: InputPoint[], tool: StrokeTool = strokeTool) {
     if (!strokeCanvas || !strokeCtx || !beforeSnapshot) {
       strokeCanvas = null;
       strokeCtx = null;
@@ -1310,7 +1337,7 @@
       cancelAnimationFrame(drawRaf);
       drawRaf = 0;
     }
-    paintStroke(pts, true, asEraser);
+    paintStroke(pts, true, tool);
     const after = strokeCtx.getImageData(0, 0, strokeCanvas.width, strokeCanvas.height);
     const target = strokeCtx;
     const before = beforeSnapshot;
@@ -1643,11 +1670,14 @@
       frozenTo = 0;
       frozenCanvas = null;
       strokeSteps = cellComposeSteps(layer);
-      const bt = activeStroke().brushType;
+      strokeTool = asStrokeTool(appState.tool);
+      // Blend is a tool, not a brush type: its kind comes from the tool, never the type menu.
+      const bt = strokeTool === "blend" ? "blend" : activeStroke().brushType;
       strokeBrushType = bt;
       // smooth, calligraphy, ink, dry and watercolor are full-redraw engines (watercolor keeps a
-      // scratch, but knows a new stroke by its first point); the rest are stamps.
-      if (
+      // scratch, but knows a new stroke by its first point); blend and the rest are incremental.
+      if (bt === "blend") resetBlendState();
+      else if (
         bt !== "smooth" &&
         bt !== "calligraphy" &&
         bt !== "ink" &&
@@ -2753,10 +2783,7 @@
     const input = setupInput(stage, onStroke, (sx, sy) => viewport.screenToCanvas(sx, sy), {
       // Streamline is a brush preference. On select, pose, deform, and transform it made handles
       // trail the Pencil and stop short of the lift.
-      streamline: () =>
-        appState.tool === "brush" || appState.tool === "eraser"
-          ? activeStroke().streamline / 100
-          : 0,
+      streamline: () => (isStrokeTool(appState.tool) ? activeStroke().streamline / 100 : 0),
     });
     pressOpen = () => input.isDrawing();
 
@@ -2914,7 +2941,7 @@
     // from the on-canvas bar (Select → Free transform).
     const toolChanged = t !== prevTool;
     if (toolChanged && strokeCanvas) {
-      commitOpenStroke(lastPoints, prevTool === "eraser");
+      commitOpenStroke(lastPoints, asStrokeTool(prevTool));
       dropStrokeUntilUp = true;
     } else if (toolChanged && pressOpen()) endOpenPress(prevTool);
     if (toolChanged) {
@@ -3017,6 +3044,7 @@
       const revertedTrack = !!(strokeLayer && strokeMaterialized);
       if (strokeLayer && strokeMaterialized)
         restoreCellTrack(strokeLayer, strokeMaterialized.before);
+      if (strokeTool === "blend") releaseBlendState();
       strokeCanvas = null;
       strokeCtx = null;
       beforeSnapshot = null;
@@ -3085,7 +3113,7 @@
   // gesture that does work would be a worse lie than showing nothing.
   // Eyedropper samples the composite, so it is never blocked. Select/lasso are gated separately
   // (`selectToolsBlock`): a locked drawing layer can still be copied from, a reference cannot.
-  const PIXEL_TOOLS = ["brush", "eraser", "fill", "deform", "pose", "outline"];
+  const PIXEL_TOOLS = ["brush", "eraser", "blend", "fill", "deform", "pose", "outline"];
   // Pixel tools need a drawable layer. Transform on a DRAWING layer does too; on a REF the gizmo
   // is live (lock/span gate it separately) — treating that as blocked showed a not-allowed cursor
   // and a "switch to a drawing layer" caption over something you can actually move.
@@ -3127,7 +3155,7 @@
   bind:this={stage}
   class="relative flex-1 overflow-hidden bg-canvas-bg touch-none"
   class:cursor-not-allowed={toolBlocked && !panning && !spaceHeld}
-  class:cursor-none={!toolBlocked && (appState.tool === "brush" || appState.tool === "eraser")}
+  class:cursor-none={!toolBlocked && isStrokeTool(appState.tool)}
   class:cursor-crosshair={appState.tool === "eyedropper"}
   style:cursor={panning ? "grabbing" : spaceHeld ? "grab" : null}
   onwheel={onWheel}

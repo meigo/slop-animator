@@ -28,6 +28,7 @@
     poseActions,
     outlineActions,
     DPR,
+    activeStroke,
     replaceProject,
     gatherPreferences,
     applyPreferences,
@@ -212,6 +213,7 @@
     const letter = e.key.toLowerCase();
     if (letter === "b") state.tool = "brush";
     else if (letter === "e") state.tool = "eraser";
+    else if (letter === "j") state.tool = "blend";
     else if (letter === "g") state.tool = "fill";
     else if (letter === "s") state.tool = "select";
     else if (letter === "l") state.tool = "lasso";
@@ -277,7 +279,7 @@
       const next = i + (e.key === "ArrowUp" ? 1 : -1);
       if (i >= 0 && next >= 0 && next < stack.length) setActiveLayer(stack[next].id);
     } else if (e.key === "[" || e.key === "]") {
-      const s = state.tool === "eraser" ? state.eraser : state.brush;
+      const s = activeStroke();
       s.size = e.key === "[" ? Math.max(0.5, s.size - 1) : Math.min(60, s.size + 1);
     }
   }

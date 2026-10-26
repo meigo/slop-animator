@@ -1357,7 +1357,9 @@ export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
   const dst = document.createElement("canvas");
   dst.width = src.width;
   dst.height = src.height;
-  dst.getContext("2d")!.drawImage(src, 0, 0);
+  // willReadFrequently like every other cell: a Blend dab reads the cell back (getImageData), and
+  // the flag only counts at a canvas's first getContext.
+  dst.getContext("2d", { willReadFrequently: true })!.drawImage(src, 0, 0);
   return dst;
 }
 
