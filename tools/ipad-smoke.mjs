@@ -967,6 +967,7 @@ try {
   for (const t of [
     "Brush",
     "Eraser",
+    "Blend",
     "Fill",
     "Eyedropper",
     "Select",
