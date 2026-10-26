@@ -8868,3 +8868,41 @@ non-undoable setter to both. `npm run test:ipad` gains two checks (a drag leaves
 typed value applies live, out of range waits, Escape reverts) — both FAIL on the old NumberField. Build
 0/0, 1855 tests. **Owed on the iPad:** a drag on a number field brings up no keyboard; type a W in the
 Size dialog and tap Resize without Enter.
+
+**Blend tool (2026-10-26, branch `feat/blend-tool`, port of slop-paint `db26300`, `7c8e8e1`, `7449d2a`).**
+Roadmap item (18). Spec and plan: `docs/superpowers/specs/2026-10-26-blend-tool-design.md`,
+`…/plans/2026-10-26-blend-tool.md`.
+- **What it is:** a TOOL (`J`, after the Eraser; "Blend (J) — blur, smudge or smear the drawing"), not a
+  brush type: it moves the layer's own paint and never lays down colour. Its own slot
+  (`state.blend`: size 20, Strength = opacity, Press, Stream, its own pressure curve, saved with the
+  preferences), so switching to the Brush leaves the Brush's size alone. **Smear** (0–100, default 30:
+  low blurs, high carries paint along) and Strength sit on the options bar; **Tip** (Soft / Hard / Grain /
+  Rough), Stream and the "Blend pressure curve" are behind the gear. No brush-type menu, colour swatch or
+  paint-behind. Slop-paint's `wasBlendType` settings migration is not needed (the first commit's brush
+  type never existed here).
+- **Engine:** `src/core/blend-brush.ts` is slop-paint's file (+ its tests); `blendTip()` / `BLEND_TIPS`
+  went into `brush-textures.ts`, `blendSmear` / `blendTip` into `BrushSettings`. Dabs 0.1 of the width
+  apart at whole device pixels; each dab reads the pixels under it, blurs in JS at low Smear, mixes into a
+  carried load and writes back through the tip's mask (`source-atop` under alpha lock).
+  `isStrokeTool` is the one list of stroke tools (Brush, Eraser, Blend).
+- **The WebKit traps (kept from slop-paint):** never read the layer with `drawImage` (WebKit copies the
+  whole changed canvas per draw: 5.8 ms a dab against 0.7 ms with `getImageData`), and never blur by
+  canvas shrink-and-grow (it lost 4–11% of the paint per dab and banded a straight stroke); the JS blur
+  keeps a flat 128 grey exact.
+- **Wiring (`Canvas.svelte`):** the stroke's tool is pinned at the press (`strokeTool`, beside
+  `strokeBrushType`), so a tool switch mid-stroke commits the stroke with the settings it started with.
+  `strokeBrushType` is `BrushKind | "blend"` (`BrushKind` is unchanged); Blend skips the stamp reset and
+  Smooth's path averaging, and runs `drawBlendStrokeIncremental` inside the selection clip. Blend over
+  nothing on a hold pushes no undo step and leaves no key (the `sameImageData` path).
+- **`cloneCanvas` change (`src/anim/document.ts`):** copied cells are made with `willReadFrequently: true`,
+  so a Blend stroke's per-dab `getImageData` on a copied cell is fast. Cost: those canvases are CPU-backed,
+  so drawing them to the screen may be slower than a GPU-backed one.
+- **Duplicate to unify later:** `releaseCanvas` in `blend-brush.ts` is private and duplicates slop-paint's
+  helper in its `dry-brush.ts`; this app's `dry-brush.ts` is byte for byte slop-paint's older file, so
+  unify on a later Dry brush port.
+- **Smoke:** `npm run test:ipad` gains two checks (Blend shows no brush-type menu, a drag across a stroke
+  changes the picture and one Cmd+Z restores it exactly; the Brush's size readout is unchanged) and
+  "Blend" joins the portrait one-line row list (40 px). Build 0/0, 1870 tests.
+  **Owed on the iPad:** a long wide Blend stroke for lag; Smear by feel (the 30 default, the range);
+  playback with copied cells (now CPU-backed). Not eyeballed anywhere: how the smear looks, alpha lock
+  and a selection clip during a Blend stroke (same code path as the Brush).

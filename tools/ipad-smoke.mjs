@@ -517,6 +517,45 @@ try {
   await brushSelect.selectOption("smooth");
   await setSize(sizeBefore);
 
+  // The Blend tool (2026-10-26, from slop-paint `7449d2a`): a tool, not a brush type, so no brush-type
+  // select shows; a drag across the Smooth stroke at dy 0.3 (drawn above) moves its paint — the
+  // display changes — as ONE undo step (a single Cmd+Z restores it exactly), and the Brush's own
+  // size is left alone (Blend has its own slot).
+  const pixelSum = () =>
+    page.evaluate(() => {
+      const c = document.querySelector("div.touch-none.overflow-hidden > div canvas");
+      const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      let h = 0;
+      for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + 7 * d[i + 3]) | 0;
+      return h;
+    });
+  const blendBefore = await pixelSum();
+  const brushSize = await sizeSlider.inputValue();
+  await page.locator('button[title^="Blend (J)"]').click();
+  const blendSelectShown = await brushSelect.count();
+  await send([
+    ["pointerdown", "pen", 43, 0.5, 0.25],
+    ["pointermove", "pen", 43, 0.5, 0.28],
+    ["pointermove", "pen", 43, 0.5, 0.31],
+    ["pointermove", "pen", 43, 0.5, 0.34],
+    ["pointerup", "pen", 43, 0.5, 0.35],
+  ]);
+  await page.waitForTimeout(300);
+  const blendAfter = await pixelSum();
+  await page.screenshot({ path: `${OUT}/5-blend.png` });
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(200);
+  const blendUndone = await pixelSum();
+  check(
+    blendSelectShown === 0 && blendAfter !== blendBefore && blendUndone === blendBefore,
+    `the Blend tool shows no brush-type menu, a drag across a stroke changes the picture, and one Cmd+Z restores it (menu ${blendSelectShown}, changed ${blendAfter !== blendBefore}, restored ${blendUndone === blendBefore})`,
+  );
+  await page.keyboard.press("b");
+  check(
+    (await sizeSlider.inputValue()) === brushSize,
+    "Blend keeps its own size: the Brush's size readout is unchanged",
+  );
+
   // Watercolour (2026-10-03, from slop-paint): a pen stroke paints a see-through wash, and where a
   // yellow stroke crosses a blue one with Mix colours on (the default) the two multiply into a dark
   // green; with it off the yellow lies over the blue. Each sample is a 5×5 mean of the screen's

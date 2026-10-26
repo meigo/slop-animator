@@ -17,6 +17,9 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
   undone 50 steps back, not a handful
 - Numeric fields change by dragging — press a field and drag sideways (Shift for fine steps); tap it to type as before
 - Multiple brush engines: smooth ([perfect-freehand](https://github.com/steveruizok/perfect-freehand)), ink, pencil, charcoal, airbrush, calligraphy, a dry brush (bristle stripes that break up where the brush runs out of paint, with Dryness and Taper settings), and watercolour (a see-through wash with a darker rim where the pigment gathers, the paper's grain in it and an uneven outline; strokes mix like glazes — yellow over blue makes green — and a stroke crossing itself stays even; Edge, Grain, Wobble and Mix colours in the gear); Smooth and Calligraphy have a Wobble setting too, for an uneven, hand-made edge (off by default); the Pencil comes in grades from 4H to 8B and the Charcoal in textures from Rough to Dense — with pressure support, adjustable pressure curves (the brush and the eraser each have their own), Stream (the line trails the pen on a string, the same at any pointer rate) and Smooth (averages the stroke's path with no lag, optionally keeping corners where you pause), optional ink pooling that swells the mark where the pen lingers, and separate brush/eraser settings
+- **Blend tool** (`J`) — blur, smudge or smear the drawing with the pen: it moves the layer's own paint
+  and lays down no colour. **Smear** goes from a soft blur to dragging paint along, **Strength** sets how
+  much each pass takes; Tip (soft, hard, grain, rough) and its own pressure curve are behind the gear
 - Colour palette for the brush and the fill: 24 swatches (greys, hues, skin and earth tones) plus a
   custom picker
 - Fill tool with its own colour and opacity — the bucket no longer shares the brush's swatch,
@@ -110,7 +113,7 @@ Built with **Svelte 5 (runes) + TypeScript + Vite + Tailwind 4**, tested with Vi
 - `Space` tap = play/pause, `Space` hold = pan the canvas · `←/→` step a frame (`Shift` = 10) ·
   `Home`/`End` first/last · `↑/↓` change layer · `0` fit view
 - `1` — actual size (100%) · `n` add marker · `<`/`>` previous/next marker
-- `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `[`/`]` brush size · `o` onion ·
+- `b` brush · `e` eraser · `g` fill · `s` select · `l` lasso · `j` blend · `[`/`]` brush size · `o` onion ·
   `⌘Z`/`⌘⇧Z` undo/redo
 - In a numeric field: `↑`/`↓` change it by one step (`Shift` = ten), `Enter` commits, `Escape`
   restores
@@ -128,7 +131,7 @@ Other scripts:
 
 ```sh
 npm run build      # svelte-check + tsc + vite build (0 errors, 0 warnings is the bar)
-npm test           # Vitest — pure-logic unit tests (1855); canvas/DOM code isn't node-testable
+npm test           # Vitest — pure-logic unit tests (1870); canvas/DOM code isn't node-testable
 npm run test:ipad  # Playwright WebKit iPad smoke check (first run: npx playwright install webkit)
 npm run lint       # ESLint (runes-aware + Tailwind class conflicts) — Prettier runs via pre-commit hook
 npm run deploy     # build, then wrangler deploy (Cloudflare Workers static assets)
